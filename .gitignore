@@ -1,0 +1,105 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pytype/
+.coverage
+coverage.xml
+htmlcov/
+
+# =========================
+# Virtual environments
+# =========================
+.venv/
+venv/
+ENV/
+env/
+
+# =========================
+# Environment / secrets
+# =========================
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.crt
+secrets/
+credentials/
+*.token
+
+# =========================
+# IDEs
+# =========================
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+
+# =========================
+# OS
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Logs
+# =========================
+logs/
+*.log
+
+# =========================
+# Docker
+# =========================
+**/docker-data/
+**/volumes/
+docker-compose.override.yml
+
+# =========================
+# Alembic
+# =========================
+alembic/__pycache__/
+alembic/versions/__pycache__/
+
+# =========================
+# Prometheus / Grafana
+# =========================
+monitoring/**/data/
+monitoring/**/wal/
+grafana/data/
+prometheus/data/
+
+# =========================
+# VPN / Infra generated files
+# =========================
+vpn/**/clients.json
+vpn/**/generated/
+wireguard/**/wg0.conf
+wireguard/**/keys/
+*.conf.generated
+
+# =========================
+# Build / artifacts
+# =========================
+build/
+dist/
+*.tar
+*.gz
+*.zip
+
+# =========================
+# Temporary / debug
+# =========================
+tmp/
+.temp/
+.cache/
