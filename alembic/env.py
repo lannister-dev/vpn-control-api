@@ -33,8 +33,9 @@ if config.config_file_name is not None:
 # for 'autogenerate' support
 
 from services.users.models import User
-from services.vpn.models import VpnKey, KeyAssignment
+from services.vpn.keys.models import VpnKey, KeyAssignment
 from services.nodes.models import VpnNode, NodeAgentState
+from services.artifacts.models import ProfileArtifact
 
 target_metadata = Base.metadata
 

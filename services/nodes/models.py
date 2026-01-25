@@ -19,6 +19,7 @@ class VpnNode(Base):
     agent_port: Mapped[int] = mapped_column(Integer, default=9000)
 
     assignments: Mapped[list["KeyAssignment"]] = relationship(back_populates="node")
+    agent_state: Mapped["NodeAgentState"] = relationship(back_populates="node")
 
 
 class NodeAgentState(Base):

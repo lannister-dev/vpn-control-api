@@ -5,6 +5,37 @@ from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict
 
 
+class VpnNodeCreate(BaseModel):
+    name: str
+    region: str
+    public_domain: str
+    internal_wg_ip: str
+    xray_api_port: int = 10085
+    agent_port: int = 9000
+    auth_token_hash: str
+
+
+class VpnNodeUpdate(BaseModel):
+    name: str | None = None
+    region: str | None = None
+    public_domain: str | None = None
+    internal_wg_ip: str | None = None
+    xray_api_port: int | None = None
+    agent_port: int | None = None
+
+
+class VpnNodeOut(BaseModel):
+    id: str
+    name: str
+    region: str
+    public_domain: str
+    internal_wg_ip: str
+    xray_api_port: int
+    agent_port: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class NodeAgentStateCreate(BaseModel):
     node_id: str
     agent_version: str
@@ -42,38 +73,3 @@ class NodeHeartbeatInternal(BaseModel):
     is_healthy: bool
     last_seen_at: datetime
     details: Dict
-
-
-class KeyAssignmentCreate(BaseModel):
-    key_id: UUID
-    node_id: UUID
-    desired_state: str
-
-
-class KeyAssignmentUpdate(BaseModel):
-    desired_state: str | None = None
-
-
-class AssignmentReportIn(BaseModel):
-    applied_state: str
-    status: str
-    last_error: Optional[str] = None
-    last_applied_at: datetime
-
-
-class AssignmentOut(BaseModel):
-    id: UUID
-    key_id: UUID
-    desired_state: str
-    applied_state: str | None
-    status: str | None
-
-    protocol: str
-    transport: str
-    client_id: str
-
-    valid_until: datetime | None
-    traffic_limit_mb: int | None
-    is_revoked: bool
-
-    model_config = ConfigDict(from_attributes=True)

@@ -4,8 +4,10 @@ annotated-types==0.7.0
 anyio==4.12.1
 async-timeout==5.0.1
 asyncpg==0.31.0
+backports-datetime-fromisoformat==2.0.3
 click==8.3.1
 colorama==0.4.6
+environs==14.5.0
 exceptiongroup==1.3.1
 fastapi==0.128.0
 greenlet==3.3.0
@@ -13,8 +15,13 @@ h11==0.16.0
 idna==3.11
 Mako==1.3.10
 MarkupSafe==3.0.3
+marshmallow==4.2.0
+prometheus-fastapi-instrumentator==7.1.0
+prometheus_client==0.24.1
 pydantic==2.12.5
 pydantic_core==2.41.5
+python-dotenv==1.2.1
+redis==7.1.0
 SQLAlchemy==2.0.46
 starlette==0.50.0
 tomli==2.4.0

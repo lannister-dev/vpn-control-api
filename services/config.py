@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from functools import lru_cache
 from environs import Env
 
+from shared import profiles
+
 
 @dataclass
 class DbConfig:
@@ -18,16 +20,26 @@ class DbConfig:
 
 @dataclass
 class RedisConfig:
-    host: str
-    port: int
-    password: str
     broker_url: str
+    assignments_cache_ttl: int
+    assignment_lock_ttl: int
+
+
+@dataclass
+class AdminConfig:
+    api_key_hash: str
+
+@dataclass
+class ProfilesVpnConfig:
+    allow_empty_registry_on_startup: bool = False
 
 
 @dataclass
 class Settings:
     database: DbConfig
     redis: RedisConfig
+    admin: AdminConfig
+    profiles_vpn: ProfilesVpnConfig
 
 
 @lru_cache
@@ -48,10 +60,22 @@ def get_settings() -> Settings:
     )
 
     redis = RedisConfig(
-        host=env.str("REDIS_HOST"),
-        port=env.int("REDIS_PORT"),
-        password=env.str("REDIS_PASSWORD"),
         broker_url=env.str("REDIS_BROKER_URL"),
+        assignments_cache_ttl=env.int("REDIS_ASSIGNMENTS_CACHE_TTL", default=10),
+        assignment_lock_ttl=env.int("REDIS_ASSIGNMENT_LOCK_TTL", default=30)
     )
 
-    return Settings(database=database, redis=redis)
+    admin = AdminConfig(
+        api_key_hash=env.str("ADMIN_API_KEY_HASH"),
+    )
+
+    profiles_vpn = ProfilesVpnConfig(
+        allow_empty_registry_on_startup=env.bool("PROFILES_ALLOW_EMPTY_REGISTRY_ON_STARTUP")
+    )
+
+    return Settings(
+        database=database,
+        redis=redis,
+        admin=admin,
+        profiles_vpn=profiles_vpn
+    )

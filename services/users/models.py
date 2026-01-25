@@ -13,7 +13,4 @@ class User(Base):
     username: Mapped[str] = mapped_column(nullable=True)
     balance: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=0)
 
-    keys: Mapped[list["VpnKey"]] = relationship(
-        back_populates="user",
-        cascade="all, delete-orphan"
-    )
+    keys: Mapped[list["VpnKey"]] = relationship(back_populates="user", cascade="all, delete-orphan")

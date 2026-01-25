@@ -1,0 +1,2 @@
+class ArtifactStoreError(Exception):
+    pass
