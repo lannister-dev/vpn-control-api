@@ -84,7 +84,7 @@ async def get_active_profiles_artifact(
     response_model=ReloadStatusResponse,
     summary="Reload profiles registry from active artifact",
     description=(
-        "Reloads the in-memory profiles registry using the currently active "
+        "Reloads the in-memory profiles registry using the currently active. "
         "profiles artifact stored in the database. "
         "This operation is atomic and protected by a registry lock."
     ),
