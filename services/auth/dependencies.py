@@ -1,6 +1,7 @@
 import secrets
 
 from fastapi import Header, Depends, HTTPException
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette import status
 
 from services.auth.utils import AuthUtils
@@ -46,21 +47,26 @@ async def node_auth(
 
     return node
 
+admin_bearer = HTTPBearer(auto_error=False)
 
 async def admin_auth(
-    authorization: str = Header(..., alias="Authorization"),
+    credentials: HTTPAuthorizationCredentials = Depends(admin_bearer),
 ) -> None:
     """
-    Simple static admin API key:
-    - Authorization: Bearer <api_key>
-    - Server stores sha256(api_key) in ADMIN_API_KEY_HASH
+    Validates admin access using a static Bearer API key.
     """
-    if not authorization.startswith("Bearer "):
+    if not credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing Authorization header",
+        )
+
+    if credentials.scheme.lower() != "bearer":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authorization scheme",
         )
-    raw_token = authorization.removeprefix("Bearer ").strip()
+    raw_token = credentials.credentials
     expected_hash = get_settings().admin.api_key_hash
     provided_hash = AuthUtils.hash_admin_api_key(raw_token)
 

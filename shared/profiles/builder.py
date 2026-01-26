@@ -1,8 +1,8 @@
 from ipaddress import ip_address
-from urllib.parse import urlencode, quote
-
 from shared.profiles.exceptions import ProfileBuildError, ProfileRegionMismatchError
-from shared.profiles.types import (
+from shared.profiles.schemas import WsTlsQuery, RealityTcpQuery
+from shared.profiles.transport import VlessUri
+from shared.profiles.schemas import (
     NodePublic,
     ProfileType,
     RealityTcpProfile,
@@ -49,22 +49,26 @@ class VlessUriBuilder:
         profile: WsTlsProfile,
     ) -> str:
         client = profile.client
-        query = {
-            "type": "ws",
-            "security": "tls",
-            "encryption": "none",
-            "sni": client.sni,
-            "host": client.host,
-            "path": client.path,
-        }
-        q = urlencode(query, safe="/")
+
+        query = WsTlsQuery(
+                type="ws",
+                security="tls",
+                encryption="none",
+                sni=client.sni,
+                host=client.host,
+                path=client.path,
+        )
         host = VlessUriBuilder._format_host(node.domain)
         remark = node.remark or profile.metadata.display_name
-        fragment = VlessUriBuilder._format_fragment(remark)
-        return (
-            f"vless://{client_id}@{host}:{node.port}"
-            f"?{q}{fragment}"
-        )
+
+        return VlessUri(
+            client_id=client_id,
+            host=host,
+            port=node.port,
+            query=query.to_query(),
+            remark=remark
+        ).render()
+
 
     @staticmethod
     def _build_reality_tcp(
@@ -74,29 +78,31 @@ class VlessUriBuilder:
         profile: RealityTcpProfile,
     ) -> str:
         client = profile.client
-        query = {
-            "type": "tcp",
-            "security": "reality",
-            "encryption": "none",
-            "sni": client.sni,
-            "fp": client.fingerprint,
-            "pbk": client.public_key,
-            "sid": client.short_id,
-        }
+        query = RealityTcpQuery(
+                type="tcp",
+                security="reality",
+                encryption="none",
+                sni=client.sni,
+                fp=client.fingerprint,
+                pbk=client.public_key,
+                sid=client.short_id,
+        )
         flow = client.resolve_flow()
         if flow:
-            query["flow"] = flow
+            query.flow = flow
         if client.spider_x:
-            query["spx"] = client.spider_x
+            query.spx = client.spider_x
 
-        q = urlencode(query)
         host = VlessUriBuilder._format_host(node.domain)
         remark = node.remark or profile.metadata.display_name
-        fragment = VlessUriBuilder._format_fragment(remark)
-        return (
-            f"vless://{client_id}@{host}:{node.port}"
-            f"?{q}{fragment}"
-        )
+
+        return VlessUri(
+             client_id=client_id,
+             host=host,
+             port=node.port,
+             query=query.to_query(),
+             remark=remark
+        ).render()
 
     @staticmethod
     def _format_host(host: str) -> str:
@@ -108,9 +114,3 @@ class VlessUriBuilder:
         except ValueError:
             return host
         return host
-
-    @staticmethod
-    def _format_fragment(remark: str) -> str:
-        if not remark:
-            return ""
-        return f"#{quote(remark, safe='')}"

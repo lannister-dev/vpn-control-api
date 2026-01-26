@@ -31,7 +31,10 @@ async def bootstrap_profiles_registry(session: AsyncSession) -> None:
 
     try:
         async with profile_registry_lock:
-            ProfileRegistry.reload_from_dict(artifact.artifact)
+            ProfileRegistry.reload_from_dict(
+                artifact.artifact,
+                artifact_version=artifact.version,
+            )
     except (ProfileRegistryError, ValidationError) as exc:
         logger.exception("Failed to load profiles registry", error=str(exc))
         raise ProfilesBootstrapError(

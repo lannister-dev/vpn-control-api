@@ -4,11 +4,13 @@ import asyncio
 from dataclasses import dataclass
 from typing import Mapping
 
-from pydantic import ValidationError
+from pydantic import ValidationError, TypeAdapter
 
 from shared.profiles.exceptions import ProfileRegistryError
-from shared.profiles.types import WsTlsProfile, RealityTcpProfile, ProfileType
+from shared.profiles.schemas import WsTlsProfile, RealityTcpProfile, ProfileType, ProfileIn, WsTlsProfileIn, \
+    RealityTcpProfileIn, ProfileMetadata
 
+ProfileInAdapter = TypeAdapter(ProfileIn)
 
 @dataclass(frozen=True)
 class ProfileConfig:
@@ -21,6 +23,7 @@ profile_registry_lock = asyncio.Lock()
 
 class ProfileRegistry:
     _profiles: dict[str, ProfileConfig] = {}
+    _artifact_version: int | None = None
     _frozen: bool = False
 
     @classmethod
@@ -86,29 +89,48 @@ class ProfileRegistry:
         cls.freeze()
 
     @classmethod
-    def reload_from_dict(cls, profiles: Mapping[str, dict]) -> None:
+    def reload_from_dict(
+            cls,
+            profiles: Mapping[str, dict],
+            *,
+            artifact_version: int,
+    ) -> None:
         new_profiles: dict[str, ProfileConfig] = {}
         errors: list[str] = []
 
         for key, raw in profiles.items():
             try:
-                ptype = raw.get("type")
-                if ptype == ProfileType.ws_tls.value:
-                    profile = WsTlsProfile.model_validate(raw)
-                elif ptype == ProfileType.reality_tcp.value:
-                    profile = RealityTcpProfile.model_validate(raw)
-                else:
-                    raise ProfileRegistryError(f"Unknown profile type: {ptype}")
+                profile_in = ProfileInAdapter.validate_python(raw)
+                metadata = ProfileMetadata(display_name=profile_in.display_name)
 
+                if isinstance(profile_in, WsTlsProfileIn):
+                    profile = WsTlsProfile(
+                        type=ProfileType.ws_tls,
+                        client=profile_in.client,
+                        metadata=metadata,
+                    )
+                elif isinstance(profile_in, RealityTcpProfileIn):
+                    profile = RealityTcpProfile(
+                        type=ProfileType.reality_tcp,
+                        client=profile_in.client,
+                        metadata=metadata,
+                    )
+                else:
+                    raise ProfileRegistryError(
+                        f"Unsupported profile type: {type(profile_in)!r}"
+                    )
                 new_profiles[key] = ProfileConfig(key=key, profile=profile)
-            except (ProfileRegistryError, ValidationError) as e:
-                errors.append(f"{key}: {e}")
+
+            except (ValidationError, ProfileRegistryError) as exc:
+                errors.append(f"{key}: {exc}")
 
         if errors:
-            raise ProfileRegistryError("Invalid profiles:\n" + "\n".join(errors))
-
+            raise ProfileRegistryError(
+                "Invalid profiles:\n" + "\n".join(errors)
+            )
         if not new_profiles:
             raise ProfileRegistryError("No profiles registered")
 
         cls._profiles = new_profiles
+        cls._artifact_version = artifact_version
         cls._frozen = True
