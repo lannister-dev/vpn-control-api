@@ -38,3 +38,6 @@ class RedisClient:
 
 _settings = get_settings()
 redis_client = RedisClient(url=_settings.redis.broker_url)
+
+def get_redis_client() -> RedisClient:
+    return redis_client

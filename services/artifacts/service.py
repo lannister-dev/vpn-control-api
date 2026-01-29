@@ -1,3 +1,4 @@
+from __future__ import annotations
 import hashlib
 import json
 
@@ -5,6 +6,7 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.artifacts.exceptions import ArtifactStoreError
+from services.artifacts.models import ProfileArtifact
 from services.artifacts.repositroy import ProfileArtifactRepository
 from services.artifacts.schemas import ProfileArtifactCreate, ProfileArtifactPublishIn
 from shared.database.session import AsyncDatabase
@@ -15,7 +17,7 @@ class ProfileArtifactService:
         self.repository = ProfileArtifactRepository(session)
         self.session = session
 
-    async def publish(self, data: ProfileArtifactPublishIn):
+    async def publish(self, data: ProfileArtifactPublishIn) -> ProfileArtifact:
         payload = json.dumps(data.artifact, sort_keys=True).encode()
         checksum = hashlib.sha256(payload).hexdigest()
 

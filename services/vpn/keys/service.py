@@ -1,46 +1,40 @@
+from __future__ import annotations
 from uuid import uuid4, UUID
-
-from fastapi import HTTPException
+from fastapi import HTTPException, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette import status
 
 from services.users.repository import UserRepository
 from services.vpn.keys.repository import VpnKeyRepository, KeyAssignmentRepository
 from services.vpn.keys.schemas import (
     VpnKeyCreate, VpnKeyInternalCreate,
-    KeyAssignmentInternalCreate, KeyAssignmentCreate, KeyAssignmentUpdate, AssignmentDesiredState
+    KeyAssignmentInternalCreate, KeyAssignmentCreate
 )
+from shared.database.session import AsyncDatabase
 
 
-class VpnService:
-    @staticmethod
-    async def create_key(
-            payload: VpnKeyCreate,
-            repository: VpnKeyRepository,
-            user_repository: UserRepository
-    ):
-        user = await user_repository.get_by_id(payload.user_id)
+class VpnKeyService:
+    def __init__(self, session: AsyncSession):
+        self.session = session
+        self.key_repository = VpnKeyRepository(session)
+        self.user_repository = UserRepository(session)
+        self.assignment_repository = KeyAssignmentRepository(session)
 
+    async def create_key(self, payload: VpnKeyCreate):
+        user = await self.user_repository.get_by_id(payload.user_id)
         if not user:
-            raise HTTPException(
-                status_code=404,
-                detail="User not found"
-            )
+            raise HTTPException(status_code=404, detail="User not found")
+
         internal = VpnKeyInternalCreate(
             **payload.model_dump(),
             client_id=str(uuid4()),
             is_revoked=False,
         )
 
-        return await repository.create(internal.model_dump())
+        return await self.key_repository.create(internal.model_dump())
 
-    @staticmethod
-    async def assign_key(
-            key_id: UUID,
-            payload: KeyAssignmentCreate,
-            key_repository: VpnKeyRepository,
-            assignment_repository: KeyAssignmentRepository,
-    ) -> None:
-        key = await key_repository.get_by_id(key_id)
+    async def assign_key(self, key_id: UUID, payload: KeyAssignmentCreate) -> None:
+        key = await self.key_repository.get_by_id(key_id)
         if not key:
             raise HTTPException(status_code=404, detail="Key not found",)
 
@@ -53,15 +47,12 @@ class VpnService:
             desired_state=payload.desired_state,
         )
 
-        await assignment_repository.create(internal_assignment.model_dump())
+        await  self.assignment_repository.create(
+            internal_assignment.model_dump()
+        )
 
-    @staticmethod
-    async def revoke_key(
-            key_id: UUID,
-            key_repository: VpnKeyRepository,
-            assignment_repository: KeyAssignmentRepository,
-    ) -> None:
-        key = await key_repository.get_by_id(key_id)
+    async def revoke_key(self, key_id: UUID) -> None:
+        key = await self.key_repository.get_by_id(key_id)
         if not key:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Key not found"
@@ -71,4 +62,9 @@ class VpnService:
 
         key.is_revoked = True
 
-        await assignment_repository.revoke_all_for_key(key_id=key_id)
+        await self.assignment_repository.revoke_all_for_key(key_id=key_id)
+
+def get_vpn_key_service(
+    session: AsyncSession = Depends(AsyncDatabase.get_session),
+) -> VpnKeyService:
+    return VpnKeyService(session)

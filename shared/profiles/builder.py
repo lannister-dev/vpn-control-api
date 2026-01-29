@@ -1,3 +1,4 @@
+from __future__ import annotations
 from ipaddress import ip_address
 from shared.profiles.exceptions import ProfileBuildError, ProfileRegionMismatchError
 from shared.profiles.schemas import WsTlsQuery, RealityTcpQuery

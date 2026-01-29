@@ -1,6 +1,7 @@
 import logging
 from contextlib import asynccontextmanager
 
+import uvicorn
 from fastapi import FastAPI, APIRouter
 from prometheus_fastapi_instrumentator import Instrumentator
 from shared.database.session import AsyncDatabase
@@ -12,6 +13,7 @@ from services.auth.router import router as auth_router
 from services.artifacts.router import router as artifacts_router
 from services.nodes.router import router as node_router
 from services.vpn.keys.router import router as vpn_router
+from services.vpn.subscriptions.router import router as subscriptions_router
 
 
 log = StructuredLogger(logging.getLogger("vpn-control-api"))
@@ -44,6 +46,7 @@ api_router.include_router(auth_router)
 api_router.include_router(artifacts_router)
 api_router.include_router(node_router)
 api_router.include_router(vpn_router)
+api_router.include_router(subscriptions_router)
 
 app.include_router(api_router)
 
@@ -54,3 +57,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
+
+
+if __name__ == "__main__":
+    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
