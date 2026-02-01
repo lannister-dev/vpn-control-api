@@ -1,6 +1,5 @@
 from datetime import datetime
 from typing import Dict, Optional
-from uuid import UUID
 
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -22,6 +21,7 @@ class VpnNodeUpdate(BaseModel):
     internal_wg_ip: str | None = None
     xray_api_port: int | None = None
     agent_port: int | None = None
+    auth_token_hash: str | None = None
 
 
 class VpnNodeOut(BaseModel):
@@ -41,20 +41,37 @@ class NodeAgentStateCreate(BaseModel):
     agent_version: str
     is_healthy: bool
     last_seen_at: datetime
+    last_sync_at: datetime | None
     details: Dict = Field(default_factory=dict)
 
 
 class NodeAgentStateUpdate(BaseModel):
-    agent_version: str
-    is_healthy: bool
-    last_seen_at: datetime
-    details: Dict = Field(default_factory=dict)
+    agent_version: str | None = None
+    is_healthy: bool | None = None
+    last_seen_at: datetime | None = None
+    last_sync_at: datetime | None = None
+    details: Dict | None = None
+
+class HeartbeatStats(BaseModel):
+    poll_count: int
+    applied: int
+    failed: int
+
+
+class HeartbeatRuntime(BaseModel):
+    ready: bool
+    last_error: Optional[str] = None
+
+
+class HeartbeatDetails(BaseModel):
+    runtime: HeartbeatRuntime
+    stats: HeartbeatStats
 
 
 class NodeHeartbeatIn(BaseModel):
     agent_version: str
     is_healthy: bool
-    details: Dict = Field(default_factory=dict)
+    details: HeartbeatDetails
 
 
 class NodeAgentStateOut(BaseModel):
@@ -73,3 +90,8 @@ class NodeHeartbeatInternal(BaseModel):
     is_healthy: bool
     last_seen_at: datetime
     details: Dict
+
+class NodeAgentInitialOut(BaseModel):
+    node_id: str
+    node_auth_token: str
+

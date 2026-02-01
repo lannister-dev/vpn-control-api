@@ -2,8 +2,6 @@ from dataclasses import dataclass
 from functools import lru_cache
 from environs import Env
 
-from shared import profiles
-
 
 @dataclass
 class DbConfig:
@@ -28,6 +26,7 @@ class RedisConfig:
 @dataclass
 class AdminConfig:
     api_key_hash: str
+
 
 @dataclass
 class ProfilesVpnConfig:

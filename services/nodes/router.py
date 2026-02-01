@@ -2,23 +2,41 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from starlette import status
+from starlette.requests import Request
 
 from services.auth.dependencies import node_auth
 from services.nodes.models import VpnNode
-from services.nodes.repository import get_node_agent_state_repository, NodeAgentStateRepository
 from services.nodes.schemas import NodeHeartbeatIn
-from services.nodes.service import NodeService, NodeAgentService
-from services.vpn.keys.repository import get_key_assignment_repository, KeyAssignmentRepository
+from services.nodes.service import  NodeAgentService, VpnNodeService, get_vpn_node_service
 from services.vpn.keys.schemas import AssignmentReportIn, AssignmentOut
+from services.vpn.keys.service import VpnKeyService, get_vpn_key_service
 
 router = APIRouter(prefix="/agent", tags=["Node Agent"])
+
+
+@router.post("/initial", summary="Agent create node")
+async def initial(wg_request: Request,
+                  service: VpnNodeService = Depends(get_vpn_node_service)):
+    """
+       Initial node bootstrap.
+       WireGuard-only endpoint
+       """
+    source_ip = wg_request.client.host
+
+    if not source_ip:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot determine source IP",
+        )
+
+    return await service.initial(source_ip=source_ip)
 
 
 @router.post("/heartbeat", summary="Node agent heartbeat")
 async def heartbeat(
         payload: NodeHeartbeatIn,
         node: VpnNode = Depends(node_auth),
-        repository: NodeAgentStateRepository = Depends(get_node_agent_state_repository)
+        service: VpnNodeService = Depends(get_vpn_node_service)
 ):
     """
         Periodic heartbeat from NodeAgent.
@@ -27,8 +45,8 @@ async def heartbeat(
         - Authorization: Bearer <token>
         - X-Node-ID: <node_id>
         """
-    await NodeService.handle_heartbeat(
-        node=node, payload=payload, repository=repository
+    await service.handle_heartbeat(
+        node=node, payload=payload,
     )
     return {"status": "ok"}
 
@@ -41,7 +59,7 @@ async def heartbeat(
 async def get_assignments(
         node_id: UUID,
         node: VpnNode = Depends(node_auth),
-        repository: KeyAssignmentRepository = Depends(get_key_assignment_repository),
+        service: VpnKeyService = Depends(get_vpn_key_service),
 ) -> list[AssignmentOut]:
     """
     Control-plane desired-state for NodeAgent reconciliation.
@@ -58,9 +76,8 @@ async def get_assignments(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access to foreign node is forbidden",
         )
-    return await NodeAgentService.get_assignments_for_node(
+    return await service.assignment_repository.get_assignments_for_node(
         node=node,
-        repository=repository,
     )
 
 
@@ -72,16 +89,15 @@ async def report_assignment(
         assignment_id: UUID,
         payload: AssignmentReportIn,
         node: VpnNode = Depends(node_auth),
-        repository: KeyAssignmentRepository = Depends(get_key_assignment_repository)
+        service: VpnKeyService = Depends(get_vpn_key_service),
 
 ):
     """
         NodeAgent reports result of applying assignment.
         """
-    await NodeService.report_assignment(
+    await service.assignment_repository.report_assignment(
         node=node,
         assignment_id=assignment_id,
         payload=payload,
-        repository=repository
     )
     return {"status": "ok"}

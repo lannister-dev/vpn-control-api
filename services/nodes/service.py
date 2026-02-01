@@ -1,20 +1,26 @@
+import hashlib
 import json
 import logging
+import secrets
 from datetime import datetime, timezone
 from typing import Sequence
 from uuid import UUID
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from services.config import get_settings
 from services.nodes.models import VpnNode
-from services.nodes.repository import NodeAgentStateRepository
-from services.nodes.schemas import NodeAgentStateUpdate, NodeAgentStateCreate, NodeHeartbeatIn
+from services.nodes.repository import NodeAgentStateRepository, VpnNodeRepository
+from services.nodes.schemas import NodeAgentStateUpdate, NodeAgentStateCreate, NodeHeartbeatIn, NodeAgentInitialOut, \
+    VpnNodeUpdate, VpnNodeCreate
 from services.vpn.keys.models import KeyAssignment, VpnKey
 from services.vpn.keys.repository import KeyAssignmentRepository
 from services.vpn.keys.schemas import (
     AssignmentReportIn, VpnProtocol, VpnTransport,
-    AssignmentOut, AssignmentDesiredState, VpnKeyInternal
+    AssignmentOut, AssignmentDesiredState, VpnKeyInternal, AssignmentStatus
 )
+from shared.database.session import AsyncDatabase
 from shared.redis.client import redis_client
 from shared.utils.logger import StructuredLogger
 
@@ -23,48 +29,85 @@ logger_node = StructuredLogger(logging.getLogger("node-service"))
 _settings = get_settings()
 
 
-class NodeService:
-    @staticmethod
+class VpnNodeService:
+    def __init__(self, session: AsyncSession):
+        self.vpn_node_repository = (
+            VpnNodeRepository(session)
+        )
+        self.node_agent_state_repository = (
+            NodeAgentStateRepository(session)
+        )
+        self.key_assignment_repository = (
+            KeyAssignmentRepository(session)
+        )
+
+    async def initial(self, *, source_ip: str) -> NodeAgentInitialOut:
+        """
+        Initial node identity bootstrap.
+
+        - identity source: internal_wg_ip (source_ip)
+        - idempotent
+        - rotates auth token on every call
+        """
+
+        node = await self.vpn_node_repository.get_by_internal_ip(source_ip)
+
+        raw_token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+
+        if node is None:
+            create_schema = VpnNodeCreate(
+                name=f"node-{source_ip.replace('.', '-')}",
+                region="unknown",
+                public_domain="",
+                internal_wg_ip=source_ip,
+                xray_api_port=10085,
+                agent_port=9000,
+                auth_token_hash=token_hash,
+            )
+
+            node = await self.vpn_node_repository.create(
+                create_schema.model_dump()
+            )
+        else:
+            update_schema = VpnNodeUpdate(
+                auth_token_hash=token_hash
+            )
+            await self.vpn_node_repository.update_by_id(
+                node.id,
+                update_schema.model_dump(exclude_unset=True)
+            )
+
+        return NodeAgentInitialOut(
+            node_id=str(node.id),
+            node_auth_token=raw_token,
+        )
+
     async def handle_heartbeat(
+            self,
             node: VpnNode,
             payload: NodeHeartbeatIn,
-            repository: NodeAgentStateRepository,
     ) -> None:
-        """
-        Handle periodic heartbeat from node agent.
-
-        - create agent state on first heartbeat
-        - update agent state on subsequent heartbeats
-        - idempotent
-        """
         now = datetime.now(timezone.utc)
-        state = await repository.get_by_id(node.id)
 
-        if state is None:
-            create_schema = NodeAgentStateCreate(
-                node_id=node.id,
-                agent_version=payload.agent_version,
-                is_healthy=payload.is_healthy,
-                last_seen_at=now,
-                details=payload.details,
-            )
-            await repository.create(create_schema.model_dump())
-            return
-
-        update_schema = NodeAgentStateUpdate(
+        state = NodeAgentStateUpdate(
             agent_version=payload.agent_version,
             is_healthy=payload.is_healthy,
             last_seen_at=now,
-            details=payload.details,
+            details=payload.details.model_dump(),
         )
-        await repository.update_by_id(node.id, update_schema.model_dump(exclude_unset=True))
+        await self.node_agent_state_repository.upsert(
+            {
+                "node_id": node.id,
+                **state.model_dump(exclude_unset=True),
+            }
+        )
 
-    @staticmethod
     async def report_assignment(
+            self,
             node: VpnNode,
             assignment_id: UUID,
             payload: AssignmentReportIn,
-            repository: KeyAssignmentRepository,
     ) -> None:
         """
         Persist reconciliation result reported by node agent.
@@ -78,7 +121,7 @@ class NodeService:
             return
 
         try:
-            assignment = await repository.get_by_id(assignment_id)
+            assignment = await self.key_assignment_repository.get_by_id(assignment_id)
 
             if assignment is None:
                 raise HTTPException(status_code=404, detail="Assignment not found")
@@ -95,7 +138,17 @@ class NodeService:
             )
             if is_same:
                 return
-            await repository.update_by_id(assignment_id, update_data)
+            await self.key_assignment_repository.update_by_id(
+                assignment_id, update_data
+            )
+            if payload.status == AssignmentStatus.applied:
+                state_update = NodeAgentStateUpdate(
+                    last_sync_at=payload.last_applied_at,
+                )
+                await self.node_agent_state_repository.update_by_id(
+                    node.id,
+                    state_update.model_dump(exclude_unset=True),
+                )
             # invalidate node assignments cache (optional but good)
             await redis_client.client.delete(f"node:{node.id}:assignments:v1")
         finally:
@@ -107,14 +160,22 @@ class NodeService:
                 )
 
 
+async def get_vpn_node_service(
+        session: AsyncSession = Depends(AsyncDatabase.get_session)
+) -> VpnNodeService:
+    return VpnNodeService(session)
+
+
 logger_node_agent = StructuredLogger(logging.getLogger("node-agent-service"))
 
 
 class NodeAgentService:
-    @staticmethod
+    def __init__(self, session: AsyncSession):
+        self.key_assignment_repository = KeyAssignmentRepository(session)
+
     async def get_assignments_for_node(
+            self,
             node: VpnNode,
-            repository: KeyAssignmentRepository,
     ) -> list[AssignmentOut]:
         """
         Returns desired-state assignments for a node.
@@ -131,8 +192,8 @@ class NodeAgentService:
                 AssignmentOut.model_validate(item)
                 for item in json.loads(cached)
             ]
-        rows = await repository.list_for_node_with_keys(node_id=node.id)
-        result = NodeAgentService._build_assignments(rows)
+        rows = await self.key_assignment_repository.list_for_node_with_keys(node_id=node.id)
+        result = self._build_assignments(rows)
 
         await redis_client.client.setex(
             cache_key,
@@ -145,8 +206,8 @@ class NodeAgentService:
 
         return result
 
-    @staticmethod
     def _build_assignments(
+            self,
             rows: Sequence[tuple[KeyAssignment, VpnKey]]
     ) -> list[AssignmentOut]:
         now = datetime.now(timezone.utc)

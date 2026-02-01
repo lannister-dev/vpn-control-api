@@ -2,7 +2,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from starlette import status
 from services.auth.utils import AuthUtils
-from services.nodes.repository import get_vpn_node_repository, VpnNodeRepository
+from services.nodes.service import get_vpn_node_service, VpnNodeService
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -11,15 +11,29 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
     "/verify-node",
     summary="Verify node token",
     status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        204: {"description": "Node verified"},
+        400: {"description": "Invalid request"},
+        401: {"description": "Invalid node token"},
+        404: {"description": "Node not found"},
+    },
 )
 async def verify_node_token(
     node_id: UUID,
     token: str,
-    repository: VpnNodeRepository = Depends(get_vpn_node_repository),
+    service: VpnNodeService = Depends(get_vpn_node_service),
 ):
-    node = await repository.get_by_id(node_id)
+    node = await service.vpn_node_repository.get_by_id(node_id)
     if not node:
-        raise HTTPException(status_code=401, detail="Node not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Node not found",
+        )
 
     if node.auth_token_hash != AuthUtils.hash_node_token(token):
-        raise HTTPException(status_code=401, detail="Invalid token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid node token",
+        )
+
+    return None

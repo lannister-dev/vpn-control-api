@@ -1,44 +1,38 @@
 import secrets
 
-from fastapi import Header, Depends, HTTPException
+from fastapi import Header, Depends, HTTPException, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette import status
 
 from services.auth.utils import AuthUtils
 from services.config import get_settings
 from services.nodes.models import VpnNode
-from services.nodes.repository import get_vpn_node_repository, VpnNodeRepository
+from services.nodes.service import VpnNodeService, get_vpn_node_service
 
+
+node_bearer = HTTPBearer(auto_error=False)
 
 async def node_auth(
     x_node_id: str = Header(..., alias="X-Node-ID"),
-    authorization: str = Header(...),
-    repository: VpnNodeRepository = Depends(get_vpn_node_repository)
+    credentials: HTTPAuthorizationCredentials | None = Security(node_bearer),
+    service: VpnNodeService = Depends(get_vpn_node_service),
 ) -> VpnNode:
-    """
-        Auth dependency for NodeAgent (machine-to-machine).
-
-        Requirements:
-        - Authorization: Bearer <token>
-        - X-Node-ID: <uuid>
-
-        Returns:
-            VpnNode — authenticated node instance
-        """
-    if not authorization.startswith("Bearer "):
+    if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authorization scheme",
+            detail="Authorization header required",
         )
-    raw_token = authorization.removeprefix("Bearer ").strip()
+
+    raw_token = credentials.credentials.strip()
     token_hash = AuthUtils.hash_node_token(raw_token)
 
-    node = await repository.get_by_id(x_node_id)
-    if not node:
+    node = await service.vpn_node_repository.get_by_id(x_node_id)
+    if node is None:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Node not found",
         )
+
     if node.auth_token_hash != token_hash:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -50,7 +44,7 @@ async def node_auth(
 admin_bearer = HTTPBearer(auto_error=False)
 
 async def admin_auth(
-    credentials: HTTPAuthorizationCredentials = Depends(admin_bearer),
+        credentials: HTTPAuthorizationCredentials | None = Security(admin_bearer),
 ) -> None:
     """
     Validates admin access using a static Bearer API key.
