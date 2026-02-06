@@ -12,13 +12,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from services.config import get_settings
 from services.nodes.models import VpnNode
 from services.nodes.repository import NodeAgentStateRepository, VpnNodeRepository
-from services.nodes.schemas import NodeAgentStateUpdate, NodeAgentStateCreate, NodeHeartbeatIn, NodeAgentInitialOut, \
-    VpnNodeUpdate, VpnNodeCreate
+from services.nodes.schemas import (
+    NodeAgentStateUpdate,
+    NodeHeartbeatIn,
+    NodeAgentInitialOut,
+    VpnNodeUpdate,
+    VpnNodeCreate
+)
 from services.vpn.keys.models import KeyAssignment, VpnKey
 from services.vpn.keys.repository import KeyAssignmentRepository
 from services.vpn.keys.schemas import (
-    AssignmentReportIn, VpnProtocol, VpnTransport,
-    AssignmentOut, AssignmentDesiredState, VpnKeyInternal, AssignmentStatus
+    AssignmentReportIn,
+    VpnProtocol,
+    VpnTransport,
+    AssignmentOut,
+    AssignmentDesiredState,
+    VpnKeyInternal,
+    AssignmentStatus,
+    AssignmentAppliedState
 )
 from shared.database.session import AsyncDatabase
 from shared.redis.client import redis_client
@@ -216,7 +227,7 @@ class NodeAgentService:
         for assignment, key in rows:
             key = VpnKeyInternal.model_validate(key, from_attributes=True)
             # effective desired-state overrides
-            effective_desired = assignment.desired_state
+            effective_desired = AssignmentDesiredState(assignment.desired_state)
             if key.is_revoked:
                 effective_desired = AssignmentDesiredState.absent
             elif key.valid_until is not None:
@@ -227,13 +238,22 @@ class NodeAgentService:
                 if vu <= now:
                     effective_desired = AssignmentDesiredState.absent
 
+            # ---- applied_state ----
+            if assignment.applied_state is None:
+                applied_state = AssignmentAppliedState.unknown
+            else:
+                applied_state = AssignmentAppliedState(assignment.applied_state)
+
+            # ---- status ----
+            status = AssignmentStatus(assignment.status)
+
             result.append(
                 AssignmentOut(
                     id=assignment.id,
                     key_id=assignment.key_id,
                     desired_state=effective_desired,
-                    applied_state=assignment.applied_state,
-                    status=assignment.status,
+                    applied_state=applied_state,
+                    status=status,
 
                     protocol=VpnProtocol(key.protocol),
                     transport=VpnTransport(key.transport),
@@ -246,3 +266,8 @@ class NodeAgentService:
             )
 
         return result
+
+async def get_node_agent_service(
+        session: AsyncSession = Depends(AsyncDatabase.get_session)
+) -> NodeAgentService:
+    return NodeAgentService(session)

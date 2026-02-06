@@ -40,7 +40,7 @@ class KeyAssignment(Base):
     applied_state: Mapped[str] = mapped_column(String(length=16))
     status: Mapped[str] = mapped_column(String(length=16), server_default=text("'pending'"), nullable=False)
     last_error: Mapped[str] = mapped_column(nullable=True)
-    last_applied_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    last_applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     op_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     next_retry_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

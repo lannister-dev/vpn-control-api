@@ -7,7 +7,12 @@ from starlette.requests import Request
 from services.auth.dependencies import node_auth
 from services.nodes.models import VpnNode
 from services.nodes.schemas import NodeHeartbeatIn
-from services.nodes.service import  NodeAgentService, VpnNodeService, get_vpn_node_service
+from services.nodes.service import (
+    NodeAgentService,
+    VpnNodeService,
+    get_vpn_node_service,
+    get_node_agent_service
+)
 from services.vpn.keys.schemas import AssignmentReportIn, AssignmentOut
 from services.vpn.keys.service import VpnKeyService, get_vpn_key_service
 
@@ -52,14 +57,13 @@ async def heartbeat(
 
 
 @router.get(
-    "/nodes/{node_id}/assignments",
+    "/assignments",
     response_model=list[AssignmentOut],
-    summary="Get desired assignments for node (desired-state)",
+    summary="Get desired assignments for authenticated node",
 )
 async def get_assignments(
-        node_id: UUID,
         node: VpnNode = Depends(node_auth),
-        service: VpnKeyService = Depends(get_vpn_key_service),
+        service: NodeAgentService= Depends(get_node_agent_service),
 ) -> list[AssignmentOut]:
     """
     Control-plane desired-state for NodeAgent reconciliation.
@@ -71,31 +75,24 @@ async def get_assignments(
     Returns:
     - list of assignments with key material required by Xray
     """
-    if node.id != node_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access to foreign node is forbidden",
-        )
-    return await service.assignment_repository.get_assignments_for_node(
-        node=node,
-    )
+    return await service.get_assignments_for_node(node=node)
 
 
 @router.post(
-    "/nodes/{node_id}/assignments/report",
+    "/assignments/{assignment_id}/report",
     summary="Report assignment apply result"
 )
 async def report_assignment(
         assignment_id: UUID,
         payload: AssignmentReportIn,
         node: VpnNode = Depends(node_auth),
-        service: VpnKeyService = Depends(get_vpn_key_service),
+        service: VpnNodeService = Depends(get_vpn_node_service),
 
 ):
     """
         NodeAgent reports result of applying assignment.
         """
-    await service.assignment_repository.report_assignment(
+    await service.report_assignment(
         node=node,
         assignment_id=assignment_id,
         payload=payload,

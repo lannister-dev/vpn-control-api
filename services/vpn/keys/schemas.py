@@ -75,6 +75,7 @@ class AssignmentDesiredState(str, Enum):
 class AssignmentAppliedState(str, Enum):
     present = "present"
     absent = "absent"
+    unknown = "unknown"
 
 
 class AssignmentStatus(str, Enum):
@@ -92,7 +93,7 @@ class KeyAssignmentInternalCreate(BaseModel):
     key_id: UUID
     node_id: UUID
     desired_state: AssignmentDesiredState
-    applied_state: AssignmentAppliedState = AssignmentStatus.pending
+    applied_state: AssignmentAppliedState = AssignmentAppliedState.unknown
     status: AssignmentStatus = AssignmentStatus.pending
 
 
