@@ -1,0 +1,57 @@
+version: '3.8'
+
+# ======== health check, rollback =========
+
+x-healthcheck-common: &healthcheck-common
+  test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/metrics').read()"]
+  interval: 10s
+  timeout: 5s
+  retries: 3
+  start_period: 10s
+
+x-deploy-common: &deploy-common
+  replicas: 1
+  update_config:
+    parallelism: 1
+    delay: 10s
+    order: start-first
+    failure_action: rollback
+  restart_policy:
+    condition: on-failure
+    max_attempts: 3
+
+
+services:
+  control-api:
+    image: harbor.lannister-dev.ru/vpn-service/vpn-control-api:${IMAGE_TAG:-latest}
+    deploy:
+      <<: *deploy-common
+      placement:
+        constraints:
+          - node.role == manager
+      labels:
+         # --------- Traefik ---------
+        - "traefik.enable=true"
+        - "traefik.http.routers.vpn-control-api.rule=Host(`api.lannister-dev.ru`)"
+        - "traefik.http.routers.vpn-control-api.entrypoints=websecure"
+        - "traefik.http.routers.vpn-control-api.service=vpn-control-api"
+        - "traefik.http.services.vpn-control-api.loadbalancer.server.port=8000"
+
+        # -------- Prometheus --------
+        - "prometheus-scrape=true"
+        - "prometheus-app=control-api"
+        - "prometheus-env=monitoring"
+        - "prometheus-metrics-port=8000"
+        - "prometheus-scrape-profile=important"
+    healthcheck: *healthcheck-common
+    networks:
+      - monitoring
+      - traefik_swarm
+    env_file:
+      - .env
+
+networks:
+  monitoring:
+    external: true
+  traefik_swarm:
+    external: true

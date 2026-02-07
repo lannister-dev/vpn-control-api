@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.artifacts.exceptions import ArtifactStoreError
 from services.artifacts.models import ProfileArtifact
-from services.artifacts.repositroy import ProfileArtifactRepository
+from services.artifacts.repository import ProfileArtifactRepository
 from services.artifacts.schemas import ProfileArtifactCreate, ProfileArtifactPublishIn
 from shared.database.session import AsyncDatabase
 
