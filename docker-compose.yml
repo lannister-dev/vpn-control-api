@@ -23,7 +23,7 @@ x-deploy-common: &deploy-common
 
 services:
   control-api:
-    image: harbor.lannister-dev.ru/vpn-service/vpn-control-api:${IMAGE_TAG:-latest}
+    image: harbor.lannister-dev.ru/vpn-service/control-api:${IMAGE_TAG:-latest}
     deploy:
       <<: *deploy-common
       placement:
