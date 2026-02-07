@@ -41,7 +41,7 @@ services:
         - "prometheus-scrape=true"
         - "prometheus-app=control-api"
         - "prometheus-env=monitoring"
-        - "prometheus-metrics-port=8080"
+        - "prometheus-metrics-port=8000"
         - "prometheus-metrics-path=/api/metrics"
         - "prometheus-scrape-profile=important"
     healthcheck: *healthcheck-common
