@@ -42,7 +42,7 @@ services:
         - "prometheus-app=control-api"
         - "prometheus-env=monitoring"
         - "prometheus-metrics-port=8080"
-        - "rometheus-metrics-path=/api/metrics"
+        - "prometheus-metrics-path=/api/metrics"
         - "prometheus-scrape-profile=important"
     healthcheck: *healthcheck-common
     networks:
