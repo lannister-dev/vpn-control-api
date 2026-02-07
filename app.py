@@ -51,7 +51,7 @@ api_router.include_router(subscriptions_router)
 app.include_router(api_router)
 
 
-Instrumentator().instrument(app).expose(app, endpoint="/api/metrics")
+Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
 logging.basicConfig(
     level=logging.INFO,
