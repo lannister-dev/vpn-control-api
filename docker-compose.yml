@@ -32,7 +32,7 @@ services:
       labels:
          # --------- Traefik ---------
         - "traefik.enable=true"
-        - "traefik.http.routers.vpn-control-api.rule=Host(`api.lannister-dev.ru`)"
+        - "traefik.http.routers.vpn-control-api.rule=Host(`api.lannister-dev.ru`) && PathPrefix(`/api`)"
         - "traefik.http.routers.vpn-control-api.entrypoints=websecure"
         - "traefik.http.routers.vpn-control-api.service=control-api"
         - "traefik.http.services.vpn-control-api.loadbalancer.server.port=8000"
