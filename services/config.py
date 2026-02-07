@@ -24,6 +24,12 @@ class RedisConfig:
 
 
 @dataclass
+class DocsConfig:
+    username: str
+    password_hash: str
+
+
+@dataclass
 class AdminConfig:
     api_key_hash: str
 
@@ -38,6 +44,7 @@ class Settings:
     database: DbConfig
     redis: RedisConfig
     admin: AdminConfig
+    docs: DocsConfig
     profiles_vpn: ProfilesVpnConfig
 
 
@@ -68,6 +75,11 @@ def get_settings() -> Settings:
         api_key_hash=env.str("ADMIN_API_KEY_HASH"),
     )
 
+    docs = DocsConfig(
+        username=env.str("DOCS_USERNAME", default="admin"),
+        password_hash=env.str("DOCS_PASSWORD_HASH"),
+    )
+
     profiles_vpn = ProfilesVpnConfig(
         allow_empty_registry_on_startup=env.bool("PROFILES_ALLOW_EMPTY_REGISTRY_ON_STARTUP")
     )
@@ -76,5 +88,6 @@ def get_settings() -> Settings:
         database=database,
         redis=redis,
         admin=admin,
+        docs=docs,
         profiles_vpn=profiles_vpn
     )

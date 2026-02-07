@@ -9,6 +9,7 @@ from shared.profiles.init import bootstrap_profiles_registry
 from shared.redis.client import redis_client
 from shared.utils.logger import StructuredLogger
 
+from services.auth.docs import DocsBasicAuthMiddleware
 from services.auth.router import router as auth_router
 from services.artifacts.router import router as artifacts_router
 from services.nodes.router import router as node_router
@@ -50,6 +51,7 @@ api_router.include_router(subscriptions_router)
 
 app.include_router(api_router)
 
+app.add_middleware(DocsBasicAuthMiddleware)
 
 Instrumentator().instrument(app).expose(app, endpoint="/api/metrics")
 
