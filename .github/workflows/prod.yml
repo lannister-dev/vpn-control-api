@@ -30,14 +30,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      - name: Login
+        env:
+          HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
+          HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
+        run: |
+          echo "$HARBOR_PASSWORD" | docker login ${{ secrets.HARBOR_URL }} \
+            -u "$HARBOR_USERNAME" \
+            --password-stdin
       - name: Set image tag
         run: echo "IMAGE_TAG=${GITHUB_SHA::7}" >> $GITHUB_ENV
-      - name: Login to Harbor
-        run: |
-          echo "${{ secrets.HARBOR_PASSWORD }}" | docker login \
-            ${{ secrets.HARBOR_URL }} \
-            -u "${{ secrets.HARBOR_USERNAME }}" \
-            --password-stdin
       - name: Build image
         run: |
           docker build \
