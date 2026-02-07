@@ -10,7 +10,6 @@ from fastapi import (
 from fastapi.responses import PlainTextResponse
 from services.auth.dependencies import admin_auth
 
-from services.vpn.subscriptions.sevice import SubscriptionService, get_subscription_service
 from services.vpn.subscriptions.schemas import (
     SubscriptionCreateIn,
     SubscriptionCreatedOut,
@@ -24,6 +23,7 @@ from services.vpn.subscriptions.exceptions import (
     SubscriptionRateLimited,
     SubscriptionBuild,
 )
+from services.vpn.subscriptions.service import get_subscription_service, SubscriptionService
 
 router = APIRouter(prefix="/subscriptions", tags=["Subscriptions"])
 

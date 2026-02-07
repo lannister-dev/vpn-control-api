@@ -14,7 +14,6 @@ from services.nodes.service import (
     get_node_agent_service
 )
 from services.vpn.keys.schemas import AssignmentReportIn, AssignmentOut
-from services.vpn.keys.service import VpnKeyService, get_vpn_key_service
 
 router = APIRouter(prefix="/agent", tags=["Node Agent"])
 
