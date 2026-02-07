@@ -27,7 +27,6 @@ jobs:
     runs-on: [ self-hosted, dev ]
     env:
       IMAGE_NAME: control-api
-
     steps:
       - uses: actions/checkout@v4
       - name: Login
@@ -52,6 +51,5 @@ jobs:
           docker push ${{ secrets.HARBOR_URL }}/${{ secrets.HARBOR_PROJECT }}/${IMAGE_NAME}:prod
       - name: Deploy Swarm
         run: |
-          cd /opt/control-api
-          echo "${{ secrets.CONTROL_API_ENV_PROD }}" > .env              
+          echo "${{ secrets.CONTROL_API_ENV_PROD }}" > .env
           docker stack deploy --with-registry-auth --prune -c docker-compose.yml control-api
