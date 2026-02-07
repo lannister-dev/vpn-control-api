@@ -15,6 +15,7 @@ _DUMMY_ENV = {
     "REDIS_BROKER_URL": "redis://localhost:6379/0",
     "ADMIN_API_KEY_HASH": "0" * 64,
     "PROFILES_ALLOW_EMPTY_REGISTRY_ON_STARTUP": "true",
+    "DOCS_PASSWORD_HASH": "test",
 }
 
 for key, value in _DUMMY_ENV.items():
