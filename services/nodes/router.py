@@ -14,6 +14,7 @@ from services.nodes.service import (
     get_node_agent_service
 )
 from services.vpn.keys.schemas import AssignmentReportIn, AssignmentOut
+from shared.metrics import NODE_HEARTBEAT_TOTAL
 
 router = APIRouter(prefix="/agent", tags=["Node Agent"])
 
@@ -52,6 +53,7 @@ async def heartbeat(
     await service.handle_heartbeat(
         node=node, payload=payload,
     )
+    NODE_HEARTBEAT_TOTAL.inc()
     return {"status": "ok"}
 
 

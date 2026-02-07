@@ -33,6 +33,12 @@ from services.vpn.keys.schemas import (
 )
 from shared.database.session import AsyncDatabase
 from shared.redis.client import redis_client
+from shared.metrics import (
+    NODE_BOOTSTRAP_TOTAL,
+    NODE_ASSIGNMENT_REPORT_TOTAL,
+    ASSIGNMENT_CACHE_HIT_TOTAL,
+    ASSIGNMENT_CACHE_MISS_TOTAL,
+)
 from shared.utils.logger import StructuredLogger
 
 logger_node = StructuredLogger(logging.getLogger("node-service"))
@@ -80,6 +86,7 @@ class VpnNodeService:
             node = await self.vpn_node_repository.create(
                 create_schema.model_dump()
             )
+            NODE_BOOTSTRAP_TOTAL.labels(result="created").inc()
         else:
             update_schema = VpnNodeUpdate(
                 auth_token_hash=token_hash
@@ -88,6 +95,7 @@ class VpnNodeService:
                 node.id,
                 update_schema.model_dump(exclude_unset=True)
             )
+            NODE_BOOTSTRAP_TOTAL.labels(result="rotated").inc()
 
         return NodeAgentInitialOut(
             node_id=str(node.id),
@@ -129,6 +137,7 @@ class VpnNodeService:
             lock_key, "1", ex=_settings.redis.assignment_lock_ttl, nx=True
         )
         if not acquired:
+            NODE_ASSIGNMENT_REPORT_TOTAL.labels(status="skipped_lock").inc()
             return
 
         try:
@@ -148,6 +157,7 @@ class VpnNodeService:
                     and assignment.last_applied_at == payload.last_applied_at
             )
             if is_same:
+                NODE_ASSIGNMENT_REPORT_TOTAL.labels(status="skipped_idempotent").inc()
                 return
             await self.key_assignment_repository.update_by_id(
                 assignment_id, update_data
@@ -160,6 +170,8 @@ class VpnNodeService:
                     node.id,
                     state_update.model_dump(exclude_unset=True),
                 )
+            report_status = "applied" if payload.status == AssignmentStatus.applied else "error"
+            NODE_ASSIGNMENT_REPORT_TOTAL.labels(status=report_status).inc()
             # invalidate node assignments cache (optional but good)
             await redis_client.client.delete(f"node:{node.id}:assignments:v1")
         finally:
@@ -199,10 +211,12 @@ class NodeAgentService:
 
         cached = await redis_client.client.get(cache_key)
         if cached:
+            ASSIGNMENT_CACHE_HIT_TOTAL.inc()
             return [
                 AssignmentOut.model_validate(item)
                 for item in json.loads(cached)
             ]
+        ASSIGNMENT_CACHE_MISS_TOTAL.inc()
         rows = await self.key_assignment_repository.list_for_node_with_keys(node_id=node.id)
         result = self._build_assignments(rows)
 

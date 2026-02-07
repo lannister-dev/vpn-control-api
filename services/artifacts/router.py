@@ -12,6 +12,7 @@ from services.artifacts.service import (
     get_profile_artifact_service,
 )
 from services.auth.dependencies import admin_auth
+from shared.metrics import PROFILE_ARTIFACT_VERSION, PROFILE_REGISTRY_RELOAD_TOTAL
 from shared.profiles.exceptions import ProfileRegistryError
 from shared.profiles.registry import ProfileRegistry, profile_registry_lock
 
@@ -48,7 +49,9 @@ async def publish_profiles_artifact(
     service: ProfileArtifactService = Depends(get_profile_artifact_service),
 ):
     try:
-        return await service.publish(payload)
+        result = await service.publish(payload)
+        PROFILE_ARTIFACT_VERSION.set(result.version)
+        return result
     except ArtifactStoreError as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -112,12 +115,16 @@ async def reload_profiles_registry(
                 artifact.artifact,
                 artifact_version=artifact.version,
             )
+        PROFILE_ARTIFACT_VERSION.set(artifact.version)
+        PROFILE_REGISTRY_RELOAD_TOTAL.labels(result="success").inc()
     except ArtifactStoreError as exc:
+        PROFILE_REGISTRY_RELOAD_TOTAL.labels(result="failure").inc()
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(exc),
         ) from exc
     except (ProfileRegistryError, ValidationError) as exc:
+        PROFILE_REGISTRY_RELOAD_TOTAL.labels(result="failure").inc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Invalid profiles artifact in DB: {exc}",

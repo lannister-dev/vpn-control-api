@@ -24,6 +24,7 @@ from services.vpn.subscriptions.exceptions import (
     SubscriptionBuild,
 )
 from services.vpn.subscriptions.service import get_subscription_service, SubscriptionService
+from shared.metrics import SUBSCRIPTION_REQUEST_TOTAL
 
 router = APIRouter(prefix="/subscriptions", tags=["Subscriptions"])
 
@@ -61,22 +62,36 @@ async def get_subscription_config(
             if_none_match=request.headers.get("if-none-match"),
         )
         if not_modified:
+            SUBSCRIPTION_REQUEST_TOTAL.labels(result="not_modified").inc()
             return PlainTextResponse(status_code=status.HTTP_304_NOT_MODIFIED)
 
+        SUBSCRIPTION_REQUEST_TOTAL.labels(result="success").inc()
         return PlainTextResponse(
             content=payload, headers={"ETag": etag}
         )
 
     except SubscriptionNotFound:
+        SUBSCRIPTION_REQUEST_TOTAL.labels(result="not_found").inc()
         raise HTTPException(status_code=404, detail="Subscription not found")
 
-    except (SubscriptionInactive, SubscriptionExpired, SubscriptionTokenExpired):
+    except SubscriptionInactive:
+        SUBSCRIPTION_REQUEST_TOTAL.labels(result="inactive").inc()
+        raise HTTPException(status_code=403, detail="Subscription is not active")
+
+    except SubscriptionExpired:
+        SUBSCRIPTION_REQUEST_TOTAL.labels(result="expired").inc()
+        raise HTTPException(status_code=403, detail="Subscription is not active")
+
+    except SubscriptionTokenExpired:
+        SUBSCRIPTION_REQUEST_TOTAL.labels(result="token_expired").inc()
         raise HTTPException(status_code=403, detail="Subscription is not active")
 
     except SubscriptionRateLimited:
+        SUBSCRIPTION_REQUEST_TOTAL.labels(result="rate_limited").inc()
         raise HTTPException(status_code=429, detail="Rate limit exceeded")
 
     except SubscriptionBuild as exc:
+        SUBSCRIPTION_REQUEST_TOTAL.labels(result="build_error").inc()
         raise HTTPException(
             status_code=500,
             detail=f"Failed to build subscription: {exc}"

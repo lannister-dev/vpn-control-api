@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import time
 from datetime import timezone, datetime, timedelta
 from typing import Iterable
 from uuid import uuid4, UUID
@@ -18,6 +19,7 @@ from shared.profiles.builder import VlessUriBuilder
 from shared.profiles.exceptions import ProfileRegistryError
 from shared.profiles.registry import ProfileRegistry
 from shared.profiles.schemas import NodePublic, RealityTcpProfile, WsTlsProfile
+from shared.metrics import SUBSCRIPTION_BUILD_DURATION
 from shared.redis.client import RedisClient, get_redis_client
 
 from services.vpn.subscriptions.schemas import (
@@ -147,6 +149,8 @@ class SubscriptionService:
             *,
             if_none_match: str | None = None,
     ) -> tuple[str, str, bool]:
+        t0 = time.perf_counter()
+
         token_hash = SubscriptionUtils.hash(raw_token)
 
         await self._enforce_rate_limit(token_hash)
@@ -173,6 +177,8 @@ class SubscriptionService:
 
         payload = "\n".join(uris)
         etag = self._calc_etag(subscription, nodes, profiles)
+
+        SUBSCRIPTION_BUILD_DURATION.observe(time.perf_counter() - t0)
 
         if if_none_match and if_none_match == etag:
             return "", etag, True

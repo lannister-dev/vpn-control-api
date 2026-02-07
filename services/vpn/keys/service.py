@@ -11,6 +11,7 @@ from services.vpn.keys.schemas import (
     KeyAssignmentInternalCreate, KeyAssignmentCreate
 )
 from shared.database.session import AsyncDatabase
+from shared.metrics import VPN_KEY_OPERATION_TOTAL
 
 
 class VpnKeyService:
@@ -31,7 +32,9 @@ class VpnKeyService:
             is_revoked=False,
         )
 
-        return await self.key_repository.create(internal.model_dump())
+        result = await self.key_repository.create(internal.model_dump())
+        VPN_KEY_OPERATION_TOTAL.labels(operation="created").inc()
+        return result
 
     async def assign_key(self, key_id: UUID, payload: KeyAssignmentCreate) -> None:
         key = await self.key_repository.get_by_id(key_id)
@@ -50,6 +53,7 @@ class VpnKeyService:
         await  self.assignment_repository.create(
             internal_assignment.model_dump()
         )
+        VPN_KEY_OPERATION_TOTAL.labels(operation="assigned").inc()
 
     async def revoke_key(self, key_id: UUID) -> None:
         key = await self.key_repository.get_by_id(key_id)
@@ -63,6 +67,7 @@ class VpnKeyService:
         key.is_revoked = True
 
         await self.assignment_repository.revoke_all_for_key(key_id=key_id)
+        VPN_KEY_OPERATION_TOTAL.labels(operation="revoked").inc()
 
 def get_vpn_key_service(
     session: AsyncSession = Depends(AsyncDatabase.get_session),
