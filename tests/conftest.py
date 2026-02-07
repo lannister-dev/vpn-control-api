@@ -1,5 +1,28 @@
 from __future__ import annotations
 
+import os
+
+# Set dummy env vars BEFORE any project module is imported.
+# This prevents environs.EnvError during test collection in CI
+# where no .env file exists.
+_DUMMY_ENV = {
+    "DB_HOST": "localhost",
+    "DB_PORT": "5432",
+    "DB_NAME": "test",
+    "DB_USER": "test",
+    "DB_PASSWORD": "test",
+    "SSL_PATH": "",
+    "REDIS_BROKER_URL": "redis://localhost:6379/0",
+    "ADMIN_API_KEY_HASH": "0" * 64,
+    "PROFILES_ALLOW_EMPTY_REGISTRY_ON_STARTUP": "true",
+}
+
+for key, value in _DUMMY_ENV.items():
+    os.environ.setdefault(key, value)
+
+from services.config import get_settings
+get_settings.cache_clear()
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
