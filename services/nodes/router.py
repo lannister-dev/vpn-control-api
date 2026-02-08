@@ -4,9 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from starlette import status
 from starlette.requests import Request
 
-from services.auth.dependencies import node_auth
+from services.auth.dependencies import node_auth, bootstrap_auth
 from services.nodes.models import VpnNode
-from services.nodes.schemas import NodeHeartbeatIn
+from services.nodes.schemas import NodeHeartbeatIn, NodeAgentInitialOut
 from services.nodes.service import (
     NodeAgentService,
     VpnNodeService,
@@ -19,13 +19,22 @@ from shared.metrics import NODE_HEARTBEAT_TOTAL
 router = APIRouter(prefix="/agent", tags=["Node Agent"])
 
 
-@router.post("/initial", summary="Agent create node")
+@router.post(
+    "/initial",
+    response_model=NodeAgentInitialOut,
+    summary="Agent bootstrap",
+    dependencies=[Depends(bootstrap_auth)],
+)
 async def initial(wg_request: Request,
                   service: VpnNodeService = Depends(get_vpn_node_service)):
     """
-       Initial node bootstrap.
-       WireGuard-only endpoint
-       """
+    Initial node bootstrap. Requires bootstrap token.
+
+    Auth: Authorization: Bearer <bootstrap_token>
+
+    Idempotent: creates node on first call, rotates auth token on subsequent calls.
+    Identity is derived from WireGuard source IP.
+    """
     source_ip = wg_request.client.host
 
     if not source_ip:
@@ -93,9 +102,9 @@ async def report_assignment(
     """
         NodeAgent reports result of applying assignment.
         """
-    await service.report_assignment(
+    result = await service.report_assignment(
         node=node,
         assignment_id=assignment_id,
         payload=payload,
     )
-    return {"status": "ok"}
+    return {"status": result}

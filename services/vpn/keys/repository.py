@@ -94,7 +94,11 @@ class KeyAssignmentRepository(BaseRepository[KeyAssignment]):
         stmt = (
             select(KeyAssignment, VpnKey)
             .join(VpnKey, VpnKey.id == KeyAssignment.key_id)
-            .where(KeyAssignment.node_id == node_id)
+            .where(
+                KeyAssignment.node_id == node_id,
+                KeyAssignment.is_active.is_(True),
+                VpnKey.is_active.is_(True),
+            )
         )
 
         res = await self.session.execute(stmt)

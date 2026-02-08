@@ -1,5 +1,6 @@
 import hashlib
 import secrets
+import base64
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -26,11 +27,8 @@ class DocsBasicAuthMiddleware(BaseHTTPMiddleware):
 
     @staticmethod
     def _verify(auth_header: str) -> bool:
-        import base64
-
         if not auth_header.startswith("Basic "):
             return False
-
         try:
             decoded = base64.b64decode(auth_header[6:]).decode()
             username, _, password = decoded.partition(":")

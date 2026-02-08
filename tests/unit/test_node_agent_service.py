@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 from uuid import uuid4
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 from services.nodes.service import NodeAgentService
 from services.vpn.keys.schemas import (
@@ -27,7 +27,7 @@ def _make_key(*, is_revoked=False, valid_until=None):
     return key
 
 
-def _make_assignment(*, desired_state="present", applied_state=None, status="pending"):
+def _make_assignment(*, desired_state="present", applied_state=None, status="pending", op_version=1):
     """Create a mock KeyAssignment object."""
     a = MagicMock()
     a.id = uuid4()
@@ -35,6 +35,7 @@ def _make_assignment(*, desired_state="present", applied_state=None, status="pen
     a.desired_state = desired_state
     a.applied_state = applied_state
     a.status = status
+    a.op_version = op_version
     return a
 
 
@@ -89,12 +90,23 @@ class TestBuildAssignments:
         result = service._build_assignments([(assignment, key)])
         assert result[0].applied_state == AssignmentAppliedState.present
 
-    def test_status_preserved(self, service):
+    def test_status_applied_when_desired_matches_applied(self, service):
         key = _make_key(valid_until=datetime(2030, 1, 1, tzinfo=timezone.utc))
-        assignment = _make_assignment(status="applied")
+        assignment = _make_assignment(
+            desired_state="present", applied_state="present", status="applied",
+        )
 
         result = service._build_assignments([(assignment, key)])
         assert result[0].status == AssignmentStatus.applied
+
+    def test_status_reset_to_pending_when_desired_diverges(self, service):
+        key = _make_key(valid_until=datetime(2030, 1, 1, tzinfo=timezone.utc))
+        assignment = _make_assignment(
+            desired_state="present", applied_state="absent", status="applied",
+        )
+
+        result = service._build_assignments([(assignment, key)])
+        assert result[0].status == AssignmentStatus.pending
 
     def test_empty_rows(self, service):
         result = service._build_assignments([])

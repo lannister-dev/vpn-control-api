@@ -127,9 +127,10 @@ class VpnNodeService:
             node: VpnNode,
             assignment_id: UUID,
             payload: AssignmentReportIn,
-    ) -> None:
+    ) -> str:
         """
         Persist reconciliation result reported by node agent.
+        Returns result status string.
         """
         lock_key = f"lock:assignment:{assignment_id}"
 
@@ -138,7 +139,7 @@ class VpnNodeService:
         )
         if not acquired:
             NODE_ASSIGNMENT_REPORT_TOTAL.labels(status="skipped_lock").inc()
-            return
+            return "skipped_lock"
 
         try:
             assignment = await self.key_assignment_repository.get_by_id(assignment_id)
@@ -149,7 +150,10 @@ class VpnNodeService:
             if assignment.node_id != node.id:
                 raise HTTPException(status_code=403, detail="Assignment does not belong to this node")
 
-            update_data = payload.model_dump(exclude_unset=True)
+            if payload.op_version != assignment.op_version:
+                NODE_ASSIGNMENT_REPORT_TOTAL.labels(status="skipped_stale").inc()
+                return "skipped_stale"
+
             is_same = (
                     assignment.applied_state == payload.applied_state
                     and assignment.status == payload.status
@@ -158,7 +162,10 @@ class VpnNodeService:
             )
             if is_same:
                 NODE_ASSIGNMENT_REPORT_TOTAL.labels(status="skipped_idempotent").inc()
-                return
+                return "skipped_idempotent"
+
+            update_data = payload.model_dump(exclude={"op_version"}, exclude_unset=True)
+
             await self.key_assignment_repository.update_by_id(
                 assignment_id, update_data
             )
@@ -174,6 +181,7 @@ class VpnNodeService:
             NODE_ASSIGNMENT_REPORT_TOTAL.labels(status=report_status).inc()
             # invalidate node assignments cache (optional but good)
             await redis_client.client.delete(f"node:{node.id}:assignments:v1")
+            return report_status
         finally:
             try:
                 await redis_client.client.delete(lock_key)
@@ -245,7 +253,6 @@ class NodeAgentService:
             if key.is_revoked:
                 effective_desired = AssignmentDesiredState.absent
             elif key.valid_until is not None:
-                # ensure timezone-safe comparison
                 vu = key.valid_until
                 if vu.tzinfo is None:
                     vu = vu.replace(tzinfo=timezone.utc)
@@ -259,12 +266,18 @@ class NodeAgentService:
                 applied_state = AssignmentAppliedState(assignment.applied_state)
 
             # ---- status ----
+            # If effective desired state diverged from applied state
+            # (e.g. key expired or un-expired), signal the agent to reconcile
+            # even though op_version hasn't changed.
             status = AssignmentStatus(assignment.status)
+            if status == AssignmentStatus.applied and effective_desired.value != applied_state.value:
+                status = AssignmentStatus.pending
 
             result.append(
                 AssignmentOut(
                     id=assignment.id,
                     key_id=assignment.key_id,
+                    op_version=assignment.op_version,
                     desired_state=effective_desired,
                     applied_state=applied_state,
                     status=status,

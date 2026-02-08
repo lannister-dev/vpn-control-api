@@ -8,7 +8,7 @@ from services.users.repository import UserRepository
 from services.vpn.keys.repository import VpnKeyRepository, KeyAssignmentRepository
 from services.vpn.keys.schemas import (
     VpnKeyCreate, VpnKeyInternalCreate,
-    KeyAssignmentInternalCreate, KeyAssignmentCreate
+    KeyAssignmentCreate,
 )
 from shared.database.session import AsyncDatabase
 from shared.metrics import VPN_KEY_OPERATION_TOTAL
@@ -44,14 +44,10 @@ class VpnKeyService:
         if key.is_revoked:
             raise HTTPException(status_code=409, detail="Key is revoked")
 
-        internal_assignment = KeyAssignmentInternalCreate(
+        await self.assignment_repository.upsert_assignment_set_pending(
             key_id=key_id,
             node_id=payload.node_id,
-            desired_state=payload.desired_state,
-        )
-
-        await  self.assignment_repository.create(
-            internal_assignment.model_dump()
+            desired_state=payload.desired_state.value,
         )
         VPN_KEY_OPERATION_TOTAL.labels(operation="assigned").inc()
 

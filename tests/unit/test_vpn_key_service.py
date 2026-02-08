@@ -77,7 +77,7 @@ class TestAssignKey:
             uuid4(),
             KeyAssignmentCreate(node_id=uuid4(), desired_state=AssignmentDesiredState.present),
         )
-        service.assignment_repository.create.assert_awaited_once()
+        service.assignment_repository.upsert_assignment_set_pending.assert_awaited_once()
 
 
 class TestRevokeKey:

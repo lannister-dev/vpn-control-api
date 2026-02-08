@@ -50,8 +50,8 @@ class VpnKeyInternalCreate(BaseModel):
     @classmethod
     def normalize(cls, v: datetime) -> datetime:
         if v.tzinfo is not None:
-            return v.astimezone(timezone.utc).replace(tzinfo=None)
-        return v
+            return v.astimezone(timezone.utc)
+        return v.replace(tzinfo=timezone.utc)
 
 
 class VpnKeyInternal(BaseModel):
@@ -102,6 +102,7 @@ class KeyAssignmentUpdate(BaseModel):
 
 
 class AssignmentReportIn(BaseModel):
+    op_version: int
     applied_state: AssignmentAppliedState
     status: AssignmentStatus
     last_error: Optional[str] = None
@@ -111,6 +112,7 @@ class AssignmentReportIn(BaseModel):
 class AssignmentOut(BaseModel):
     id: UUID
     key_id: UUID
+    op_version: int
     desired_state: AssignmentDesiredState
     applied_state: AssignmentAppliedState | None
     status: AssignmentStatus | None

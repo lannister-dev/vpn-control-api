@@ -79,3 +79,33 @@ async def admin_auth(
         )
 
     AUTH_ATTEMPT_TOTAL.labels(type="admin", result="success").inc()
+
+
+bootstrap_bearer = HTTPBearer(auto_error=False)
+
+
+async def bootstrap_auth(
+        credentials: HTTPAuthorizationCredentials | None = Security(bootstrap_bearer),
+) -> None:
+    """
+    Validates bootstrap token for node initial registration.
+    """
+    if not credentials:
+        AUTH_ATTEMPT_TOTAL.labels(type="bootstrap", result="failure").inc()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing Authorization header",
+        )
+
+    raw_token = credentials.credentials
+    expected_hash = get_settings().admin.bootstrap_token_hash
+    provided_hash = AuthUtils.hash_node_token(raw_token)
+
+    if not secrets.compare_digest(provided_hash, expected_hash):
+        AUTH_ATTEMPT_TOTAL.labels(type="bootstrap", result="failure").inc()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid bootstrap token",
+        )
+
+    AUTH_ATTEMPT_TOTAL.labels(type="bootstrap", result="success").inc()

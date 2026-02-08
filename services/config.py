@@ -32,6 +32,7 @@ class DocsConfig:
 @dataclass
 class AdminConfig:
     api_key_hash: str
+    bootstrap_token_hash: str
 
 
 @dataclass
@@ -73,6 +74,7 @@ def get_settings() -> Settings:
 
     admin = AdminConfig(
         api_key_hash=env.str("ADMIN_API_KEY_HASH"),
+        bootstrap_token_hash=env.str("BOOTSTRAP_TOKEN_HASH"),
     )
 
     docs = DocsConfig(
