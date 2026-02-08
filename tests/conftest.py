@@ -16,6 +16,7 @@ _DUMMY_ENV = {
     "ADMIN_API_KEY_HASH": "0" * 64,
     "PROFILES_ALLOW_EMPTY_REGISTRY_ON_STARTUP": "true",
     "DOCS_PASSWORD_HASH": "test",
+    "BOOTSTRAP_TOKEN_HASH": "test",
 }
 
 for key, value in _DUMMY_ENV.items():
