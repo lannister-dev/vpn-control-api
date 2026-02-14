@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from starlette import status
 from starlette.requests import Request
 
-from services.auth.dependencies import node_auth, bootstrap_auth
+from services.auth.dependencies import node_auth, bootstrap_auth, admin_auth
 from services.nodes.models import VpnNode
 from services.nodes.schemas import NodeHeartbeatIn, NodeAgentInitialOut
 from services.nodes.service import (
@@ -108,3 +108,39 @@ async def report_assignment(
         payload=payload,
     )
     return {"status": result}
+
+
+@router.post(
+    "/nodes/{node_id}/drain",
+    summary="Set node to draining",
+    dependencies=[Depends(admin_auth)],
+)
+async def drain_node(
+        node_id: UUID,
+        service: VpnNodeService = Depends(get_vpn_node_service),
+):
+    node = await service.vpn_node_repository.get_by_id(node_id)
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    await service.vpn_node_repository.update_by_id(
+        node_id, {"is_draining": True}
+    )
+    return {"status": "draining"}
+
+
+@router.post(
+    "/nodes/{node_id}/enable",
+    summary="Enable node (stop draining)",
+    dependencies=[Depends(admin_auth)],
+)
+async def enable_node(
+        node_id: UUID,
+        service: VpnNodeService = Depends(get_vpn_node_service),
+):
+    node = await service.vpn_node_repository.get_by_id(node_id)
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    await service.vpn_node_repository.update_by_id(
+        node_id, {"is_draining": False, "is_enabled": True}
+    )
+    return {"status": "enabled"}

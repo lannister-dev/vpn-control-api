@@ -22,7 +22,9 @@ class VpnNodeRepository(BaseRepository[VpnNode]):
             self,
             preferred_region: str | None = None,
     ) -> list[VpnNode]:
-        stmt = select(self.model).where(self.model.region == preferred_region)
+        stmt = select(self.model).where(self.model.is_active == True)
+        if preferred_region:
+            stmt = stmt.where(self.model.region == preferred_region)
         result = await self.session.execute(stmt)
 
         return list(result.scalars().all())

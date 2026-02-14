@@ -12,6 +12,9 @@ class VpnNodeCreate(BaseModel):
     xray_api_port: int = 10085
     agent_port: int = 9000
     auth_token_hash: str
+    is_enabled: bool = True
+    is_draining: bool = False
+    capacity: int = 100
 
 
 class VpnNodeUpdate(BaseModel):
@@ -22,6 +25,9 @@ class VpnNodeUpdate(BaseModel):
     xray_api_port: int | None = None
     agent_port: int | None = None
     auth_token_hash: str | None = None
+    is_enabled: bool | None = None
+    is_draining: bool | None = None
+    capacity: int | None = None
 
 
 class VpnNodeOut(BaseModel):
@@ -32,6 +38,9 @@ class VpnNodeOut(BaseModel):
     internal_wg_ip: str
     xray_api_port: int
     agent_port: int
+    is_enabled: bool
+    is_draining: bool
+    capacity: int
 
     model_config = ConfigDict(from_attributes=True)
 

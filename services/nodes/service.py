@@ -121,6 +121,15 @@ class VpnNodeService:
                 **state.model_dump(exclude_unset=True),
             }
         )
+        if not payload.is_healthy and not node.is_draining:
+            await self.vpn_node_repository.update_by_id(
+                node.id,
+                {"is_draining": True},
+            )
+            logger_node.info(
+                "node set to draining due to unhealthy heartbeat",
+                node_id=str(node.id),
+            )
 
     async def report_assignment(
             self,

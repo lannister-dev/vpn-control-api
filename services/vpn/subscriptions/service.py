@@ -10,6 +10,7 @@ from fastapi import HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.nodes.repository import VpnNodeRepository
+from services.routing.service import RoutingService
 from services.users.repository import UserRepository
 from services.vpn.subscriptions.constants import RATE_LIMIT_WINDOW_SEC, RATE_LIMIT_REQUESTS
 from services.vpn.subscriptions.repository import SubscriptionRepository
@@ -47,6 +48,7 @@ class SubscriptionService:
         self.redis = redis
         self.subscription_repository = SubscriptionRepository(session)
         self.node_repository = VpnNodeRepository(session)
+        self.routing_service = RoutingService(session)
         self.user_repository = UserRepository(session)
 
     async def create(self, data: SubscriptionCreateIn) -> SubscriptionCreatedOut:
@@ -161,9 +163,10 @@ class SubscriptionService:
 
         self._validate_subscription(subscription, token_hash)
 
-        nodes = await self.node_repository.list_public(
-            preferred_region=subscription.preferred_region
+        nodes = await self.routing_service.select_nodes(
+            preferred_region=subscription.preferred_region,
         )
+        #todo Типизировать profile_key ws_tls_v1 or reality_tcp_v1
         profiles = self._select_profiles(subscription.profile_key)
 
         uris = self._build_uris(
@@ -189,17 +192,17 @@ class SubscriptionService:
     # INTERNAL HELPERS
     # ------------------------------------------------------------------
 
-    def _validate_subscription(self, sub, token_hash: str) -> None:
+    def _validate_subscription(self, subscription, token_hash: str) -> None:
         now = datetime.now(timezone.utc)
 
-        if not sub.is_active:
+        if not subscription.is_active:
             raise SubscriptionInactive()
 
-        if sub.expires_at and sub.expires_at <= now:
+        if subscription.expires_at and subscription.expires_at <= now:
             raise SubscriptionExpired()
 
-        if sub.prev_token_hash == token_hash:
-            if sub.prev_token_expires_at and sub.prev_token_expires_at <= now:
+        if subscription.prev_token_hash == token_hash:
+            if subscription.prev_token_expires_at and subscription.prev_token_expires_at <= now:
                 raise SubscriptionTokenExpired()
 
     def _select_profiles(
@@ -247,13 +250,34 @@ class SubscriptionService:
         return result
 
     def _calc_etag(self, sub, nodes, profiles) -> str:
+        profile_parts: list[str] = []
+        for profile in profiles:
+            model_dump_json = getattr(profile, "model_dump_json", None)
+            payload: str
+            if callable(model_dump_json):
+                dumped = model_dump_json()
+                if isinstance(dumped, bytes):
+                    payload = dumped.decode()
+                elif isinstance(dumped, str):
+                    payload = dumped
+                else:
+                    dumped = None
+            else:
+                dumped = None
+
+            if dumped is None:
+                # Backward-compatible fallback for non-pydantic test doubles.
+                payload = f"{getattr(profile, 'type', 'unknown')}:{getattr(profile, 'version', '')}"
+
+            profile_parts.append(hashlib.sha256(payload.encode()).hexdigest())
+
         base = "|".join([
             str(sub.id),
             sub.updated_at.isoformat(),
             sub.profile_key or "",
             sub.preferred_region or "",
             ",".join(sorted(n.public_domain for n in nodes)),
-            ",".join(f"{p.type}:{p.version}" for p in profiles),
+            ",".join(sorted(profile_parts)),
         ])
         return hashlib.sha256(base.encode()).hexdigest()
 

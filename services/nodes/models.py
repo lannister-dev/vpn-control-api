@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import String, Integer, ForeignKey, DateTime, JSON
+from sqlalchemy import String, Integer, ForeignKey, DateTime, JSON, Boolean, text
 from sqlalchemy.orm import mapped_column, Mapped, relationship
 
 from shared.database.base_model import Base
@@ -17,6 +17,9 @@ class VpnNode(Base):
     xray_api_port: Mapped[int] = mapped_column(Integer, default=10085)
     auth_token_hash: Mapped[str] = mapped_column(String(length=64), nullable=False, index=True)
     agent_port: Mapped[int] = mapped_column(Integer, default=9000)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"), nullable=False)
+    is_draining: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"), nullable=False)
+    capacity: Mapped[int] = mapped_column(Integer, default=100, server_default=text("100"), nullable=False)
 
     assignments: Mapped[list["KeyAssignment"]] = relationship(back_populates="node")
     agent_state: Mapped["NodeAgentState"] = relationship(back_populates="node")

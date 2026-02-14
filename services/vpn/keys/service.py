@@ -12,6 +12,7 @@ from services.vpn.keys.schemas import (
 )
 from shared.database.session import AsyncDatabase
 from shared.metrics import VPN_KEY_OPERATION_TOTAL
+from shared.redis.client import redis_client
 
 
 class VpnKeyService:
@@ -60,10 +61,16 @@ class VpnKeyService:
         if key.is_revoked:
             return
 
+        assignments = await self.assignment_repository.list_by_key_id(key_id)
+        node_ids = {a.node_id for a in assignments}
+
         key.is_revoked = True
 
         await self.assignment_repository.revoke_all_for_key(key_id=key_id)
         VPN_KEY_OPERATION_TOTAL.labels(operation="revoked").inc()
+
+        for node_id in node_ids:
+            await redis_client.client.delete(f"node:{node_id}:assignments:v1")
 
 def get_vpn_key_service(
     session: AsyncSession = Depends(AsyncDatabase.get_session),

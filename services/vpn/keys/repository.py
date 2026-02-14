@@ -29,6 +29,16 @@ class KeyAssignmentRepository(BaseRepository[KeyAssignment]):
     def __init__(self, session: AsyncSession):
         super().__init__(KeyAssignment, session)
 
+    async def list_by_key_id(self, key_id: UUID) -> list[KeyAssignment]:
+        stmt = (
+            select(KeyAssignment).where(
+                KeyAssignment.key_id == key_id,
+                KeyAssignment.is_active.is_(True)
+            )
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
     async def revoke_all_for_key(self, key_id: UUID) -> None:
         await self.session.execute(
             update(KeyAssignment)
