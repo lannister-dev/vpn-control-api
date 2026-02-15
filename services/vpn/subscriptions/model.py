@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import String, ForeignKey, Index, DateTime
+from sqlalchemy import String, ForeignKey, Index, DateTime, Boolean, Integer, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.database.base_model import Base
@@ -18,11 +18,37 @@ class Subscription(Base):
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     profile_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
     preferred_region: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # Legacy / admin convenience: bind subscription to a specific key. For HWID subscriptions it stays NULL.
+    root_vpn_key_id: Mapped[UUID | None] = mapped_column(ForeignKey("vpn_key.id"), nullable=True)
+    hwid_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    max_devices: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="subscriptions")
+    devices: Mapped[list["SubscriptionDevice"]] = relationship(
+        back_populates="subscription",
+        cascade="all, delete-orphan",
+    )
 
     __table_args__ = (
         Index("ix_subscription_user_id", "user_id"),
         Index("ix_subscription_token_hash", "token_hash"),
         Index("ix_subscription_prev_token_hash", "prev_token_hash")
+    )
+
+
+class SubscriptionDevice(Base):
+    __tablename__ = "subscription_device"
+
+    subscription_id: Mapped[UUID] = mapped_column(ForeignKey("subscription.id"), nullable=False)
+    hwid_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    vpn_key_id: Mapped[UUID] = mapped_column(ForeignKey("vpn_key.id"), nullable=False)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    subscription: Mapped["Subscription"] = relationship(back_populates="devices")
+
+    __table_args__ = (
+        UniqueConstraint("subscription_id", "hwid_hash", name="uq_subscription_device_hwid"),
+        Index("ix_subscription_device_subscription_id", "subscription_id"),
+        Index("ix_subscription_device_vpn_key_id", "vpn_key_id"),
     )

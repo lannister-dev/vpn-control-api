@@ -1,5 +1,7 @@
+from uuid import UUID
+
 from fastapi import Depends
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -54,3 +56,10 @@ class NodeAgentStateRepository(BaseRepository[NodeAgentState]):
 
         await self.session.execute(stmt)
         await self.session.commit()
+
+    async def update_by_node_id(self, node_id: UUID, data: dict) -> None:
+        await self.session.execute(
+            update(NodeAgentState)
+            .where(NodeAgentState.node_id == node_id)
+            .values(**data)
+        )

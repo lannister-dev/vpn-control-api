@@ -1,10 +1,10 @@
 from uuid import UUID
 
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.vpn.subscriptions.exceptions import SubscriptionNotFound
-from services.vpn.subscriptions.model import Subscription
+from services.vpn.subscriptions.model import Subscription, SubscriptionDevice
 from shared.database.base_repository import BaseRepository
 
 
@@ -48,3 +48,47 @@ class SubscriptionRepository(BaseRepository[Subscription]):
             raise SubscriptionNotFound
         sub.is_active = False
         await self.session.flush()
+
+
+class SubscriptionDeviceRepository(BaseRepository[SubscriptionDevice]):
+    def __init__(self, session: AsyncSession):
+        super().__init__(SubscriptionDevice, session)
+
+    async def get_active_by_sub_and_hwid_hash(
+            self,
+            *,
+            subscription_id: UUID,
+            hwid_hash: str,
+    ) -> SubscriptionDevice | None:
+        res = await self.session.execute(
+            select(SubscriptionDevice).where(
+                SubscriptionDevice.subscription_id == subscription_id,
+                SubscriptionDevice.hwid_hash == hwid_hash,
+                SubscriptionDevice.is_active.is_(True),
+            )
+        )
+        return res.scalar_one_or_none()
+
+    async def count_active_for_subscription(self, subscription_id: UUID) -> int:
+        res = await self.session.execute(
+            select(func.count())
+            .select_from(SubscriptionDevice)
+            .where(
+                SubscriptionDevice.subscription_id == subscription_id,
+                SubscriptionDevice.is_active.is_(True),
+            )
+        )
+        return int(res.scalar_one())
+
+    async def touch(
+            self,
+            *,
+            device_id: UUID,
+            last_seen_at,
+            user_agent: str | None,
+    ) -> None:
+        await self.session.execute(
+            update(SubscriptionDevice)
+            .where(SubscriptionDevice.id == device_id)
+            .values(last_seen_at=last_seen_at, user_agent=user_agent)
+        )

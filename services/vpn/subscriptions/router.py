@@ -22,9 +22,12 @@ from services.vpn.subscriptions.exceptions import (
     SubscriptionTokenExpired,
     SubscriptionRateLimited,
     SubscriptionBuild,
+    SubscriptionHwidRequired,
+    SubscriptionDeviceLimitReached,
 )
 from services.vpn.subscriptions.service import get_subscription_service, SubscriptionService
 from shared.metrics import SUBSCRIPTION_REQUEST_TOTAL
+from services.config import get_settings
 
 router = APIRouter(prefix="/subscriptions", tags=["Subscriptions"])
 
@@ -48,6 +51,7 @@ router = APIRouter(prefix="/subscriptions", tags=["Subscriptions"])
         403: {"description": "Subscription inactive / expired / token expired"},
         404: {"description": "Subscription not found"},
         429: {"description": "Rate limit exceeded"},
+        503: {"description": "No available nodes/configs to build subscription"},
         500: {"description": "Failed to build subscription config"},
     },
 )
@@ -57,8 +61,14 @@ async def get_subscription_config(
         service: SubscriptionService = Depends(get_subscription_service),
 ):
     try:
+        settings = get_settings()
+        hwid = request.headers.get(settings.subscriptions.hwid_header)
+        user_agent = request.headers.get("user-agent")
+
         payload, etag, not_modified = await service.build_payload(
             raw_token=token,
+            hwid=hwid,
+            user_agent=user_agent,
             if_none_match=request.headers.get("if-none-match"),
         )
         if not_modified:
@@ -73,6 +83,14 @@ async def get_subscription_config(
     except SubscriptionNotFound:
         SUBSCRIPTION_REQUEST_TOTAL.labels(result="not_found").inc()
         raise HTTPException(status_code=404, detail="Subscription not found")
+
+    except SubscriptionHwidRequired:
+        SUBSCRIPTION_REQUEST_TOTAL.labels(result="hwid_required").inc()
+        raise HTTPException(status_code=404, detail="Subscription not found")
+
+    except SubscriptionDeviceLimitReached:
+        SUBSCRIPTION_REQUEST_TOTAL.labels(result="device_limit").inc()
+        raise HTTPException(status_code=403, detail="Device limit reached")
 
     except SubscriptionInactive:
         SUBSCRIPTION_REQUEST_TOTAL.labels(result="inactive").inc()
@@ -92,6 +110,12 @@ async def get_subscription_config(
 
     except SubscriptionBuild as exc:
         SUBSCRIPTION_REQUEST_TOTAL.labels(result="build_error").inc()
+        msg = str(exc)
+        if msg.startswith("No available "):
+            raise HTTPException(
+                status_code=503,
+                detail=f"Failed to build subscription: {exc}",
+            )
         raise HTTPException(
             status_code=500,
             detail=f"Failed to build subscription: {exc}"
@@ -168,3 +192,17 @@ async def deactivate_subscription(
         await service.deactivate(subscription_id)
     except SubscriptionNotFound:
         raise HTTPException(status_code=404, detail="Subscription not found")
+
+
+@router.post(
+    "/{subscription_id}/bind-root-key/{vpn_key_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Bind subscription to an existing key (legacy mode)",
+    dependencies=[Depends(admin_auth)],
+)
+async def bind_subscription_root_key(
+        subscription_id: UUID,
+        vpn_key_id: UUID,
+        service: SubscriptionService = Depends(get_subscription_service),
+):
+    await service.bind_root_key(subscription_id, vpn_key_id)

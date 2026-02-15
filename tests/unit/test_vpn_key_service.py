@@ -17,6 +17,7 @@ def service(async_session):
     svc.key_repository = AsyncMock()
     svc.user_repository = AsyncMock()
     svc.assignment_repository = AsyncMock()
+    svc.node_repository = AsyncMock()
     return svc
 
 
@@ -73,11 +74,23 @@ class TestAssignKey:
     async def test_success(self, service):
         key = MagicMock(is_revoked=False)
         service.key_repository.get_by_id.return_value = key
+        service.node_repository.get_by_id.return_value = MagicMock()
         await service.assign_key(
             uuid4(),
             KeyAssignmentCreate(node_id=uuid4(), desired_state=AssignmentDesiredState.present),
         )
         service.assignment_repository.upsert_assignment_set_pending.assert_awaited_once()
+
+    async def test_node_not_found_raises_404(self, service):
+        key = MagicMock(is_revoked=False)
+        service.key_repository.get_by_id.return_value = key
+        service.node_repository.get_by_id.return_value = None
+        with pytest.raises(HTTPException) as exc_info:
+            await service.assign_key(
+                uuid4(),
+                KeyAssignmentCreate(node_id=uuid4(), desired_state=AssignmentDesiredState.present),
+            )
+        assert exc_info.value.status_code == 404
 
 
 class TestRevokeKey:

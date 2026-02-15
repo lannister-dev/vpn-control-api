@@ -179,7 +179,7 @@ class VpnNodeService:
                 state_update = NodeAgentStateUpdate(
                     last_sync_at=payload.last_applied_at,
                 )
-                await self.node_agent_state_repository.update_by_id(
+                await self.node_agent_state_repository.update_by_node_id(
                     node.id,
                     state_update.model_dump(exclude_unset=True),
                 )

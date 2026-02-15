@@ -7,19 +7,24 @@ from typing import Iterable
 from uuid import uuid4, UUID
 
 from fastapi import HTTPException, Depends
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.nodes.repository import VpnNodeRepository
 from services.routing.service import RoutingService
 from services.users.repository import UserRepository
+from services.vpn.keys.repository import VpnKeyRepository, KeyAssignmentRepository
+from services.vpn.keys.schemas import VpnKeyInternalCreate, VpnProtocol, VpnTransport, AssignmentDesiredState
 from services.vpn.subscriptions.constants import RATE_LIMIT_WINDOW_SEC, RATE_LIMIT_REQUESTS
-from services.vpn.subscriptions.repository import SubscriptionRepository
+from services.vpn.subscriptions.repository import SubscriptionRepository, SubscriptionDeviceRepository
 from services.vpn.subscriptions.utils import SubscriptionUtils
+from services.config import get_settings
 from shared.database.session import AsyncDatabase
 from shared.profiles.builder import VlessUriBuilder
 from shared.profiles.exceptions import ProfileRegistryError
 from shared.profiles.registry import ProfileRegistry
 from shared.profiles.schemas import NodePublic, RealityTcpProfile, WsTlsProfile
+from shared.profiles.types import ProfileType
 from shared.metrics import SUBSCRIPTION_BUILD_DURATION
 from shared.redis.client import RedisClient, get_redis_client
 
@@ -39,6 +44,8 @@ from services.vpn.subscriptions.exceptions import (
     SubscriptionTokenExpired,
     SubscriptionBuild,
     SubscriptionRateLimited,
+    SubscriptionHwidRequired,
+    SubscriptionDeviceLimitReached,
 )
 
 
@@ -47,33 +54,110 @@ class SubscriptionService:
         self.session = session
         self.redis = redis
         self.subscription_repository = SubscriptionRepository(session)
+        self.device_repository = SubscriptionDeviceRepository(session)
         self.node_repository = VpnNodeRepository(session)
         self.routing_service = RoutingService(session)
         self.user_repository = UserRepository(session)
+        self.vpn_key_repository = VpnKeyRepository(session)
+        self.assignment_repository = KeyAssignmentRepository(session)
 
     async def create(self, data: SubscriptionCreateIn) -> SubscriptionCreatedOut:
         user = await self.user_repository.get_by_id(data.user_id)
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
+        if not data.profile_key:
+            raise HTTPException(
+                status_code=422,
+                detail="profile_key is required to create a subscription",
+            )
+
         raw_token = SubscriptionUtils.generate()
         token_hash = SubscriptionUtils.hash(raw_token)
 
+        # Legacy client_id in subscription is still used when HWID is disabled,
+        # but may be overridden when binding to an existing key.
+        client_uuid = uuid4()
+
+        bound_key = None
+        if data.vpn_key_id is not None:
+            bound_key = await self.vpn_key_repository.get_by_id(data.vpn_key_id)
+            if not bound_key:
+                raise HTTPException(status_code=404, detail="Key not found")
+            if bound_key.user_id != data.user_id:
+                raise HTTPException(status_code=409, detail="Key does not belong to user")
+            if bound_key.is_revoked:
+                raise HTTPException(status_code=409, detail="Key is revoked")
+            try:
+                client_uuid = UUID(bound_key.client_id)
+            except Exception as exc:
+                raise HTTPException(status_code=409, detail="Key client_id is not a UUID") from exc
+
+        try:
+            profile = ProfileRegistry.get(data.profile_key).profile
+        except ProfileRegistryError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        transport = self._infer_transport(profile.type)
+
+        valid_until = data.expires_at
+        if valid_until is None:
+            valid_until = datetime.now(timezone.utc) + timedelta(days=365)
+
+        settings = get_settings()
+        hwid_enabled = data.hwid_enabled
+        if hwid_enabled is None:
+            hwid_enabled = settings.subscriptions.require_hwid_default
+
         data = SubscriptionInternalCreate(
             user_id=data.user_id,
-            client_id=uuid4(),
+            client_id=client_uuid,
+            root_vpn_key_id=bound_key.id if bound_key else None,
             token_hash=token_hash,
             is_active=True,
             expires_at=data.expires_at,
             profile_key=data.profile_key,
             preferred_region=data.preferred_region,
+            hwid_enabled=bool(hwid_enabled),
+            max_devices=data.max_devices,
         )
         subscription = await self.subscription_repository.create(
             data.model_dump()
         )
+
+        vpn_key_id: UUID | None = None
+
+        if not subscription.hwid_enabled and bound_key is None:
+            key_internal = VpnKeyInternalCreate(
+                user_id=data.user_id,
+                protocol=VpnProtocol.vless,
+                transport=transport,
+                client_id=str(client_uuid),
+                valid_until=valid_until,
+                traffic_limit_mb=1000,
+                is_revoked=False,
+            )
+            vpn_key = await self.vpn_key_repository.create(key_internal.model_dump())
+            vpn_key_id = vpn_key.id
+
+            nodes = await self.node_repository.list()
+            for node in nodes:
+                if not getattr(node, "is_active", True):
+                    continue
+                if not getattr(node, "is_enabled", True):
+                    continue
+                await self.assignment_repository.upsert_assignment_set_pending(
+                    key_id=vpn_key.id,
+                    node_id=node.id,
+                    desired_state=AssignmentDesiredState.present.value,
+                )
+        elif bound_key is not None:
+            vpn_key_id = bound_key.id
+
         return SubscriptionCreatedOut(
             id=subscription.id,
             client_id=subscription.client_id,
+            vpn_key_id=vpn_key_id,
             token=raw_token,
             expires_at=subscription.expires_at,
             is_active=subscription.is_active,
@@ -144,11 +228,46 @@ class SubscriptionService:
         )
         return True
 
+    async def bind_root_key(self, subscription_id: UUID, vpn_key_id: UUID) -> None:
+        """
+        Admin-only helper: bind subscription to an existing key (legacy mode).
+        If subscription is HWID-enabled, binding is rejected.
+        """
+        sub = await self.subscription_repository.get_by_id(subscription_id)
+        if not sub:
+            raise SubscriptionNotFound(subscription_id)
+        if getattr(sub, "hwid_enabled", False):
+            raise HTTPException(status_code=409, detail="Cannot bind root key for HWID subscription")
+
+        key = await self.vpn_key_repository.get_by_id(vpn_key_id)
+        if not key:
+            raise HTTPException(status_code=404, detail="Key not found")
+        if key.user_id != sub.user_id:
+            raise HTTPException(status_code=409, detail="Key does not belong to subscription user")
+        if key.is_revoked:
+            raise HTTPException(status_code=409, detail="Key is revoked")
+
+        try:
+            new_client_uuid = UUID(key.client_id)
+        except Exception as exc:
+            raise HTTPException(status_code=409, detail="Key client_id is not a UUID") from exc
+
+        await self.subscription_repository.update_by_id(
+            sub.id,
+            {
+                "root_vpn_key_id": key.id,
+                "client_id": new_client_uuid,
+                "updated_at": datetime.now(timezone.utc),
+            },
+        )
+
 
     async def build_payload(
             self,
             raw_token: str,
             *,
+            hwid: str | None = None,
+            user_agent: str | None = None,
             if_none_match: str | None = None,
     ) -> tuple[str, str, bool]:
         t0 = time.perf_counter()
@@ -163,14 +282,32 @@ class SubscriptionService:
 
         self._validate_subscription(subscription, token_hash)
 
+        now = datetime.now(timezone.utc)
+        client_id, vpn_key_id = await self._resolve_client_for_request(
+            subscription=subscription,
+            hwid=hwid,
+            user_agent=user_agent,
+            now=now,
+        )
+
         nodes = await self.routing_service.select_nodes(
             preferred_region=subscription.preferred_region,
         )
+        if not nodes:
+            raise SubscriptionBuild("No available nodes")
         #todo Типизировать profile_key ws_tls_v1 or reality_tcp_v1
         profiles = self._select_profiles(subscription.profile_key)
 
+        if vpn_key_id is not None:
+            for node in nodes:
+                await self.assignment_repository.upsert_assignment_set_pending(
+                    key_id=vpn_key_id,
+                    node_id=node.id,
+                    desired_state=AssignmentDesiredState.present.value,
+                )
+
         uris = self._build_uris(
-            client_id=str(subscription.client_id),
+            client_id=client_id,
             nodes=nodes,
             profiles=profiles,
         )
@@ -179,7 +316,7 @@ class SubscriptionService:
             raise SubscriptionBuild("No available configs")
 
         payload = "\n".join(uris)
-        etag = self._calc_etag(subscription, nodes, profiles)
+        etag = self._calc_etag(subscription, nodes, profiles, client_id=client_id)
 
         SUBSCRIPTION_BUILD_DURATION.observe(time.perf_counter() - t0)
 
@@ -249,7 +386,7 @@ class SubscriptionService:
 
         return result
 
-    def _calc_etag(self, sub, nodes, profiles) -> str:
+    def _calc_etag(self, sub, nodes, profiles, *, client_id: str) -> str:
         profile_parts: list[str] = []
         for profile in profiles:
             model_dump_json = getattr(profile, "model_dump_json", None)
@@ -276,10 +413,148 @@ class SubscriptionService:
             sub.updated_at.isoformat(),
             sub.profile_key or "",
             sub.preferred_region or "",
+            client_id,
             ",".join(sorted(n.public_domain for n in nodes)),
             ",".join(sorted(profile_parts)),
         ])
         return hashlib.sha256(base.encode()).hexdigest()
+
+    def _infer_transport(self, profile_type: ProfileType) -> VpnTransport:
+        if profile_type == ProfileType.ws_tls:
+            return VpnTransport.ws
+        if profile_type == ProfileType.reality_tcp:
+            return VpnTransport.tcp
+        raise HTTPException(status_code=422, detail=f"Unsupported profile type: {profile_type}")
+
+    def _hash_hwid(self, hwid: str) -> str:
+        normalized = hwid.strip()
+        if not normalized:
+            raise SubscriptionHwidRequired()
+        return hashlib.sha256(normalized.encode()).hexdigest()
+
+    async def _resolve_client_for_request(
+            self,
+            *,
+            subscription,
+            hwid: str | None,
+            user_agent: str | None,
+            now: datetime,
+    ) -> tuple[str, UUID | None]:
+        """
+        Returns (client_id, vpn_key_id).
+
+        If HWID is enabled (per-sub or default), client_id is bound to the device-specific VpnKey.
+        Otherwise returns subscription.client_id (legacy) and vpn_key_id=None.
+        """
+        settings = get_settings()
+        hwid_required = bool(subscription.hwid_enabled or settings.subscriptions.require_hwid_default)
+        if not hwid and hwid_required:
+            raise SubscriptionHwidRequired()
+
+        if not hwid:
+            # Legacy path: config uses a single key. Prefer explicit binding when present.
+            if getattr(subscription, "root_vpn_key_id", None):
+                key = await self.vpn_key_repository.get_by_id(subscription.root_vpn_key_id)
+                if not key:
+                    raise SubscriptionBuild("Root key not found")
+                if getattr(key, "is_revoked", False):
+                    raise SubscriptionBuild("Root key is revoked")
+                return key.client_id, key.id
+
+            client_id = str(subscription.client_id)
+            key = await self.vpn_key_repository.get_one_by(client_id=client_id, is_active=True)
+            if key and not getattr(key, "is_revoked", False):
+                return client_id, key.id
+
+            # Hardening: if there is no key matching subscription.client_id, the generated config would
+            # never work on nodes. Create such key on-demand.
+            if not subscription.profile_key:
+                raise SubscriptionBuild("profile_key is required")
+            try:
+                profile = ProfileRegistry.get(subscription.profile_key).profile
+            except ProfileRegistryError as exc:
+                raise SubscriptionBuild(str(exc)) from exc
+
+            transport = self._infer_transport(profile.type)
+            valid_until = subscription.expires_at
+            if valid_until is None:
+                valid_until = now + timedelta(days=365)
+
+            key_internal = VpnKeyInternalCreate(
+                user_id=subscription.user_id,
+                protocol=VpnProtocol.vless,
+                transport=transport,
+                client_id=client_id,
+                valid_until=valid_until,
+                traffic_limit_mb=1000,
+                is_revoked=False,
+            )
+            created = await self.vpn_key_repository.create(key_internal.model_dump())
+            return client_id, created.id
+
+        hwid_hash = self._hash_hwid(hwid)
+        device = await self.device_repository.get_active_by_sub_and_hwid_hash(
+            subscription_id=subscription.id,
+            hwid_hash=hwid_hash,
+        )
+        if device:
+            await self.device_repository.touch(device_id=device.id, last_seen_at=now, user_agent=user_agent)
+            key = await self.vpn_key_repository.get_by_id(device.vpn_key_id)
+            if not key:
+                raise SubscriptionBuild("Device key not found")
+            return key.client_id, key.id
+
+        max_devices = subscription.max_devices or settings.subscriptions.max_devices_default
+        current = await self.device_repository.count_active_for_subscription(subscription.id)
+        if current >= max_devices:
+            raise SubscriptionDeviceLimitReached()
+
+        if not subscription.profile_key:
+            raise SubscriptionBuild("profile_key is required")
+        try:
+            profile = ProfileRegistry.get(subscription.profile_key).profile
+        except ProfileRegistryError as exc:
+            raise SubscriptionBuild(str(exc)) from exc
+
+        transport = self._infer_transport(profile.type)
+
+        valid_until = subscription.expires_at
+        if valid_until is None:
+            valid_until = now + timedelta(days=365)
+
+        client_uuid = uuid4()
+        key_internal = VpnKeyInternalCreate(
+            user_id=subscription.user_id,
+            protocol=VpnProtocol.vless,
+            transport=transport,
+            client_id=str(client_uuid),
+            valid_until=valid_until,
+            traffic_limit_mb=1000,
+            is_revoked=False,
+        )
+        vpn_key = await self.vpn_key_repository.create(key_internal.model_dump())
+
+        try:
+            await self.device_repository.create({
+                "subscription_id": subscription.id,
+                "hwid_hash": hwid_hash,
+                "vpn_key_id": vpn_key.id,
+                "last_seen_at": now,
+                "user_agent": user_agent,
+            })
+        except IntegrityError:
+            device = await self.device_repository.get_active_by_sub_and_hwid_hash(
+                subscription_id=subscription.id,
+                hwid_hash=hwid_hash,
+            )
+            if not device:
+                raise
+            key = await self.vpn_key_repository.get_by_id(device.vpn_key_id)
+            if not key:
+                raise SubscriptionBuild("Device key not found")
+            return key.client_id, key.id
+
+        return vpn_key.client_id, vpn_key.id
 
     # ------------------------------------------------------------------
     # RATE LIMIT (REDIS)

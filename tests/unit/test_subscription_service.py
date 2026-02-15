@@ -156,8 +156,8 @@ class TestCalcEtag:
         profile.type = "ws_tls"
         profile.version = 1
 
-        e1 = service._calc_etag(sub, [node], [profile])
-        e2 = service._calc_etag(sub, [node], [profile])
+        e1 = service._calc_etag(sub, [node], [profile], client_id="cid")
+        e2 = service._calc_etag(sub, [node], [profile], client_id="cid")
         assert e1 == e2
         assert len(e1) == 64  # sha256 hex
 
@@ -170,7 +170,7 @@ class TestCalcEtag:
         profile.type = "ws_tls"
         profile.version = 1
 
-        e1 = service._calc_etag(sub1, [node], [profile])
-        e2 = service._calc_etag(sub2, [node], [profile])
+        e1 = service._calc_etag(sub1, [node], [profile], client_id="cid")
+        e2 = service._calc_etag(sub2, [node], [profile], client_id="cid")
         # different UUIDs → different etags
         assert e1 != e2

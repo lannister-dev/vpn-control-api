@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette import status
 
 from services.users.repository import UserRepository
+from services.nodes.repository import VpnNodeRepository
 from services.vpn.keys.repository import VpnKeyRepository, KeyAssignmentRepository
 from services.vpn.keys.schemas import (
     VpnKeyCreate, VpnKeyInternalCreate,
@@ -20,6 +21,7 @@ class VpnKeyService:
         self.key_repository = VpnKeyRepository(session)
         self.user_repository = UserRepository(session)
         self.assignment_repository = KeyAssignmentRepository(session)
+        self.node_repository = VpnNodeRepository(session)
 
     async def create_key(self, payload: VpnKeyCreate):
         user = await self.user_repository.get_by_id(payload.user_id)
@@ -43,6 +45,10 @@ class VpnKeyService:
 
         if key.is_revoked:
             raise HTTPException(status_code=409, detail="Key is revoked")
+
+        node = await self.node_repository.get_by_id(payload.node_id)
+        if not node:
+            raise HTTPException(status_code=404, detail="Node not found")
 
         await self.assignment_repository.upsert_assignment_set_pending(
             key_id=key_id,

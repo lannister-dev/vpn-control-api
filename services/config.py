@@ -41,12 +41,20 @@ class ProfilesVpnConfig:
 
 
 @dataclass
+class SubscriptionsConfig:
+    require_hwid_default: bool = False
+    max_devices_default: int = 5
+    hwid_header: str = "x-hwid"
+
+
+@dataclass
 class Settings:
     database: DbConfig
     redis: RedisConfig
     admin: AdminConfig
     docs: DocsConfig
     profiles_vpn: ProfilesVpnConfig
+    subscriptions: SubscriptionsConfig
 
 
 @lru_cache
@@ -86,10 +94,17 @@ def get_settings() -> Settings:
         allow_empty_registry_on_startup=env.bool("PROFILES_ALLOW_EMPTY_REGISTRY_ON_STARTUP")
     )
 
+    subscriptions = SubscriptionsConfig(
+        require_hwid_default=env.bool("SUBSCRIPTIONS_REQUIRE_HWID_DEFAULT", default=False),
+        max_devices_default=env.int("SUBSCRIPTIONS_MAX_DEVICES_DEFAULT", default=5),
+        hwid_header=env.str("SUBSCRIPTIONS_HWID_HEADER", default="x-hwid").lower(),
+    )
+
     return Settings(
         database=database,
         redis=redis,
         admin=admin,
         docs=docs,
-        profiles_vpn=profiles_vpn
+        profiles_vpn=profiles_vpn,
+        subscriptions=subscriptions,
     )

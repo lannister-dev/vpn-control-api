@@ -24,3 +24,11 @@ class SubscriptionInactive(SubscriptionError):
 class SubscriptionBuild(SubscriptionError):
     """Failed to build subscription config."""
     pass
+
+
+class SubscriptionHwidRequired(SubscriptionError):
+    """Subscription requires x-hwid header (device identification)."""
+
+
+class SubscriptionDeviceLimitReached(SubscriptionError):
+    """Subscription device limit reached."""
