@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from starlette import status
 from starlette.requests import Request
 
@@ -13,7 +13,7 @@ from services.nodes.service import (
     get_vpn_node_service,
     get_node_agent_service
 )
-from services.vpn.keys.schemas import AssignmentReportIn, AssignmentOut
+from services.vpn.keys.schemas import AssignmentReportIn, AssignmentPageOut
 from shared.metrics import NODE_HEARTBEAT_TOTAL
 
 router = APIRouter(prefix="/agent", tags=["Node Agent"])
@@ -67,25 +67,28 @@ async def heartbeat(
 
 
 @router.get(
-    "/assignments",
-    response_model=list[AssignmentOut],
-    summary="Get desired assignments for authenticated node",
+    "/assignments/page",
+    response_model=AssignmentPageOut,
+    summary="Get desired assignments page (stable cursor pagination)",
 )
-async def get_assignments(
+async def get_assignments_page(
         node: VpnNode = Depends(node_auth),
-        service: NodeAgentService= Depends(get_node_agent_service),
-) -> list[AssignmentOut]:
+        cursor: str | None = Query(default=None),
+        limit: int = Query(default=200, ge=1, le=2000),
+        service: NodeAgentService = Depends(get_node_agent_service),
+) -> AssignmentPageOut:
     """
-    Control-plane desired-state for NodeAgent reconciliation.
-
-    Auth:
-    - Authorization: Bearer <token>
-    - X-Node-ID: <node_id>
-
-    Returns:
-    - list of assignments with key material required by Xray
+    Uses a stable cursor to avoid skipping when multiple rows share the same op_version.
     """
-    return await service.get_assignments_for_node(node=node)
+    try:
+        items, next_cursor = await service.get_assignments_page_for_node(
+            node=node,
+            cursor=cursor,
+            limit=limit,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return AssignmentPageOut(items=items, next_cursor=next_cursor)
 
 
 @router.post(

@@ -5,11 +5,12 @@ from uuid import UUID
 
 from fastapi import Depends
 from sqlalchemy import update, select
+from sqlalchemy import and_, or_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.vpn.keys.models import KeyAssignment, VpnKey
-from services.vpn.keys.schemas import AssignmentDesiredState
+from services.vpn.keys.schemas import AssignmentDesiredState, AssignmentAppliedState
 from shared.database.base_repository import BaseRepository
 from shared.database.session import AsyncDatabase
 
@@ -28,16 +29,6 @@ async def get_vpn_key_repository(
 class KeyAssignmentRepository(BaseRepository[KeyAssignment]):
     def __init__(self, session: AsyncSession):
         super().__init__(KeyAssignment, session)
-
-    async def list_by_key_id(self, key_id: UUID) -> list[KeyAssignment]:
-        stmt = (
-            select(KeyAssignment).where(
-                KeyAssignment.key_id == key_id,
-                KeyAssignment.is_active.is_(True)
-            )
-        )
-        result = await self.session.execute(stmt)
-        return list(result.scalars().all())
 
     async def revoke_all_for_key(self, key_id: UUID) -> None:
         await self.session.execute(
@@ -71,11 +62,12 @@ class KeyAssignmentRepository(BaseRepository[KeyAssignment]):
             key_id=key_id,
             node_id=node_id,
             desired_state=desired_state,
+            applied_state=AssignmentAppliedState.absent.value,
             status="pending",
             last_error=None,
+            last_applied_at=None,
             next_retry_at=None,
             attempts=0,
-            # applied_state не трогаем при назначении (агент обновит при report)
         )
         on_conflict_stmt = stmt.on_conflict_do_update(
             index_elements=[KeyAssignment.key_id, KeyAssignment.node_id],
@@ -92,14 +84,18 @@ class KeyAssignmentRepository(BaseRepository[KeyAssignment]):
 
         await self.session.execute(on_conflict_stmt)
 
-    async def list_for_node_with_keys(
+    async def list_for_node_with_keys_page(
             self,
+            *,
             node_id: UUID,
+            cursor: tuple[int, UUID] | None,
+            limit: int,
     ) -> Sequence[tuple[KeyAssignment, VpnKey]]:
         """
-        Returns assignments joined with keys for a given node.
+        Stable pagination for node assignments.
 
-        Data-only method, no business rules here.
+        Cursor semantics: return rows strictly after (op_version, assignment_id) in
+        order (op_version asc, assignment_id asc).
         """
         stmt = (
             select(KeyAssignment, VpnKey)
@@ -110,9 +106,19 @@ class KeyAssignmentRepository(BaseRepository[KeyAssignment]):
                 VpnKey.is_active.is_(True),
             )
         )
+        if cursor is not None:
+            op, aid = cursor
+            stmt = stmt.where(
+                or_(
+                    KeyAssignment.op_version > op,
+                    and_(KeyAssignment.op_version == op,
+                         KeyAssignment.id > aid),
+                )
+            )
+
+        stmt = stmt.order_by(KeyAssignment.op_version.asc(), KeyAssignment.id.asc()).limit(limit)
 
         res = await self.session.execute(stmt)
-
         return res.tuples().all()
 
 

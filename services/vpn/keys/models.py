@@ -37,7 +37,11 @@ class KeyAssignment(Base):
     key_id: Mapped[UUID] = mapped_column(ForeignKey("vpn_key.id"))
     node_id: Mapped[UUID] = mapped_column(ForeignKey("vpn_node.id"))
     desired_state: Mapped[str] = mapped_column(String(length=16))
-    applied_state: Mapped[str] = mapped_column(String(length=16))
+    applied_state: Mapped[str] = mapped_column(
+        String(length=16),
+        nullable=False,
+        server_default=text("'absent'"),
+    )
     status: Mapped[str] = mapped_column(String(length=16), server_default=text("'pending'"), nullable=False)
     last_error: Mapped[str] = mapped_column(nullable=True)
     last_applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

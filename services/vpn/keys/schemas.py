@@ -126,3 +126,12 @@ class AssignmentOut(BaseModel):
     is_revoked: bool
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class AssignmentPageOut(BaseModel):
+    items: list[AssignmentOut]
+    next_cursor: str | None = Field(
+        default=None,
+        description="Opaque cursor in format '<op_version>:<assignment_id>' for stable pagination.",
+        examples=["12:f2132b71-b4aa-470d-9586-cb907050ca52"],
+    )

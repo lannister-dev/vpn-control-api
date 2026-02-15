@@ -1,9 +1,8 @@
 import hashlib
-import json
 import logging
 import secrets
 from datetime import datetime, timezone
-from typing import Sequence
+from typing import Sequence, Optional
 from uuid import UUID
 
 from fastapi import HTTPException, Depends
@@ -36,8 +35,6 @@ from shared.redis.client import redis_client
 from shared.metrics import (
     NODE_BOOTSTRAP_TOTAL,
     NODE_ASSIGNMENT_REPORT_TOTAL,
-    ASSIGNMENT_CACHE_HIT_TOTAL,
-    ASSIGNMENT_CACHE_MISS_TOTAL,
 )
 from shared.utils.logger import StructuredLogger
 
@@ -188,8 +185,6 @@ class VpnNodeService:
                 )
             report_status = "applied" if payload.status == AssignmentStatus.applied else "error"
             NODE_ASSIGNMENT_REPORT_TOTAL.labels(status=report_status).inc()
-            # invalidate node assignments cache (optional but good)
-            await redis_client.client.delete(f"node:{node.id}:assignments:v1")
             return report_status
         finally:
             try:
@@ -213,40 +208,38 @@ class NodeAgentService:
     def __init__(self, session: AsyncSession):
         self.key_assignment_repository = KeyAssignmentRepository(session)
 
-    async def get_assignments_for_node(
+    async def get_assignments_page_for_node(
             self,
+            *,
             node: VpnNode,
-    ) -> list[AssignmentOut]:
+            cursor: str | None,
+            limit: int,
+    ) -> tuple[list[AssignmentOut], str | None]:
         """
-        Returns desired-state assignments for a node.
+        Stable paging without skipping ties.
 
-        Business rules:
-        - If key is revoked OR expired => effective desired_state = absent
-        - Otherwise desired_state comes from KeyAssignment.desired_state
+        Cursor format: '<op_version>:<assignment_uuid>'.
         """
-        cache_key = f"node:{node.id}:assignments:v1"
+        parsed: tuple[int, UUID] | None = None
+        if cursor:
+            try:
+                op_s, aid_s = cursor.split(":", 1)
+                parsed = (int(op_s), UUID(aid_s))
+            except Exception as exc:
+                raise ValueError(f"Invalid cursor format: {cursor!r}") from exc
 
-        cached = await redis_client.client.get(cache_key)
-        if cached:
-            ASSIGNMENT_CACHE_HIT_TOTAL.inc()
-            return [
-                AssignmentOut.model_validate(item)
-                for item in json.loads(cached)
-            ]
-        ASSIGNMENT_CACHE_MISS_TOTAL.inc()
-        rows = await self.key_assignment_repository.list_for_node_with_keys(node_id=node.id)
-        result = self._build_assignments(rows)
-
-        await redis_client.client.setex(
-            cache_key,
-            _settings.redis.assignments_cache_ttl,
-            json.dumps(
-                [item.model_dump(mode="json") for item in result],
-                ensure_ascii=False,
-            ),
+        rows = await self.key_assignment_repository.list_for_node_with_keys_page(
+            node_id=node.id,
+            cursor=parsed,
+            limit=limit,
         )
+        items = self._build_assignments(rows)
+        next_cursor = None
+        if items:
+            last = items[-1]
+            next_cursor = f"{last.op_version}:{last.id}"
 
-        return result
+        return items, next_cursor
 
     def _build_assignments(
             self,
