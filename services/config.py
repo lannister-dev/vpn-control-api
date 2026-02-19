@@ -14,6 +14,7 @@ class DbConfig:
     url: str
     poolSize: int
     poolOverflowSize: int
+    poolTimeoutSec: int
 
 
 @dataclass
@@ -33,6 +34,7 @@ class DocsConfig:
 class AdminConfig:
     api_key_hash: str
     bootstrap_token_hash: str
+    probe_token_hash: str
 
 
 @dataclass
@@ -48,6 +50,25 @@ class SubscriptionsConfig:
 
 
 @dataclass
+class AlertsConfig:
+    telegram_enabled: bool = False
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
+    telegram_timeout_sec: int = 5
+
+
+@dataclass
+class ProbeConfig:
+    target_port: int = 443
+    retention_days: int = 30
+
+
+@dataclass
+class EdgeConfig:
+    public_domain: str = ""
+
+
+@dataclass
 class Settings:
     database: DbConfig
     redis: RedisConfig
@@ -55,6 +76,9 @@ class Settings:
     docs: DocsConfig
     profiles_vpn: ProfilesVpnConfig
     subscriptions: SubscriptionsConfig
+    alerts: AlertsConfig
+    probe: ProbeConfig
+    edge: EdgeConfig
 
 
 @lru_cache
@@ -71,7 +95,8 @@ def get_settings() -> Settings:
         ssl=env.str("SSL_PATH"),
         url=f"postgresql+asyncpg://{env.str('DB_USER')}:{env.str('DB_PASSWORD')}@{env.str('DB_HOST')}:{env.str('DB_PORT')}/{env.str('DB_NAME')}",
         poolSize=env.int('DB_POOL_SIZE', default=50),
-        poolOverflowSize=env.int('DB_POOL_OVERFLOW_SIZE', default=25)
+        poolOverflowSize=env.int('DB_POOL_OVERFLOW_SIZE', default=25),
+        poolTimeoutSec=env.int('DB_POOL_TIMEOUT_SEC', default=30),
     )
 
     redis = RedisConfig(
@@ -83,6 +108,7 @@ def get_settings() -> Settings:
     admin = AdminConfig(
         api_key_hash=env.str("ADMIN_API_KEY_HASH"),
         bootstrap_token_hash=env.str("BOOTSTRAP_TOKEN_HASH"),
+        probe_token_hash= env.str("PROBE_TOKEN_HASH"),
     )
 
     docs = DocsConfig(
@@ -100,6 +126,22 @@ def get_settings() -> Settings:
         hwid_header=env.str("SUBSCRIPTIONS_HWID_HEADER", default="x-hwid").lower(),
     )
 
+    alerts = AlertsConfig(
+        telegram_enabled=env.bool("ALERTS_TELEGRAM_ENABLED", default=False),
+        telegram_bot_token=env.str("ALERTS_TELEGRAM_BOT_TOKEN", default=""),
+        telegram_chat_id=env.str("ALERTS_TELEGRAM_CHAT_ID", default=""),
+        telegram_timeout_sec=env.int("ALERTS_TELEGRAM_TIMEOUT_SEC", default=5),
+    )
+
+    probe = ProbeConfig(
+        target_port=env.int("PROBE_TARGET_PORT", default=443),
+        retention_days= env.int("PROBE_RETENTION_DAYS", default=30)
+    )
+
+    edge = EdgeConfig(
+        public_domain=env.str("VPN_PUBLIC_DOMAIN", default=""),
+    )
+
     return Settings(
         database=database,
         redis=redis,
@@ -107,4 +149,7 @@ def get_settings() -> Settings:
         docs=docs,
         profiles_vpn=profiles_vpn,
         subscriptions=subscriptions,
+        alerts=alerts,
+        probe=probe,
+        edge=edge,
     )

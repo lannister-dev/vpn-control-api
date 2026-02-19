@@ -80,3 +80,25 @@ class SubscriptionRotateOut(BaseModel):
 class SubscriptionStatsOut(BaseModel):
     total_requests: int
     last_accessed_at: datetime | None
+
+
+class SubscriptionDeviceCreate(BaseModel):
+    subscription_id: UUID
+    hwid_hash: str
+    vpn_key_id: UUID
+    last_seen_at: datetime | None
+    user_agent: str | None
+
+
+class SubscriptionDeviceOut(BaseModel):
+    id: UUID
+    subscription_id: UUID
+    vpn_key_id: UUID
+    hwid_hash: str
+    last_seen_at: datetime | None
+    user_agent: str | None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)

@@ -30,11 +30,15 @@ def service(async_session, redis_client, monkeypatch):
     monkeypatch.setattr(cfg, "get_settings", lambda: settings)
 
     svc = SubscriptionService(async_session, redis_client)
+    svc.redis.client.incr = AsyncMock(return_value=1)
+    svc.redis.client.expire = AsyncMock(return_value=True)
     svc.subscription_repository = AsyncMock()
     svc.device_repository = AsyncMock()
     svc.vpn_key_repository = AsyncMock()
     svc.routing_service = AsyncMock()
-    svc.assignment_repository = AsyncMock()
+    svc.placement_repository = AsyncMock()
+    svc.backend_peer_repository = AsyncMock()
+    svc.node_repository = AsyncMock()
     return svc
 
 
@@ -72,6 +76,32 @@ async def test_device_limit_reached(service):
     service.device_repository.count_active_for_subscription.return_value = 1
     with pytest.raises(SubscriptionDeviceLimitReached):
         await service.build_payload(raw_token="tok", hwid="device1", user_agent="ua")
+    service.session.execute.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_existing_hwid_path_skips_subscription_lock(service):
+    sub = _sub(hwid_enabled=True, max_devices=1)
+    device = MagicMock()
+    device.id = uuid4()
+    device.vpn_key_id = uuid4()
+    key = MagicMock()
+    key.client_id = str(uuid4())
+    key.id = device.vpn_key_id
+    key.is_revoked = False
+
+    service.subscription_repository.get_by_any_token_hash.return_value = sub
+    service.device_repository.get_active_by_sub_and_hwid_hash.return_value = device
+    service.vpn_key_repository.get_by_id.return_value = key
+    service._enforce_rate_limit = AsyncMock()
+    service._ensure_route_for_key = AsyncMock(return_value=(MagicMock(), MagicMock()))
+    service._select_profiles = lambda _: []
+    service._build_uris = lambda **_: ["vless://ok"]
+    service._calc_etag = lambda *_args, **_kwargs: "etag"
+
+    await service.build_payload(raw_token="tok", hwid="device1", user_agent="ua")
+
+    service.session.execute.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -92,12 +122,15 @@ async def test_legacy_creates_key_if_missing(async_session, redis_client, monkey
     svc.device_repository = AsyncMock()
     svc.vpn_key_repository = AsyncMock()
     svc.routing_service = AsyncMock()
-    svc.assignment_repository = AsyncMock()
+    svc.placement_repository = AsyncMock()
+    svc.backend_peer_repository = AsyncMock()
+    svc.node_repository = AsyncMock()
     svc._enforce_rate_limit = AsyncMock()
 
     sub = _sub(hwid_enabled=False)
     svc.subscription_repository.get_by_any_token_hash.return_value = sub
     svc.vpn_key_repository.get_one_by.return_value = None
+    svc.placement_repository.get_by_key_id.return_value = None
 
     created_key = MagicMock()
     created_key.id = uuid4()

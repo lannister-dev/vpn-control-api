@@ -12,7 +12,7 @@ from services.artifacts.service import (
     get_profile_artifact_service,
 )
 from services.auth.dependencies import admin_auth
-from shared.metrics import PROFILE_ARTIFACT_VERSION, PROFILE_REGISTRY_RELOAD_TOTAL
+from shared.monitoring.metrics import PROFILE_ARTIFACT_VERSION, PROFILE_REGISTRY_RELOAD_TOTAL
 from shared.profiles.exceptions import ProfileRegistryError
 from shared.profiles.registry import ProfileRegistry, profile_registry_lock
 

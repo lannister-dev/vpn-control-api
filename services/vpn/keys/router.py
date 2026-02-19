@@ -1,7 +1,7 @@
 from uuid import UUID
 from fastapi import APIRouter, Depends
 from starlette import status
-from services.vpn.keys.schemas import VpnKeyCreate, VpnKeyOut, KeyAssignmentCreate
+from services.vpn.keys.schemas import VpnKeyCreate, VpnKeyOut
 from services.vpn.keys.service import VpnKeyService, get_vpn_key_service
 
 router = APIRouter(prefix="/vpn", tags=["VPN"])
@@ -19,15 +19,19 @@ async def create_vpn_key(
     return await service.create_key(payload)
 
 
-@router.post("/keys/{key_id}/assign", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/keys/{key_id}/assign",
+    status_code=status.HTTP_410_GONE,
+    deprecated=True,
+    summary="Deprecated legacy assignment endpoint",
+)
 async def assign_key_to_node(
         key_id: UUID,
-        payload: KeyAssignmentCreate,
         service: VpnKeyService = Depends(get_vpn_key_service)
 ):
-    await service.assign_key(key_id, payload)
+    await service.assign_key(key_id)
 
-    return {"status": "assigned"}
+    return {"status": "deprecated"}
 
 
 @router.post("/keys/{key_id}/revoke")

@@ -13,6 +13,7 @@ from services.auth.dependencies import admin_auth
 from services.vpn.subscriptions.schemas import (
     SubscriptionCreateIn,
     SubscriptionCreatedOut,
+    SubscriptionDeviceOut,
     SubscriptionRotateOut,
 )
 from services.vpn.subscriptions.exceptions import (
@@ -26,7 +27,7 @@ from services.vpn.subscriptions.exceptions import (
     SubscriptionDeviceLimitReached,
 )
 from services.vpn.subscriptions.service import get_subscription_service, SubscriptionService
-from shared.metrics import SUBSCRIPTION_REQUEST_TOTAL
+from shared.monitoring.metrics import SUBSCRIPTION_REQUEST_TOTAL
 from services.config import get_settings
 
 router = APIRouter(prefix="/subscriptions", tags=["Subscriptions"])
@@ -164,7 +165,7 @@ async def rotate_subscription_token(
 
 @router.post(
     "/{subscription_id}/activate",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=status.HTTP_200_OK,
     summary="Activate subscription",
     dependencies=[Depends(admin_auth)],
 )
@@ -173,14 +174,15 @@ async def activate_subscription(
         service: SubscriptionService = Depends(get_subscription_service),
 ):
     try:
-        await service.activate(subscription_id)
+        restored_keys = await service.activate(subscription_id)
+        return {"status": "active", "restored_keys": restored_keys}
     except SubscriptionNotFound:
         raise HTTPException(status_code=404, detail="Subscription not found")
 
 
 @router.post(
     "/{subscription_id}/deactivate",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=status.HTTP_200_OK,
     summary="Deactivate subscription",
     dependencies=[Depends(admin_auth)],
 )
@@ -189,14 +191,15 @@ async def deactivate_subscription(
         service: SubscriptionService = Depends(get_subscription_service),
 ):
     try:
-        await service.deactivate(subscription_id)
+        revoked_keys = await service.deactivate(subscription_id)
+        return {"status": "inactive", "revoked_keys": revoked_keys}
     except SubscriptionNotFound:
         raise HTTPException(status_code=404, detail="Subscription not found")
 
 
 @router.post(
     "/{subscription_id}/bind-root-key/{vpn_key_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=status.HTTP_200_OK,
     summary="Bind subscription to an existing key (legacy mode)",
     dependencies=[Depends(admin_auth)],
 )
@@ -206,3 +209,40 @@ async def bind_subscription_root_key(
         service: SubscriptionService = Depends(get_subscription_service),
 ):
     await service.bind_root_key(subscription_id, vpn_key_id)
+    return {"status": "bound_root_key"}
+
+
+@router.get(
+    "/{subscription_id}/devices",
+    response_model=list[SubscriptionDeviceOut],
+    status_code=status.HTTP_200_OK,
+    summary="List subscription devices",
+    dependencies=[Depends(admin_auth)],
+)
+async def list_subscription_devices(
+        subscription_id: UUID,
+        active_only: bool = False,
+        service: SubscriptionService = Depends(get_subscription_service),
+):
+    try:
+        return await service.list_devices(subscription_id, active_only=active_only)
+    except SubscriptionNotFound:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+
+
+@router.post(
+    "/{subscription_id}/devices/{device_id}/revoke",
+    status_code=status.HTTP_200_OK,
+    summary="Revoke one device and free slot",
+    dependencies=[Depends(admin_auth)],
+)
+async def revoke_subscription_device(
+        subscription_id: UUID,
+        device_id: UUID,
+        service: SubscriptionService = Depends(get_subscription_service),
+):
+    try:
+        changed = await service.revoke_device(subscription_id, device_id)
+        return {"status": "revoked_device", "revoked_key": changed}
+    except SubscriptionNotFound:
+        raise HTTPException(status_code=404, detail="Subscription not found")

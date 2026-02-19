@@ -18,6 +18,7 @@ class RoutingService:
         self,
         preferred_region: str | None = None,
         exclude_node_ids: list[UUID] | None = None,
+        role: str | None = None,
     ) -> list[VpnNode]:
         """
         Returns sorted list of available nodes.
@@ -25,7 +26,7 @@ class RoutingService:
         Algorithm:
         1. Filter: is_active=True, is_enabled=True, is_draining=False
         2. Filter: is_healthy=True (via NodeAgentState)
-        3. Filter: capacity > current active assignments count
+        3. Filter: capacity > current active placements count
         4. If preferred_region — nodes of that region first
         5. Score: health_weight + load_weight (by capacity fill %)
         6. Sort by score DESC
@@ -33,8 +34,8 @@ class RoutingService:
         rows = await self.repository.list_available_nodes(
             preferred_region=preferred_region,
             exclude_node_ids=exclude_node_ids,
+            role=role,
         )
-
         scored: list[tuple[float, VpnNode]] = []
         for node, agent_state, active_count in rows:
             if not self._is_healthy(agent_state):

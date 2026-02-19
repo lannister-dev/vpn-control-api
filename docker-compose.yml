@@ -3,7 +3,7 @@ version: '3.8'
 # ======== health check, rollback =========
 
 x-healthcheck-common: &healthcheck-common
-  test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/metrics').read()"]
+  test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/monitoring').read()"]
   interval: 10s
   timeout: 5s
   retries: 3
@@ -41,8 +41,8 @@ services:
         - "prometheus-scrape=true"
         - "prometheus-app=control-api"
         - "prometheus-env=monitoring"
-        - "prometheus-metrics-port=8000"
-        - "prometheus-metrics-path=/api/metrics"
+        - "prometheus-monitoring-port=8000"
+        - "prometheus-monitoring-path=/api/monitoring"
         - "prometheus-scrape-profile=important"
     healthcheck: *healthcheck-common
     networks:

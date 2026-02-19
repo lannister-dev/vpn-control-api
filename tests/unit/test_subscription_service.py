@@ -11,7 +11,9 @@ from services.vpn.subscriptions.exceptions import (
     SubscriptionExpired,
     SubscriptionTokenExpired,
     SubscriptionBuild,
+    SubscriptionRateLimited,
 )
+from services.vpn.subscriptions.constants import RATE_LIMIT_REQUESTS, RATE_LIMIT_WINDOW_SEC
 from shared.profiles.registry import ProfileRegistry
 from shared.profiles.schemas import (
     WsTlsProfile,
@@ -174,3 +176,28 @@ class TestCalcEtag:
         e2 = service._calc_etag(sub2, [node], [profile], client_id="cid")
         # different UUIDs → different etags
         assert e1 != e2
+
+
+class TestRateLimit:
+    @pytest.mark.asyncio
+    async def test_first_request_sets_expire(self, async_session, redis_client):
+        svc = SubscriptionService(async_session, redis_client)
+        redis_client.client.incr.return_value = 1
+
+        await svc._enforce_rate_limit("token_hash")
+
+        redis_client.client.incr.assert_awaited_once_with("sub:rl:token_hash")
+        redis_client.client.expire.assert_awaited_once_with(
+            "sub:rl:token_hash",
+            RATE_LIMIT_WINDOW_SEC,
+        )
+
+    @pytest.mark.asyncio
+    async def test_request_over_limit_raises(self, async_session, redis_client):
+        svc = SubscriptionService(async_session, redis_client)
+        redis_client.client.incr.return_value = RATE_LIMIT_REQUESTS + 1
+
+        with pytest.raises(SubscriptionRateLimited):
+            await svc._enforce_rate_limit("token_hash")
+
+        redis_client.client.expire.assert_not_awaited()

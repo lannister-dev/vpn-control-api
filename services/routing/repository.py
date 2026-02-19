@@ -6,7 +6,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.nodes.models import VpnNode, NodeAgentState
-from services.vpn.keys.models import KeyAssignment
+from services.placements.model import UserPlacement
 
 
 class RoutingRepository:
@@ -17,40 +17,46 @@ class RoutingRepository:
         self,
         preferred_region: str | None = None,
         exclude_node_ids: list[UUID] | None = None,
+        role: str | None = None,
     ) -> list[tuple[VpnNode, NodeAgentState | None, int]]:
         """
-        Returns available nodes with their agent state and active assignment count.
+        Returns available nodes with their agent state and active placement count.
 
         Filters: is_active=True, is_enabled=True, is_draining=False.
         """
-        active_assignments = (
+        active_placements = (
             select(
-                KeyAssignment.node_id,
-                func.count(KeyAssignment.id).label("active_count"),
+                UserPlacement.backend_node_id.label("node_id"),
+                func.count(UserPlacement.id).label("active_count"),
             )
             .where(
-                KeyAssignment.is_active.is_(True),
-                KeyAssignment.desired_state == "present",
-                KeyAssignment.status.in_(["pending", "applied"]),
+                UserPlacement.is_active.is_(True),
+                UserPlacement.desired_state == "active",
             )
-            .group_by(KeyAssignment.node_id)
+            .group_by(UserPlacement.backend_node_id)
             .subquery()
         )
+        active_count_expr = func.coalesce(active_placements.c.active_count, 0)
 
         stmt = (
             select(
                 VpnNode,
                 NodeAgentState,
-                func.coalesce(active_assignments.c.active_count, 0).label("active_count"),
+                active_count_expr.label("active_count"),
             )
-            .outerjoin(NodeAgentState, NodeAgentState.node_id == VpnNode.id)
-            .outerjoin(active_assignments, active_assignments.c.node_id == VpnNode.id)
+            .join(NodeAgentState, NodeAgentState.node_id == VpnNode.id)
+            .outerjoin(active_placements, active_placements.c.node_id == VpnNode.id)
             .where(
                 VpnNode.is_active.is_(True),
                 VpnNode.is_enabled.is_(True),
                 VpnNode.is_draining.is_(False),
+                NodeAgentState.is_healthy.is_(True),
+                VpnNode.capacity > 0,
+                active_count_expr < VpnNode.capacity,
             )
         )
+        if role:
+            stmt = stmt.where(VpnNode.role == role)
 
         if exclude_node_ids:
             stmt = stmt.where(VpnNode.id.notin_(exclude_node_ids))

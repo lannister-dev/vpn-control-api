@@ -23,7 +23,7 @@ class AsyncDatabaseSessions:
             max_overflow=db.poolOverflowSize,
             pool_pre_ping=True,
             pool_recycle=300,
-            pool_timeout=30000,
+            pool_timeout=db.poolTimeoutSec,
             # echo_pool="debug",
             connect_args={"server_settings": {"application_name": "prod_backend"}},
         )

@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 from fastapi import HTTPException
 
-from services.vpn.keys.schemas import VpnKeyCreate, VpnProtocol, VpnTransport, KeyAssignmentCreate, AssignmentDesiredState
+from services.vpn.keys.schemas import VpnKeyCreate, VpnProtocol, VpnTransport
 from services.vpn.keys.service import VpnKeyService
 from datetime import datetime, timezone
 
@@ -16,8 +16,7 @@ def service(async_session):
     svc = VpnKeyService(async_session)
     svc.key_repository = AsyncMock()
     svc.user_repository = AsyncMock()
-    svc.assignment_repository = AsyncMock()
-    svc.node_repository = AsyncMock()
+    svc.placement_repository = AsyncMock()
     return svc
 
 
@@ -52,45 +51,10 @@ class TestCreateKey:
 
 
 class TestAssignKey:
-    async def test_key_not_found_raises_404(self, service):
-        service.key_repository.get_by_id.return_value = None
+    async def test_assign_disabled_raises_410(self, service):
         with pytest.raises(HTTPException) as exc_info:
-            await service.assign_key(
-                uuid4(),
-                KeyAssignmentCreate(node_id=uuid4(), desired_state=AssignmentDesiredState.present),
-            )
-        assert exc_info.value.status_code == 404
-
-    async def test_revoked_key_raises_409(self, service):
-        key = MagicMock(is_revoked=True)
-        service.key_repository.get_by_id.return_value = key
-        with pytest.raises(HTTPException) as exc_info:
-            await service.assign_key(
-                uuid4(),
-                KeyAssignmentCreate(node_id=uuid4(), desired_state=AssignmentDesiredState.present),
-            )
-        assert exc_info.value.status_code == 409
-
-    async def test_success(self, service):
-        key = MagicMock(is_revoked=False)
-        service.key_repository.get_by_id.return_value = key
-        service.node_repository.get_by_id.return_value = MagicMock()
-        await service.assign_key(
-            uuid4(),
-            KeyAssignmentCreate(node_id=uuid4(), desired_state=AssignmentDesiredState.present),
-        )
-        service.assignment_repository.upsert_assignment_set_pending.assert_awaited_once()
-
-    async def test_node_not_found_raises_404(self, service):
-        key = MagicMock(is_revoked=False)
-        service.key_repository.get_by_id.return_value = key
-        service.node_repository.get_by_id.return_value = None
-        with pytest.raises(HTTPException) as exc_info:
-            await service.assign_key(
-                uuid4(),
-                KeyAssignmentCreate(node_id=uuid4(), desired_state=AssignmentDesiredState.present),
-            )
-        assert exc_info.value.status_code == 404
+            await service.assign_key(uuid4())
+        assert exc_info.value.status_code == 410
 
 
 class TestRevokeKey:
@@ -104,12 +68,26 @@ class TestRevokeKey:
         key = MagicMock(is_revoked=True)
         service.key_repository.get_by_id.return_value = key
         await service.revoke_key(uuid4())
-        service.assignment_repository.revoke_all_for_key.assert_not_awaited()
+        service.placement_repository.upsert_set_pending.assert_not_awaited()
 
-    async def test_success(self, service):
+    async def test_success_with_placement(self, service):
         key = MagicMock(is_revoked=False)
         service.key_repository.get_by_id.return_value = key
+        placement = MagicMock()
+        placement.backend_node_id = uuid4()
+        placement.gateway_node_id = uuid4()
+        placement.sticky_until = None
+        service.placement_repository.get_by_key_id.return_value = placement
         key_id = uuid4()
         await service.revoke_key(key_id)
         assert key.is_revoked is True
-        service.assignment_repository.revoke_all_for_key.assert_awaited_once_with(key_id=key_id)
+        service.placement_repository.upsert_set_pending.assert_awaited_once()
+
+    async def test_success_without_placement(self, service):
+        key = MagicMock(is_revoked=False)
+        service.key_repository.get_by_id.return_value = key
+        service.placement_repository.get_by_key_id.return_value = None
+        key_id = uuid4()
+        await service.revoke_key(key_id)
+        assert key.is_revoked is True
+        service.placement_repository.upsert_set_pending.assert_not_awaited()

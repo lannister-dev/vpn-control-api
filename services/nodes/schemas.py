@@ -1,11 +1,18 @@
 from datetime import datetime
 from typing import Dict, Optional
+from enum import Enum
 
 from pydantic import BaseModel, Field, ConfigDict
 
 
+class NodeRole(str, Enum):
+    backend = "backend"
+    gateway = "gateway"
+
+
 class VpnNodeCreate(BaseModel):
     name: str
+    role: NodeRole = NodeRole.backend
     region: str
     public_domain: str
     internal_wg_ip: str
@@ -19,6 +26,7 @@ class VpnNodeCreate(BaseModel):
 
 class VpnNodeUpdate(BaseModel):
     name: str | None = None
+    role: NodeRole | None = None
     region: str | None = None
     public_domain: str | None = None
     internal_wg_ip: str | None = None
@@ -33,6 +41,7 @@ class VpnNodeUpdate(BaseModel):
 class VpnNodeOut(BaseModel):
     id: str
     name: str
+    role: NodeRole
     region: str
     public_domain: str
     internal_wg_ip: str
@@ -43,6 +52,10 @@ class VpnNodeOut(BaseModel):
     capacity: int
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class NodeRoleUpdateIn(BaseModel):
+    role: NodeRole
 
 
 class NodeAgentStateCreate(BaseModel):
