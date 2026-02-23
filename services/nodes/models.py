@@ -11,6 +11,7 @@ class VpnNode(Base):
     __tablename__ = "vpn_node"
 
     name: Mapped[str] = mapped_column(String(length=64), unique=True)
+    role: Mapped[str] = mapped_column(String(length=16), nullable=False, server_default=text("'backend'"), index=True)
     region: Mapped[str] = mapped_column(String(length=32))  # de, nl, fi
     public_domain: Mapped[str] = mapped_column(String(length=255))
     internal_wg_ip: Mapped[str] = mapped_column(String(length=64))  # 10.0.1.x

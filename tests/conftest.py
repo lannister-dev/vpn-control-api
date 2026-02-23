@@ -17,6 +17,9 @@ _DUMMY_ENV = {
     "PROFILES_ALLOW_EMPTY_REGISTRY_ON_STARTUP": "true",
     "DOCS_PASSWORD_HASH": "test",
     "BOOTSTRAP_TOKEN_HASH": "test",
+    "PROBE_TOKEN_HASH": "1" * 64,
+    "PROBE_TARGET_PORT": "443",
+    "PROBE_RETENTION_DAYS": "30",
 }
 
 for key, value in _DUMMY_ENV.items():

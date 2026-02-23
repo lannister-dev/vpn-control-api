@@ -96,3 +96,62 @@ class ReloadStatusResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     detail: str
+
+
+class ArtifactRoutesBootstrapIn(BaseModel):
+    backend_node_ids: list[UUID] | None = Field(
+        default=None,
+        description="Optional explicit list of backend node ids to bootstrap.",
+    )
+    include_reality_tcp: bool = True
+    include_ws_tls: bool = False
+    default_reality_port: int = Field(default=443, ge=1, le=65535)
+    default_ws_port: int = Field(default=443, ge=1, le=65535)
+    profile_port_overrides: Dict[str, int] = Field(default_factory=dict)
+    route_base_weight: int = Field(default=50, ge=0, le=100)
+    expected_backends_selected: int | None = Field(
+        default=None,
+        ge=1,
+        description="Optional assertion for number of eligible backend nodes selected.",
+    )
+    expected_profiles_selected: int | None = Field(
+        default=None,
+        ge=1,
+        description="Optional assertion for number of eligible profiles selected.",
+    )
+    expected_routes_total: int | None = Field(
+        default=None,
+        ge=0,
+        description="Optional assertion for matrix size (backends_selected * profiles_selected).",
+    )
+    dry_run: bool = False
+
+    @field_validator("profile_port_overrides")
+    @classmethod
+    def validate_profile_port_overrides(cls, value: Dict[str, int]) -> Dict[str, int]:
+        normalized: Dict[str, int] = {}
+        for raw_key, raw_port in value.items():
+            key = str(raw_key).strip()
+            if not key:
+                raise ValueError("profile_port_overrides keys must be non-empty")
+            port = int(raw_port)
+            if port < 1 or port > 65535:
+                raise ValueError(f"Invalid port for profile {key!r}: {port}")
+            normalized[key] = port
+        return normalized
+
+
+class ArtifactRoutesBootstrapOut(BaseModel):
+    artifact_version: int
+    dry_run: bool
+    backends_selected: int
+    profiles_total: int
+    profiles_selected: int
+    routes_total: int
+    transport_profiles_created: int
+    transport_profiles_updated: int
+    transport_profiles_reactivated: int
+    routes_created: int
+    routes_updated: int
+    routes_reactivated: int
+    skipped_profiles: list[str]

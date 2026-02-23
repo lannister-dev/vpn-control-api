@@ -24,10 +24,35 @@ NODE_HEARTBEAT_TOTAL = Counter(
     "Node heartbeat events",
 )
 
-NODE_ASSIGNMENT_REPORT_TOTAL = Counter(
-    "node_assignment_report_total",
-    "Assignment reconciliation reports",
+NODE_SYNC_REPORT_TOTAL = Counter(
+    "node_sync_report_total",
+    "Node sync report events",
     ["status"],
+)
+
+NODE_PLACEMENT_REPORT_TOTAL = Counter(
+    "node_placement_report_total",
+    "Placement reconciliation reports",
+    ["status"],
+)
+
+CONNECT_TELEMETRY_TOTAL = Counter(
+    "connect_telemetry_total",
+    "Client connect telemetry events processed",
+    ["event", "status", "action"],
+)
+
+# ── Probe ───────────────────────────────────────────
+PROBE_REPORT_TOTAL = Counter(
+    "probe_report_total",
+    "Probe report ingestion results",
+    ["status"],
+)
+
+PROBE_ACTION_TOTAL = Counter(
+    "probe_action_total",
+    "Probe-triggered admin actions",
+    ["action", "result"],
 )
 
 # ── VPN Keys ───────────────────────────────────────────────────
@@ -54,15 +79,4 @@ PROFILE_REGISTRY_RELOAD_TOTAL = Counter(
     "profile_registry_reload_total",
     "Profile registry reload attempts",
     ["result"],
-)
-
-# ── Redis Cache (assignments) ──────────────────────────────────
-ASSIGNMENT_CACHE_HIT_TOTAL = Counter(
-    "assignment_cache_hit_total",
-    "Assignment cache hits",
-)
-
-ASSIGNMENT_CACHE_MISS_TOTAL = Counter(
-    "assignment_cache_miss_total",
-    "Assignment cache misses",
 )

@@ -1,6 +1,5 @@
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -63,75 +62,3 @@ class VpnKeyInternal(BaseModel):
     is_revoked: bool
 
     model_config = ConfigDict(from_attributes=True)
-
-
-# ---------------- KeyAssignment ---------------------
-
-class AssignmentDesiredState(str, Enum):
-    present = "present"
-    absent = "absent"
-
-
-class AssignmentAppliedState(str, Enum):
-    present = "present"
-    absent = "absent"
-    unknown = "unknown"
-
-
-class AssignmentStatus(str, Enum):
-    pending = "pending"
-    applied = "applied"
-    error = "error"
-
-
-class KeyAssignmentCreate(BaseModel):
-    node_id: UUID
-    desired_state: AssignmentDesiredState
-
-
-class KeyAssignmentInternalCreate(BaseModel):
-    key_id: UUID
-    node_id: UUID
-    desired_state: AssignmentDesiredState
-    applied_state: AssignmentAppliedState = AssignmentAppliedState.unknown
-    status: AssignmentStatus = AssignmentStatus.pending
-
-
-class KeyAssignmentUpdate(BaseModel):
-    desired_state: AssignmentDesiredState
-
-
-class AssignmentReportIn(BaseModel):
-    op_version: int
-    applied_state: AssignmentAppliedState
-    status: AssignmentStatus
-    last_error: Optional[str] = None
-    last_applied_at: datetime
-
-
-class AssignmentOut(BaseModel):
-    id: UUID
-    key_id: UUID
-    op_version: int
-    desired_state: AssignmentDesiredState
-    applied_state: AssignmentAppliedState | None
-    status: AssignmentStatus | None
-
-    protocol: VpnProtocol
-    transport: VpnTransport
-    client_id: str
-
-    valid_until: datetime | None
-    traffic_limit_mb: int | None
-    is_revoked: bool
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class AssignmentPageOut(BaseModel):
-    items: list[AssignmentOut]
-    next_cursor: str | None = Field(
-        default=None,
-        description="Opaque cursor in format '<op_version>:<assignment_id>' for stable pagination.",
-        examples=["12:f2132b71-b4aa-470d-9586-cb907050ca52"],
-    )

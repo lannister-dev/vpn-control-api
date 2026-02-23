@@ -4,6 +4,8 @@ from starlette import status
 
 from services.artifacts.exceptions import ArtifactStoreError
 from services.artifacts.schemas import (
+    ArtifactRoutesBootstrapIn,
+    ArtifactRoutesBootstrapOut,
     ProfileArtifactPublishIn,
     ProfileArtifactOut, ErrorResponse, ReloadStatusResponse,
 )
@@ -12,7 +14,7 @@ from services.artifacts.service import (
     get_profile_artifact_service,
 )
 from services.auth.dependencies import admin_auth
-from shared.metrics import PROFILE_ARTIFACT_VERSION, PROFILE_REGISTRY_RELOAD_TOTAL
+from shared.monitoring.metrics import PROFILE_ARTIFACT_VERSION, PROFILE_REGISTRY_RELOAD_TOTAL
 from shared.profiles.exceptions import ProfileRegistryError
 from shared.profiles.registry import ProfileRegistry, profile_registry_lock
 
@@ -131,3 +133,40 @@ async def reload_profiles_registry(
         ) from exc
 
     return ReloadStatusResponse(status="reloaded")
+
+
+@router.post(
+    "/profiles/bootstrap-routes",
+    response_model=ArtifactRoutesBootstrapOut,
+    status_code=status.HTTP_200_OK,
+    summary="Bootstrap transport profiles and routes from active profiles artifact",
+    description=(
+        "Builds/updates transport profiles from active profiles artifact and "
+        "creates/updates deterministic auto-routes for selected backend nodes."
+    ),
+    responses={
+        404: {
+            "model": ErrorResponse,
+            "description": "No active profiles artifact found",
+        },
+        409: {
+            "model": ErrorResponse,
+            "description": "No eligible backend nodes",
+        },
+        422: {
+            "model": ErrorResponse,
+            "description": "No eligible profiles for selected bootstrap policy",
+        },
+    },
+)
+async def bootstrap_routes_from_active_profiles_artifact(
+        payload: ArtifactRoutesBootstrapIn,
+        service: ProfileArtifactService = Depends(get_profile_artifact_service),
+):
+    try:
+        return await service.bootstrap_routes_from_active_artifact(payload)
+    except ArtifactStoreError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc

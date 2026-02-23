@@ -18,7 +18,6 @@ class Subscription(Base):
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     profile_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
     preferred_region: Mapped[str | None] = mapped_column(String(16), nullable=True)
-    # Legacy / admin convenience: bind subscription to a specific key. For HWID subscriptions it stays NULL.
     root_vpn_key_id: Mapped[UUID | None] = mapped_column(ForeignKey("vpn_key.id"), nullable=True)
     hwid_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     max_devices: Mapped[int | None] = mapped_column(Integer, nullable=True)

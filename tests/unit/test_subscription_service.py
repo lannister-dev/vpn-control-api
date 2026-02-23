@@ -11,36 +11,9 @@ from services.vpn.subscriptions.exceptions import (
     SubscriptionExpired,
     SubscriptionTokenExpired,
     SubscriptionBuild,
+    SubscriptionRateLimited,
 )
-from shared.profiles.registry import ProfileRegistry
-from shared.profiles.schemas import (
-    WsTlsProfile,
-    WsTlsClientConfig,
-    RealityTcpProfile,
-    RealityTcpClientConfig,
-    ProfileMetadata,
-    ProfileType,
-    NodePublic,
-)
-
-
-WS_TLS_RAW = {
-    "type": "ws_tls",
-    "client": {"path": "/ws", "host": "cdn.example.com", "sni": "cdn.example.com"},
-    "metadata": {"display_name": "WS TLS"},
-}
-
-REALITY_TCP_RAW = {
-    "type": "reality_tcp",
-    "client": {
-        "sni": "www.cloudflare.com",
-        "flow": "xtls-rprx-vision",
-        "fingerprint": "chrome",
-        "public_key": "AAAAAAAAAAAAAAAA",
-        "short_id": "abcd1234",
-    },
-    "metadata": {"display_name": "Reality TCP"},
-}
+from services.vpn.subscriptions.constants import RATE_LIMIT_REQUESTS, RATE_LIMIT_WINDOW_SEC
 
 
 @pytest.fixture()
@@ -83,6 +56,23 @@ def _make_node(*, public_domain="vpn.example.com", name="node1", region="de"):
     return n
 
 
+def _make_transport_profile(*, network="tcp", security="reality", port=443):
+    tp = MagicMock()
+    tp.id = uuid4()
+    tp.name = "reality-google"
+    tp.network = network
+    tp.security = security
+    tp.reality_server_name = "www.google.com"
+    tp.reality_public_key = "A" * 20
+    tp.reality_short_id = "abcd1234"
+    tp.tls_fingerprint = "chrome"
+    tp.grpc_service_name = "vl"
+    tp.flow = "xtls-rprx-vision"
+    tp.port = port
+    tp.updated_at = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    return tp
+
+
 class TestValidateSubscription:
     def test_inactive_raises(self, service):
         sub = _make_sub(is_active=False)
@@ -117,60 +107,86 @@ class TestValidateSubscription:
         service._validate_subscription(sub, "hash")
 
 
-class TestBuildUris:
-    def test_nodes_x_profiles(self, service):
-        ProfileRegistry.register("ws1", WS_TLS_RAW)
-        profiles = [ProfileRegistry.get("ws1").profile]
-        nodes = [_make_node(), _make_node(public_domain="vpn2.example.com", name="node2")]
+class TestBuildRouteUri:
+    def test_build_reality_uri(self, service):
+        node = _make_node()
+        transport_profile = _make_transport_profile(network="tcp", security="reality")
 
-        uris = service._build_uris(
+        uri = service._build_route_uri(
             client_id="cid",
-            nodes=nodes,
-            profiles=profiles,
+            node=node,
+            transport_profile=transport_profile,
         )
-        assert len(uris) == 2
-        assert all(u.startswith("vless://") for u in uris)
 
-    def test_region_mismatch_skipped(self, service):
-        raw = {**WS_TLS_RAW, "metadata": {"display_name": "WS", "region_support": ["de"]}}
-        ProfileRegistry.register("ws_de", raw)
-        profiles = [ProfileRegistry.get("ws_de").profile]
-        node_us = _make_node(region="us")
+        assert uri is not None
+        assert uri.startswith("vless://")
 
-        uris = service._build_uris(client_id="cid", nodes=[node_us], profiles=profiles)
-        assert uris == []
+    def test_missing_domain_returns_none(self, service):
+        node = _make_node(public_domain="")
+        transport_profile = _make_transport_profile()
+        service.settings.edge.public_domain = ""
 
-    def test_empty_nodes(self, service):
-        ProfileRegistry.register("ws1", WS_TLS_RAW)
-        profiles = [ProfileRegistry.get("ws1").profile]
-        uris = service._build_uris(client_id="cid", nodes=[], profiles=profiles)
-        assert uris == []
+        uri = service._build_route_uri(
+            client_id="cid",
+            node=node,
+            transport_profile=transport_profile,
+        )
+
+        assert uri is None
+
+    def test_build_grpc_tls_uri(self, service):
+        node = _make_node()
+        transport_profile = _make_transport_profile(network="grpc", security="tls")
+
+        uri = service._build_route_uri(
+            client_id="cid",
+            node=node,
+            transport_profile=transport_profile,
+        )
+
+        assert uri is not None
+        assert "type=grpc" in uri
+        assert "security=tls" in uri
+        assert "serviceName=vl" in uri
 
 
 class TestCalcEtag:
     def test_deterministic(self, service):
         sub = _make_sub()
-        node = MagicMock()
-        node.public_domain = "vpn.example.com"
-        profile = MagicMock()
-        profile.type = "ws_tls"
-        profile.version = 1
+        route_signatures = ["route-a|40", "route-b|30"]
 
-        e1 = service._calc_etag(sub, [node], [profile], client_id="cid")
-        e2 = service._calc_etag(sub, [node], [profile], client_id="cid")
+        e1 = service._calc_etag(sub, route_signatures, client_id="cid", placement_op_version=3)
+        e2 = service._calc_etag(sub, route_signatures, client_id="cid", placement_op_version=3)
         assert e1 == e2
         assert len(e1) == 64  # sha256 hex
 
-    def test_different_sub_different_etag(self, service):
-        sub1 = _make_sub()
-        sub2 = _make_sub()
-        node = MagicMock()
-        node.public_domain = "vpn.example.com"
-        profile = MagicMock()
-        profile.type = "ws_tls"
-        profile.version = 1
-
-        e1 = service._calc_etag(sub1, [node], [profile], client_id="cid")
-        e2 = service._calc_etag(sub2, [node], [profile], client_id="cid")
-        # different UUIDs → different etags
+    def test_route_order_changes_etag(self, service):
+        sub = _make_sub()
+        e1 = service._calc_etag(sub, ["route-a|40", "route-b|30"], client_id="cid")
+        e2 = service._calc_etag(sub, ["route-b|30", "route-a|40"], client_id="cid")
         assert e1 != e2
+
+
+class TestRateLimit:
+    @pytest.mark.asyncio
+    async def test_first_request_sets_expire(self, async_session, redis_client):
+        svc = SubscriptionService(async_session, redis_client)
+        redis_client.client.incr.return_value = 1
+
+        await svc._enforce_rate_limit("token_hash")
+
+        redis_client.client.incr.assert_awaited_once_with("sub:rl:token_hash")
+        redis_client.client.expire.assert_awaited_once_with(
+            "sub:rl:token_hash",
+            RATE_LIMIT_WINDOW_SEC,
+        )
+
+    @pytest.mark.asyncio
+    async def test_request_over_limit_raises(self, async_session, redis_client):
+        svc = SubscriptionService(async_session, redis_client)
+        redis_client.client.incr.return_value = RATE_LIMIT_REQUESTS + 1
+
+        with pytest.raises(SubscriptionRateLimited):
+            await svc._enforce_rate_limit("token_hash")
+
+        redis_client.client.expire.assert_not_awaited()

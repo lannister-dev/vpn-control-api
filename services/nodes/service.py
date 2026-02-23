@@ -2,45 +2,32 @@ import hashlib
 import logging
 import secrets
 from datetime import datetime, timezone
-from typing import Sequence, Optional
-from uuid import UUID
 
-from fastapi import HTTPException, Depends
+from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.config import get_settings
 from services.nodes.models import VpnNode
 from services.nodes.repository import NodeAgentStateRepository, VpnNodeRepository
+from services.config import get_settings
 from services.nodes.schemas import (
+    NodeAgentDetails,
+    NodeAgentStateCreate,
     NodeAgentStateUpdate,
     NodeHeartbeatIn,
     NodeAgentInitialOut,
+    NodeSyncDetails,
+    NodeSyncReportIn,
     VpnNodeUpdate,
-    VpnNodeCreate
-)
-from services.vpn.keys.models import KeyAssignment, VpnKey
-from services.vpn.keys.repository import KeyAssignmentRepository
-from services.vpn.keys.schemas import (
-    AssignmentReportIn,
-    VpnProtocol,
-    VpnTransport,
-    AssignmentOut,
-    AssignmentDesiredState,
-    VpnKeyInternal,
-    AssignmentStatus,
-    AssignmentAppliedState
+    VpnNodeCreate,
+    NodeRole,
 )
 from shared.database.session import AsyncDatabase
-from shared.redis.client import redis_client
-from shared.metrics import (
+from shared.monitoring.metrics import (
     NODE_BOOTSTRAP_TOTAL,
-    NODE_ASSIGNMENT_REPORT_TOTAL,
 )
 from shared.utils.logger import StructuredLogger
 
 logger_node = StructuredLogger(logging.getLogger("node-service"))
-
-_settings = get_settings()
 
 
 class VpnNodeService:
@@ -51,9 +38,7 @@ class VpnNodeService:
         self.node_agent_state_repository = (
             NodeAgentStateRepository(session)
         )
-        self.key_assignment_repository = (
-            KeyAssignmentRepository(session)
-        )
+        self.sync_report_debounce_sec = max(0, int(get_settings().node_agent.sync_report_debounce_sec))
 
     async def initial(self, *, source_ip: str) -> NodeAgentInitialOut:
         """
@@ -72,6 +57,7 @@ class VpnNodeService:
         if node is None:
             create_schema = VpnNodeCreate(
                 name=f"node-{source_ip.replace('.', '-')}",
+                role=NodeRole.backend,
                 region="unknown",
                 public_domain="",
                 internal_wg_ip=source_ip,
@@ -105,19 +91,19 @@ class VpnNodeService:
             payload: NodeHeartbeatIn,
     ) -> None:
         now = datetime.now(timezone.utc)
-
-        state = NodeAgentStateUpdate(
+        details = NodeAgentDetails(
+            runtime=payload.details.runtime,
+            stats=payload.details.stats,
+        )
+        state = NodeAgentStateCreate(
+            node_id=node.id,
             agent_version=payload.agent_version,
             is_healthy=payload.is_healthy,
             last_seen_at=now,
-            details=payload.details.model_dump(),
+            last_sync_at=None,
+            details=details.model_dump(mode="json", exclude_none=True),
         )
-        await self.node_agent_state_repository.upsert(
-            {
-                "node_id": node.id,
-                **state.model_dump(exclude_unset=True),
-            }
-        )
+        await self.node_agent_state_repository.upsert(state.model_dump(exclude_none=True))
         if not payload.is_healthy and not node.is_draining:
             await self.vpn_node_repository.update_by_id(
                 node.id,
@@ -128,175 +114,93 @@ class VpnNodeService:
                 node_id=str(node.id),
             )
 
-    async def report_assignment(
+    async def handle_sync_report(
             self,
+            *,
             node: VpnNode,
-            assignment_id: UUID,
-            payload: AssignmentReportIn,
-    ) -> str:
-        """
-        Persist reconciliation result reported by node agent.
-        Returns result status string.
-        """
-        lock_key = f"lock:assignment:{assignment_id}"
-
-        acquired = await redis_client.client.set(
-            lock_key, "1", ex=_settings.redis.assignment_lock_ttl, nx=True
+            payload: NodeSyncReportIn,
+    ) -> bool:
+        now = datetime.now(timezone.utc)
+        state = await self.node_agent_state_repository.get_one_by(node_id=node.id)
+        if self._is_debounced_sync_report(
+                state=state,
+                payload=payload,
+                now=now,
+        ):
+            return False
+        base = state.details if state is not None else {}
+        if not isinstance(base, dict):
+            base = {}
+        details = NodeAgentDetails.model_validate(base)
+        details.sync = NodeSyncDetails(
+            synced_count=payload.synced_count,
+            reported_at=now,
         )
-        if not acquired:
-            NODE_ASSIGNMENT_REPORT_TOTAL.labels(status="skipped_lock").inc()
-            return "skipped_lock"
-
-        try:
-            assignment = await self.key_assignment_repository.get_by_id(assignment_id)
-
-            if assignment is None:
-                raise HTTPException(status_code=404, detail="Assignment not found")
-
-            if assignment.node_id != node.id:
-                raise HTTPException(status_code=403, detail="Assignment does not belong to this node")
-
-            if payload.op_version != assignment.op_version:
-                NODE_ASSIGNMENT_REPORT_TOTAL.labels(status="skipped_stale").inc()
-                return "skipped_stale"
-
-            is_same = (
-                    assignment.applied_state == payload.applied_state
-                    and assignment.status == payload.status
-                    and (assignment.last_error or None) == (payload.last_error or None)
-                    and assignment.last_applied_at == payload.last_applied_at
+        details_data = details.model_dump(mode="json", exclude_none=True)
+        if state is None:
+            create_state = NodeAgentStateCreate(
+                node_id=node.id,
+                agent_version="unknown",
+                is_healthy=True,
+                last_seen_at=now,
+                last_sync_at=now,
+                last_config_version=payload.config_version,
+                details=details_data,
             )
-            if is_same:
-                NODE_ASSIGNMENT_REPORT_TOTAL.labels(status="skipped_idempotent").inc()
-                return "skipped_idempotent"
-
-            update_data = payload.model_dump(exclude={"op_version"}, exclude_unset=True)
-
-            await self.key_assignment_repository.update_by_id(
-                assignment_id, update_data
+            await self.node_agent_state_repository.upsert(
+                create_state.model_dump(exclude_none=True)
             )
-            if payload.status == AssignmentStatus.applied:
-                state_update = NodeAgentStateUpdate(
-                    last_sync_at=payload.last_applied_at,
-                )
-                await self.node_agent_state_repository.update_by_node_id(
-                    node.id,
-                    state_update.model_dump(exclude_unset=True),
-                )
-            report_status = "applied" if payload.status == AssignmentStatus.applied else "error"
-            NODE_ASSIGNMENT_REPORT_TOTAL.labels(status=report_status).inc()
-            return report_status
-        finally:
-            try:
-                await redis_client.client.delete(lock_key)
-            except Exception:
-                logger_node_agent.exception(
-                    "failed to release redis lock", assignment_id=assignment_id
-                )
+            return True
+        else:
+            update_state = NodeAgentStateUpdate(
+                last_sync_at=now,
+                last_config_version=payload.config_version,
+                details=details_data,
+            )
+            await self.node_agent_state_repository.update_by_node_id(
+                node_id=node.id,
+                data=update_state.model_dump(exclude_none=True),
+            )
+            return True
+
+    def _is_debounced_sync_report(
+            self,
+            *,
+            state,
+            payload: NodeSyncReportIn,
+            now: datetime,
+    ) -> bool:
+        if self.sync_report_debounce_sec <= 0 or state is None:
+            return False
+        if payload.config_version is None:
+            return False
+
+        state_last_config_version = state.last_config_version
+        state_last_sync_at = self._to_utc_or_none(state.last_sync_at)
+        if state_last_config_version != payload.config_version or state_last_sync_at is None:
+            return False
+
+        elapsed_sec = (now - state_last_sync_at).total_seconds()
+        if elapsed_sec >= self.sync_report_debounce_sec:
+            return False
+
+        details_raw = state.details if isinstance(state.details, dict) else {}
+        existing_details = NodeAgentDetails.model_validate(details_raw)
+        existing_synced_count = existing_details.sync.synced_count if existing_details.sync else None
+        if existing_synced_count != payload.synced_count:
+            return False
+        return True
+
+    @staticmethod
+    def _to_utc_or_none(value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
 
 
 async def get_vpn_node_service(
         session: AsyncSession = Depends(AsyncDatabase.get_session)
 ) -> VpnNodeService:
     return VpnNodeService(session)
-
-
-logger_node_agent = StructuredLogger(logging.getLogger("node-agent-service"))
-
-
-class NodeAgentService:
-    def __init__(self, session: AsyncSession):
-        self.key_assignment_repository = KeyAssignmentRepository(session)
-
-    async def get_assignments_page_for_node(
-            self,
-            *,
-            node: VpnNode,
-            cursor: str | None,
-            limit: int,
-    ) -> tuple[list[AssignmentOut], str | None]:
-        """
-        Stable paging without skipping ties.
-
-        Cursor format: '<op_version>:<assignment_uuid>'.
-        """
-        parsed: tuple[int, UUID] | None = None
-        if cursor:
-            try:
-                op_s, aid_s = cursor.split(":", 1)
-                parsed = (int(op_s), UUID(aid_s))
-            except Exception as exc:
-                raise ValueError(f"Invalid cursor format: {cursor!r}") from exc
-
-        rows = await self.key_assignment_repository.list_for_node_with_keys_page(
-            node_id=node.id,
-            cursor=parsed,
-            limit=limit,
-        )
-        items = self._build_assignments(rows)
-        next_cursor = None
-        if items:
-            last = items[-1]
-            next_cursor = f"{last.op_version}:{last.id}"
-
-        return items, next_cursor
-
-    def _build_assignments(
-            self,
-            rows: Sequence[tuple[KeyAssignment, VpnKey]]
-    ) -> list[AssignmentOut]:
-        now = datetime.now(timezone.utc)
-        result: list[AssignmentOut] = []
-
-        for assignment, key in rows:
-            key = VpnKeyInternal.model_validate(key, from_attributes=True)
-            # effective desired-state overrides
-            effective_desired = AssignmentDesiredState(assignment.desired_state)
-            if key.is_revoked:
-                effective_desired = AssignmentDesiredState.absent
-            elif key.valid_until is not None:
-                vu = key.valid_until
-                if vu.tzinfo is None:
-                    vu = vu.replace(tzinfo=timezone.utc)
-                if vu <= now:
-                    effective_desired = AssignmentDesiredState.absent
-
-            # ---- applied_state ----
-            if assignment.applied_state is None:
-                applied_state = AssignmentAppliedState.unknown
-            else:
-                applied_state = AssignmentAppliedState(assignment.applied_state)
-
-            # ---- status ----
-            # If effective desired state diverged from applied state
-            # (e.g. key expired or un-expired), signal the agent to reconcile
-            # even though op_version hasn't changed.
-            status = AssignmentStatus(assignment.status)
-            if status == AssignmentStatus.applied and effective_desired.value != applied_state.value:
-                status = AssignmentStatus.pending
-
-            result.append(
-                AssignmentOut(
-                    id=assignment.id,
-                    key_id=assignment.key_id,
-                    op_version=assignment.op_version,
-                    desired_state=effective_desired,
-                    applied_state=applied_state,
-                    status=status,
-
-                    protocol=VpnProtocol(key.protocol),
-                    transport=VpnTransport(key.transport),
-                    client_id=key.client_id,
-
-                    valid_until=key.valid_until,
-                    traffic_limit_mb=key.traffic_limit_mb,
-                    is_revoked=key.is_revoked,
-                )
-            )
-
-        return result
-
-async def get_node_agent_service(
-        session: AsyncSession = Depends(AsyncDatabase.get_session)
-) -> NodeAgentService:
-    return NodeAgentService(session)

@@ -3,14 +3,14 @@ version: '3.8'
 # ======== health check, rollback =========
 
 x-healthcheck-common: &healthcheck-common
-  test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/metrics').read()"]
+  test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/readyz').read()"]
   interval: 10s
   timeout: 5s
   retries: 3
   start_period: 10s
 
 x-deploy-common: &deploy-common
-  replicas: 1
+  replicas: 2
   update_config:
     parallelism: 1
     delay: 10s
@@ -19,6 +19,13 @@ x-deploy-common: &deploy-common
   restart_policy:
     condition: on-failure
     max_attempts: 3
+  resources:
+    limits:
+      cpus: "1.00"
+      memory: 512M
+    reservations:
+      cpus: "0.25"
+      memory: 128M
 
 
 services:
@@ -41,8 +48,8 @@ services:
         - "prometheus-scrape=true"
         - "prometheus-app=control-api"
         - "prometheus-env=monitoring"
-        - "prometheus-metrics-port=8000"
-        - "prometheus-metrics-path=/api/metrics"
+        - "prometheus-monitoring-port=8000"
+        - "prometheus-monitoring-path=/api/monitoring"
         - "prometheus-scrape-profile=important"
     healthcheck: *healthcheck-common
     networks:
