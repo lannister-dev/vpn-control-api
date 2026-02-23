@@ -39,13 +39,30 @@ def _probe(*, is_reachable: bool, checked_at: datetime):
     return p
 
 
+def _route(
+        *,
+        health_status: str = "healthy",
+        base_weight: int = 50,
+        cooldown_until: datetime | None = None,
+):
+    r = MagicMock()
+    r.id = uuid4()
+    r.health_status = health_status
+    r.base_weight = base_weight
+    r.cooldown_until = cooldown_until
+    return r
+
+
 def _ingestion_service() -> ProbeIngestionService:
     return ProbeIngestionService(
         node_repository=AsyncMock(),
         probe_repository=AsyncMock(),
+        route_repository=AsyncMock(),
         alert_service=AsyncMock(),
         target_port=443,
         retention_days=30,
+        auto_route_health_enabled=True,
+        route_block_cooldown_hours=6,
     )
 
 
@@ -125,6 +142,8 @@ async def test_report_success(async_session):
     svc.node_repository.get_by_id.return_value = node
     svc.probe_repository.get_latest_for_node.return_value = None
     svc.probe_repository.create.return_value = created
+    svc.probe_repository.get_latest_for_node.side_effect = [None, created]
+    svc.route_repository.list_active.return_value = []
 
     out = await svc.report(
         ProbeReportIn(
@@ -140,6 +159,133 @@ async def test_report_success(async_session):
     svc.probe_repository.create.assert_awaited_once()
     svc.probe_repository.delete_older_than.assert_not_awaited()
     svc.alert_service.send_probe_status_change.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_report_blocks_routes_on_latest_failure(async_session):
+    svc = _ingestion_service()
+    svc.node_repository = AsyncMock()
+    svc.probe_repository = AsyncMock()
+    svc.route_repository = AsyncMock()
+    svc.alert_service = AsyncMock()
+
+    node = _node()
+    checked_at = datetime.now(timezone.utc)
+    created = _probe(is_reachable=False, checked_at=checked_at)
+    created.node_id = node.id
+    created.source = "ru-probe-1"
+    created.latency_ms = None
+    created.error = "timeout"
+    created.details = {}
+    created.created_at = datetime.now(timezone.utc)
+    route = _route(health_status="healthy", base_weight=50)
+
+    svc.node_repository.get_by_id.return_value = node
+    svc.probe_repository.get_latest_for_node.side_effect = [None, created]
+    svc.probe_repository.create.return_value = created
+    svc.route_repository.list_active.return_value = [route]
+    svc.route_repository.update_by_id = AsyncMock(return_value=route)
+
+    await svc.report(
+        ProbeReportIn(
+            node_id=node.id,
+            source="ru-probe-1",
+            is_reachable=False,
+            error="timeout",
+        )
+    )
+
+    svc.route_repository.update_by_id.assert_awaited_once()
+    kwargs = svc.route_repository.update_by_id.await_args.kwargs
+    assert kwargs["item_id"] == route.id
+    assert kwargs["data"]["health_status"] == "blocked"
+    assert kwargs["data"]["effective_weight"] == 0
+
+
+@pytest.mark.asyncio
+async def test_report_recovers_blocked_route_after_cooldown(async_session):
+    svc = _ingestion_service()
+    svc.node_repository = AsyncMock()
+    svc.probe_repository = AsyncMock()
+    svc.route_repository = AsyncMock()
+    svc.alert_service = AsyncMock()
+
+    node = _node()
+    checked_at = datetime.now(timezone.utc)
+    created = _probe(is_reachable=True, checked_at=checked_at)
+    created.node_id = node.id
+    created.source = "ru-probe-1"
+    created.latency_ms = 40
+    created.error = None
+    created.details = {}
+    created.created_at = datetime.now(timezone.utc)
+    route = _route(
+        health_status="blocked",
+        base_weight=50,
+        cooldown_until=checked_at - timedelta(seconds=1),
+    )
+
+    svc.node_repository.get_by_id.return_value = node
+    svc.probe_repository.get_latest_for_node.side_effect = [_probe(is_reachable=False, checked_at=checked_at), created]
+    svc.probe_repository.create.return_value = created
+    svc.route_repository.list_active.return_value = [route]
+    svc.route_repository.update_by_id = AsyncMock(return_value=route)
+
+    await svc.report(
+        ProbeReportIn(
+            node_id=node.id,
+            source="ru-probe-1",
+            is_reachable=True,
+            latency_ms=40,
+        )
+    )
+
+    svc.route_repository.update_by_id.assert_awaited_once()
+    kwargs = svc.route_repository.update_by_id.await_args.kwargs
+    assert kwargs["item_id"] == route.id
+    assert kwargs["data"]["health_status"] == "warming_up"
+    assert kwargs["data"]["effective_weight"] == 10
+    assert kwargs["data"]["warmup_stage"] == 0
+
+
+@pytest.mark.asyncio
+async def test_report_skips_side_effects_for_stale_signal(async_session):
+    svc = _ingestion_service()
+    svc.node_repository = AsyncMock()
+    svc.probe_repository = AsyncMock()
+    svc.route_repository = AsyncMock()
+    svc.alert_service = AsyncMock()
+
+    node = _node()
+    stale_row = _probe(is_reachable=False, checked_at=datetime.now(timezone.utc) - timedelta(minutes=10))
+    stale_row.node_id = node.id
+    stale_row.source = "ru-probe-1"
+    stale_row.latency_ms = None
+    stale_row.error = "timeout"
+    stale_row.details = {}
+    stale_row.created_at = datetime.now(timezone.utc)
+    latest_row = _probe(is_reachable=True, checked_at=datetime.now(timezone.utc))
+    latest_row.node_id = node.id
+    latest_row.source = "ru-probe-1"
+
+    svc.node_repository.get_by_id.return_value = node
+    svc.probe_repository.get_latest_for_node.side_effect = [latest_row, latest_row]
+    svc.probe_repository.create.return_value = stale_row
+    svc.route_repository.list_active.return_value = [_route()]
+    svc.route_repository.update_by_id = AsyncMock()
+
+    await svc.report(
+        ProbeReportIn(
+            node_id=node.id,
+            source="ru-probe-1",
+            is_reachable=False,
+            error="timeout",
+            checked_at=stale_row.checked_at,
+        )
+    )
+
+    svc.alert_service.send_probe_status_change.assert_not_awaited()
+    svc.route_repository.update_by_id.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -164,8 +310,9 @@ async def test_report_alert_sent_on_recovery_transition(async_session):
     created.created_at = datetime.now(timezone.utc)
 
     svc.node_repository.get_by_id.return_value = node
-    svc.probe_repository.get_latest_for_node.return_value = previous
+    svc.probe_repository.get_latest_for_node.side_effect = [previous, created]
     svc.probe_repository.create.return_value = created
+    svc.route_repository.list_active.return_value = []
 
     await svc.report(
         ProbeReportIn(
@@ -201,8 +348,9 @@ async def test_report_alert_not_sent_without_status_transition(async_session):
     created.created_at = datetime.now(timezone.utc)
 
     svc.node_repository.get_by_id.return_value = node
-    svc.probe_repository.get_latest_for_node.return_value = previous
+    svc.probe_repository.get_latest_for_node.side_effect = [previous, created]
     svc.probe_repository.create.return_value = created
+    svc.route_repository.list_active.return_value = []
 
     await svc.report(
         ProbeReportIn(

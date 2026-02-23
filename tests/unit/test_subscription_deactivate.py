@@ -61,11 +61,9 @@ async def test_deactivate_revokes_root_and_device_keys(async_session, redis_clie
     svc.vpn_key_repository.get_by_id.side_effect = _get_key_side_effect
     root_placement = MagicMock()
     root_placement.backend_node_id = uuid4()
-    root_placement.gateway_node_id = uuid4()
     root_placement.sticky_until = None
     device_placement = MagicMock()
     device_placement.backend_node_id = uuid4()
-    device_placement.gateway_node_id = uuid4()
     device_placement.sticky_until = None
 
     async def _get_placement_side_effect(key_id):
@@ -116,11 +114,9 @@ async def test_activate_restores_keys_and_placements(async_session, redis_client
     svc.vpn_key_repository.get_by_id.side_effect = _get_key_side_effect
     root_placement = MagicMock()
     root_placement.backend_node_id = uuid4()
-    root_placement.gateway_node_id = uuid4()
     root_placement.sticky_until = None
     device_placement = MagicMock()
     device_placement.backend_node_id = uuid4()
-    device_placement.gateway_node_id = uuid4()
     device_placement.sticky_until = None
 
     async def _get_placement_side_effect(key_id):

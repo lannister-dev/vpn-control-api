@@ -75,7 +75,6 @@ class TestRevokeKey:
         service.key_repository.get_by_id.return_value = key
         placement = MagicMock()
         placement.backend_node_id = uuid4()
-        placement.gateway_node_id = uuid4()
         placement.sticky_until = None
         service.placement_repository.get_by_key_id.return_value = placement
         key_id = uuid4()

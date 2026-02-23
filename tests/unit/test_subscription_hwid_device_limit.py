@@ -37,7 +37,7 @@ def service(async_session, redis_client, monkeypatch):
     svc.vpn_key_repository = AsyncMock()
     svc.routing_service = AsyncMock()
     svc.placement_repository = AsyncMock()
-    svc.backend_peer_repository = AsyncMock()
+    svc.route_repository = AsyncMock()
     svc.node_repository = AsyncMock()
     return svc
 
@@ -94,10 +94,25 @@ async def test_existing_hwid_path_skips_subscription_lock(service):
     service.device_repository.get_active_by_sub_and_hwid_hash.return_value = device
     service.vpn_key_repository.get_by_id.return_value = key
     service._enforce_rate_limit = AsyncMock()
-    service._ensure_route_for_key = AsyncMock(return_value=(MagicMock(), MagicMock()))
-    service._select_profiles = lambda _: []
-    service._build_uris = lambda **_: ["vless://ok"]
-    service._calc_etag = lambda *_args, **_kwargs: "etag"
+    placement = MagicMock()
+    placement.op_version = 4
+    service._ensure_backend_placement_for_key = AsyncMock(return_value=(uuid4(), placement))
+    route = MagicMock()
+    route.id = uuid4()
+    route.health_status = "healthy"
+    route.effective_weight = 50
+    node = MagicMock()
+    node.id = uuid4()
+    node.name = "be-fi-1"
+    node.region = "fi"
+    node.public_domain = "be-fi-1.example.com"
+    tp = MagicMock()
+    tp.id = uuid4()
+    tp.port = 443
+    service.route_repository.list_resolved_active = AsyncMock(return_value=[(route, node, tp)])
+    service._build_route_uri = MagicMock(return_value="vless://ok")
+    service._route_signature = MagicMock(return_value="route-signature")
+    service._calc_etag = MagicMock(return_value="etag")
 
     await service.build_payload(raw_token="tok", hwid="device1", user_agent="ua")
 
@@ -123,7 +138,7 @@ async def test_legacy_creates_key_if_missing(async_session, redis_client, monkey
     svc.vpn_key_repository = AsyncMock()
     svc.routing_service = AsyncMock()
     svc.placement_repository = AsyncMock()
-    svc.backend_peer_repository = AsyncMock()
+    svc.route_repository = AsyncMock()
     svc.node_repository = AsyncMock()
     svc._enforce_rate_limit = AsyncMock()
 

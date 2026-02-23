@@ -42,7 +42,7 @@ class VpnKeyService:
             status_code=status.HTTP_410_GONE,
             detail=(
                 "Legacy key assignment API is disabled. "
-                "Use /api/v1/placements for gateway/backend placement management."
+                "Use /api/v1/placements for backend placement management."
             ),
         )
 
@@ -68,7 +68,6 @@ class VpnKeyService:
         await self.placement_repository.upsert_set_pending(
             key_id=key_id,
             backend_node_id=placement.backend_node_id,
-            gateway_node_id=placement.gateway_node_id,
             desired_state=PlacementDesiredState.inactive.value,
             sticky_until=placement.sticky_until,
             last_migration_reason="key_revoke",

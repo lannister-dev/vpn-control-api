@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.nodes.models import VpnNode
 from services.nodes.repository import VpnNodeRepository
 from services.nodes.schemas import NodeRole, VpnNodeUpdate
 from services.placements.service import UserPlacementService, get_user_placement_service
@@ -49,8 +50,7 @@ class ProbeDrainService:
             if not source_node:
                 raise HTTPException(status_code=404, detail="Source backend node not found")
 
-            role = getattr(source_node, "role", NodeRole.backend.value)
-            if role != NodeRole.backend.value:
+            if source_node.role != NodeRole.backend.value:
                 raise HTTPException(status_code=409, detail="Source node role must be backend")
 
             latest = await self._validate_probe_failure_for_node(
@@ -61,7 +61,7 @@ class ProbeDrainService:
                 min_consecutive_failures=payload.min_consecutive_failures,
             )
 
-            source_was_draining = bool(getattr(source_node, "is_draining", False))
+            source_was_draining = source_node.is_draining
             if not source_was_draining:
                 await self.node_repository.update_by_id(
                     payload.source_backend_id,
@@ -118,22 +118,13 @@ class ProbeDrainService:
                 break
             processed += 1
 
-            node_id = getattr(node, "id", None)
-            if node_id is None:
-                items.append(
-                    ProbeAutoDrainMigrateItemOut(
-                        action="error",
-                        detail="Node object has no id",
-                    )
-                )
-                continue
+            node_id = node.id
 
-            role = getattr(node, "role", NodeRole.backend.value)
-            if role != NodeRole.backend.value:
+            if node.role != NodeRole.backend.value:
                 logger_probe.info(
                     "auto_drain_skipped_non_backend",
                     node_id=str(node_id),
-                    role=str(role),
+                    role=node.role,
                 )
                 items.append(
                     ProbeAutoDrainMigrateItemOut(
@@ -143,12 +134,12 @@ class ProbeDrainService:
                     )
                 )
                 continue
-            if not getattr(node, "is_active", True) or not getattr(node, "is_enabled", True):
+            if not node.is_active or not node.is_enabled:
                 logger_probe.info(
                     "auto_drain_skipped_inactive",
                     node_id=str(node_id),
-                    is_active=bool(getattr(node, "is_active", False)),
-                    is_enabled=bool(getattr(node, "is_enabled", False)),
+                    is_active=node.is_active,
+                    is_enabled=node.is_enabled,
                 )
                 items.append(
                     ProbeAutoDrainMigrateItemOut(
@@ -158,7 +149,7 @@ class ProbeDrainService:
                     )
                 )
                 continue
-            if getattr(node, "is_draining", False) and not payload.include_already_draining:
+            if node.is_draining and not payload.include_already_draining:
                 logger_probe.info(
                     "auto_drain_skipped_already_draining",
                     node_id=str(node_id),
@@ -255,7 +246,7 @@ class ProbeDrainService:
             items=items,
         )
 
-    async def _resolve_auto_nodes(self, payload: ProbeAutoDrainMigrateIn) -> list:
+    async def _resolve_auto_nodes(self, payload: ProbeAutoDrainMigrateIn) -> list[VpnNode]:
         if payload.backend_node_ids is None:
             return list(await self.node_repository.list())
         rows = await self.node_repository.list_by_ids(payload.backend_node_ids)

@@ -52,25 +52,12 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
         res = await self.session.execute(stmt)
         return {row[0]: int(row[1]) for row in res.all()}
 
-    async def count_active_by_gateway_node(self) -> dict[UUID, int]:
-        stmt = (
-            select(self.model.gateway_node_id, func.count(self.model.id))
-            .where(
-                self.model.is_active.is_(True),
-                self.model.gateway_node_id.is_not(None),
-            )
-            .group_by(self.model.gateway_node_id)
-        )
-        res = await self.session.execute(stmt)
-        return {row[0]: int(row[1]) for row in res.all()}
-
-    async def list_for_gateway_with_keys_page(
+    async def list_for_backend_with_keys_page(
             self,
             *,
-            gateway_node_id: UUID,
+            backend_node_id: UUID,
             cursor: tuple[int, UUID] | None,
             limit: int,
-            include_unbound: bool = True,
     ) -> list[tuple[UserPlacement, VpnKey, VpnNode]]:
         stmt = (
             select(self.model, VpnKey, VpnNode)
@@ -78,19 +65,11 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
             .join(VpnNode, VpnNode.id == self.model.backend_node_id)
             .where(
                 self.model.is_active.is_(True),
+                self.model.backend_node_id == backend_node_id,
                 VpnKey.is_active.is_(True),
                 VpnNode.is_active.is_(True),
             )
         )
-        if include_unbound:
-            stmt = stmt.where(
-                or_(
-                    self.model.gateway_node_id == gateway_node_id,
-                    self.model.gateway_node_id.is_(None),
-                )
-            )
-        else:
-            stmt = stmt.where(self.model.gateway_node_id == gateway_node_id)
 
         if cursor is not None:
             op, pid = cursor
@@ -104,7 +83,6 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
         stmt = stmt.order_by(self.model.op_version.asc(), self.model.id.asc()).limit(limit)
         res = await self.session.execute(stmt)
         rows: list[tuple[UserPlacement, VpnKey, VpnNode]] = list(res.tuples().all())
-
         return rows
 
     async def upsert_set_pending(
@@ -112,7 +90,6 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
             *,
             key_id: UUID,
             backend_node_id: UUID,
-            gateway_node_id: UUID | None,
             desired_state: str,
             sticky_until,
             last_migration_reason: str | None,
@@ -120,7 +97,6 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
         stmt = insert(self.model).values(
             key_id=key_id,
             backend_node_id=backend_node_id,
-            gateway_node_id=gateway_node_id,
             desired_state=desired_state,
             applied_state="pending",
             op_version=1,
@@ -133,7 +109,6 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
             constraint="uq_user_placement_key_id",
             set_={
                 "backend_node_id": backend_node_id,
-                "gateway_node_id": gateway_node_id,
                 "desired_state": desired_state,
                 "applied_state": "pending",
                 "op_version": self.model.op_version + 1,
@@ -145,7 +120,7 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
         await self.session.execute(stmt)
         return await self.get_by_key_id(key_id)
 
-    async def apply_gateway_report(
+    async def apply_backend_report(
             self,
             *,
             placement_id: UUID,
@@ -153,7 +128,7 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
             applied_state: str,
             applied_version: int,
             updated_at: datetime,
-            reporter_gateway_id: UUID,
+            reporter_backend_id: UUID,
     ) -> int:
         values: dict = {
             "applied_state": applied_state,
@@ -164,12 +139,7 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
             sa_update(self.model)
             .where(self.model.id == placement_id)
             .where(self.model.op_version == expected_op_version)
-            .where(
-                or_(
-                    self.model.gateway_node_id.is_(None),
-                    self.model.gateway_node_id == reporter_gateway_id,
-                )
-            )
+            .where(self.model.backend_node_id == reporter_backend_id)
             .values(**values)
             .returning(self.model.id)
         )

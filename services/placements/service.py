@@ -5,7 +5,6 @@ from uuid import UUID
 from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.backend_peers.repository import BackendPeerRepository
 from services.nodes.models import VpnNode
 from services.nodes.repository import NodeAgentStateRepository, VpnNodeRepository
 from services.nodes.schemas import NodeRole
@@ -35,7 +34,6 @@ class UserPlacementService:
     def __init__(self, session: AsyncSession):
         self.session = session
         self.placement_repository = UserPlacementRepository(session)
-        self.backend_peer_repository = BackendPeerRepository(session)
         self.key_repository = VpnKeyRepository(session)
         self.node_repository = VpnNodeRepository(session)
         self.routing_service = RoutingService(session)
@@ -48,24 +46,12 @@ class UserPlacementService:
         backend = await self.node_repository.get_by_id(payload.backend_node_id)
         if not backend:
             raise HTTPException(status_code=404, detail="Backend node not found")
-        if self._node_role(backend, default=NodeRole.backend.value) != NodeRole.backend.value:
+        if backend.role != NodeRole.backend.value:
             raise HTTPException(status_code=409, detail="Node role must be backend")
-
-        if payload.gateway_node_id is not None:
-            gateway = await self.node_repository.get_by_id(payload.gateway_node_id)
-            if not gateway:
-                raise HTTPException(status_code=404, detail="Gateway node not found")
-            if self._node_role(gateway, default=NodeRole.gateway.value) != NodeRole.gateway.value:
-                raise HTTPException(status_code=409, detail="Node role must be gateway")
-            await self.backend_peer_repository.ensure_active_pair(
-                backend_node_id=payload.backend_node_id,
-                gateway_node_id=payload.gateway_node_id,
-            )
 
         placement = await self.placement_repository.upsert_set_pending(
             key_id=payload.key_id,
             backend_node_id=payload.backend_node_id,
-            gateway_node_id=payload.gateway_node_id,
             desired_state=payload.desired_state.value,
             sticky_until=payload.sticky_until,
             last_migration_reason=payload.last_migration_reason,
@@ -84,7 +70,7 @@ class UserPlacementService:
         source = await self.node_repository.get_by_id(payload.source_backend_id)
         if not source:
             raise HTTPException(status_code=404, detail="Source backend node not found")
-        if self._node_role(source, default=NodeRole.backend.value) != NodeRole.backend.value:
+        if source.role != NodeRole.backend.value:
             raise HTTPException(status_code=409, detail="Source node role must be backend")
 
         target: VpnNode | None = None
@@ -104,21 +90,13 @@ class UserPlacementService:
 
         if target is None:
             raise HTTPException(status_code=503, detail="No eligible target backend node available")
-        if self._node_role(target, default=NodeRole.backend.value) != NodeRole.backend.value:
+        if target.role != NodeRole.backend.value:
             raise HTTPException(status_code=409, detail="Target node role must be backend")
         if not target.is_active or not target.is_enabled or target.is_draining:
             raise HTTPException(status_code=409, detail="Target backend node is not eligible")
 
         placements = await self.placement_repository.list_active(backend_node_id=payload.source_backend_id)
         active_placements = [p for p in placements if p.desired_state == PlacementDesiredState.active.value]
-
-        gateway_ids = {p.gateway_node_id for p in active_placements if p.gateway_node_id is not None}
-        gateway_ids.update(await self._list_active_gateway_ids())
-        for gateway_id in gateway_ids:
-            await self.backend_peer_repository.ensure_active_pair(
-                backend_node_id=target.id,
-                gateway_node_id=gateway_id,
-            )
 
         now = datetime.now(timezone.utc)
         if active_placements:
@@ -134,32 +112,6 @@ class UserPlacementService:
             target_backend_id=target.id,
             migrated_count=len(active_placements),
         )
-
-    @staticmethod
-    def _node_role(node: VpnNode, *, default: str) -> str:
-        role = getattr(node, "role", None)
-        if isinstance(role, str):
-            return role
-        return default
-
-    async def _list_active_gateway_ids(self) -> set[UUID]:
-        rows = await self.node_repository.list_public(role=NodeRole.gateway.value)
-        if not isinstance(rows, list):
-            return set()
-
-        gateway_ids: set[UUID] = set()
-        for row in rows:
-            if not getattr(row, "is_active", True):
-                continue
-            if not getattr(row, "is_enabled", True):
-                continue
-            if getattr(row, "is_draining", False):
-                continue
-            public_domain = (getattr(row, "public_domain", "") or "").strip()
-            if not public_domain:
-                continue
-            gateway_ids.add(row.id)
-        return gateway_ids
 
     async def list_placements(
             self,
@@ -185,15 +137,15 @@ class PlacementAgentService:
         self.placement_repository = UserPlacementRepository(session)
         self.node_agent_state_repository = NodeAgentStateRepository(session)
 
-    async def get_page_for_gateway(
+    async def get_page_for_backend(
             self,
             *,
             node: VpnNode,
             cursor: str | None,
             limit: int,
     ) -> PlacementPageOut:
-        if getattr(node, "role", None) != NodeRole.gateway.value:
-            raise HTTPException(status_code=403, detail="Node role must be gateway")
+        if node.role != NodeRole.backend.value:
+            raise HTTPException(status_code=403, detail="Node role must be backend")
         parsed: tuple[int, UUID] | None = None
         if cursor:
             try:
@@ -202,11 +154,10 @@ class PlacementAgentService:
             except Exception as exc:
                 raise ValueError(f"Invalid cursor format: {cursor!r}") from exc
 
-        rows = await self.placement_repository.list_for_gateway_with_keys_page(
-            gateway_node_id=node.id,
+        rows = await self.placement_repository.list_for_backend_with_keys_page(
+            backend_node_id=node.id,
             cursor=parsed,
             limit=limit,
-            include_unbound=True,
         )
         items = self._build_items(rows)
         next_cursor = None
@@ -215,21 +166,21 @@ class PlacementAgentService:
             next_cursor = f"{last.op_version}:{last.id}"
         return PlacementPageOut(items=items, next_cursor=next_cursor)
 
-    async def report_for_gateway(
+    async def report_for_backend(
             self,
             *,
             node: VpnNode,
             placement_id: UUID,
             payload: PlacementReportIn,
     ) -> PlacementReportStatus:
-        if getattr(node, "role", None) != NodeRole.gateway.value:
-            raise HTTPException(status_code=403, detail="Node role must be gateway")
+        if node.role != NodeRole.backend.value:
+            raise HTTPException(status_code=403, detail="Node role must be backend")
         placement = await self.placement_repository.get_by_id(placement_id)
         if not placement:
             raise HTTPException(status_code=404, detail="Placement not found")
 
-        if placement.gateway_node_id is not None and placement.gateway_node_id != node.id:
-            raise HTTPException(status_code=403, detail="Placement does not belong to this gateway")
+        if placement.backend_node_id != node.id:
+            raise HTTPException(status_code=403, detail="Placement does not belong to this backend")
 
         if payload.op_version != placement.op_version:
             NODE_PLACEMENT_REPORT_TOTAL.labels(status="skipped_stale").inc()
@@ -244,13 +195,13 @@ class PlacementAgentService:
 
         now = datetime.now(timezone.utc)
         applied_state_value: str = payload.applied_state
-        updated_rows = await self.placement_repository.apply_gateway_report(
+        updated_rows = await self.placement_repository.apply_backend_report(
             placement_id=placement_id,
             expected_op_version=payload.op_version,
             applied_state=applied_state_value,
             applied_version=payload.op_version,
             updated_at=now,
-            reporter_gateway_id=node.id,
+            reporter_backend_id=node.id,
         )
         if updated_rows == 0:
             NODE_PLACEMENT_REPORT_TOTAL.labels(status="skipped_stale").inc()
@@ -293,7 +244,6 @@ class PlacementAgentService:
                     applied_state=PlacementAppliedState(placement.applied_state),
                     applied_version=placement.applied_version,
                     backend_node_id=placement.backend_node_id,
-                    gateway_node_id=placement.gateway_node_id,
                     protocol=VpnProtocol(key.protocol),
                     client_id=key.client_id,
                     transport=VpnTransport(key.transport),

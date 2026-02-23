@@ -24,16 +24,22 @@ NODE_HEARTBEAT_TOTAL = Counter(
     "Node heartbeat events",
 )
 
+NODE_SYNC_REPORT_TOTAL = Counter(
+    "node_sync_report_total",
+    "Node sync report events",
+    ["status"],
+)
+
 NODE_PLACEMENT_REPORT_TOTAL = Counter(
     "node_placement_report_total",
     "Placement reconciliation reports",
     ["status"],
 )
 
-NODE_BACKEND_PEER_REPORT_TOTAL = Counter(
-    "node_backend_peer_report_total",
-    "Backend peer reconciliation reports",
-    ["status"],
+CONNECT_TELEMETRY_TOTAL = Counter(
+    "connect_telemetry_total",
+    "Client connect telemetry events processed",
+    ["event", "status", "action"],
 )
 
 # ── Probe ───────────────────────────────────────────

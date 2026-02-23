@@ -1,6 +1,7 @@
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Optional
 from enum import Enum
+from uuid import UUID
 
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -58,22 +59,6 @@ class NodeRoleUpdateIn(BaseModel):
     role: NodeRole
 
 
-class NodeAgentStateCreate(BaseModel):
-    node_id: str
-    agent_version: str
-    is_healthy: bool
-    last_seen_at: datetime
-    last_sync_at: datetime | None
-    details: Dict = Field(default_factory=dict)
-
-
-class NodeAgentStateUpdate(BaseModel):
-    agent_version: str | None = None
-    is_healthy: bool | None = None
-    last_seen_at: datetime | None = None
-    last_sync_at: datetime | None = None
-    details: Dict | None = None
-
 class HeartbeatStats(BaseModel):
     poll_count: int
     applied: int
@@ -90,10 +75,37 @@ class HeartbeatDetails(BaseModel):
     stats: HeartbeatStats
 
 
+class NodeSyncDetails(BaseModel):
+    synced_count: int = Field(ge=0)
+    reported_at: datetime
+
+
+class NodeAgentDetails(BaseModel):
+    runtime: HeartbeatRuntime | None = None
+    stats: HeartbeatStats | None = None
+    sync: NodeSyncDetails | None = None
+
+    model_config = ConfigDict(extra="allow")
+
+
 class NodeHeartbeatIn(BaseModel):
     agent_version: str
     is_healthy: bool
     details: HeartbeatDetails
+
+
+class NodeSyncReportIn(BaseModel):
+    synced_count: int = Field(ge=0)
+    config_version: int | None = Field(default=None, ge=0)
+
+
+class NodeSyncReportStatus(str, Enum):
+    accepted = "accepted"
+    skipped = "skipped"
+
+
+class NodeSyncReportOut(BaseModel):
+    status: NodeSyncReportStatus
 
 
 class NodeAgentStateOut(BaseModel):
@@ -101,7 +113,7 @@ class NodeAgentStateOut(BaseModel):
     agent_version: str
     is_healthy: bool
     last_seen_at: datetime
-    details: Dict
+    details: dict[str, object]
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -111,9 +123,28 @@ class NodeHeartbeatInternal(BaseModel):
     agent_version: str
     is_healthy: bool
     last_seen_at: datetime
-    details: Dict
+    details: dict[str, object]
+
 
 class NodeAgentInitialOut(BaseModel):
     node_id: str
     node_auth_token: str
 
+
+class NodeAgentStateCreate(BaseModel):
+    node_id: UUID
+    agent_version: str
+    is_healthy: bool
+    last_seen_at: datetime
+    last_sync_at: datetime | None
+    last_config_version: int | None = Field(default=None, ge=0)
+    details: dict[str, object]
+
+
+class NodeAgentStateUpdate(BaseModel):
+    agent_version: str | None = None
+    is_healthy: bool | None = None
+    last_seen_at: datetime | None = None
+    last_sync_at: datetime | None = None
+    last_config_version: int | None = Field(default=None, ge=0)
+    details: dict[str, object] | None = None

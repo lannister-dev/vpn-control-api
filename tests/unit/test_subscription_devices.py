@@ -100,7 +100,6 @@ async def test_revoke_device_success(async_session, redis_client):
     svc.vpn_key_repository.get_by_id.return_value = key
     placement = MagicMock()
     placement.backend_node_id = uuid4()
-    placement.gateway_node_id = uuid4()
     placement.sticky_until = None
     svc.placement_repository.get_by_key_id.return_value = placement
 
@@ -133,7 +132,6 @@ async def test_revoke_device_idempotent(async_session, redis_client):
     svc.vpn_key_repository.get_by_id.return_value = key
     placement = MagicMock()
     placement.backend_node_id = uuid4()
-    placement.gateway_node_id = uuid4()
     placement.sticky_until = None
     svc.placement_repository.get_by_key_id.return_value = placement
 
