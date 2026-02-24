@@ -23,6 +23,7 @@ from services.nodes.schemas import NodeRole
 from services.placements.repository import UserPlacementRepository
 from services.placements.schemas import PlacementDesiredState
 from services.routes.repository import RouteRepository
+from services.routing.selector import RouteSelector
 from services.routing.service import RoutingService
 from services.users.repository import UserRepository
 from services.vpn.keys.repository import VpnKeyRepository
@@ -55,6 +56,11 @@ class ConnectService:
         self.placement_repository = UserPlacementRepository(session)
         self.route_repository = RouteRepository(session)
         self.routing_service = RoutingService(session)
+        self.route_selector = RouteSelector[ResolvedRouteInternal](
+            get_backend_id=lambda item: item.route.backend_node_id,
+            get_transport_key=lambda item: (item.transport_security, item.transport_network),
+            get_route_id=lambda item: item.route.route_id,
+        )
 
     async def connect_routeset(self, payload: ConnectRouteSetIn) -> ConnectRouteSetOut:
         user = await self.user_repository.get_by_id(payload.user_id)
@@ -73,7 +79,7 @@ class ConnectService:
 
         if selected_backend is None:
             selected_backend = await self._select_backend(preferred_region=payload.preferred_region)
-            selected_backend_id = self._as_uuid(selected_backend.id)
+            selected_backend_id = self._as_uuid(str(selected_backend.id))
             migration_reason = "connect_initial" if placement is None else "connect_rebalance"
             placement = await self.placement_repository.upsert_set_pending(
                 key_id=key_id,
@@ -85,7 +91,7 @@ class ConnectService:
             if not placement:
                 raise HTTPException(status_code=500, detail="Failed to create placement")
         elif placement is None:
-            selected_backend_id = self._as_uuid(selected_backend.id)
+            selected_backend_id = self._as_uuid(str(selected_backend.id))
             # Defensive fallback: placement should always exist for active backend.
             placement = await self.placement_repository.upsert_set_pending(
                 key_id=key_id,
@@ -132,7 +138,7 @@ class ConnectService:
                     transport_network=(transport_profile.network or "").strip().lower(),
                 )
             )
-        routes = self._select_routes_with_fallback(
+        routes = self.route_selector.select(
             routes=resolved_routes,
             preferred_backend_id=preferred_node_id,
             max_routes=payload.max_routes,
@@ -161,122 +167,6 @@ class ConnectService:
             backoff_steps_sec=refresh_policy.backoff_steps_sec,
             routes=route_out_items,
         )
-
-
-    def _select_routes_with_fallback(
-            self,
-            *,
-            routes: list[ResolvedRouteInternal],
-            preferred_backend_id: UUID,
-            max_routes: int,
-    ) -> list[ResolvedRouteInternal]:
-        if max_routes <= 0:
-            return []
-        if max_routes == 1:
-            return routes[:1]
-
-        primary = [route for route in routes if route.route.backend_node_id == preferred_backend_id]
-        fallback = [route for route in routes if route.route.backend_node_id != preferred_backend_id]
-
-        primary_target = min(2, max_routes - 1, len(primary))
-        fallback_target = min(max_routes - primary_target, len(fallback))
-
-        selected: list[ResolvedRouteInternal] = []
-        selected.extend(primary[:primary_target])
-        selected_fallback, fallback_remainder = self._select_fallback_with_backend_diversity(
-            fallback=fallback,
-            limit=fallback_target,
-        )
-        selected.extend(selected_fallback)
-
-        if len(selected) < max_routes:
-            primary_remainder = primary[primary_target:]
-            selected.extend(primary_remainder[: max_routes - len(selected)])
-            if len(selected) < max_routes:
-                selected.extend(fallback_remainder[: max_routes - len(selected)])
-
-        selected = selected[:max_routes]
-        return self._ensure_transport_insurance(
-            selected=selected,
-            all_routes=routes,
-            preferred_backend_id=preferred_backend_id,
-            max_routes=max_routes,
-        )
-
-    def _ensure_transport_insurance(
-            self,
-            *,
-            selected: list[ResolvedRouteInternal],
-            all_routes: list[ResolvedRouteInternal],
-            preferred_backend_id: UUID,
-            max_routes: int,
-    ) -> list[ResolvedRouteInternal]:
-        if len(selected) < 2:
-            return selected
-
-        primary_transport = (selected[0].transport_security, selected[0].transport_network)
-        if any(
-                (route.transport_security, route.transport_network) != primary_transport
-                for route in selected[1:]
-        ):
-            return selected
-
-        selected_ids = {route.route.route_id for route in selected}
-        candidates = [route for route in all_routes if route.route.route_id not in selected_ids]
-        candidates = [
-            route
-            for route in candidates
-            if (route.transport_security, route.transport_network) != primary_transport
-        ]
-        if not candidates:
-            return selected
-
-        insurance = next(
-            (route for route in candidates if route.route.backend_node_id != preferred_backend_id),
-            candidates[0],
-        )
-
-        if len(selected) < max_routes:
-            return [*selected, insurance]
-
-        replace_idx = None
-        for idx in range(len(selected) - 1, 0, -1):
-            if (selected[idx].transport_security, selected[idx].transport_network) == primary_transport:
-                replace_idx = idx
-                break
-        if replace_idx is None:
-            replace_idx = len(selected) - 1
-        selected[replace_idx] = insurance
-
-        return selected
-
-    def _select_fallback_with_backend_diversity(
-            self,
-            *,
-            fallback: list[ResolvedRouteInternal],
-            limit: int,
-    ) -> tuple[list[ResolvedRouteInternal], list[ResolvedRouteInternal]]:
-        if limit <= 0:
-            return [], fallback
-
-        selected: list[ResolvedRouteInternal] = []
-        remainder: list[ResolvedRouteInternal] = []
-        used_backends: set[UUID] = set()
-
-        for route in fallback:
-            backend_id = route.route.backend_node_id
-            if len(selected) < limit and backend_id not in used_backends:
-                selected.append(route)
-                used_backends.add(backend_id)
-            else:
-                remainder.append(route)
-
-        if len(selected) < limit and remainder:
-            needed = limit - len(selected)
-            selected.extend(remainder[:needed])
-            remainder = remainder[needed:]
-
-        return selected, remainder
 
     async def _resolve_routeset_key(self, *, payload: ConnectRouteSetIn):
         if payload.key_id is not None:

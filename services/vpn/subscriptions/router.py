@@ -5,11 +5,14 @@ from fastapi import (
     Depends,
     HTTPException,
     Request,
+    Response,
     status,
 )
 from fastapi.responses import PlainTextResponse
 from services.auth.dependencies import admin_auth
 
+from services.vpn.subscriptions.adapter import SubscriptionPublicAdapter
+from services.vpn.subscriptions.dependencies import get_subscription_public_adapter
 from services.vpn.subscriptions.schemas import (
     SubscriptionCreateIn,
     SubscriptionCreatedOut,
@@ -28,7 +31,6 @@ from services.vpn.subscriptions.exceptions import (
 )
 from services.vpn.subscriptions.service import get_subscription_service, SubscriptionService
 from shared.monitoring.metrics import SUBSCRIPTION_REQUEST_TOTAL
-from services.config import get_settings
 
 router = APIRouter(prefix="/subscriptions", tags=["Subscriptions"])
 
@@ -60,10 +62,10 @@ async def get_subscription_config(
         token: str,
         request: Request,
         service: SubscriptionService = Depends(get_subscription_service),
+        adapter: SubscriptionPublicAdapter = Depends(get_subscription_public_adapter),
 ):
     try:
-        settings = get_settings()
-        hwid = request.headers.get(settings.subscriptions.hwid_header)
+        hwid = request.headers.get(adapter.hwid_header)
         user_agent = request.headers.get("user-agent")
 
         payload, etag, not_modified = await service.build_payload(
@@ -72,55 +74,33 @@ async def get_subscription_config(
             user_agent=user_agent,
             if_none_match=request.headers.get("if-none-match"),
         )
-        if not_modified:
-            SUBSCRIPTION_REQUEST_TOTAL.labels(result="not_modified").inc()
-            return PlainTextResponse(status_code=status.HTTP_304_NOT_MODIFIED)
+        public_response = adapter.build_success_response(
+            etag=etag,
+            payload=payload,
+            not_modified=not_modified,
+        )
+        SUBSCRIPTION_REQUEST_TOTAL.labels(result=public_response.metric_result).inc()
+        if public_response.payload is None:
+            return Response(status_code=public_response.status_code, headers=public_response.headers)
 
-        SUBSCRIPTION_REQUEST_TOTAL.labels(result="success").inc()
         return PlainTextResponse(
-            content=payload, headers={"ETag": etag}
+            content=public_response.payload,
+            status_code=public_response.status_code,
+            headers=public_response.headers,
         )
-
-    except SubscriptionNotFound:
-        SUBSCRIPTION_REQUEST_TOTAL.labels(result="not_found").inc()
-        raise HTTPException(status_code=404, detail="Subscription not found")
-
-    except SubscriptionHwidRequired:
-        SUBSCRIPTION_REQUEST_TOTAL.labels(result="hwid_required").inc()
-        raise HTTPException(status_code=404, detail="Subscription not found")
-
-    except SubscriptionDeviceLimitReached:
-        SUBSCRIPTION_REQUEST_TOTAL.labels(result="device_limit").inc()
-        raise HTTPException(status_code=403, detail="Device limit reached")
-
-    except SubscriptionInactive:
-        SUBSCRIPTION_REQUEST_TOTAL.labels(result="inactive").inc()
-        raise HTTPException(status_code=403, detail="Subscription is not active")
-
-    except SubscriptionExpired:
-        SUBSCRIPTION_REQUEST_TOTAL.labels(result="expired").inc()
-        raise HTTPException(status_code=403, detail="Subscription is not active")
-
-    except SubscriptionTokenExpired:
-        SUBSCRIPTION_REQUEST_TOTAL.labels(result="token_expired").inc()
-        raise HTTPException(status_code=403, detail="Subscription is not active")
-
-    except SubscriptionRateLimited:
-        SUBSCRIPTION_REQUEST_TOTAL.labels(result="rate_limited").inc()
-        raise HTTPException(status_code=429, detail="Rate limit exceeded")
-
-    except SubscriptionBuild as exc:
-        SUBSCRIPTION_REQUEST_TOTAL.labels(result="build_error").inc()
-        msg = str(exc)
-        if msg.startswith("No available "):
-            raise HTTPException(
-                status_code=503,
-                detail=f"Failed to build subscription: {exc}",
-            )
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to build subscription: {exc}"
-        )
+    except (
+            SubscriptionNotFound,
+            SubscriptionHwidRequired,
+            SubscriptionDeviceLimitReached,
+            SubscriptionInactive,
+            SubscriptionExpired,
+            SubscriptionTokenExpired,
+            SubscriptionRateLimited,
+            SubscriptionBuild,
+    ) as exc:
+        mapped = adapter.map_error(exc)
+        SUBSCRIPTION_REQUEST_TOTAL.labels(result=mapped.metric_result).inc()
+        raise HTTPException(status_code=mapped.status_code, detail=mapped.detail)
 
 
 #================== ADMINS ==================

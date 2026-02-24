@@ -12,6 +12,23 @@ SUBSCRIPTION_BUILD_DURATION = Histogram(
     "Time to build subscription payload",
 )
 
+SUBSCRIPTION_CACHE_TOTAL = Counter(
+    "subscription_cache_total",
+    "Subscription response cache operations by result",
+    ["result"],
+)
+
+SUBSCRIPTION_PAYLOAD_SIZE_BYTES = Histogram(
+    "subscription_payload_size_bytes",
+    "Built subscription payload size in bytes",
+)
+
+SUBSCRIPTION_PAYLOAD_GUARDRAIL_TOTAL = Counter(
+    "subscription_payload_guardrail_total",
+    "Subscription payload guardrail outcomes",
+    ["result"],
+)
+
 # ── Node Agent ─────────────────────────────────────────────────
 NODE_BOOTSTRAP_TOTAL = Counter(
     "node_bootstrap_total",

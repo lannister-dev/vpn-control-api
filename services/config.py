@@ -48,6 +48,16 @@ class SubscriptionsConfig:
     require_hwid_default: bool = False
     max_devices_default: int = 5
     hwid_header: str = "x-hwid"
+    smart_route_max_count: int = 6
+    response_cache_ttl_sec: int = 15
+    response_max_payload_bytes: int = 32768
+    public_base_url: str = ""
+    happ_profile_title: str = "VPN"
+    happ_profile_update_interval_hours: int = 24
+    happ_support_url: str = ""
+    happ_profile_web_page_url: str = ""
+    happ_provider_id: str = ""
+    happ_routing: str = ""
 
 
 @dataclass
@@ -157,7 +167,17 @@ def get_settings() -> Settings:
     subscriptions = SubscriptionsConfig(
         require_hwid_default=env.bool("SUBSCRIPTIONS_REQUIRE_HWID_DEFAULT", default=False),
         max_devices_default=env.int("SUBSCRIPTIONS_MAX_DEVICES_DEFAULT", default=5),
-        hwid_header=env.str("SUBSCRIPTIONS_HWID_HEADER", default="x-hwid").lower(),
+        hwid_header=env.str("SUBSCRIPTIONS_HWID_HEADER", default="x-hwid"),
+        smart_route_max_count=env.int("SUBSCRIPTIONS_SMART_ROUTE_MAX_COUNT", default=6),
+        response_cache_ttl_sec=env.int("SUBSCRIPTIONS_RESPONSE_CACHE_TTL_SEC", default=15),
+        response_max_payload_bytes=env.int("SUBSCRIPTIONS_RESPONSE_MAX_PAYLOAD_BYTES", default=32768),
+        public_base_url=env.str("SUBSCRIPTIONS_PUBLIC_BASE_URL", default=""),
+        happ_profile_title=env.str("SUBSCRIPTIONS_HAPP_PROFILE_TITLE", default="VPN"),
+        happ_profile_update_interval_hours=env.int("SUBSCRIPTIONS_HAPP_PROFILE_UPDATE_INTERVAL_HOURS", default=24),
+        happ_support_url=env.str("SUBSCRIPTIONS_HAPP_SUPPORT_URL", default=""),
+        happ_profile_web_page_url=env.str("SUBSCRIPTIONS_HAPP_PROFILE_WEB_PAGE_URL", default=""),
+        happ_provider_id=env.str("SUBSCRIPTIONS_HAPP_PROVIDER_ID", default=""),
+        happ_routing=env.str("SUBSCRIPTIONS_HAPP_ROUTING", default=""),
     )
 
     node_agent = NodeAgentConfig(
@@ -172,33 +192,20 @@ def get_settings() -> Settings:
     )
 
     probe = ProbeConfig(
-        # Backward compatibility for legacy env name.
-        target_port=env.int(
-            "PROBE_TARGET_PORT",
-            default=env.int("DEFAULT_TARGET_PORT", default=443),
-        ),
+        target_port=env.int("PROBE_TARGET_PORT", default=443),
         retention_days= env.int("PROBE_RETENTION_DAYS", default=30),
         auto_route_health_enabled=env.bool("PROBE_AUTO_ROUTE_HEALTH_ENABLED", default=True),
         route_block_cooldown_hours=env.int("PROBE_ROUTE_BLOCK_COOLDOWN_HOURS", default=6),
         auto_drain_migrate_enabled=env.bool("PROBE_AUTO_DRAIN_MIGRATE_ENABLED", default=False),
         auto_drain_tick_sec=env.int("PROBE_AUTO_DRAIN_TICK_SEC", default=120),
-        auto_drain_source=(env.str("PROBE_AUTO_DRAIN_SOURCE", default="").strip() or None),
+        auto_drain_source=env.str("PROBE_AUTO_DRAIN_SOURCE", default=""),
         auto_drain_require_recent_failure=env.bool("PROBE_AUTO_DRAIN_REQUIRE_RECENT_FAILURE", default=True),
         auto_drain_max_probe_age_sec=env.int("PROBE_AUTO_DRAIN_MAX_PROBE_AGE_SEC", default=600),
-        auto_drain_min_consecutive_failures=env.int(
-            "PROBE_AUTO_DRAIN_MIN_CONSECUTIVE_FAILURES",
-            default=2,
-        ),
-        auto_drain_include_already_draining=env.bool(
-            "PROBE_AUTO_DRAIN_INCLUDE_ALREADY_DRAINING",
-            default=False,
-        ),
+        auto_drain_min_consecutive_failures=env.int("PROBE_AUTO_DRAIN_MIN_CONSECUTIVE_FAILURES", default=2),
+        auto_drain_include_already_draining=env.bool("PROBE_AUTO_DRAIN_INCLUDE_ALREADY_DRAINING", default=False),
         auto_drain_max_nodes=env.int("PROBE_AUTO_DRAIN_MAX_NODES", default=20),
-        auto_drain_target_backend_id=(env.str("PROBE_AUTO_DRAIN_TARGET_BACKEND_ID", default="").strip() or None),
-        auto_drain_last_migration_reason=env.str(
-            "PROBE_AUTO_DRAIN_LAST_MIGRATION_REASON",
-            default="probe_auto_failure",
-        ),
+        auto_drain_target_backend_id=env.str("PROBE_AUTO_DRAIN_TARGET_BACKEND_ID", default=""),
+        auto_drain_last_migration_reason=env.str("PROBE_AUTO_DRAIN_LAST_MIGRATION_REASON",default="probe_auto_failure"),
     )
 
     routes = RoutesConfig(

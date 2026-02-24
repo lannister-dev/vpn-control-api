@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field, ConfigDict
@@ -38,6 +39,7 @@ class SubscriptionInternalUpdate(BaseModel):
     max_devices: int | None = Field(default=None, gt=0, le=100)
     root_vpn_key_id: UUID | None = None
     updated_at: datetime | None = None
+    client_id: UUID | None = None
 
 
 class SubscriptionCreatedOut(BaseModel):
@@ -45,6 +47,7 @@ class SubscriptionCreatedOut(BaseModel):
     client_id: UUID
     vpn_key_id: UUID | None = None
     token: str
+    subscription_url: str | None = None
     expires_at: datetime | None
     is_active: bool
 
@@ -90,6 +93,13 @@ class SubscriptionDeviceCreate(BaseModel):
     user_agent: str | None
 
 
+class SubscriptionDeviceInternalUpdate(BaseModel):
+    is_active: bool | None = None
+    last_seen_at: datetime | None = None
+    user_agent: str | None = None
+    updated_at: datetime | None = None
+
+
 class SubscriptionDeviceOut(BaseModel):
     id: UUID
     subscription_id: UUID
@@ -102,3 +112,33 @@ class SubscriptionDeviceOut(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ResolvedSubscriptionRoute(BaseModel):
+    route_id: UUID
+    backend_node_id: UUID
+    transport_security: str
+    transport_network: str
+    uri: str
+    route: Any
+    node: Any
+    transport_profile: Any
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+
+class SubscriptionPublicSuccessResponse(BaseModel):
+    metric_result: str
+    status_code: int
+    payload: str | None
+    headers: dict[str, str]
+
+    model_config = ConfigDict(frozen=True)
+
+
+class SubscriptionPublicErrorResponse(BaseModel):
+    metric_result: str
+    status_code: int
+    detail: str
+
+    model_config = ConfigDict(frozen=True)

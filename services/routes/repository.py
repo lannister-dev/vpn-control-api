@@ -78,9 +78,7 @@ class RouteRepository(BaseRepository[Route]):
             case(
                 (Route.health_status == "healthy", 0),
                 (Route.health_status == "warming_up", 1),
-                (Route.health_status == "degraded", 2),
-                (Route.health_status == "suspected", 3),
-                else_=4,
+                else_=2,
             )
         )
         stmt = (
@@ -91,7 +89,7 @@ class RouteRepository(BaseRepository[Route]):
             .where(
                 Route.is_active.is_(True),
                 Route.effective_weight > 0,
-                Route.health_status.in_(("healthy", "warming_up", "degraded", "suspected")),
+                Route.health_status.in_(("healthy", "warming_up")),
                 TransportProfile.is_active.is_(True),
                 VpnNode.is_active.is_(True),
                 VpnNode.is_enabled.is_(True),
@@ -131,7 +129,7 @@ class RouteRepository(BaseRepository[Route]):
             .where(
                 Route.is_active.is_(True),
                 Route.effective_weight > 0,
-                Route.health_status.in_(("healthy", "warming_up", "degraded", "suspected")),
+                Route.health_status.in_(("healthy", "warming_up")),
                 TransportProfile.is_active.is_(True),
                 VpnNode.is_active.is_(True),
                 VpnNode.is_enabled.is_(True),
@@ -153,7 +151,7 @@ class RouteRepository(BaseRepository[Route]):
             .where(
                 Route.is_active.is_(True),
                 Route.effective_weight > 0,
-                Route.health_status.in_(("healthy", "warming_up", "degraded", "suspected")),
+                Route.health_status.in_(("healthy", "warming_up")),
                 TransportProfile.is_active.is_(True),
                 VpnNode.is_active.is_(True),
                 VpnNode.is_enabled.is_(True),
