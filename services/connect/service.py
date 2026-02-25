@@ -40,6 +40,7 @@ from shared.profiles.schemas import (
 )
 from shared.profiles.transport import VlessUri
 from shared.redis.client import RedisClient, get_redis_client
+from shared.utils.node_display import format_node_display_name
 from shared.utils.logger import StructuredLogger
 
 
@@ -241,6 +242,10 @@ class ConnectService:
         domain = edge_domain or node.public_domain.strip()
         if not domain:
             return None
+        node_display_name = format_node_display_name(
+            node_name=str(node.name),
+            region=node.region,
+        )
 
         network = (transport_profile.network or "").strip().lower()
         security = (transport_profile.security or "").strip().lower()
@@ -260,7 +265,7 @@ class ConnectService:
                         "sni": domain,
                         "fp": fingerprint,
                     },
-                    remark=node.name,
+                    remark=node_display_name,
                 ).render()
             except Exception:
                 return None
@@ -276,7 +281,7 @@ class ConnectService:
         node_public = NodePublic(
             domain=domain,
             port=transport_profile.port,
-            remark=node.name,
+            remark=node_display_name,
             region=node.region,
         )
         try:
@@ -325,7 +330,7 @@ class ConnectService:
             return WsTlsProfile(
                 metadata=metadata,
                 client=WsTlsClientConfig(
-                    path="/ws",
+                    path="/api/v1/stream",
                     host=fallback_domain,
                     sni=fallback_domain,
                 ),
