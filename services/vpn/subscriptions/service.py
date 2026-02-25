@@ -196,12 +196,14 @@ class SubscriptionService:
         elif bound_key is not None:
             vpn_key_id = bound_key.id
 
+        base_subscription_url = f"{self.settings.subscriptions.public_base_url}{raw_token}"
+
         return SubscriptionCreatedOut(
             id=subscription.id,
             client_id=subscription.client_id,
             vpn_key_id=vpn_key_id,
             token=raw_token,
-            subscription_url=self._build_subscription_url(raw_token),
+            subscription_url=base_subscription_url,
             expires_at=subscription.expires_at,
             is_active=subscription.is_active,
         )
@@ -1008,12 +1010,6 @@ class SubscriptionService:
             else:
                 hwid_marker = hashlib.sha256(normalized.encode()).hexdigest()
         return f"sub:cfg:{token_hash}:{hwid_marker}"
-
-    def _build_subscription_url(self, raw_token: str) -> str | None:
-        base_url = self.settings.subscriptions.public_base_url.strip().rstrip("/")
-        if not base_url:
-            return None
-        return f"{base_url}/subscriptions/sub/{raw_token}"
 
     def _sub_payload_cache_index_key(self, *, token_hash: str) -> str:
         return f"sub:cfg:index:{token_hash}"
