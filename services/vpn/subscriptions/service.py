@@ -196,14 +196,14 @@ class SubscriptionService:
         elif bound_key is not None:
             vpn_key_id = bound_key.id
 
-        base_subscription_url = f"{self.settings.subscriptions.public_base_url}{raw_token}"
+        subscription_url = f"{self.settings.subscriptions.public_base_url}{raw_token}"
 
         return SubscriptionCreatedOut(
             id=subscription.id,
             client_id=subscription.client_id,
             vpn_key_id=vpn_key_id,
             token=raw_token,
-            subscription_url=base_subscription_url,
+            subscription_url=subscription_url,
             expires_at=subscription.expires_at,
             is_active=subscription.is_active,
         )

@@ -379,7 +379,7 @@ def test_route_selector_limits_size_and_keeps_fallback_diversity(service):
 @pytest.mark.asyncio
 async def test_create_subscription_includes_subscription_url_when_base_url_set(service):
     user_id = uuid4()
-    service.settings.subscriptions.public_base_url = "https://api.example.com"
+    service.settings.subscriptions.public_base_url = "https://api.example.com/subscriptions/sub/"
     service.user_repository.get_by_id = AsyncMock(return_value=MagicMock())
     sub = MagicMock()
     sub.id = uuid4()
@@ -403,14 +403,13 @@ async def test_create_subscription_includes_subscription_url_when_base_url_set(s
             )
         )
 
-    assert out.subscription_url is not None
     assert out.subscription_url.startswith("https://api.example.com/subscriptions/sub/")
 
 
 @pytest.mark.asyncio
-async def test_create_subscription_url_is_none_when_base_url_empty(service):
+async def test_create_subscription_url_uses_base_url_as_is(service):
     user_id = uuid4()
-    service.settings.subscriptions.public_base_url = ""
+    service.settings.subscriptions.public_base_url = "https://api.example.com/custom-prefix/"
     service.user_repository.get_by_id = AsyncMock(return_value=MagicMock())
     sub = MagicMock()
     sub.id = uuid4()
@@ -434,7 +433,7 @@ async def test_create_subscription_url_is_none_when_base_url_empty(service):
             )
         )
 
-    assert out.subscription_url is None
+    assert out.subscription_url.startswith("https://api.example.com/custom-prefix/")
 
 
 def test_fit_routes_to_payload_limit_keeps_all_when_within_limit(service):

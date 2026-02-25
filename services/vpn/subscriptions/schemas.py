@@ -47,7 +47,7 @@ class SubscriptionCreatedOut(BaseModel):
     client_id: UUID
     vpn_key_id: UUID | None = None
     token: str
-    subscription_url: str | None = None
+    subscription_url: str
     expires_at: datetime | None
     is_active: bool
 
