@@ -1,7 +1,16 @@
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import String, Integer, ForeignKey, DateTime, JSON, Boolean, text
+from sqlalchemy import (
+    String,
+    Integer,
+    ForeignKey,
+    DateTime,
+    JSON,
+    Boolean,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import mapped_column, Mapped, relationship
 
 from shared.database.base_model import Base
@@ -24,6 +33,7 @@ class VpnNode(Base):
 
     assignments: Mapped[list["KeyAssignment"]] = relationship(back_populates="node")
     agent_state: Mapped["NodeAgentState"] = relationship(back_populates="node")
+    agent_identities: Mapped[list["NodeAgentIdentity"]] = relationship(back_populates="node")
 
 
 class NodeAgentState(Base):
@@ -39,3 +49,18 @@ class NodeAgentState(Base):
 
 
     node: Mapped["VpnNode"] = relationship(back_populates="agent_state")
+
+
+class NodeAgentIdentity(Base):
+    __tablename__ = "node_agent_identity"
+
+    node_id: Mapped[UUID] = mapped_column(ForeignKey("vpn_node.id"), nullable=False, index=True)
+    agent_instance_id: Mapped[UUID] = mapped_column(nullable=False)
+    auth_token_hash: Mapped[str] = mapped_column(String(length=64), nullable=False)
+
+    node: Mapped["VpnNode"] = relationship(back_populates="agent_identities")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "node_id", "agent_instance_id", name="uq_node_agent_identity_node_agent"),
+    )

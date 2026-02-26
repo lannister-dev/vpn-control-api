@@ -129,6 +129,7 @@ class NodeHeartbeatInternal(BaseModel):
 class NodeAgentInitialOut(BaseModel):
     node_id: str
     node_auth_token: str
+    agent_instance_id: str | None = None
 
 
 class NodeAgentStateCreate(BaseModel):

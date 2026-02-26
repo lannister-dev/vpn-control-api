@@ -2,12 +2,17 @@ import hashlib
 import logging
 import secrets
 from datetime import datetime, timezone
+from uuid import UUID
 
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.nodes.models import VpnNode
-from services.nodes.repository import NodeAgentStateRepository, VpnNodeRepository
+from services.nodes.repository import (
+    NodeAgentIdentityRepository,
+    NodeAgentStateRepository,
+    VpnNodeRepository,
+)
 from services.config import get_settings
 from services.nodes.schemas import (
     NodeAgentDetails,
@@ -38,15 +43,24 @@ class VpnNodeService:
         self.node_agent_state_repository = (
             NodeAgentStateRepository(session)
         )
+        self.node_agent_identity_repository = (
+            NodeAgentIdentityRepository(session)
+        )
         self.sync_report_debounce_sec = max(0, int(get_settings().node_agent.sync_report_debounce_sec))
 
-    async def initial(self, *, source_ip: str) -> NodeAgentInitialOut:
+    async def initial(
+            self,
+            *,
+            source_ip: str,
+            agent_instance_id: UUID | None = None,
+    ) -> NodeAgentInitialOut:
         """
         Initial node identity bootstrap.
 
         - identity source: internal_wg_ip (source_ip)
         - idempotent
-        - rotates auth token on every call
+        - when X-Agent-Instance-ID is provided, token is managed per agent instance
+        - legacy mode (no X-Agent-Instance-ID) keeps per-node token behavior
         """
 
         node = await self.vpn_node_repository.get_by_internal_ip(source_ip)
@@ -70,7 +84,7 @@ class VpnNodeService:
                 create_schema.model_dump()
             )
             NODE_BOOTSTRAP_TOTAL.labels(result="created").inc()
-        else:
+        elif agent_instance_id is None:
             update_schema = VpnNodeUpdate(
                 auth_token_hash=token_hash
             )
@@ -80,9 +94,18 @@ class VpnNodeService:
             )
             NODE_BOOTSTRAP_TOTAL.labels(result="rotated").inc()
 
+        if agent_instance_id is not None:
+            await self.node_agent_identity_repository.upsert_token(
+                node_id=node.id,
+                agent_instance_id=agent_instance_id,
+                token_hash=token_hash,
+            )
+            NODE_BOOTSTRAP_TOTAL.labels(result="identity_issued").inc()
+
         return NodeAgentInitialOut(
             node_id=str(node.id),
             node_auth_token=raw_token,
+            agent_instance_id=str(agent_instance_id) if agent_instance_id else None,
         )
 
     async def handle_heartbeat(

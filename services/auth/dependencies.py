@@ -1,4 +1,5 @@
 import secrets
+from uuid import UUID
 
 from fastapi import Header, Depends, HTTPException, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -15,6 +16,7 @@ node_bearer = HTTPBearer(auto_error=False)
 
 async def node_auth(
     x_node_id: str = Header(..., alias="X-Node-ID"),
+    x_agent_instance_id: UUID | None = Header(default=None, alias="X-Agent-Instance-ID"),
     credentials: HTTPAuthorizationCredentials | None = Security(node_bearer),
     service: VpnNodeService = Depends(get_vpn_node_service),
 ) -> VpnNode:
@@ -36,12 +38,24 @@ async def node_auth(
             detail="Node not found",
         )
 
-    if node.auth_token_hash != token_hash:
-        AUTH_ATTEMPT_TOTAL.labels(type="node", result="failure").inc()
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid node token",
+    if x_agent_instance_id is None:
+        if not secrets.compare_digest(node.auth_token_hash, token_hash):
+            AUTH_ATTEMPT_TOTAL.labels(type="node", result="failure").inc()
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid node token",
+            )
+    else:
+        identity = await service.node_agent_identity_repository.get_by_node_and_instance(
+            node_id=node.id,
+            agent_instance_id=x_agent_instance_id,
         )
+        if identity is None or not secrets.compare_digest(identity.auth_token_hash, token_hash):
+            AUTH_ATTEMPT_TOTAL.labels(type="node", result="failure").inc()
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid node token",
+            )
 
     AUTH_ATTEMPT_TOTAL.labels(type="node", result="success").inc()
     return node

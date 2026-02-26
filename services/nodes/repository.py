@@ -6,7 +6,7 @@ from sqlalchemy import select, func, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.nodes.models import VpnNode, NodeAgentState
+from services.nodes.models import VpnNode, NodeAgentState, NodeAgentIdentity
 from shared.database.base_repository import BaseRepository
 from shared.database.session import AsyncDatabase
 
@@ -101,6 +101,47 @@ class NodeAgentStateRepository(BaseRepository[NodeAgentState]):
             index_elements=[NodeAgentState.node_id],
             set_={
                 "last_sync_at": at,
+                "updated_at": func.now(),
+            },
+        )
+        await self.session.execute(stmt)
+
+
+class NodeAgentIdentityRepository(BaseRepository[NodeAgentIdentity]):
+    def __init__(self, session: AsyncSession):
+        super().__init__(NodeAgentIdentity, session)
+        self.session = session
+
+    async def get_by_node_and_instance(
+        self,
+        *,
+        node_id: UUID,
+        agent_instance_id: UUID,
+    ) -> NodeAgentIdentity | None:
+        stmt = (
+            select(NodeAgentIdentity)
+            .where(NodeAgentIdentity.node_id == node_id)
+            .where(NodeAgentIdentity.agent_instance_id == agent_instance_id)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def upsert_token(
+        self,
+        *,
+        node_id: UUID,
+        agent_instance_id: UUID,
+        token_hash: str,
+    ) -> None:
+        stmt = insert(NodeAgentIdentity).values(
+            node_id=node_id,
+            agent_instance_id=agent_instance_id,
+            auth_token_hash=token_hash,
+        )
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_node_agent_identity_node_agent",
+            set_={
+                "auth_token_hash": token_hash,
                 "updated_at": func.now(),
             },
         )

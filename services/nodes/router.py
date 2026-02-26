@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from starlette import status
 from starlette.requests import Request
 
@@ -34,13 +34,15 @@ router = APIRouter(prefix="/agent", tags=["Node Agent"])
     dependencies=[Depends(bootstrap_auth)],
 )
 async def initial(wg_request: Request,
+                  x_agent_instance_id: UUID | None = Header(default=None, alias="X-Agent-Instance-ID"),
                   service: VpnNodeService = Depends(get_vpn_node_service)):
     """
     Initial node bootstrap. Requires bootstrap token.
 
     Auth: Authorization: Bearer <bootstrap_token>
 
-    Idempotent: creates node on first call, rotates auth token on subsequent calls.
+    Idempotent: creates node on first call.
+    Supports per-agent credentials when X-Agent-Instance-ID is provided.
     Identity is derived from WireGuard source IP.
     """
     source_ip = wg_request.client.host
@@ -51,7 +53,10 @@ async def initial(wg_request: Request,
             detail="Cannot determine source IP",
         )
 
-    return await service.initial(source_ip=source_ip)
+    return await service.initial(
+        source_ip=source_ip,
+        agent_instance_id=x_agent_instance_id,
+    )
 
 
 @router.post("/heartbeat", summary="Node agent heartbeat")
