@@ -83,7 +83,8 @@ async def heartbeat(
 
         Auth:
         - Authorization: Bearer <token>
-        - X-Node-ID: <node_id>
+        - X-Agent-Instance-ID: <agent_instance_id>
+        - X-Node-ID: <node_id> (recommended, optional fallback exists)
         """
     await service.handle_heartbeat(
         node=node, payload=payload,

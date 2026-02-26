@@ -151,3 +151,21 @@ class NodeAgentIdentityRepository(BaseRepository[NodeAgentIdentity]):
             },
         )
         await self.session.execute(stmt)
+
+    async def get_by_instance_and_token_hash(
+        self,
+        *,
+        agent_instance_id: UUID,
+        token_hash: str,
+    ) -> NodeAgentIdentity | None:
+        stmt = (
+            select(NodeAgentIdentity)
+            .where(NodeAgentIdentity.agent_instance_id == agent_instance_id)
+            .where(NodeAgentIdentity.auth_token_hash == token_hash)
+            .limit(2)
+        )
+        result = await self.session.execute(stmt)
+        items = list(result.scalars().all())
+        if len(items) != 1:
+            return None
+        return items[0]
