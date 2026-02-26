@@ -23,7 +23,7 @@ def test_flag_emoji_from_country_code():
 
 def test_format_node_display_name_with_mapping():
     value = format_node_display_name(node_name="be-fi-1", region="fi")
-    assert value == "🇫🇮 Finland | be-fi-1"
+    assert value == "🇫🇮 Finland"
 
 
 def test_format_node_display_name_unknown_region_falls_back_to_node_name():
