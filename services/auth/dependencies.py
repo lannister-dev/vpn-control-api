@@ -39,23 +39,22 @@ async def node_auth(
         )
 
     if x_agent_instance_id is None:
-        if not secrets.compare_digest(node.auth_token_hash, token_hash):
-            AUTH_ATTEMPT_TOTAL.labels(type="node", result="failure").inc()
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid node token",
-            )
-    else:
-        identity = await service.node_agent_identity_repository.get_by_node_and_instance(
-            node_id=node.id,
-            agent_instance_id=x_agent_instance_id,
+        AUTH_ATTEMPT_TOTAL.labels(type="node", result="failure").inc()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="X-Agent-Instance-ID header required",
         )
-        if identity is None or not secrets.compare_digest(identity.auth_token_hash, token_hash):
-            AUTH_ATTEMPT_TOTAL.labels(type="node", result="failure").inc()
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid node token",
-            )
+
+    identity = await service.node_agent_identity_repository.get_by_node_and_instance(
+        node_id=node.id,
+        agent_instance_id=x_agent_instance_id,
+    )
+    if identity is None or not secrets.compare_digest(identity.auth_token_hash, token_hash):
+        AUTH_ATTEMPT_TOTAL.labels(type="node", result="failure").inc()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid node token",
+        )
 
     AUTH_ATTEMPT_TOTAL.labels(type="node", result="success").inc()
     return node

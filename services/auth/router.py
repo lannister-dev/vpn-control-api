@@ -22,7 +22,7 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 async def verify_node_token(
     node_id: UUID,
     token: str,
-    agent_instance_id: UUID | None = None,
+    agent_instance_id: UUID,
     service: VpnNodeService = Depends(get_vpn_node_service),
 ):
     node = await service.vpn_node_repository.get_by_id(node_id)
@@ -33,21 +33,14 @@ async def verify_node_token(
         )
 
     token_hash = AuthUtils.hash_node_token(token)
-    if agent_instance_id is None:
-        if not secrets.compare_digest(node.auth_token_hash, token_hash):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid node token",
-            )
-    else:
-        identity = await service.node_agent_identity_repository.get_by_node_and_instance(
-            node_id=node.id,
-            agent_instance_id=agent_instance_id,
+    identity = await service.node_agent_identity_repository.get_by_node_and_instance(
+        node_id=node.id,
+        agent_instance_id=agent_instance_id,
+    )
+    if identity is None or not secrets.compare_digest(identity.auth_token_hash, token_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid node token",
         )
-        if identity is None or not secrets.compare_digest(identity.auth_token_hash, token_hash):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid node token",
-            )
 
     return None

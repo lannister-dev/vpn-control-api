@@ -34,6 +34,7 @@ router = APIRouter(prefix="/agent", tags=["Node Agent"])
     dependencies=[Depends(bootstrap_auth)],
 )
 async def initial(wg_request: Request,
+                  x_node_key: str | None = Header(default=None, alias="X-Node-Key"),
                   x_agent_instance_id: UUID | None = Header(default=None, alias="X-Agent-Instance-ID"),
                   service: VpnNodeService = Depends(get_vpn_node_service)):
     """
@@ -42,8 +43,9 @@ async def initial(wg_request: Request,
     Auth: Authorization: Bearer <bootstrap_token>
 
     Idempotent: creates node on first call.
-    Supports per-agent credentials when X-Agent-Instance-ID is provided.
-    Identity is derived from WireGuard source IP.
+    Node identity is strict: X-Node-Key is required.
+    Per-agent auth is strict: X-Agent-Instance-ID is required.
+    Source IP is used as metadata (internal_wg_ip), not as identity fallback.
     """
     source_ip = wg_request.client.host
 
@@ -52,9 +54,20 @@ async def initial(wg_request: Request,
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot determine source IP",
         )
+    if not x_node_key or not x_node_key.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="X-Node-Key header required",
+        )
+    if x_agent_instance_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="X-Agent-Instance-ID header required",
+        )
 
     return await service.initial(
         source_ip=source_ip,
+        node_key=x_node_key,
         agent_instance_id=x_agent_instance_id,
     )
 

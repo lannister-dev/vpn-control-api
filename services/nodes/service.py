@@ -22,7 +22,6 @@ from services.nodes.schemas import (
     NodeAgentInitialOut,
     NodeSyncDetails,
     NodeSyncReportIn,
-    VpnNodeUpdate,
     VpnNodeCreate,
     NodeRole,
 )
@@ -52,18 +51,21 @@ class VpnNodeService:
             self,
             *,
             source_ip: str,
-            agent_instance_id: UUID | None = None,
+            node_key: str,
+            agent_instance_id: UUID,
     ) -> NodeAgentInitialOut:
         """
         Initial node identity bootstrap.
 
-        - identity source: internal_wg_ip (source_ip)
+        - strict node identity source: node_key
         - idempotent
-        - when X-Agent-Instance-ID is provided, token is managed per agent instance
-        - legacy mode (no X-Agent-Instance-ID) keeps per-node token behavior
+        - strict per-agent auth token issuance by agent_instance_id
         """
 
-        node = await self.vpn_node_repository.get_by_internal_ip(source_ip)
+        normalized_node_key = node_key.strip()
+        if not normalized_node_key:
+            raise ValueError("node_key cannot be empty")
+        node = await self.vpn_node_repository.get_by_node_key(normalized_node_key)
 
         raw_token = secrets.token_urlsafe(32)
         token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
@@ -75,37 +77,28 @@ class VpnNodeService:
                 region="unknown",
                 public_domain="",
                 internal_wg_ip=source_ip,
+                node_key=normalized_node_key,
                 xray_api_port=10085,
                 agent_port=9000,
                 auth_token_hash=token_hash,
             )
+            create_schema.name = self._build_node_name(source_ip=source_ip, node_key=normalized_node_key)
 
             node = await self.vpn_node_repository.create(
                 create_schema.model_dump()
             )
             NODE_BOOTSTRAP_TOTAL.labels(result="created").inc()
-        elif agent_instance_id is None:
-            update_schema = VpnNodeUpdate(
-                auth_token_hash=token_hash
-            )
-            await self.vpn_node_repository.update_by_id(
-                node.id,
-                update_schema.model_dump(exclude_unset=True)
-            )
-            NODE_BOOTSTRAP_TOTAL.labels(result="rotated").inc()
-
-        if agent_instance_id is not None:
-            await self.node_agent_identity_repository.upsert_token(
-                node_id=node.id,
-                agent_instance_id=agent_instance_id,
-                token_hash=token_hash,
-            )
-            NODE_BOOTSTRAP_TOTAL.labels(result="identity_issued").inc()
+        await self.node_agent_identity_repository.upsert_token(
+            node_id=node.id,
+            agent_instance_id=agent_instance_id,
+            token_hash=token_hash,
+        )
+        NODE_BOOTSTRAP_TOTAL.labels(result="identity_issued").inc()
 
         return NodeAgentInitialOut(
             node_id=str(node.id),
             node_auth_token=raw_token,
-            agent_instance_id=str(agent_instance_id) if agent_instance_id else None,
+            agent_instance_id=str(agent_instance_id),
         )
 
     async def handle_heartbeat(
@@ -221,6 +214,13 @@ class VpnNodeService:
         if value.tzinfo is None:
             return value.replace(tzinfo=timezone.utc)
         return value.astimezone(timezone.utc)
+
+    @staticmethod
+    def _build_node_name(*, source_ip: str, node_key: str) -> str:
+        base = f"node-{source_ip.replace('.', '-')}"
+        suffix = node_key[:8]
+        candidate = f"{base}-{suffix}"
+        return candidate[:64]
 
 
 async def get_vpn_node_service(

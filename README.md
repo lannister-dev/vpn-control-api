@@ -19,6 +19,7 @@ Config notes:
 - Use `PROBE_TARGET_PORT` (legacy `DEFAULT_TARGET_PORT` is still supported for backward compatibility).
 - Current node-agent placements endpoint is `GET /api/v1/agent/placements/page`.
 - For multi-agent-per-node rollout, pass stable `X-Agent-Instance-ID` UUID on `/api/v1/agent/initial` and all authenticated `/api/v1/agent/*` calls.
+- Strict mode: `/api/v1/agent/initial` requires stable `X-Node-Key` and `X-Agent-Instance-ID` headers (no source-IP identity fallback).
 
 ## Artifact to Routes Bootstrap
 

@@ -16,7 +16,7 @@ async def test_initial_with_agent_instance_issues_identity_token_without_node_ro
     agent_instance_id = uuid4()
     existing_node = SimpleNamespace(id=node_id, auth_token_hash="old-node-hash")
     service.vpn_node_repository = SimpleNamespace(
-        get_by_internal_ip=AsyncMock(return_value=existing_node),
+        get_by_node_key=AsyncMock(return_value=existing_node),
         update_by_id=AsyncMock(),
         create=AsyncMock(),
     )
@@ -26,6 +26,7 @@ async def test_initial_with_agent_instance_issues_identity_token_without_node_ro
 
     out = await service.initial(
         source_ip="10.0.1.180",
+        node_key="node-180",
         agent_instance_id=agent_instance_id,
     )
 
@@ -38,14 +39,14 @@ async def test_initial_with_agent_instance_issues_identity_token_without_node_ro
 
 
 @pytest.mark.asyncio
-async def test_initial_legacy_mode_rotates_node_token(async_session):
+async def test_initial_strict_mode_creates_node_by_node_key(async_session):
     service = VpnNodeService(async_session)
-    node_id = uuid4()
-    existing_node = SimpleNamespace(id=node_id, auth_token_hash="old-node-hash")
+    created_node = SimpleNamespace(id=uuid4())
+    agent_instance_id = uuid4()
     service.vpn_node_repository = SimpleNamespace(
-        get_by_internal_ip=AsyncMock(return_value=existing_node),
+        get_by_node_key=AsyncMock(return_value=None),
         update_by_id=AsyncMock(),
-        create=AsyncMock(),
+        create=AsyncMock(return_value=created_node),
     )
     service.node_agent_identity_repository = SimpleNamespace(
         upsert_token=AsyncMock(),
@@ -53,11 +54,40 @@ async def test_initial_legacy_mode_rotates_node_token(async_session):
 
     out = await service.initial(
         source_ip="10.0.1.180",
-        agent_instance_id=None,
+        node_key="node-180",
+        agent_instance_id=agent_instance_id,
     )
 
-    assert out.node_id == str(node_id)
-    assert out.agent_instance_id is None
+    assert out.node_id == str(created_node.id)
+    assert out.agent_instance_id == str(agent_instance_id)
     assert out.node_auth_token
-    service.vpn_node_repository.update_by_id.assert_awaited_once()
-    service.node_agent_identity_repository.upsert_token.assert_not_awaited()
+    service.vpn_node_repository.create.assert_awaited_once()
+    service.vpn_node_repository.update_by_id.assert_not_awaited()
+    service.node_agent_identity_repository.upsert_token.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_initial_with_node_key_does_not_merge_into_different_key_node(async_session):
+    service = VpnNodeService(async_session)
+    created_node = SimpleNamespace(id=uuid4())
+    service.vpn_node_repository = SimpleNamespace(
+        get_by_node_key=AsyncMock(return_value=None),
+        update_by_id=AsyncMock(),
+        create=AsyncMock(return_value=created_node),
+    )
+    service.node_agent_identity_repository = SimpleNamespace(
+        upsert_token=AsyncMock(),
+    )
+
+    out = await service.initial(
+        source_ip="10.0.1.180",
+        node_key="node-b",
+        agent_instance_id=uuid4(),
+    )
+
+    assert out.node_id == str(created_node.id)
+    service.vpn_node_repository.create.assert_awaited_once()
+    create_payload = service.vpn_node_repository.create.await_args.args[0]
+    assert create_payload["node_key"] == "node-b"
+    assert create_payload["name"].startswith("node-10-0-1-180-node-b")
+    service.vpn_node_repository.update_by_id.assert_not_awaited()

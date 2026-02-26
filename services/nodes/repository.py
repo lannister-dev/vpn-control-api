@@ -20,6 +20,11 @@ class VpnNodeRepository(BaseRepository[VpnNode]):
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_by_node_key(self, node_key: str) -> VpnNode | None:
+        stmt = select(self.model).where(self.model.node_key == node_key)
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def list_by_ids(self, node_ids: list[UUID]) -> list[VpnNode]:
         if not node_ids:
             return []

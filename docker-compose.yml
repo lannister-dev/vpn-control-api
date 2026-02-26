@@ -31,6 +31,15 @@ x-deploy-common: &deploy-common
 services:
   control-api:
     image: harbor.lannister-dev.ru/vpn-service/control-api:${IMAGE_TAG:-latest}
+    command:
+      - uvicorn
+      - app:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --proxy-headers
+      - --forwarded-allow-ips=*
     deploy:
       <<: *deploy-common
       placement:

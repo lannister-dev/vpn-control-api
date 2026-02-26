@@ -13,30 +13,6 @@ from services.auth.utils import AuthUtils
 
 
 @pytest.mark.asyncio
-async def test_node_auth_legacy_token_success():
-    node_id = uuid4()
-    raw_token = "legacy-token"
-    node = SimpleNamespace(
-        id=node_id,
-        auth_token_hash=AuthUtils.hash_node_token(raw_token),
-    )
-    service = SimpleNamespace(
-        vpn_node_repository=SimpleNamespace(get_by_id=AsyncMock(return_value=node)),
-        node_agent_identity_repository=SimpleNamespace(get_by_node_and_instance=AsyncMock()),
-    )
-
-    authed_node = await node_auth(
-        x_node_id=str(node_id),
-        x_agent_instance_id=None,
-        credentials=HTTPAuthorizationCredentials(scheme="Bearer", credentials=raw_token),
-        service=service,
-    )
-
-    assert authed_node is node
-    service.node_agent_identity_repository.get_by_node_and_instance.assert_not_awaited()
-
-
-@pytest.mark.asyncio
 async def test_node_auth_identity_token_success():
     node_id = uuid4()
     agent_instance_id = uuid4()
@@ -94,3 +70,29 @@ async def test_node_auth_identity_token_invalid_raises_401():
         )
 
     assert exc.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_node_auth_missing_agent_instance_id_raises_401():
+    node_id = uuid4()
+    node = SimpleNamespace(
+        id=node_id,
+        auth_token_hash=AuthUtils.hash_node_token("unused"),
+    )
+    service = SimpleNamespace(
+        vpn_node_repository=SimpleNamespace(get_by_id=AsyncMock(return_value=node)),
+        node_agent_identity_repository=SimpleNamespace(
+            get_by_node_and_instance=AsyncMock()
+        ),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await node_auth(
+            x_node_id=str(node_id),
+            x_agent_instance_id=None,
+            credentials=HTTPAuthorizationCredentials(scheme="Bearer", credentials="token"),
+            service=service,
+        )
+
+    assert exc.value.status_code == 401
+    assert exc.value.detail == "X-Agent-Instance-ID header required"

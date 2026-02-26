@@ -24,6 +24,7 @@ class VpnNode(Base):
     region: Mapped[str] = mapped_column(String(length=32))  # de, nl, fi
     public_domain: Mapped[str] = mapped_column(String(length=255))
     internal_wg_ip: Mapped[str] = mapped_column(String(length=64))  # 10.0.1.x
+    node_key: Mapped[str | None] = mapped_column(String(length=128), unique=True, nullable=True, index=True)
     xray_api_port: Mapped[int] = mapped_column(Integer, default=10085)
     auth_token_hash: Mapped[str] = mapped_column(String(length=64), nullable=False, index=True)
     agent_port: Mapped[int] = mapped_column(Integer, default=9000)

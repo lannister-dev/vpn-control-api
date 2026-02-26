@@ -17,6 +17,7 @@ class VpnNodeCreate(BaseModel):
     region: str
     public_domain: str
     internal_wg_ip: str
+    node_key: str | None = None
     xray_api_port: int = 10085
     agent_port: int = 9000
     auth_token_hash: str
@@ -31,6 +32,7 @@ class VpnNodeUpdate(BaseModel):
     region: str | None = None
     public_domain: str | None = None
     internal_wg_ip: str | None = None
+    node_key: str | None = None
     xray_api_port: int | None = None
     agent_port: int | None = None
     auth_token_hash: str | None = None
@@ -46,6 +48,7 @@ class VpnNodeOut(BaseModel):
     region: str
     public_domain: str
     internal_wg_ip: str
+    node_key: str | None = None
     xray_api_port: int
     agent_port: int
     is_enabled: bool
@@ -129,7 +132,7 @@ class NodeHeartbeatInternal(BaseModel):
 class NodeAgentInitialOut(BaseModel):
     node_id: str
     node_auth_token: str
-    agent_instance_id: str | None = None
+    agent_instance_id: str
 
 
 class NodeAgentStateCreate(BaseModel):
