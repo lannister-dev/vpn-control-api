@@ -34,6 +34,10 @@ from shared.utils.logger import StructuredLogger
 logger_node = StructuredLogger(logging.getLogger("node-service"))
 
 
+class NodeBootstrapConflictError(ValueError):
+    pass
+
+
 class VpnNodeService:
     def __init__(self, session: AsyncSession):
         self.vpn_node_repository = (
@@ -46,6 +50,7 @@ class VpnNodeService:
             NodeAgentIdentityRepository(session)
         )
         self.sync_report_debounce_sec = max(0, int(get_settings().node_agent.sync_report_debounce_sec))
+        self.bootstrap_allow_create = bool(get_settings().node_agent.bootstrap_allow_create)
 
     async def initial(
             self,
@@ -66,11 +71,37 @@ class VpnNodeService:
         if not normalized_node_key:
             raise ValueError("node_key cannot be empty")
         node = await self.vpn_node_repository.get_by_node_key(normalized_node_key)
+        if node is None:
+            same_ip_nodes = await self.vpn_node_repository.list_by_internal_ip(source_ip=source_ip)
+            if len(same_ip_nodes) == 1:
+                node = same_ip_nodes[0]
+                await self.vpn_node_repository.update_by_id(
+                    node.id,
+                    {"node_key": normalized_node_key},
+                )
+                NODE_BOOTSTRAP_TOTAL.labels(result="recovered_by_source_ip").inc()
+                logger_node.warning(
+                    "node bootstrap recovered existing node by source ip",
+                    node_id=str(node.id),
+                    source_ip=source_ip,
+                )
+            elif len(same_ip_nodes) > 1:
+                NODE_BOOTSTRAP_TOTAL.labels(result="recovery_ambiguous").inc()
+                raise NodeBootstrapConflictError(
+                    "Ambiguous node recovery: multiple nodes share source IP. "
+                    "Set AGENT_NODE_KEY to existing node key to avoid creating a new node."
+                )
 
         raw_token = secrets.token_urlsafe(32)
         token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
 
         if node is None:
+            if not self.bootstrap_allow_create:
+                NODE_BOOTSTRAP_TOTAL.labels(result="create_disabled").inc()
+                raise NodeBootstrapConflictError(
+                    "Unknown node identity and auto-create is disabled. "
+                    "Set stable AGENT_NODE_KEY for this node or enable NODE_BOOTSTRAP_ALLOW_CREATE."
+                )
             create_schema = VpnNodeCreate(
                 name=f"node-{source_ip.replace('.', '-')}",
                 role=NodeRole.backend,

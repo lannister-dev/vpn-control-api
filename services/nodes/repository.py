@@ -16,9 +16,19 @@ class VpnNodeRepository(BaseRepository[VpnNode]):
         super().__init__(VpnNode, session)
 
     async def get_by_internal_ip(self, source_ip: str) -> VpnNode | None:
-        stmt = select(self.model).where(self.model.internal_wg_ip == source_ip)
+        nodes = await self.list_by_internal_ip(source_ip=source_ip)
+        if len(nodes) != 1:
+            return None
+        return nodes[0]
+
+    async def list_by_internal_ip(self, source_ip: str) -> list[VpnNode]:
+        stmt = (
+            select(self.model)
+            .where(self.model.internal_wg_ip == source_ip)
+            .order_by(self.model.updated_at.desc())
+        )
         result = await self.session.execute(stmt)
-        return result.scalar_one_or_none()
+        return list(result.scalars().all())
 
     async def get_by_node_key(self, node_key: str) -> VpnNode | None:
         stmt = select(self.model).where(self.model.node_key == node_key)

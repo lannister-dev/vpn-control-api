@@ -63,6 +63,7 @@ class SubscriptionsConfig:
 @dataclass
 class NodeAgentConfig:
     sync_report_debounce_sec: int = 10
+    bootstrap_allow_create: bool = True
 
 
 @dataclass
@@ -182,6 +183,7 @@ def get_settings() -> Settings:
 
     node_agent = NodeAgentConfig(
         sync_report_debounce_sec=env.int("NODE_SYNC_REPORT_DEBOUNCE_SEC", default=10),
+        bootstrap_allow_create=env.bool("NODE_BOOTSTRAP_ALLOW_CREATE", default=True),
     )
 
     alerts = AlertsConfig(

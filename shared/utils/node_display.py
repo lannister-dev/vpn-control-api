@@ -138,5 +138,5 @@ def format_node_display_name(*, node_name: str, region: str | None) -> str:
     country_name = COUNTRY_CODE_TO_NAME.get(country_code, country_code)
     flag = flag_emoji_from_country_code(country_code)
     if safe_name:
-        return f"{flag} {country_name} | {safe_name}"
+        return f"{flag} {country_name}"
     return f"{flag} {country_name}"

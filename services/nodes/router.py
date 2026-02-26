@@ -19,6 +19,7 @@ from services.nodes.schemas import (
 from services.placements.schemas import PlacementPageOut, PlacementReportIn, PlacementReportOut
 from services.placements.service import PlacementAgentService, get_placement_agent_service
 from services.nodes.service import (
+    NodeBootstrapConflictError,
     VpnNodeService,
     get_vpn_node_service,
 )
@@ -65,11 +66,17 @@ async def initial(wg_request: Request,
             detail="X-Agent-Instance-ID header required",
         )
 
-    return await service.initial(
-        source_ip=source_ip,
-        node_key=x_node_key,
-        agent_instance_id=x_agent_instance_id,
-    )
+    try:
+        return await service.initial(
+            source_ip=source_ip,
+            node_key=x_node_key,
+            agent_instance_id=x_agent_instance_id,
+        )
+    except NodeBootstrapConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
 
 
 @router.post("/heartbeat", summary="Node agent heartbeat")

@@ -21,6 +21,8 @@ Config notes:
 - For multi-agent-per-node rollout, pass stable `X-Agent-Instance-ID` UUID on `/api/v1/agent/initial` and all authenticated `/api/v1/agent/*` calls.
 - For authenticated `/api/v1/agent/*` calls, `X-Node-ID` is recommended. If it is temporarily missing, API can resolve node from `(X-Agent-Instance-ID + token)` without 422 loops.
 - Strict mode: `/api/v1/agent/initial` requires stable `X-Node-Key` and `X-Agent-Instance-ID` headers (no source-IP identity fallback).
+- Safety recovery: if `X-Node-Key` is new but exactly one existing node has the same source IP, bootstrap reuses that node and rebinds its `node_key`; if multiple nodes share source IP, bootstrap returns `409` to prevent accidental placement orphaning.
+- Production hardening: set `NODE_BOOTSTRAP_ALLOW_CREATE=false` to block silent creation of unknown nodes. In this mode bootstrap returns `409` until a stable `AGENT_NODE_KEY` is provided.
 
 ## Artifact to Routes Bootstrap
 
