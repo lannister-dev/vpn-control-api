@@ -23,6 +23,10 @@ Config notes:
 - Strict mode: `/api/v1/agent/initial` requires stable `X-Node-Key` and `X-Agent-Instance-ID` headers (no source-IP identity fallback).
 - Safety recovery: if `X-Node-Key` is new but exactly one existing node has the same source IP, bootstrap reuses that node and rebinds its `node_key`; if multiple nodes share source IP, bootstrap returns `409` to prevent accidental placement orphaning.
 - Production hardening: set `NODE_BOOTSTRAP_ALLOW_CREATE=false` to block silent creation of unknown nodes. In this mode bootstrap returns `409` until a stable `AGENT_NODE_KEY` is provided.
+- Heartbeat anti-flap: `NODE_HEARTBEAT_UNHEALTHY_DRAIN_THRESHOLD` controls how many consecutive unhealthy heartbeats are required before auto-drain; `NODE_HEARTBEAT_HEALTHY_UNDRAIN_THRESHOLD` controls recovery count for auto-undrain.
+- Auto-heal mode: set `NODE_AUTO_HEAL_ENABLED=true` to enable background stale-node handling (`NODE_STALE_AFTER_SEC`) and automatic placement migration from unavailable backends.
+- Auto-undrain mode: set `NODE_AUTO_UNDRAIN_ENABLED=true` to automatically return recovered healthy backend nodes from `draining` to active routing.
+- Admin web panel is available at `GET /api/v1/admin/panel` (enter admin bearer token inside UI to fetch stats and run control actions).
 
 ## Artifact to Routes Bootstrap
 
