@@ -4,14 +4,13 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Body, HTTPException, Query
+from fastapi import APIRouter, Body, HTTPException, Path, Query
 
 from services.xray_stats_collector.schemas import (
     AllTrafficResponse,
     InboundTrafficResponse,
     NodeTrafficResponse,
     TrafficStats,
-    UserTrafficError,
     UserTrafficRequest,
     UserTrafficResponse,
 )
@@ -150,11 +149,11 @@ async def health_check():
 @router.post(
     "/traffic/user",
     response_model=UserTrafficResponse,
-    responses={
-        404: {"model": UserTrafficError, "description": "User traffic not found"},
-        503: {"model": UserTrafficError, "description": "XRay service unavailable"},
-        504: {"model": UserTrafficError, "description": "XRay API timeout"},
-    },
+    # responses={
+    #    404: {"model": HTTPException, "description": "User traffic not found"},
+    #    503: {"model": HTTPException, "description": "XRay service unavailable"},
+    #    504: {"model": HTTPException, "description": "XRay API timeout"},
+    # },
 )
 async def get_user_traffic(
     request: UserTrafficRequest = Body(...),
@@ -233,8 +232,8 @@ async def get_user_traffic(
     response_model=UserTrafficResponse,
 )
 async def get_user_traffic_by_path(
-    user_id: str = Query(..., description="User ID or UUID"),
-    node_id: str = Query(..., description="Node identifier"),
+    user_id: str = Path(..., description="User ID or UUID"),
+    node_id: str = Path(..., description="Node identifier"),
     inbound: Optional[str] = Query(None, description="Optional inbound name filter"),
 ) -> UserTrafficResponse:
     """Get traffic statistics for a user on a specific node (using path parameters).
@@ -317,8 +316,8 @@ async def get_user_traffic_all_nodes(
     response_model=InboundTrafficResponse,
 )
 async def get_inbound_traffic(
-    inbound: str = Query(..., description="Inbound name"),
-    node_id: str = Query(..., description="Node identifier"),
+    inbound: str = Path(..., description="Inbound name"),
+    node_id: str = Path(..., description="Node identifier"),
 ) -> InboundTrafficResponse:
     """Get traffic statistics for a specific inbound on a node.
 

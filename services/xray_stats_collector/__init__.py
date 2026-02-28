@@ -34,7 +34,7 @@ from services.xray_stats_collector.schemas import (
     InboundTrafficResponse,
     NodeTrafficResponse,
     TrafficStats,
-    UserTrafficError,
+    #   UserTrafficError,
     UserTrafficRequest,
     UserTrafficResponse,
 )
