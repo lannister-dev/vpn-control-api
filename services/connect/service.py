@@ -71,11 +71,13 @@ class ConnectService:
 
         key = await self._resolve_routeset_key(payload=payload)
         key_id = self._as_uuid(key.id)
+        key_transport = self._normalize_key_transport(getattr(key, "transport", None))
         desired_replicas = max(1, min(10, int(payload.max_routes)))
         preferred_node_id, placement, allowed_backend_ids = await self._ensure_backend_placements_for_key(
             key_id=key_id,
             preferred_region=payload.preferred_region,
             desired_replicas=desired_replicas,
+            key_transport=key_transport,
         )
 
         max_fetch = max(payload.max_routes * 4, 10)
@@ -89,6 +91,14 @@ class ConnectService:
         for route, node, transport_profile in route_rows:
             backend_node_id = self._as_uuid(node.id)
             if backend_node_id not in allowed_backend_ids:
+                continue
+            transport_security = transport_profile.security
+            transport_network = transport_profile.network
+            if not self._is_route_compatible_with_key_transport(
+                key_transport=key_transport,
+                transport_security=transport_security,
+                transport_network=transport_network,
+            ):
                 continue
             uri = self._build_route_uri(
                 client_id=key.client_id,
@@ -110,8 +120,8 @@ class ConnectService:
                         effective_weight=route.effective_weight,
                         uri=uri,
                     ),
-                    transport_security=(transport_profile.security or "").strip().lower(),
-                    transport_network=(transport_profile.network or "").strip().lower(),
+                    transport_security=transport_security,
+                    transport_network=transport_network,
                 )
             )
         routes = self.route_selector.select(
@@ -150,6 +160,7 @@ class ConnectService:
             key_id: UUID,
             preferred_region: str | None,
             desired_replicas: int,
+            key_transport: str | None,
     ) -> tuple[UUID, UserPlacement, set[UUID]]:
         desired_replicas = max(1, min(10, int(desired_replicas)))
         placements = await self._list_active_placements_for_key(key_id=key_id)
@@ -169,14 +180,16 @@ class ConnectService:
                 preferred_region=preferred_region,
             )
             candidate_nodes = []
-        edge_domain = self.settings.edge.public_domain.strip()
         candidate_nodes = [
             node
             for node in candidate_nodes
-            if edge_domain or str(getattr(node, "public_domain", "") or "").strip()
+            if self._node_has_required_public_host(node=node, key_transport=key_transport)
         ]
         if not candidate_nodes and not placements_by_backend:
-            fallback = await self._select_backend(preferred_region=preferred_region)
+            fallback = await self._select_backend(
+                preferred_region=preferred_region,
+                key_transport=key_transport,
+            )
             candidate_nodes = [fallback]
 
         if candidate_nodes:
@@ -212,50 +225,12 @@ class ConnectService:
         return preferred_backend_id, preferred_placement, allowed_backend_ids
 
     async def _list_active_placements_for_key(self, *, key_id: UUID) -> list[UserPlacement]:
-        list_by_key = getattr(self.placement_repository, "list_by_key_id", None)
-        if callable(list_by_key):
-            try:
-                rows = await list_by_key(
-                    key_id=key_id,
-                    active_only=True,
-                    desired_state=PlacementDesiredState.active.value,
-                )
-            except TypeError:
-                rows = await list_by_key(
-                    key_id=key_id,
-                    active_only=True,
-                )
-            normalized_rows = self._normalize_placements(rows)
-            if normalized_rows:
-                return normalized_rows
-
-        get_by_key = getattr(self.placement_repository, "get_by_key_id", None)
-        if callable(get_by_key):
-            row = await get_by_key(key_id=key_id)
-            normalized_rows = self._normalize_placements(row)
-            if normalized_rows:
-                return normalized_rows
-        return []
-
-    def _normalize_placements(self, value: Any) -> list[UserPlacement]:
-        if value is None:
-            return []
-        if isinstance(value, list):
-            items = value
-        elif isinstance(value, tuple):
-            items = list(value)
-        else:
-            items = [value]
-
-        out: list[UserPlacement] = []
-        for item in items:
-            try:
-                backend_node_id = self._as_uuid(getattr(item, "backend_node_id"))
-                setattr(item, "backend_node_id", backend_node_id)
-                out.append(item)
-            except Exception:
-                continue
-        return out
+        rows = await self.placement_repository.list_by_key_id(
+            key_id=key_id,
+            active_only=True,
+            desired_state=PlacementDesiredState.active.value,
+        )
+        return [row for row in rows if row.backend_node_id is not None]
 
     async def _resolve_routeset_key(self, *, payload: ConnectRouteSetIn):
         if payload.key_id is not None:
@@ -290,14 +265,21 @@ class ConnectService:
         )
         return await self.key_repository.create(key_internal.model_dump())
 
-    async def _select_backend(self, *, preferred_region: str | None) -> VpnNode:
+    async def _select_backend(
+            self,
+            *,
+            preferred_region: str | None,
+            key_transport: str | None = None,
+    ) -> VpnNode:
         candidates = await self.routing_service.select_nodes(
             preferred_region=preferred_region,
             role=NodeRole.backend.value,
         )
-        edge_domain = self.settings.edge.public_domain.strip()
         for candidate in candidates:
-            if edge_domain or candidate.public_domain.strip():
+            if self._node_has_required_public_host(
+                node=candidate,
+                key_transport=key_transport,
+            ):
                 return candidate
         raise HTTPException(status_code=503, detail="No eligible backend node available")
 
@@ -326,8 +308,10 @@ class ConnectService:
             node: VpnNode,
             transport_profile,
     ) -> str | None:
-        edge_domain = self.settings.edge.public_domain.strip()
-        domain = edge_domain or node.public_domain.strip()
+        domain = self._resolve_route_host_for_transport(
+            node=node,
+            transport_profile=transport_profile,
+        )
         if not domain:
             return None
         node_display_name = format_node_display_name(
@@ -425,6 +409,48 @@ class ConnectService:
             )
 
         return None
+
+    def _resolve_ws_public_host(self, node: VpnNode) -> str:
+        edge_domain = self.settings.edge.public_domain.strip()
+        if edge_domain:
+            return edge_domain
+        return node.public_domain.strip()
+
+    def _resolve_route_host_for_transport(self, *, node: VpnNode, transport_profile) -> str:
+        network = transport_profile.network
+        security = transport_profile.security
+        if security == "reality" and network == "tcp":
+            return node.public_domain
+        return self._resolve_ws_public_host(node)
+
+    def _node_has_required_public_host(self, *, node: VpnNode, key_transport: str | None) -> bool:
+        if key_transport == VpnTransport.tcp.value:
+            return bool(node.public_domain)
+        if key_transport == VpnTransport.ws.value:
+            return bool(self._resolve_ws_public_host(node))
+        return bool(node.public_domain or self._resolve_ws_public_host(node))
+
+    @staticmethod
+    def _normalize_key_transport(raw_transport: object) -> str | None:
+        if not isinstance(raw_transport, str):
+            return None
+        normalized = raw_transport.strip().lower()
+        return normalized or None
+
+    @staticmethod
+    def _is_route_compatible_with_key_transport(
+            *,
+            key_transport: str | None,
+            transport_security: str,
+            transport_network: str,
+    ) -> bool:
+        if key_transport == VpnTransport.tcp.value:
+            return transport_security == "reality" and transport_network == "tcp"
+        if key_transport == VpnTransport.ws.value:
+            return transport_security == "tls" and transport_network == "ws"
+        if key_transport == VpnTransport.xhttp.value:
+            return transport_security == "tls" and transport_network == "xhttp"
+        return True
 
     async def _cache_allowed_telemetry_routes(
             self,

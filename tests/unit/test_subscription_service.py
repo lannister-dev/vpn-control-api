@@ -182,6 +182,21 @@ class TestBuildRouteUri:
         assert uri is not None
         assert uri.startswith("vless://")
 
+    def test_build_reality_uri_uses_node_host_even_with_global_edge_domain(self, service):
+        node = _make_node(public_domain="1.2.3.4")
+        transport_profile = _make_transport_profile(network="tcp", security="reality")
+        service.settings.edge.public_domain = "prod.example.com"
+
+        uri = service._build_route_uri(
+            client_id="cid",
+            node=node,
+            transport_profile=transport_profile,
+        )
+
+        assert uri is not None
+        assert "@1.2.3.4:" in uri
+        assert "prod.example.com" not in uri
+
     def test_missing_domain_returns_none(self, service):
         node = _make_node(public_domain="")
         transport_profile = _make_transport_profile()
@@ -226,6 +241,29 @@ class TestCalcEtag:
         e1 = service._calc_etag(sub, ["route-a|40", "route-b|30"], client_id="cid")
         e2 = service._calc_etag(sub, ["route-b|30", "route-a|40"], client_id="cid")
         assert e1 != e2
+
+
+def test_route_transport_compatibility(service):
+    assert service._is_route_compatible_with_key_transport(
+        key_transport="tcp",
+        transport_security="reality",
+        transport_network="tcp",
+    )
+    assert not service._is_route_compatible_with_key_transport(
+        key_transport="tcp",
+        transport_security="tls",
+        transport_network="ws",
+    )
+    assert service._is_route_compatible_with_key_transport(
+        key_transport="ws",
+        transport_security="tls",
+        transport_network="ws",
+    )
+    assert not service._is_route_compatible_with_key_transport(
+        key_transport="ws",
+        transport_security="reality",
+        transport_network="tcp",
+    )
 
 
 class TestRateLimit:

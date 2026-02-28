@@ -103,6 +103,8 @@ async def test_existing_hwid_path_skips_subscription_lock(service):
     tp = MagicMock()
     tp.id = uuid4()
     tp.port = 443
+    tp.security = "reality"
+    tp.network = "tcp"
     service.route_repository.list_resolved_active = AsyncMock(return_value=[(route, node, tp)])
     service._build_route_uri = MagicMock(return_value="vless://ok")
     service._route_signature = MagicMock(return_value="route-signature")

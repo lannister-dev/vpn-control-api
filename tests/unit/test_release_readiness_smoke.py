@@ -109,7 +109,7 @@ async def test_release_smoke_connect_telemetry_block_warmup_recovery(async_sessi
 
     connect_svc.user_repository.get_by_id = AsyncMock(return_value=MagicMock(id=user_id))
     connect_svc.key_repository.get_latest_active_for_user = AsyncMock(return_value=key)
-    connect_svc.placement_repository.get_by_key_id = AsyncMock(return_value=placement)
+    connect_svc.placement_repository.list_by_key_id = AsyncMock(return_value=[placement])
     connect_svc.node_repository.get_by_id = AsyncMock(return_value=backend)
     connect_svc.route_repository.list_resolved_active = AsyncMock(
         return_value=[(route, backend, tp)]

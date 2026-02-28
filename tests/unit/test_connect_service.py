@@ -85,3 +85,17 @@ async def test_build_route_uri_grpc_tls(async_session):
     assert "type=grpc" in uri
     assert "security=tls" in uri
     assert "serviceName=vl" in uri
+
+
+@pytest.mark.asyncio
+async def test_build_route_uri_reality_uses_node_host_even_with_global_edge_domain(async_session):
+    svc = ConnectService(async_session, _redis())
+    svc.settings.edge.public_domain = "prod.example.com"
+    node = _node(public_domain="1.2.3.4")
+    tp = _transport_profile(network="tcp", security="reality", port=443)
+
+    uri = svc._build_route_uri(client_id="cid", node=node, transport_profile=tp)
+
+    assert uri is not None
+    assert "@1.2.3.4:" in uri
+    assert "prod.example.com" not in uri

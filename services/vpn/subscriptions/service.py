@@ -378,7 +378,6 @@ class SubscriptionService:
                         return "", waited_etag, True
                     if waited_payload is not None:
                         return waited_payload, waited_etag, False
-
         try:
             subscription = await self.subscription_repository.get_by_any_token_hash(token_hash)
             if not subscription:
@@ -396,12 +395,17 @@ class SubscriptionService:
 
             if vpn_key_id is None:
                 raise SubscriptionBuild("No available key")
+            key = await self.vpn_key_repository.get_by_id(vpn_key_id)
+            if not key:
+                raise SubscriptionBuild("Device key not found")
+            key_transport = self._normalize_key_transport(getattr(key, "transport", None))
 
             max_routes = max(1, min(10, int(self.settings.subscriptions.smart_route_max_count)))
             selected_backend_id, placement, allowed_backend_ids = await self._ensure_backend_placements_for_key(
                 key_id=vpn_key_id,
                 preferred_region=subscription.preferred_region,
                 desired_replicas=max_routes,
+                key_transport=key_transport,
             )
             route_rows = await self.route_repository.list_resolved_active(
                 preferred_node_id=selected_backend_id,
@@ -424,17 +428,19 @@ class SubscriptionService:
                     continue
                 seen_uris.add(uri)
                 transport_security = transport_profile.security
-                if not isinstance(transport_security, str):
-                    transport_security = ""
                 transport_network = transport_profile.network
-                if not isinstance(transport_network, str):
-                    transport_network = ""
+                if not self._is_route_compatible_with_key_transport(
+                    key_transport=key_transport,
+                    transport_security=transport_security,
+                    transport_network=transport_network,
+                ):
+                    continue
                 resolved_routes.append(
                     ResolvedSubscriptionRoute(
                         route_id=self._as_uuid(route.id),
                         backend_node_id=backend_node_id,
-                        transport_security=transport_security.strip().lower(),
-                        transport_network=transport_network.strip().lower(),
+                        transport_security=transport_security,
+                        transport_network=transport_network,
                         uri=uri,
                         route=route,
                         node=node,
@@ -551,6 +557,7 @@ class SubscriptionService:
             key_id: UUID,
             preferred_region: str | None,
             desired_replicas: int,
+            key_transport: str | None,
     ) -> tuple[UUID, UserPlacement, set[UUID]]:
         desired_replicas = max(1, min(10, int(desired_replicas)))
         placements = await self.placement_repository.list_by_key_id(
@@ -568,7 +575,7 @@ class SubscriptionService:
         )
         candidate_nodes = [
             node for node in candidate_nodes
-            if self._resolve_public_domain(node)
+            if self._node_has_required_public_host(node=node, key_transport=key_transport)
         ]
         if not candidate_nodes:
             raise SubscriptionBuild("No available backend nodes")
@@ -629,7 +636,10 @@ class SubscriptionService:
             node: VpnNode,
             transport_profile,
     ) -> str | None:
-        domain = self._resolve_public_domain(node)
+        domain = self._resolve_route_host_for_transport(
+            node=node,
+            transport_profile=transport_profile,
+        )
         if not domain:
             return None
         node_display_name = format_node_display_name(
@@ -637,8 +647,8 @@ class SubscriptionService:
             region=node.region,
         )
 
-        network = (transport_profile.network or "").strip().lower()
-        security = (transport_profile.security or "").strip().lower()
+        network = transport_profile.network
+        security = transport_profile.security
         if security == "tls" and network == "grpc":
             service_name = (transport_profile.grpc_service_name or "").strip() or "vl"
             fingerprint = (transport_profile.tls_fingerprint or "").strip() or "chrome"
@@ -690,8 +700,8 @@ class SubscriptionService:
             fallback_domain: str,
             region: str | None,
     ) -> WsTlsProfile | RealityTcpProfile | None:
-        network = (transport_profile.network or "").strip().lower()
-        security = (transport_profile.security or "").strip().lower()
+        network = transport_profile.network
+        security = transport_profile.security
 
         metadata = ProfileMetadata(
             display_name=transport_profile.name or "route-profile",
@@ -738,18 +748,61 @@ class SubscriptionService:
             str(route.health_status),
             str(route.effective_weight),
             str(node.id),
-            self._resolve_public_domain(node),
+            self._resolve_route_host_for_transport(
+                node=node,
+                transport_profile=transport_profile,
+            ),
             str(transport_profile.id),
             str(transport_profile.port),
             route_updated_at,
             transport_updated_at,
         ])
 
-    def _resolve_public_domain(self, node: VpnNode) -> str:
-        domain = self.settings.edge.public_domain
-        if domain:
-            return domain
-        return (node.public_domain or "").strip()
+    def _resolve_ws_public_host(self, node: VpnNode) -> str:
+        edge_domain = self.settings.edge.public_domain
+        if edge_domain:
+            return edge_domain.strip()
+        return node.public_domain.strip()
+
+    @staticmethod
+    def _resolve_reality_public_host(node: VpnNode) -> str:
+        return node.public_domain.strip()
+
+    def _resolve_route_host_for_transport(self, *, node: VpnNode, transport_profile) -> str:
+        network = transport_profile.network
+        security = transport_profile.security
+        if security == "reality" and network == "tcp":
+            return self._resolve_reality_public_host(node)
+        return self._resolve_ws_public_host(node)
+
+    def _node_has_required_public_host(self, *, node: VpnNode, key_transport: str | None) -> bool:
+        if key_transport == VpnTransport.tcp.value:
+            return bool(self._resolve_reality_public_host(node))
+        if key_transport == VpnTransport.ws.value:
+            return bool(self._resolve_ws_public_host(node))
+        return bool(self._resolve_reality_public_host(node) or self._resolve_ws_public_host(node))
+
+    @staticmethod
+    def _normalize_key_transport(raw_transport: object) -> str | None:
+        if not isinstance(raw_transport, str):
+            return None
+        normalized = raw_transport.strip().lower()
+        return normalized or None
+
+    @staticmethod
+    def _is_route_compatible_with_key_transport(
+            *,
+            key_transport: str | None,
+            transport_security: str,
+            transport_network: str,
+    ) -> bool:
+        if key_transport == VpnTransport.tcp.value:
+            return transport_security == "reality" and transport_network == "tcp"
+        if key_transport == VpnTransport.ws.value:
+            return transport_security == "tls" and transport_network == "ws"
+        if key_transport == VpnTransport.xhttp.value:
+            return transport_security == "tls" and transport_network == "xhttp"
+        return True
 
     async def _set_placement_desired_state(
             self,
@@ -988,9 +1041,6 @@ class SubscriptionService:
             selected.append(route)
             payload_size += delimiter_size + route_size
         return selected, "ok"
-
-    async def _invalidate_rate_limit(self, token_hash: str) -> None:
-        await self.redis.client.delete(redis_key.rate_limit(token_hash))
 
     async def _invalidate_payload_cache_by_token_hash(self, token_hash: str) -> None:
         index_key = redis_key.payload_cache_index(token_hash=token_hash)
