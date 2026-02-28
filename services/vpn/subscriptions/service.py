@@ -59,6 +59,7 @@ from services.vpn.subscriptions.schemas import (
     SubscriptionInternalRotate,
     SubscriptionInternalUpdate,
     ResolvedSubscriptionRoute,
+    SubscriptionOut,
     SubscriptionRotateOut,
 )
 from services.vpn.subscriptions.utils import SubscriptionUtils
@@ -208,6 +209,24 @@ class SubscriptionService:
             expires_at=subscription.expires_at,
             is_active=subscription.is_active,
         )
+
+    async def get_subscription(self, subscription_id: UUID) -> SubscriptionOut:
+        sub = await self.subscription_repository.get_by_id(subscription_id)
+        if not sub:
+            raise SubscriptionNotFound(subscription_id)
+        return SubscriptionOut.model_validate(sub)
+
+    async def list_subscriptions_by_user(
+            self,
+            *,
+            user_id: UUID,
+            active_only: bool = False,
+    ) -> list[SubscriptionOut]:
+        rows = await self.subscription_repository.list_by_user_id(
+            user_id=user_id,
+            active_only=active_only,
+        )
+        return [SubscriptionOut.model_validate(row) for row in rows]
 
     async def rotate_token(
             self,
@@ -476,9 +495,11 @@ class SubscriptionService:
             if vpn_key_id is None:
                 raise SubscriptionBuild("No available key")
 
-            selected_backend_id, placement = await self._ensure_backend_placement_for_key(
+            max_routes = max(1, min(10, int(self.settings.subscriptions.smart_route_max_count)))
+            selected_backend_id, placement, allowed_backend_ids = await self._ensure_backend_placements_for_key(
                 key_id=vpn_key_id,
                 preferred_region=subscription.preferred_region,
+                desired_replicas=max_routes,
             )
             route_rows = await self.route_repository.list_resolved_active(
                 preferred_node_id=selected_backend_id,
@@ -489,6 +510,9 @@ class SubscriptionService:
             resolved_routes: list[ResolvedSubscriptionRoute] = []
             seen_uris: set[str] = set()
             for route, node, transport_profile in route_rows:
+                backend_node_id = self._as_uuid(node.id)
+                if backend_node_id not in allowed_backend_ids:
+                    continue
                 uri = self._build_route_uri(
                     client_id=client_id,
                     node=node,
@@ -506,7 +530,7 @@ class SubscriptionService:
                 resolved_routes.append(
                     ResolvedSubscriptionRoute(
                         route_id=self._as_uuid(route.id),
-                        backend_node_id=self._as_uuid(node.id),
+                        backend_node_id=backend_node_id,
                         transport_security=transport_security.strip().lower(),
                         transport_network=transport_network.strip().lower(),
                         uri=uri,
@@ -516,7 +540,6 @@ class SubscriptionService:
                     )
                 )
 
-            max_routes = max(1, min(10, int(self.settings.subscriptions.smart_route_max_count)))
             selected_routes = self.route_selector.select(
                 routes=resolved_routes,
                 preferred_backend_id=selected_backend_id,
@@ -620,51 +643,62 @@ class SubscriptionService:
             return VpnTransport.tcp
         raise HTTPException(status_code=422, detail=f"Unsupported profile type: {profile_type}")
 
-    async def _ensure_backend_placement_for_key(
+    async def _ensure_backend_placements_for_key(
             self,
             *,
             key_id: UUID,
             preferred_region: str | None,
-    ) -> tuple[UUID, UserPlacement]:
-        placement = await self.placement_repository.get_by_key_id(key_id)
+            desired_replicas: int,
+    ) -> tuple[UUID, UserPlacement, set[UUID]]:
+        desired_replicas = max(1, min(10, int(desired_replicas)))
+        placements = await self.placement_repository.list_by_key_id(
+            key_id=key_id,
+            active_only=True,
+            desired_state=PlacementDesiredState.active.value,
+        )
+        placements_by_backend: dict[UUID, UserPlacement] = {
+            placement.backend_node_id: placement for placement in placements
+        }
 
-        selected_backend: VpnNode | None = None
-        if placement and placement.desired_state == PlacementDesiredState.active.value:
-            backend = await self.node_repository.get_by_id(placement.backend_node_id)
-            if backend is not None and self._is_backend_eligible(backend):
-                selected_backend = backend
+        candidate_nodes = await self.routing_service.select_nodes(
+            preferred_region=preferred_region,
+            role=NodeRole.backend.value,
+        )
+        candidate_nodes = [
+            node for node in candidate_nodes
+            if self._resolve_public_domain(node)
+        ]
+        if not candidate_nodes:
+            raise SubscriptionBuild("No available backend nodes")
 
-        if selected_backend is None:
-            selected_backend = await self._select_backend(preferred_region=preferred_region)
-            selected_backend_id = self._as_uuid(str(selected_backend.id))
-            migration_reason = "subscription_initial" if placement is None else "subscription_rebalance"
-            placement = await self.placement_repository.upsert_set_pending(
+        target_nodes = candidate_nodes[:desired_replicas]
+        for node in target_nodes:
+            node_id = self._as_uuid(str(node.id))
+            if node_id in placements_by_backend:
+                continue
+            created = await self.placement_repository.upsert_set_pending(
                 key_id=key_id,
-                backend_node_id=selected_backend_id,
+                backend_node_id=node_id,
                 desired_state=PlacementDesiredState.active.value,
                 sticky_until=None,
-                last_migration_reason=migration_reason,
+                last_migration_reason="subscription_replica",
             )
-            if not placement:
-                raise SubscriptionBuild("Failed to create placement")
-        elif placement is None:
-            selected_backend_id = self._as_uuid(str(selected_backend.id))
-            placement = await self.placement_repository.upsert_set_pending(
-                key_id=key_id,
-                backend_node_id=selected_backend_id,
-                desired_state=PlacementDesiredState.active.value,
-                sticky_until=None,
-                last_migration_reason="subscription_initial",
-            )
-            if not placement:
-                raise SubscriptionBuild("Failed to create placement")
-        else:
-            selected_backend_id = self._as_uuid(str(selected_backend.id))
+            placements_by_backend[node_id] = created
 
-        if placement is None:
+        preferred_placement: UserPlacement | None = None
+        for node in candidate_nodes:
+            node_id = self._as_uuid(str(node.id))
+            preferred_placement = placements_by_backend.get(node_id)
+            if preferred_placement is not None:
+                break
+        if preferred_placement is None:
             raise SubscriptionBuild("Failed to create placement")
 
-        return selected_backend_id, placement
+        preferred_backend_id = self._as_uuid(preferred_placement.backend_node_id)
+        allowed_backend_ids = set(placements_by_backend.keys())
+        if not allowed_backend_ids:
+            raise SubscriptionBuild("No active placements available")
+        return preferred_backend_id, preferred_placement, allowed_backend_ids
 
     async def _select_backend(self, *, preferred_region: str | None) -> VpnNode:
         candidates = await self.routing_service.select_nodes(
@@ -822,16 +856,11 @@ class SubscriptionService:
             desired_state: PlacementDesiredState,
             reason: str,
     ) -> None:
-        placement = await self.placement_repository.get_by_key_id(key_id)
-        if placement is None:
-            return
-
-        await self.placement_repository.upsert_set_pending(
+        await self.placement_repository.set_desired_state_for_key(
             key_id=key_id,
-            backend_node_id=placement.backend_node_id,
             desired_state=desired_state.value,
-            sticky_until=placement.sticky_until,
             last_migration_reason=reason,
+            updated_at=datetime.now(timezone.utc),
         )
 
     def _hash_hwid(self, hwid: str) -> str:

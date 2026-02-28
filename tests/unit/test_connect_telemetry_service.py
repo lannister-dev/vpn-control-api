@@ -40,7 +40,7 @@ def _service(async_session) -> ConnectTelemetryService:
     placement = MagicMock()
     placement.desired_state = "active"
     svc.placement_repository = AsyncMock()
-    svc.placement_repository.get_by_key_id.return_value = placement
+    svc.placement_repository.list_by_key_id.return_value = [placement]
     svc.redis.sismember = AsyncMock(return_value=1)
     return svc
 

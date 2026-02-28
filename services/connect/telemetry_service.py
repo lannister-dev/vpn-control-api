@@ -62,7 +62,7 @@ class ConnectTelemetryService:
         route = await self.route_repository.get_by_id(payload.route_id)
         if route is None or not route.is_active:
             raise HTTPException(status_code=404, detail="Route not found")
-        await self._validate_key_placement(payload.key_id)
+        await self._validate_key_placement(key_id=payload.key_id)
         await self._validate_route_allowed_for_key(
             key_id=payload.key_id,
             route_id=payload.route_id,
@@ -217,12 +217,43 @@ class ConnectTelemetryService:
         if valid_until <= datetime.now(timezone.utc):
             raise HTTPException(status_code=409, detail="Key is expired")
 
-    async def _validate_key_placement(self, key_id: UUID) -> None:
-        placement = await self.placement_repository.get_by_key_id(key_id)
-        if placement is None:
+    async def _validate_key_placement(
+            self,
+            *,
+            key_id: UUID,
+            required_backend_id: UUID | None = None,
+    ) -> None:
+        placements: list = []
+        list_by_key = getattr(self.placement_repository, "list_by_key_id", None)
+        if callable(list_by_key):
+            try:
+                placements = await list_by_key(
+                    key_id=key_id,
+                    active_only=True,
+                    desired_state=PlacementDesiredState.active.value,
+                )
+            except TypeError:
+                placements = await list_by_key(
+                    key_id=key_id,
+                    active_only=True,
+                )
+            if placements and not isinstance(placements, list):
+                placements = [placements]
+        if not placements:
+            get_by_key = getattr(self.placement_repository, "get_by_key_id", None)
+            if callable(get_by_key):
+                row = await get_by_key(key_id=key_id)
+                placements = [row] if row is not None else []
+        if not placements:
             raise HTTPException(status_code=409, detail="Placement not found for key")
-        if placement.desired_state != PlacementDesiredState.active.value:
-            raise HTTPException(status_code=409, detail="Placement is not active")
+        if required_backend_id is None:
+            return
+        has_required_backend = any(
+            placement.backend_node_id == required_backend_id
+            for placement in placements
+        )
+        if not has_required_backend:
+            raise HTTPException(status_code=409, detail="Key has no active placement on route backend")
 
     async def _validate_route_allowed_for_key(self, *, key_id: UUID, route_id: UUID) -> None:
         cache_key = connect_telemetry_allowed_routes_key(key_id=key_id)

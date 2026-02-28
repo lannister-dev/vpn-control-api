@@ -53,6 +53,29 @@ NODE_PLACEMENT_REPORT_TOTAL = Counter(
     ["status"],
 )
 
+NODE_STATE_FRESHNESS_SECONDS = Gauge(
+    "node_state_freshness_seconds",
+    "Seconds since last heartbeat for active node (-1 if missing)",
+    ["node_id"],
+)
+
+PLACEMENT_ORPHAN_ACTIVE_TOTAL = Gauge(
+    "placement_orphan_active_total",
+    "Active placements currently bound to unavailable backends",
+)
+
+PLACEMENT_ACTIVE_BY_BACKEND = Gauge(
+    "placement_active_by_backend",
+    "Desired active placements by backend node",
+    ["node_id"],
+)
+
+PLACEMENT_AUTO_HEAL_TOTAL = Counter(
+    "placement_auto_heal_total",
+    "Placement auto-heal actions",
+    ["action", "result"],
+)
+
 CONNECT_TELEMETRY_TOTAL = Counter(
     "connect_telemetry_total",
     "Client connect telemetry events processed",

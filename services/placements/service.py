@@ -125,11 +125,14 @@ class UserPlacementService:
         )
         return [UserPlacementOut.model_validate(r) for r in rows]
 
-    async def get_by_key_id(self, key_id: UUID) -> UserPlacementOut:
-        row = await self.placement_repository.get_by_key_id(key_id)
-        if not row:
+    async def list_by_key_id(self, key_id: UUID) -> list[UserPlacementOut]:
+        rows = await self.placement_repository.list_by_key_id(
+            key_id=key_id,
+            active_only=True,
+        )
+        if not rows:
             raise HTTPException(status_code=404, detail="Placement not found")
-        return UserPlacementOut.model_validate(row)
+        return [UserPlacementOut.model_validate(row) for row in rows]
 
 
 class PlacementAgentService:

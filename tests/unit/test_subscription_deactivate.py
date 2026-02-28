@@ -59,28 +59,13 @@ async def test_deactivate_revokes_root_and_device_keys(async_session, redis_clie
         return None
 
     svc.vpn_key_repository.get_by_id.side_effect = _get_key_side_effect
-    root_placement = MagicMock()
-    root_placement.backend_node_id = uuid4()
-    root_placement.sticky_until = None
-    device_placement = MagicMock()
-    device_placement.backend_node_id = uuid4()
-    device_placement.sticky_until = None
-
-    async def _get_placement_side_effect(key_id):
-        if key_id == root_key_id:
-            return root_placement
-        if key_id == device_key_id:
-            return device_placement
-        return None
-
-    svc.placement_repository.get_by_key_id.side_effect = _get_placement_side_effect
 
     processed = await svc.deactivate(sub.id)
 
     assert processed == 2
     assert root_key.is_revoked is True
     assert device_key.is_revoked is True
-    assert svc.placement_repository.upsert_set_pending.await_count == 2
+    assert svc.placement_repository.set_desired_state_for_key.await_count == 2
     svc.subscription_repository.update_by_id.assert_awaited_once()
 
 
@@ -112,25 +97,10 @@ async def test_activate_restores_keys_and_placements(async_session, redis_client
         return None
 
     svc.vpn_key_repository.get_by_id.side_effect = _get_key_side_effect
-    root_placement = MagicMock()
-    root_placement.backend_node_id = uuid4()
-    root_placement.sticky_until = None
-    device_placement = MagicMock()
-    device_placement.backend_node_id = uuid4()
-    device_placement.sticky_until = None
-
-    async def _get_placement_side_effect(key_id):
-        if key_id == root_key_id:
-            return root_placement
-        if key_id == device_key_id:
-            return device_placement
-        return None
-
-    svc.placement_repository.get_by_key_id.side_effect = _get_placement_side_effect
 
     restored = await svc.activate(sub.id)
 
     assert restored == 1
     assert root_key.is_revoked is False
     assert device_key.is_revoked is False
-    assert svc.placement_repository.upsert_set_pending.await_count == 2
+    assert svc.placement_repository.set_desired_state_for_key.await_count == 2

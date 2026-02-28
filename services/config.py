@@ -64,6 +64,13 @@ class SubscriptionsConfig:
 class NodeAgentConfig:
     sync_report_debounce_sec: int = 10
     bootstrap_allow_create: bool = True
+    heartbeat_unhealthy_drain_threshold: int = 2
+    heartbeat_healthy_undrain_threshold: int = 3
+    stale_after_sec: int = 90
+    auto_heal_enabled: bool = False
+    auto_heal_tick_sec: int = 60
+    auto_heal_max_nodes: int = 20
+    auto_undrain_enabled: bool = False
 
 
 @dataclass
@@ -184,6 +191,19 @@ def get_settings() -> Settings:
     node_agent = NodeAgentConfig(
         sync_report_debounce_sec=env.int("NODE_SYNC_REPORT_DEBOUNCE_SEC", default=10),
         bootstrap_allow_create=env.bool("NODE_BOOTSTRAP_ALLOW_CREATE", default=True),
+        heartbeat_unhealthy_drain_threshold=max(
+            1,
+            env.int("NODE_HEARTBEAT_UNHEALTHY_DRAIN_THRESHOLD", default=2),
+        ),
+        heartbeat_healthy_undrain_threshold=max(
+            1,
+            env.int("NODE_HEARTBEAT_HEALTHY_UNDRAIN_THRESHOLD", default=3),
+        ),
+        stale_after_sec=max(30, env.int("NODE_STALE_AFTER_SEC", default=90)),
+        auto_heal_enabled=env.bool("NODE_AUTO_HEAL_ENABLED", default=False),
+        auto_heal_tick_sec=max(30, env.int("NODE_AUTO_HEAL_TICK_SEC", default=60)),
+        auto_heal_max_nodes=min(500, max(1, env.int("NODE_AUTO_HEAL_MAX_NODES", default=20))),
+        auto_undrain_enabled=env.bool("NODE_AUTO_UNDRAIN_ENABLED", default=False),
     )
 
     alerts = AlertsConfig(

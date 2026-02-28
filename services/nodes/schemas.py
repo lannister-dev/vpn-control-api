@@ -91,6 +91,14 @@ class NodeAgentDetails(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
+class NodeHeartbeatMeta(BaseModel):
+    consecutive_unhealthy: int = Field(default=0, ge=0)
+    consecutive_healthy: int = Field(default=0, ge=0)
+    drain_reason: str | None = None
+
+    model_config = ConfigDict(extra="ignore")
+
+
 class NodeHeartbeatIn(BaseModel):
     agent_version: str
     is_healthy: bool

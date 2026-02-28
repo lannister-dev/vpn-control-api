@@ -98,17 +98,13 @@ async def test_revoke_device_success(async_session, redis_client):
     svc.subscription_repository.get_by_id.return_value = sub
     svc.device_repository.get_by_id_for_subscription.return_value = dev
     svc.vpn_key_repository.get_by_id.return_value = key
-    placement = MagicMock()
-    placement.backend_node_id = uuid4()
-    placement.sticky_until = None
-    svc.placement_repository.get_by_key_id.return_value = placement
 
     changed = await svc.revoke_device(sub.id, dev.id)
 
     assert changed is True
     assert key.is_revoked is True
     svc.device_repository.update_by_id.assert_awaited_once()
-    svc.placement_repository.upsert_set_pending.assert_awaited_once()
+    svc.placement_repository.set_desired_state_for_key.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -130,13 +126,9 @@ async def test_revoke_device_idempotent(async_session, redis_client):
     svc.subscription_repository.get_by_id.return_value = sub
     svc.device_repository.get_by_id_for_subscription.return_value = dev
     svc.vpn_key_repository.get_by_id.return_value = key
-    placement = MagicMock()
-    placement.backend_node_id = uuid4()
-    placement.sticky_until = None
-    svc.placement_repository.get_by_key_id.return_value = placement
 
     changed = await svc.revoke_device(sub.id, dev.id)
 
     assert changed is False
     svc.device_repository.update_by_id.assert_not_awaited()
-    svc.placement_repository.upsert_set_pending.assert_awaited_once()
+    svc.placement_repository.set_desired_state_for_key.assert_awaited_once()

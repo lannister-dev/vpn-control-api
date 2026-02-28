@@ -16,6 +16,7 @@ from services.nodes.repository import (
 from services.config import get_settings
 from services.nodes.schemas import (
     NodeAgentDetails,
+    NodeHeartbeatMeta,
     NodeAgentStateCreate,
     NodeAgentStateUpdate,
     NodeHeartbeatIn,
@@ -39,6 +40,9 @@ class NodeBootstrapConflictError(ValueError):
 
 
 class VpnNodeService:
+    _HEARTBEAT_DETAILS_KEY = "heartbeat"
+    _DRAIN_REASON_UNHEALTHY_HEARTBEAT = "unhealthy_heartbeat"
+
     def __init__(self, session: AsyncSession):
         self.vpn_node_repository = (
             VpnNodeRepository(session)
@@ -49,8 +53,15 @@ class VpnNodeService:
         self.node_agent_identity_repository = (
             NodeAgentIdentityRepository(session)
         )
-        self.sync_report_debounce_sec = max(0, int(get_settings().node_agent.sync_report_debounce_sec))
-        self.bootstrap_allow_create = bool(get_settings().node_agent.bootstrap_allow_create)
+        node_agent_settings = get_settings().node_agent
+        self.sync_report_debounce_sec = max(0, int(node_agent_settings.sync_report_debounce_sec))
+        self.bootstrap_allow_create = bool(node_agent_settings.bootstrap_allow_create)
+        self.heartbeat_unhealthy_drain_threshold = max(
+            1, int(node_agent_settings.heartbeat_unhealthy_drain_threshold)
+        )
+        self.heartbeat_healthy_undrain_threshold = max(
+            1, int(node_agent_settings.heartbeat_healthy_undrain_threshold)
+        )
 
     async def initial(
             self,
@@ -138,9 +149,61 @@ class VpnNodeService:
             payload: NodeHeartbeatIn,
     ) -> None:
         now = datetime.now(timezone.utc)
+        existing_state = await self.node_agent_state_repository.get_one_by(node_id=node.id)
+        existing_details = self._normalize_details(
+            existing_state.details if existing_state is not None else None
+        )
         details = NodeAgentDetails(
             runtime=payload.details.runtime,
             stats=payload.details.stats,
+        )
+        heartbeat_meta = self._next_heartbeat_meta(
+            base_details=existing_details,
+            is_healthy=payload.is_healthy,
+        )
+        should_drain = (
+            not payload.is_healthy
+            and not node.is_draining
+            and heartbeat_meta.consecutive_unhealthy >= self.heartbeat_unhealthy_drain_threshold
+        )
+        if should_drain:
+            await self.vpn_node_repository.update_by_id(
+                node.id,
+                {"is_draining": True},
+            )
+            node.is_draining = True
+            heartbeat_meta.drain_reason = self._DRAIN_REASON_UNHEALTHY_HEARTBEAT
+            logger_node.info(
+                "node set to draining after unhealthy heartbeat threshold",
+                node_id=str(node.id),
+                threshold=self.heartbeat_unhealthy_drain_threshold,
+                consecutive_unhealthy=heartbeat_meta.consecutive_unhealthy,
+            )
+        should_undrain = (
+            payload.is_healthy
+            and node.is_draining
+            and node.is_active
+            and node.is_enabled
+            and heartbeat_meta.drain_reason == self._DRAIN_REASON_UNHEALTHY_HEARTBEAT
+            and heartbeat_meta.consecutive_healthy >= self.heartbeat_healthy_undrain_threshold
+        )
+        if should_undrain:
+            await self.vpn_node_repository.update_by_id(
+                node.id,
+                {"is_draining": False},
+            )
+            node.is_draining = False
+            heartbeat_meta.drain_reason = None
+            logger_node.info(
+                "node restored from draining after healthy heartbeat threshold",
+                node_id=str(node.id),
+                threshold=self.heartbeat_healthy_undrain_threshold,
+                consecutive_healthy=heartbeat_meta.consecutive_healthy,
+            )
+        details_data = details.model_dump(mode="json", exclude_none=True)
+        details_data[self._HEARTBEAT_DETAILS_KEY] = heartbeat_meta.model_dump(
+            mode="json",
+            exclude_none=True,
         )
         state = NodeAgentStateCreate(
             node_id=node.id,
@@ -148,18 +211,9 @@ class VpnNodeService:
             is_healthy=payload.is_healthy,
             last_seen_at=now,
             last_sync_at=None,
-            details=details.model_dump(mode="json", exclude_none=True),
+            details=details_data,
         )
         await self.node_agent_state_repository.upsert(state.model_dump(exclude_none=True))
-        if not payload.is_healthy and not node.is_draining:
-            await self.vpn_node_repository.update_by_id(
-                node.id,
-                {"is_draining": True},
-            )
-            logger_node.info(
-                "node set to draining due to unhealthy heartbeat",
-                node_id=str(node.id),
-            )
 
     async def handle_sync_report(
             self,
@@ -237,6 +291,51 @@ class VpnNodeService:
         if existing_synced_count != payload.synced_count:
             return False
         return True
+
+    @classmethod
+    def _next_heartbeat_meta(
+            cls,
+            *,
+            base_details: dict[str, object],
+            is_healthy: bool,
+    ) -> NodeHeartbeatMeta:
+        heartbeat_raw = base_details.get(cls._HEARTBEAT_DETAILS_KEY)
+        heartbeat_data = heartbeat_raw if isinstance(heartbeat_raw, dict) else {}
+
+        consecutive_unhealthy = cls._safe_int(heartbeat_data.get("consecutive_unhealthy"))
+        consecutive_healthy = cls._safe_int(heartbeat_data.get("consecutive_healthy"))
+        drain_reason_raw = heartbeat_data.get("drain_reason")
+        drain_reason = (
+            drain_reason_raw
+            if isinstance(drain_reason_raw, str) and drain_reason_raw.strip()
+            else None
+        )
+
+        if is_healthy:
+            consecutive_healthy += 1
+            consecutive_unhealthy = 0
+        else:
+            consecutive_unhealthy += 1
+            consecutive_healthy = 0
+
+        return NodeHeartbeatMeta(
+            consecutive_unhealthy=consecutive_unhealthy,
+            consecutive_healthy=consecutive_healthy,
+            drain_reason=drain_reason,
+        )
+
+    @staticmethod
+    def _normalize_details(raw: object) -> dict[str, object]:
+        if isinstance(raw, dict):
+            return raw
+        return {}
+
+    @staticmethod
+    def _safe_int(raw: object) -> int:
+        try:
+            return max(0, int(raw))
+        except (TypeError, ValueError):
+            return 0
 
     @staticmethod
     def _to_utc_or_none(value: datetime | None) -> datetime | None:

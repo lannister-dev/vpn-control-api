@@ -1,0 +1,1179 @@
+
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VPN Control Plane - Пульт управления</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #020617;
+      --surface: rgba(15, 23, 42, 0.56);
+      --panel: rgba(15, 23, 42, 0.48);
+      --panel-soft: rgba(30, 41, 59, 0.72);
+      --panel-glass: rgba(15, 23, 42, 0.6);
+      --text: #e4ecff;
+      --muted: #9fb3cf;
+      --line: rgba(255, 255, 255, 0.11);
+      --line-strong: rgba(255, 255, 255, 0.16);
+      --ok: #5ee9b5;
+      --warn: #f5c66b;
+      --bad: #ff7f85;
+      --info: #67d9f6;
+      --radius: 16px;
+      --shadow: 0 30px 120px rgba(0, 0, 0, 0.55);
+      --teal-ring: 0 0 0 1px rgba(45, 212, 191, 0.25), 0 0 24px rgba(45, 212, 191, 0.12);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      color: var(--text);
+      font-family: Manrope, "Segoe UI", sans-serif;
+      background: radial-gradient(ellipse at top, rgba(20, 184, 166, 0.35) 0%, rgba(2, 6, 23, 0.85) 55%, rgba(2, 6, 23, 0.95) 100%);
+      position: relative;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background: radial-gradient(80% 65% at 50% 120%, rgba(0, 0, 0, 0.52), transparent 70%);
+      z-index: 0;
+    }
+    .shell {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      padding: 18px;
+    }
+    .layout {
+      max-width: 1360px;
+      margin: 0 auto;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: var(--surface);
+      backdrop-filter: blur(18px);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 0;
+      min-height: calc(100vh - 36px);
+    }
+    .sidebar {
+      border-right: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(15, 23, 42, 0.8), rgba(15, 23, 42, 0.44));
+      padding: 24px 16px;
+      display: grid;
+      gap: 16px;
+      align-content: start;
+      position: sticky;
+      top: 0;
+      height: calc(100vh - 36px);
+    }
+    .brand h1 {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+    }
+    .dot {
+      display: inline-block;
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      margin-right: 8px;
+      background: var(--warn);
+      box-shadow: 0 0 0 7px rgba(245, 198, 107, 0.16);
+      transition: 160ms ease;
+    }
+    .dot.ok {
+      background: var(--ok);
+      box-shadow: 0 0 0 7px rgba(94, 233, 181, 0.14);
+    }
+    .muted { color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .mono { font-family: "JetBrains Mono", monospace; font-size: 12px; }
+    .row { display: grid; gap: 10px; }
+    .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .input, .select, .btn {
+      width: 100%;
+      border: 1px solid var(--line-strong);
+      border-radius: 12px;
+      background: var(--panel-soft);
+      color: var(--text);
+      padding: 10px 12px;
+      font-size: 13px;
+      font-family: inherit;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    }
+    .input:focus, .select:focus {
+      outline: none;
+      border-color: rgba(45, 212, 191, 0.55);
+      box-shadow: var(--teal-ring);
+    }
+    .btn {
+      cursor: pointer;
+      transition: transform 120ms ease, filter 120ms ease, border-color 120ms ease;
+      border-color: rgba(255, 255, 255, 0.16);
+    }
+    .btn:hover {
+      transform: translateY(-1px);
+      filter: brightness(1.06);
+      border-color: rgba(45, 212, 191, 0.42);
+      box-shadow: var(--teal-ring);
+    }
+    .btn-primary { background: linear-gradient(160deg, rgba(13, 148, 136, 0.52), rgba(8, 145, 178, 0.42)); }
+    .btn-info { background: linear-gradient(160deg, rgba(8, 145, 178, 0.5), rgba(30, 64, 175, 0.34)); }
+    .btn-warn { background: linear-gradient(160deg, rgba(217, 119, 6, 0.48), rgba(146, 64, 14, 0.35)); }
+    .btn-danger { background: linear-gradient(160deg, rgba(185, 28, 28, 0.52), rgba(136, 19, 55, 0.36)); }
+    .btn-ghost { background: rgba(255, 255, 255, 0.03); }
+    .nav { display: grid; gap: 12px; }
+    .nav-group { display: grid; gap: 6px; }
+    .nav-group-title {
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: rgba(159, 179, 207, 0.72);
+      padding: 2px 10px;
+      font-weight: 700;
+    }
+    .nav button {
+      border: 1px solid transparent;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.015);
+      color: #b6c6dc;
+      text-align: left;
+      padding: 10px 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      position: relative;
+      transition: all 140ms ease;
+    }
+    .nav button[disabled] {
+      opacity: 0.52;
+      cursor: default;
+      filter: grayscale(0.18);
+    }
+    .nav button::before {
+      content: "";
+      position: absolute;
+      left: -1px;
+      top: 8px;
+      bottom: 8px;
+      width: 2px;
+      border-radius: 2px;
+      background: transparent;
+      transition: background 130ms ease;
+    }
+    .nav button:hover:not([disabled]) {
+      border-color: rgba(45, 212, 191, 0.24);
+      color: #dcf8ff;
+      background: linear-gradient(130deg, rgba(13, 148, 136, 0.14), rgba(14, 116, 144, 0.08));
+    }
+    .nav-icon {
+      width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(148, 163, 184, 0.16);
+      color: #a8bdd9;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .nav button.active {
+      color: #d7fff6;
+      border-color: rgba(45, 212, 191, 0.35);
+      background: linear-gradient(130deg, rgba(13, 148, 136, 0.24), rgba(14, 116, 144, 0.12));
+      box-shadow: var(--teal-ring);
+    }
+    .nav button.active::before { background: #2dd4bf; }
+    .nav button.active .nav-icon {
+      background: rgba(45, 212, 191, 0.26);
+      color: #d8fffa;
+    }
+    .content {
+      display: grid;
+      gap: 14px;
+      padding: 20px;
+      animation: fade-up 260ms ease;
+    }
+    .hero {
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      background: linear-gradient(160deg, rgba(15, 23, 42, 0.7), rgba(15, 23, 42, 0.48));
+      backdrop-filter: blur(12px);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      padding: 18px;
+    }
+    .hero-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .hero-title { font-size: 30px; font-weight: 800; line-height: 1.1; letter-spacing: 0.01em; }
+    .crumbs {
+      margin-top: 4px;
+      color: rgba(159, 179, 207, 0.76);
+      font-size: 12px;
+      letter-spacing: 0.03em;
+    }
+    .kpis { margin-top: 14px; display: grid; grid-template-columns: repeat(6, minmax(110px, 1fr)); gap: 10px; }
+    .kpi {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(15, 23, 42, 0.46);
+      padding: 10px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      transition: transform 130ms ease, border-color 130ms ease;
+    }
+    .kpi:hover {
+      transform: translateY(-2px);
+      border-color: rgba(45, 212, 191, 0.35);
+      box-shadow: var(--teal-ring);
+    }
+    .kpi-name { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em; }
+    .kpi-value { margin-top: 5px; font-size: 22px; font-family: "JetBrains Mono", monospace; }
+    .panel {
+      display: none;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel-glass);
+      backdrop-filter: blur(12px);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    }
+    .panel.active { display: block; }
+    .panel-head {
+      border-bottom: 1px solid var(--line);
+      padding: 12px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .panel-title { font-size: 14px; font-weight: 700; }
+    .panel-body { padding: 12px 14px; }
+    .two-col { display: grid; grid-template-columns: 1.2fr 1fr; gap: 12px; }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(15, 23, 42, 0.44);
+      padding: 10px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      transition: transform 130ms ease, border-color 130ms ease;
+    }
+    .card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(45, 212, 191, 0.34);
+      box-shadow: var(--teal-ring);
+    }
+    .filters { display: grid; grid-template-columns: 1.6fr repeat(3, minmax(110px, 1fr)) auto; gap: 10px; margin-bottom: 10px; }
+    .stack { display: grid; gap: 8px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding: 9px 7px; text-align: left; vertical-align: middle; }
+    th { color: rgba(159, 179, 207, 0.84); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; }
+    tbody tr:hover td { background: rgba(45, 212, 191, 0.06); }
+    .badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 2px 8px; font-size: 11px; border: 1px solid transparent; }
+    .ok { color: #acfbe0; border-color: rgba(94, 233, 181, 0.44); background: rgba(94, 233, 181, 0.14); }
+    .warn { color: #ffdfa0; border-color: rgba(245, 198, 107, 0.41); background: rgba(245, 198, 107, 0.14); }
+    .bad { color: #ffbbb5; border-color: rgba(255, 127, 133, 0.43); background: rgba(255, 127, 133, 0.14); }
+    .info { color: #b7f7ff; border-color: rgba(103, 217, 246, 0.43); background: rgba(103, 217, 246, 0.14); }
+    .flag { font-size: 15px; margin-right: 6px; vertical-align: middle; }
+    .geo { color: #cfe3ff; font-size: 12px; font-weight: 600; }
+    .actions { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+    .btn-mini {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      padding: 4px 8px;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 130ms ease;
+    }
+    .btn-mini:hover {
+      border-color: rgba(45, 212, 191, 0.44);
+      box-shadow: var(--teal-ring);
+      transform: translateY(-1px);
+    }
+    .log { display: grid; gap: 6px; max-height: 280px; overflow: auto; }
+    .log-item { border: 1px solid var(--line); border-radius: 9px; background: rgba(15, 23, 42, 0.36); padding: 7px 8px; font-size: 12px; }
+    .log-item.error { color: #ffc3bd; }
+    .empty { color: var(--muted); font-size: 12px; padding: 7px 0; }
+    .toast {
+      position: fixed;
+      right: 22px;
+      bottom: 22px;
+      z-index: 30;
+      opacity: 0;
+      transform: translateX(8px);
+      transition: 160ms ease;
+      pointer-events: none;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(15, 23, 42, 0.94);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      padding: 10px 12px;
+      max-width: 460px;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.error { border-color: rgba(255, 127, 133, 0.5); }
+    @keyframes fade-up {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @media (max-width: 1280px) {
+      .kpis { grid-template-columns: repeat(3, minmax(110px, 1fr)); }
+      .filters { grid-template-columns: 1fr 1fr 1fr; }
+      .two-col { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 980px) {
+      .layout { grid-template-columns: 1fr; min-height: auto; }
+      .sidebar { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--line); }
+      .kpis { grid-template-columns: repeat(2, minmax(110px, 1fr)); }
+    }
+    @media (max-width: 760px) {
+      .kpis, .filters, .row-2 { grid-template-columns: 1fr; }
+      .shell { padding: 10px; }
+      .content { padding: 12px; }
+      .hero-title { font-size: 24px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <div class="layout">
+    <aside class="sidebar">
+      <section class="brand">
+        <h1><span id="ready-dot" class="dot"></span>VPN Control Plane</h1>
+        <div class="muted">Панель уровня NOC: управление узлами, маршрутами и плейсментами.</div>
+      </section>
+      <section class="row">
+        <input id="admin-token" class="input mono" type="password" placeholder="Токен администратора" />
+        <div class="row-2">
+          <button id="save-token" class="btn btn-primary">Сохранить токен</button>
+          <button id="refresh-all" class="btn btn-ghost">Обновить</button>
+        </div>
+      </section>
+      <nav class="nav">
+        <section class="nav-group">
+          <div class="nav-group-title">Overview</div>
+          <button class="active" data-tab="overview"><span class="nav-icon">H</span><span>Home</span></button>
+        </section>
+        <section class="nav-group">
+          <div class="nav-group-title">Management</div>
+          <button data-tab="nodes"><span class="nav-icon">N</span><span>Nodes</span></button>
+          <button data-tab="routes"><span class="nav-icon">R</span><span>Routes</span></button>
+          <button data-tab="placements"><span class="nav-icon">P</span><span>Placements</span></button>
+          <button data-tab="subscriptions"><span class="nav-icon">S</span><span>Subscriptions</span></button>
+          <button disabled><span class="nav-icon">U</span><span>Users</span></button>
+          <button disabled><span class="nav-icon">A</span><span>API Tokens</span></button>
+        </section>
+        <section class="nav-group">
+          <div class="nav-group-title">Utilities</div>
+          <button data-tab="ops"><span class="nav-icon">O</span><span>Operations</span></button>
+          <button disabled><span class="nav-icon">S</span><span>Subscription Page</span></button>
+        </section>
+      </nav>
+      <section class="row muted">
+        <label><input id="live-refresh" type="checkbox" checked /> Автообновление</label>
+        <select id="refresh-interval" class="select">
+          <option value="5000">5 сек</option>
+          <option value="15000" selected>15 сек</option>
+          <option value="30000">30 сек</option>
+          <option value="60000">60 сек</option>
+        </select>
+        <div>Readiness: <span id="readiness-text">unknown</span></div>
+        <div>Последнее обновление: <span id="last-sync">-</span></div>
+      </section>
+    </aside>
+
+    <section class="content">
+      <header class="hero">
+        <div class="hero-head">
+          <div>
+            <div class="hero-title">Home</div>
+            <div class="crumbs">Dashboard • Overview • Home</div>
+            <div id="hero-status" class="muted">Введите токен и загрузите данные.</div>
+          </div>
+          <div class="mono muted">API /api/v1</div>
+        </div>
+        <div class="kpis">
+          <div class="kpi"><div class="kpi-name">Серверы</div><div id="kpi-nodes" class="kpi-value">-</div></div>
+          <div class="kpi"><div class="kpi-name">Здоровые</div><div id="kpi-healthy" class="kpi-value">-</div></div>
+          <div class="kpi"><div class="kpi-name">Draining</div><div id="kpi-draining" class="kpi-value">-</div></div>
+          <div class="kpi"><div class="kpi-name">Плейсменты</div><div id="kpi-placements" class="kpi-value">-</div></div>
+          <div class="kpi"><div class="kpi-name">Маршруты</div><div id="kpi-routes" class="kpi-value">-</div></div>
+          <div class="kpi"><div class="kpi-name">Сбои probe</div><div id="kpi-probe-fail" class="kpi-value">-</div></div>
+        </div>
+      </header>
+
+      <section id="tab-overview" class="panel active">
+        <div class="panel-head"><div class="panel-title">Общее состояние системы</div></div>
+        <div class="panel-body two-col">
+          <div class="stack">
+            <div class="card"><div class="muted">Проверки готовности</div><div id="readiness-list" class="stack"></div></div>
+            <div class="card"><div class="muted">Распределение состояния маршрутов</div><div id="route-health-list" class="stack"></div></div>
+            <div class="card"><div class="muted">Последние сбои probe</div><div id="probe-fail-list" class="stack"></div></div>
+            <div class="card"><div class="muted">Серверы, требующие внимания</div><div id="node-alert-list" class="stack"></div></div>
+          </div>
+          <div class="stack">
+            <div class="card"><div class="muted">Выбранный сервер</div><div id="selected-node-card" class="empty">Выберите сервер во вкладке «Серверы».</div></div>
+            <div class="card"><div class="muted">Журнал операций</div><div id="action-log" class="log"></div></div>
+          </div>
+        </div>
+      </section>
+      <section id="tab-nodes" class="panel">
+        <div class="panel-head"><div class="panel-title">Серверы</div><button id="nodes-reload" class="btn btn-ghost">Перезагрузить</button></div>
+        <div class="panel-body">
+          <div class="filters">
+            <input id="nodes-search" class="input" placeholder="Поиск: имя, UUID, домен, регион" />
+            <select id="nodes-role" class="select"><option value="">Любая роль</option><option value="backend">Бэкенд</option><option value="gateway">Шлюз</option></select>
+            <select id="nodes-health" class="select"><option value="">Любое здоровье</option><option value="healthy">Здоров</option><option value="unhealthy">Нездоров</option></select>
+            <select id="nodes-state" class="select"><option value="">Любое состояние</option><option value="active">Активен</option><option value="draining">Draining</option><option value="disabled">Отключен</option></select>
+            <button id="nodes-clear" class="btn btn-ghost">Сброс</button>
+          </div>
+          <table>
+            <thead><tr><th>Сервер</th><th>Роль</th><th>Гео / регион</th><th>Домен</th><th>Здоровье</th><th>Состояние</th><th>Плейсменты</th><th>Последний heartbeat</th><th>Действия</th></tr></thead>
+            <tbody id="nodes-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="tab-routes" class="panel">
+        <div class="panel-head"><div class="panel-title">Маршруты</div><div class="actions"><select id="routes-status" class="select"><option value="">Любой статус</option><option value="healthy">healthy</option><option value="degraded">degraded</option><option value="suspected">suspected</option><option value="blocked">blocked</option><option value="warming_up">warming_up</option></select><input id="routes-search" class="input mono" placeholder="Поиск UUID/имени" /><button id="routes-reload" class="btn btn-ghost">Перезагрузить</button></div></div>
+        <div class="panel-body">
+          <table>
+            <thead><tr><th>Маршрут</th><th>ID backend-ноды</th><th>Статус</th><th>Вес</th><th>Прогрев</th><th>Действия</th></tr></thead>
+            <tbody id="routes-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="tab-placements" class="panel">
+        <div class="panel-head"><div class="panel-title">Плейсменты</div><div class="actions"><input id="placements-node" class="input mono" placeholder="Фильтр backend UUID" /><input id="placements-key" class="input mono" placeholder="Фильтр key UUID" /><select id="placements-desired" class="select"><option value="">Любой desired</option><option value="active">active</option><option value="inactive">inactive</option></select><select id="placements-applied" class="select"><option value="">Любой applied</option><option value="applied">applied</option><option value="pending">pending</option><option value="error">error</option></select><button id="placements-reload" class="btn btn-ghost">Перезагрузить</button></div></div>
+        <div class="panel-body">
+          <div id="placements-meta" class="card muted">Данные еще не загружены.</div>
+          <table>
+            <thead><tr><th>ID плейсмента</th><th>ID ключа</th><th>ID backend-ноды</th><th>op_version</th><th>Желаемое состояние</th><th>Применение</th><th>Причина</th><th>Обновлено</th></tr></thead>
+            <tbody id="placements-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="tab-subscriptions" class="panel">
+        <div class="panel-head">
+          <div class="panel-title">Подписки</div>
+          <div class="muted">Ручное создание, просмотр и административные действия</div>
+        </div>
+        <div class="panel-body two-col">
+          <div class="stack">
+            <div class="card">
+              <div class="muted">Ручное создание подписки</div>
+              <form id="form-sub-create" class="stack">
+                <input class="input mono" name="user_id" placeholder="ID пользователя (UUID)" required />
+                <div class="row-2">
+                  <input class="input" name="profile_key" value="ws_tls_v1" placeholder="profile_key (например: ws_tls_v1)" required />
+                  <input class="input" name="preferred_region" placeholder="preferred_region (опционально)" />
+                </div>
+                <div class="row-2">
+                  <input class="input" name="expires_at" type="datetime-local" />
+                  <input class="input mono" name="vpn_key_id" placeholder="ID ключа (опционально)" />
+                </div>
+                <div class="row-2">
+                  <input class="input" name="max_devices" type="number" min="1" max="100" placeholder="max_devices (опционально)" />
+                  <label class="muted"><input type="checkbox" name="hwid_enabled" checked /> HWID-режим</label>
+                </div>
+                <button class="btn btn-primary" type="submit">Создать подписку</button>
+              </form>
+              <div id="sub-create-result" class="stack empty">После создания здесь появится токен и URL.</div>
+            </div>
+            <div class="card">
+              <div class="muted">Поиск подписок по пользователю</div>
+              <form id="form-sub-list-user" class="stack">
+                <div class="row-2">
+                  <input class="input mono" name="user_id" placeholder="ID пользователя (UUID)" required />
+                  <label class="muted"><input type="checkbox" name="active_only" /> Только активные</label>
+                </div>
+                <button class="btn btn-info" type="submit">Загрузить подписки</button>
+              </form>
+            </div>
+          </div>
+          <div class="stack">
+            <div class="card">
+              <div class="muted">Операции с подпиской по ID</div>
+              <form id="form-sub-manage" class="stack">
+                <input class="input mono" name="subscription_id" placeholder="ID подписки (UUID)" required />
+                <div class="row-2">
+                  <button class="btn btn-info" type="button" id="sub-load">Загрузить</button>
+                  <button class="btn btn-warn" type="button" id="sub-rotate">Rotate token</button>
+                </div>
+                <div class="row-2">
+                  <button class="btn btn-primary" type="button" id="sub-activate">Активировать</button>
+                  <button class="btn btn-danger" type="button" id="sub-deactivate">Деактивировать</button>
+                </div>
+                <button class="btn btn-ghost" type="button" id="sub-devices-load">Загрузить устройства</button>
+              </form>
+              <div id="sub-manage-result" class="stack empty">Результаты операций будут показаны здесь.</div>
+            </div>
+            <div class="card">
+              <div class="muted">Отвязка устройства</div>
+              <form id="form-sub-revoke-device" class="stack">
+                <input class="input mono" name="subscription_id" placeholder="ID подписки (UUID)" required />
+                <input class="input mono" name="device_id" placeholder="ID устройства (UUID)" required />
+                <button class="btn btn-danger" type="submit">Revoke device</button>
+              </form>
+            </div>
+          </div>
+          <div class="stack" style="grid-column: 1 / -1;">
+            <div class="card">
+              <div class="muted">Список подписок пользователя</div>
+              <table>
+                <thead><tr><th>ID подписки</th><th>ID пользователя</th><th>Профиль</th><th>Статус</th><th>HWID</th><th>Макс. устройств</th><th>Root key</th><th>Истекает</th><th>Обновлено</th></tr></thead>
+                <tbody id="subs-body"></tbody>
+              </table>
+            </div>
+            <div class="card">
+              <div class="muted">Устройства подписки</div>
+              <table>
+                <thead><tr><th>ID устройства</th><th>ID key</th><th>Активность</th><th>Последний seen</th><th>User-Agent</th></tr></thead>
+                <tbody id="sub-devices-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-ops" class="panel">
+        <div class="panel-head"><div class="panel-title">Операции</div><div class="muted">Управление миграциями, route health и probe-политиками</div></div>
+        <div class="panel-body two-col">
+          <div class="stack">
+	            <div class="card"><div class="muted">Миграция плейсментов между backend-нодами</div><form id="form-migrate" class="stack"><input class="input mono" name="source_backend_id" placeholder="ID исходной backend-ноды (UUID)" required /><input class="input mono" name="target_backend_id" placeholder="ID целевой backend-ноды (опционально)" /><input class="input" name="last_migration_reason" value="admin_manual" placeholder="Причина миграции" /><button class="btn btn-primary" type="submit">Запустить миграцию</button></form></div>
+	            <div class="card"><div class="muted">Авто drain+migrate по probe-сигналам</div><form id="form-probe-auto" class="stack"><div class="row-2"><input class="input" name="source" placeholder="Источник probe (опционально)" /><input class="input mono" name="target_backend_id" placeholder="ID целевой backend-ноды (опционально)" /></div><div class="row-2"><input class="input" name="max_nodes" type="number" min="1" max="200" value="20" /><label class="muted"><input type="checkbox" name="dry_run" checked /> Только проверка (dry run)</label></div><input class="input" name="last_migration_reason" value="probe_auto_failure" placeholder="Причина миграции" /><button class="btn btn-danger" type="submit">Применить probe-политику</button></form></div>
+          </div>
+          <div class="stack">
+	            <div class="card"><div class="muted">Изменение состояния маршрута</div><form id="form-route-health" class="stack"><input class="input mono" name="route_id" placeholder="ID маршрута (UUID)" required /><select class="select" name="action"><option value="set_healthy">set_healthy</option><option value="set_degraded">set_degraded</option><option value="set_suspected">set_suspected</option><option value="block">block</option><option value="recover">recover</option></select><input class="input" name="cooldown_hours" type="number" min="1" max="72" value="6" placeholder="Cooldown (часы)" /><button class="btn btn-warn" type="submit">Обновить route health</button></form></div>
+	            <div class="card"><div class="muted">Ручной drain+migrate одной backend-ноды</div><form id="form-probe-manual" class="stack"><input class="input mono" name="source_backend_id" placeholder="ID исходной backend-ноды (UUID)" required /><input class="input mono" name="target_backend_id" placeholder="ID целевой backend-ноды (опционально)" /><input class="input" name="source" placeholder="Источник probe (опционально)" /><button class="btn btn-danger" type="submit">Drain и migrate</button></form></div>
+            <div class="row-2"><button id="btn-warmup" class="btn btn-info">Сдвинуть warmup tick</button><button id="btn-cleanup-probe" class="btn btn-ghost">Очистить старые probe-сигналы</button></div>
+          </div>
+        </div>
+      </section>
+    </section>
+    </div>
+  </main>
+  <div id="toast" class="toast"></div>
+
+  <script>
+    (function () {
+      const REFRESH_MS = 15000;
+      const TOKEN_KEY = "control-plane-admin-token";
+      const TABLE_LIMIT = 500;
+
+      const $ = (id) => document.getElementById(id);
+      const refs = {
+        token: $("admin-token"), saveToken: $("save-token"), refreshAll: $("refresh-all"), live: $("live-refresh"), refreshInterval: $("refresh-interval"),
+        readyDot: $("ready-dot"), readinessText: $("readiness-text"), lastSync: $("last-sync"), heroStatus: $("hero-status"),
+        kpiNodes: $("kpi-nodes"), kpiHealthy: $("kpi-healthy"), kpiDraining: $("kpi-draining"), kpiPlacements: $("kpi-placements"), kpiRoutes: $("kpi-routes"), kpiProbeFail: $("kpi-probe-fail"),
+        readinessList: $("readiness-list"), routeHealthList: $("route-health-list"), probeFailList: $("probe-fail-list"), nodeAlertList: $("node-alert-list"), selectedNodeCard: $("selected-node-card"), actionLog: $("action-log"),
+        nodesBody: $("nodes-body"), routesBody: $("routes-body"), placementsBody: $("placements-body"), placementsMeta: $("placements-meta"),
+        subsBody: $("subs-body"), subDevicesBody: $("sub-devices-body"), subCreateResult: $("sub-create-result"), subManageResult: $("sub-manage-result"),
+        nodesSearch: $("nodes-search"), nodesRole: $("nodes-role"), nodesHealth: $("nodes-health"), nodesState: $("nodes-state"), nodesClear: $("nodes-clear"), nodesReload: $("nodes-reload"),
+        routesStatus: $("routes-status"), routesSearch: $("routes-search"), routesReload: $("routes-reload"),
+        placementsNode: $("placements-node"), placementsKey: $("placements-key"), placementsDesired: $("placements-desired"), placementsApplied: $("placements-applied"), placementsReload: $("placements-reload"),
+        formSubCreate: $("form-sub-create"), formSubListUser: $("form-sub-list-user"), formSubManage: $("form-sub-manage"), formSubRevokeDevice: $("form-sub-revoke-device"),
+        subLoad: $("sub-load"), subRotate: $("sub-rotate"), subActivate: $("sub-activate"), subDeactivate: $("sub-deactivate"), subDevicesLoad: $("sub-devices-load"),
+        formMigrate: $("form-migrate"), formProbeAuto: $("form-probe-auto"), formRouteHealth: $("form-route-health"), formProbeManual: $("form-probe-manual"),
+        btnWarmup: $("btn-warmup"), btnCleanupProbe: $("btn-cleanup-probe"), toast: $("toast"),
+        navButtons: Array.from(document.querySelectorAll(".nav button[data-tab]")),
+        panels: { overview: $("tab-overview"), nodes: $("tab-nodes"), routes: $("tab-routes"), placements: $("tab-placements"), subscriptions: $("tab-subscriptions"), ops: $("tab-ops") },
+      };
+
+      const state = { token: localStorage.getItem(TOKEN_KEY) || "", timer: null, selectedNode: null, status: null, readiness: null, routes: [], placements: [], probes: [], subscriptions: [], subscriptionDevices: [], logs: [] };
+
+      const esc = (v) => String(v ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+      const fmtDate = (v) => { if (!v) return "-"; const d = new Date(v); return Number.isNaN(d.getTime()) ? "-" : d.toLocaleString(); };
+      const chip = (cls, txt) => `<span class="badge ${cls}">${esc(txt)}</span>`;
+      const roleLabel = (r) => (r === "backend" ? "Бэкенд" : (r === "gateway" ? "Шлюз" : r));
+      const routeStatusLabel = (s) => ({ healthy: "Стабильный", degraded: "Деградация", suspected: "Подозрение", blocked: "Заблокирован", warming_up: "Прогрев" }[s] || s);
+      const UNKNOWN_FLAG = "🌐";
+      const REGION_TO_COUNTRY_CODE = {
+        fi: "FI", hel: "FI", de: "DE", fra: "DE", nl: "NL", ams: "NL", pl: "PL", waw: "PL",
+        gb: "GB", uk: "GB", lon: "GB", fr: "FR", par: "FR", es: "ES", mad: "ES", it: "IT",
+        rom: "IT", mil: "IT", se: "SE", sto: "SE", no: "NO", osl: "NO", dk: "DK", cph: "DK",
+        ch: "CH", zrh: "CH", at: "AT", vie: "AT", cz: "CZ", prg: "CZ", us: "US", nyc: "US",
+        lax: "US", ca: "CA", tor: "CA", sg: "SG", jp: "JP", tok: "JP", kr: "KR", sel: "KR",
+        hk: "HK", au: "AU", syd: "AU", in: "IN", tr: "TR", ua: "UA", ru: "RU", kz: "KZ",
+        ae: "AE", dxb: "AE", br: "BR", mx: "MX", il: "IL",
+      };
+      const COUNTRY_CODE_TO_NAME = {
+        FI: "Finland", DE: "Germany", NL: "Netherlands", PL: "Poland", GB: "United Kingdom",
+        FR: "France", ES: "Spain", IT: "Italy", SE: "Sweden", NO: "Norway", DK: "Denmark",
+        CH: "Switzerland", AT: "Austria", CZ: "Czechia", US: "United States", CA: "Canada",
+        SG: "Singapore", JP: "Japan", KR: "South Korea", HK: "Hong Kong", AU: "Australia",
+        IN: "India", TR: "Turkey", UA: "Ukraine", RU: "Russia", KZ: "Kazakhstan",
+        AE: "United Arab Emirates", BR: "Brazil", MX: "Mexico", IL: "Israel",
+      };
+
+      function extractRegionTokens(region) {
+        return String(region || "").toLowerCase().split(/[^a-zA-Z]+/).filter(Boolean);
+      }
+
+      function countryCodeFromRegion(region) {
+        if (region == null) return null;
+        const regionClean = String(region).trim().toLowerCase();
+        if (!regionClean) return null;
+
+        const tokens = extractRegionTokens(regionClean);
+        for (const token of tokens) {
+          const mapped = REGION_TO_COUNTRY_CODE[token];
+          if (mapped) return mapped;
+        }
+        for (const token of tokens) {
+          if (token.length === 2 && /^[a-z]+$/i.test(token)) return token.toUpperCase();
+        }
+        return null;
+      }
+
+      function flagEmojiFromCountryCode(countryCode) {
+        if (!countryCode) return UNKNOWN_FLAG;
+        const code = String(countryCode).trim().toUpperCase();
+        if (code.length !== 2 || !/^[A-Z]+$/.test(code)) return UNKNOWN_FLAG;
+        const base = "A".charCodeAt(0);
+        return String.fromCodePoint(0x1f1e6 + code.charCodeAt(0) - base, 0x1f1e6 + code.charCodeAt(1) - base);
+      }
+
+      function nodeGeo(region) {
+        const code = countryCodeFromRegion(region);
+        const country = code ? (COUNTRY_CODE_TO_NAME[code] || code) : "Unknown";
+        const flag = flagEmojiFromCountryCode(code);
+        const regionText = String(region || "unknown");
+        const short = `${flag} ${country}`;
+        return { code, country, flag, short, regionText, full: `${short} · ${regionText}` };
+      }
+
+      function notify(message, isError) {
+        refs.toast.textContent = message;
+        refs.toast.className = "toast show" + (isError ? " error" : "");
+        clearTimeout(notify._t);
+        notify._t = setTimeout(() => refs.toast.className = "toast", 2500);
+      }
+
+      function pushLog(title, payload, isError) {
+        state.logs.unshift({ at: new Date().toLocaleString(), title, payload, isError: !!isError });
+        if (state.logs.length > 40) state.logs.length = 40;
+        refs.actionLog.innerHTML = state.logs.length
+          ? state.logs.map((i) => `<div class="log-item${i.isError ? " error" : ""}"><div><strong>${esc(i.title)}</strong></div><div class="muted">${esc(i.at)}</div><div class="mono">${esc(typeof i.payload === "string" ? i.payload : JSON.stringify(i.payload))}</div></div>`).join("")
+          : `<div class="empty">Операций пока не было.</div>`;
+      }
+
+      async function req(path, options) {
+        const opt = options || {};
+        const headers = { Accept: "application/json" };
+        if (opt.body != null) headers["Content-Type"] = "application/json";
+        if (state.token) headers.Authorization = "Bearer " + state.token;
+        const r = await fetch(path, { method: opt.method || "GET", headers, body: opt.body != null ? JSON.stringify(opt.body) : undefined });
+        if (!r.ok) {
+          const raw = await r.text();
+          let detail = raw;
+          try { const parsed = JSON.parse(raw); if (parsed && parsed.detail) detail = typeof parsed.detail === "string" ? parsed.detail : JSON.stringify(parsed.detail); } catch (_) {}
+          throw new Error(`${r.status} ${detail}`);
+        }
+        return r.status === 204 ? null : await r.json();
+      }
+
+      async function runAction(title, fn) {
+        if (!state.token) { notify("Сначала укажите токен администратора", true); return null; }
+        try { const out = await fn(); pushLog(title, out, false); notify(`${title}: выполнено`, false); return out; }
+        catch (e) { pushLog(title, e.message, true); notify(`${title}: ${e.message}`, true); throw e; }
+      }
+
+      async function copyToClipboard(value) {
+        const text = String(value || "").trim();
+        if (!text) return;
+        try {
+          await navigator.clipboard.writeText(text);
+          notify("ID скопирован в буфер обмена", false);
+        } catch (_) {
+          notify("Не удалось скопировать ID", true);
+        }
+      }
+
+      function parseDateTimeLocal(value) {
+        const raw = String(value || "").trim();
+        if (!raw) return null;
+        const dt = new Date(raw);
+        if (Number.isNaN(dt.getTime())) return null;
+        return dt.toISOString();
+      }
+
+      function renderPlacementMeta() {
+        const total = state.placements.length;
+        if (!total) {
+          refs.placementsMeta.innerHTML = "Плейсменты не загружены.";
+          return;
+        }
+        const byKey = new Map();
+        state.placements.forEach((placement) => {
+          const keyId = String(placement.key_id || "");
+          if (!keyId) return;
+          byKey.set(keyId, (byKey.get(keyId) || 0) + 1);
+        });
+        const keysTotal = byKey.size;
+        const replicated = Array.from(byKey.values()).filter((count) => count > 1).length;
+        const maxReplicas = keysTotal ? Math.max(...Array.from(byKey.values())) : 0;
+        const avgReplicas = keysTotal ? (total / keysTotal).toFixed(2) : "0.00";
+        refs.placementsMeta.innerHTML = `
+          ${chip("info", `placements: ${total}`)}
+          ${chip("info", `keys: ${keysTotal}`)}
+          ${chip(replicated > 0 ? "warn" : "ok", `keys >1 backend: ${replicated}`)}
+          ${chip("info", `avg replicas/key: ${avgReplicas}`)}
+          ${chip("info", `max replicas/key: ${maxReplicas}`)}
+        `;
+      }
+
+      function renderSubscriptionCreateResult(created) {
+        if (!created) {
+          refs.subCreateResult.innerHTML = `<div class="empty">После создания здесь появится токен и URL.</div>`;
+          return;
+        }
+        refs.subCreateResult.innerHTML = `
+          <div>${chip("ok", "Подписка создана")}</div>
+          <div class="mono">subscription_id: ${esc(created.id)} <button class="btn-mini copy-value" data-copy="${esc(created.id)}">Копировать</button></div>
+          <div class="mono">token: ${esc(created.token)} <button class="btn-mini copy-value" data-copy="${esc(created.token)}">Копировать</button></div>
+          <div class="mono">url: ${esc(created.subscription_url)} <button class="btn-mini copy-value" data-copy="${esc(created.subscription_url)}">Копировать</button></div>
+          <div class="muted">active: ${created.is_active ? "yes" : "no"}, expires: ${fmtDate(created.expires_at)}</div>
+        `;
+      }
+
+      function renderSubscriptionManageResult(payload, statusCls) {
+        if (!payload) {
+          refs.subManageResult.innerHTML = `<div class="empty">Результаты операций будут показаны здесь.</div>`;
+          return;
+        }
+        refs.subManageResult.innerHTML = `<div>${chip(statusCls || "info", "Результат")}</div><div class="mono">${esc(JSON.stringify(payload))}</div>`;
+      }
+
+      function setTab(tab) {
+        refs.navButtons.forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+        Object.keys(refs.panels).forEach((k) => refs.panels[k].classList.toggle("active", k === tab));
+      }
+
+      function filteredNodes() {
+        if (!state.status || !state.status.nodes) return [];
+        const q = refs.nodesSearch.value.trim().toLowerCase();
+        const role = refs.nodesRole.value;
+        const health = refs.nodesHealth.value;
+        const st = refs.nodesState.value;
+        return state.status.nodes.filter((n) => {
+          if (role && n.role !== role) return false;
+          if (health === "healthy" && !n.is_healthy) return false;
+          if (health === "unhealthy" && n.is_healthy) return false;
+          if (st === "draining" && !n.is_draining) return false;
+          if (st === "disabled" && n.is_enabled) return false;
+          if (st === "active" && (n.is_draining || !n.is_enabled)) return false;
+          if (q) {
+            const g = nodeGeo(n.region);
+            const hay = [n.name, n.id, n.public_domain, n.region, g.country, g.code].join(" ").toLowerCase();
+            if (!hay.includes(q)) return false;
+          }
+          return true;
+        });
+      }
+
+      function filteredRoutes() {
+        const status = refs.routesStatus.value;
+        const q = refs.routesSearch.value.trim().toLowerCase();
+        return state.routes.filter((r) => {
+          if (status && r.health_status !== status) return false;
+          if (q) {
+            const hay = [r.id, r.name, r.node_id, r.transport_profile_id].join(" ").toLowerCase();
+            if (!hay.includes(q)) return false;
+          }
+          return true;
+        });
+      }
+
+      function filteredPlacements() {
+        const node = refs.placementsNode.value.trim().toLowerCase();
+        const key = refs.placementsKey.value.trim().toLowerCase();
+        const desired = refs.placementsDesired.value;
+        const applied = refs.placementsApplied.value;
+        return state.placements.filter((p) => {
+          if (node && String(p.backend_node_id).toLowerCase() !== node) return false;
+          if (key && String(p.key_id).toLowerCase() !== key) return false;
+          if (desired && p.desired_state !== desired) return false;
+          if (applied && p.applied_state !== applied) return false;
+          return true;
+        });
+      }
+
+      function filteredSubscriptions() {
+        return state.subscriptions.slice(0, TABLE_LIMIT);
+      }
+      function renderSelectedNode() {
+        const n = state.selectedNode;
+        if (!n) { refs.selectedNodeCard.innerHTML = `<div class="empty">Выберите сервер во вкладке «Серверы».</div>`; return; }
+        const g = nodeGeo(n.region);
+        refs.selectedNodeCard.innerHTML = `<div class="stack"><div><strong>${esc(n.name)}</strong> ${chip("info", roleLabel(n.role))} ${chip("info", g.short)}</div><div class="mono muted">${esc(n.id)}</div><div class="muted">${esc(g.regionText)}</div><div>${n.is_healthy ? chip("ok", "Здоров") : chip("bad", "Нездоров")} ${n.is_draining ? chip("warn", "Draining") : (!n.is_enabled ? chip("bad", "Отключен") : chip("ok", "Активен"))}</div><div class="actions"><button class="btn-mini" data-selected="drain">Drain</button><button class="btn-mini" data-selected="enable">Enable</button></div><div class="actions"><select id="selected-role" class="select"><option value="backend">Бэкенд</option><option value="gateway">Шлюз</option></select><button class="btn-mini" data-selected="role">Изменить роль</button></div></div>`;
+        const role = document.getElementById("selected-role");
+        if (role) role.value = n.role;
+      }
+
+      function render() {
+        if (state.status) {
+          const t = state.status.totals || {};
+          refs.kpiNodes.textContent = String(t.nodes_total || 0);
+          refs.kpiHealthy.textContent = String(t.nodes_healthy || 0);
+          refs.kpiDraining.textContent = String(t.nodes_draining || 0);
+          refs.kpiPlacements.textContent = String(t.placements_total || 0);
+        }
+        refs.kpiRoutes.textContent = String(state.routes.length || 0);
+        refs.kpiProbeFail.textContent = String(state.probes.filter((p) => !p.is_reachable).length || 0);
+
+        refs.readinessList.innerHTML = state.readiness
+          ? ((state.readiness.checks || []).map((c) => `<div class="card">${chip(c.ok ? "ok" : "bad", c.name)}<div class="muted">${esc(c.detail)}</div></div>`).join("") || `<div class="empty">Проверок нет.</div>`)
+          : `<div class="empty">Данные readiness отсутствуют.</div>`;
+
+        const rc = { healthy: 0, degraded: 0, suspected: 0, blocked: 0, warming_up: 0 };
+        state.routes.forEach((r) => { if (Object.prototype.hasOwnProperty.call(rc, r.health_status)) rc[r.health_status] += 1; });
+        refs.routeHealthList.innerHTML = Object.keys(rc).map((s) => `<div class="card">${chip(s === "healthy" ? "ok" : (s === "blocked" ? "bad" : "warn"), routeStatusLabel(s))} <span class="mono">${rc[s]}</span></div>`).join("");
+
+        const fails = state.probes.filter((p) => !p.is_reachable).slice(0, 8);
+        refs.probeFailList.innerHTML = fails.length
+          ? fails.map((p) => `<div class="card">${chip("bad", p.source)} <span class="mono">${esc(p.node_id)}</span><div class="muted">${esc(p.error || "unreachable")} | ${fmtDate(p.checked_at)}</div></div>`).join("")
+          : `<div class="empty">Сбоев probe не найдено.</div>`;
+
+        const alertNodes = ((state.status && state.status.nodes) || [])
+          .filter((n) => !n.is_healthy || n.is_draining || !n.is_enabled)
+          .slice(0, 10);
+        refs.nodeAlertList.innerHTML = alertNodes.length
+          ? alertNodes.map((n) => {
+            const g = nodeGeo(n.region);
+            return `<div class="card"><div><strong>${esc(n.name)}</strong> ${chip("info", roleLabel(n.role))}</div><div class="geo"><span class="flag">${esc(g.flag)}</span>${esc(g.country)}</div><div class="mono muted">${esc(n.id)}</div><div>${n.is_healthy ? "" : chip("bad", "Нездоров")} ${n.is_draining ? chip("warn", "Draining") : ""} ${!n.is_enabled ? chip("bad", "Отключен") : ""}</div></div>`;
+          }).join("")
+          : `<div class="empty">Проблемных серверов не обнаружено.</div>`;
+
+        renderSelectedNode();
+
+        const nodes = filteredNodes();
+        refs.nodesBody.innerHTML = nodes.length
+          ? nodes.map((n) => {
+            const g = nodeGeo(n.region);
+            return `<tr><td><strong>${esc(n.name)}</strong><div class="mono muted">${esc(n.id)}</div></td><td>${esc(roleLabel(n.role))}</td><td><div class="geo"><span class="flag">${esc(g.flag)}</span>${esc(g.country)}</div><div class="mono muted">${esc(g.regionText)}</div></td><td class="mono">${esc(n.public_domain || "-")}</td><td>${n.is_healthy ? chip("ok", "Здоров") : chip("bad", "Нездоров")}</td><td>${n.is_draining ? chip("warn", "Draining") : (!n.is_enabled ? chip("bad", "Отключен") : chip("ok", "Активен"))}</td><td class="mono">${n.placements_backend}</td><td>${fmtDate(n.last_seen_at)}</td><td><div class="actions"><button class="btn-mini node-action" data-action="drain" data-id="${esc(n.id)}">Drain</button><button class="btn-mini node-action" data-action="enable" data-id="${esc(n.id)}">Enable</button><button class="btn-mini node-select" data-id="${esc(n.id)}">Выбрать</button><button class="btn-mini copy-value" data-copy="${esc(n.id)}">Копировать ID</button></div></td></tr>`;
+          }).join("")
+          : `<tr><td colspan="9" class="empty">Нет серверов по текущим фильтрам.</td></tr>`;
+
+        const routes = filteredRoutes();
+        refs.routesBody.innerHTML = routes.length
+          ? routes.map((r) => `<tr><td><strong>${esc(r.name)}</strong><div class="mono muted">${esc(r.id)}</div></td><td class="mono">${esc(r.node_id)} <button class="btn-mini copy-value" data-copy="${esc(r.node_id)}">Копировать</button></td><td>${r.health_status === "healthy" ? chip("ok", routeStatusLabel(r.health_status)) : (r.health_status === "blocked" ? chip("bad", routeStatusLabel(r.health_status)) : chip("warn", routeStatusLabel(r.health_status)))}</td><td class="mono">${esc(r.effective_weight)} / ${esc(r.base_weight)}</td><td class="mono">${esc(r.warmup_stage == null ? "-" : r.warmup_stage)}</td><td><div class="actions"><button class="btn-mini route-action" data-id="${esc(r.id)}" data-action="set_healthy">Healthy</button><button class="btn-mini route-action" data-id="${esc(r.id)}" data-action="set_degraded">Degrade</button><button class="btn-mini route-action" data-id="${esc(r.id)}" data-action="block">Block</button><button class="btn-mini copy-value" data-copy="${esc(r.id)}">Копировать ID</button></div></td></tr>`).join("")
+          : `<tr><td colspan="6" class="empty">Нет маршрутов по фильтрам.</td></tr>`;
+
+        const placements = filteredPlacements().slice(0, TABLE_LIMIT);
+        renderPlacementMeta();
+        refs.placementsBody.innerHTML = placements.length
+          ? placements.map((p) => `<tr><td class="mono">${esc(p.id)}</td><td class="mono">${esc(p.key_id)}</td><td class="mono">${esc(p.backend_node_id)}</td><td class="mono">${esc(p.op_version)}</td><td>${p.desired_state === "active" ? chip("ok", "active") : chip("warn", "inactive")}</td><td>${p.applied_state === "applied" ? chip("ok", "applied") : (p.applied_state === "pending" ? chip("warn", "pending") : chip("bad", "error"))}</td><td>${esc(p.last_migration_reason || "-")}</td><td>${fmtDate(p.updated_at)}</td></tr>`).join("")
+          : `<tr><td colspan="8" class="empty">Нет плейсментов по фильтрам.</td></tr>`;
+
+        const subs = filteredSubscriptions();
+        refs.subsBody.innerHTML = subs.length
+          ? subs.map((s) => `<tr><td class="mono">${esc(s.id)} <button class="btn-mini copy-value" data-copy="${esc(s.id)}">Копировать</button></td><td class="mono">${esc(s.user_id)}</td><td>${esc(s.profile_key || "-")}</td><td>${s.is_active ? chip("ok", "active") : chip("bad", "inactive")}</td><td>${s.hwid_enabled ? chip("info", "on") : chip("warn", "off")}</td><td class="mono">${esc(s.max_devices == null ? "-" : s.max_devices)}</td><td class="mono">${esc(s.root_vpn_key_id || "-")}</td><td>${fmtDate(s.expires_at)}</td><td>${fmtDate(s.updated_at)}</td></tr>`).join("")
+          : `<tr><td colspan="9" class="empty">Список подписок пока пуст. Используйте форму «Поиск подписок по пользователю».</td></tr>`;
+
+        refs.subDevicesBody.innerHTML = state.subscriptionDevices.length
+          ? state.subscriptionDevices.map((d) => `<tr><td class="mono">${esc(d.id)} <button class="btn-mini copy-value" data-copy="${esc(d.id)}">Копировать</button></td><td class="mono">${esc(d.vpn_key_id)}</td><td>${d.is_active ? chip("ok", "active") : chip("warn", "inactive")}</td><td>${fmtDate(d.last_seen_at)}</td><td>${esc(d.user_agent || "-")}</td></tr>`).join("")
+          : `<tr><td colspan="5" class="empty">Устройства не загружены.</td></tr>`;
+      }
+
+      async function refreshAll() {
+        if (!state.token) { refs.heroStatus.textContent = "Введите токен администратора и нажмите «Сохранить токен»."; return; }
+        const [status, readiness, routes, probes, placements] = await Promise.all([
+          req("/api/v1/admin/status"),
+          req("/api/v1/admin/readiness"),
+          req("/api/v1/routes?limit=500"),
+          req("/api/v1/probe/reports/recent?limit=60"),
+          req("/api/v1/placements?limit=500"),
+        ]);
+        state.status = status;
+        state.readiness = readiness;
+        state.routes = routes;
+        state.probes = probes;
+        state.placements = placements;
+        refs.heroStatus.textContent = `Снимок состояния: ${fmtDate(status.generated_at)}`;
+        refs.readinessText.textContent = readiness.ready ? "ready" : "not ready";
+        refs.readyDot.classList.toggle("ok", !!readiness.ready);
+        refs.lastSync.textContent = new Date().toLocaleString();
+        if (state.selectedNode && status.nodes) {
+          const cur = status.nodes.find((n) => n.id === state.selectedNode.id);
+          if (cur) state.selectedNode = cur;
+        }
+        render();
+      }
+
+      function updateTimer() {
+        if (state.timer) { clearInterval(state.timer); state.timer = null; }
+        const interval = Number(refs.refreshInterval.value || REFRESH_MS);
+        if (refs.live.checked) state.timer = setInterval(() => refreshAll().catch((e) => notify(`Ошибка обновления: ${e.message}`, true)), interval);
+      }
+
+      refs.navButtons.forEach((b) => b.addEventListener("click", () => setTab(b.dataset.tab)));
+      refs.saveToken.addEventListener("click", () => {
+        state.token = refs.token.value.trim();
+        if (state.token) { localStorage.setItem(TOKEN_KEY, state.token); notify("Токен сохранен", false); refreshAll().catch((e) => notify(`Ошибка загрузки: ${e.message}`, true)); }
+        else { localStorage.removeItem(TOKEN_KEY); notify("Токен очищен", false); }
+      });
+      refs.refreshAll.addEventListener("click", () => refreshAll().catch((e) => notify(`Ошибка обновления: ${e.message}`, true)));
+      refs.live.addEventListener("change", updateTimer);
+      refs.refreshInterval.addEventListener("change", updateTimer);
+
+      [refs.nodesSearch, refs.nodesRole, refs.nodesHealth, refs.nodesState, refs.routesStatus, refs.routesSearch, refs.placementsNode, refs.placementsKey, refs.placementsDesired, refs.placementsApplied].forEach((el) => {
+        el.addEventListener("input", render);
+        el.addEventListener("change", render);
+      });
+      refs.nodesClear.addEventListener("click", () => { refs.nodesSearch.value = ""; refs.nodesRole.value = ""; refs.nodesHealth.value = ""; refs.nodesState.value = ""; render(); });
+      refs.nodesReload.addEventListener("click", () => refreshAll().catch((e) => notify(`Ошибка обновления: ${e.message}`, true)));
+      refs.routesReload.addEventListener("click", () => refreshAll().catch((e) => notify(`Ошибка обновления: ${e.message}`, true)));
+      refs.placementsReload.addEventListener("click", () => refreshAll().catch((e) => notify(`Ошибка обновления: ${e.message}`, true)));
+
+      refs.formSubCreate.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const d = new FormData(refs.formSubCreate);
+        const payload = {
+          user_id: String(d.get("user_id") || "").trim(),
+          profile_key: String(d.get("profile_key") || "").trim(),
+          hwid_enabled: d.get("hwid_enabled") === "on",
+        };
+        const preferredRegion = String(d.get("preferred_region") || "").trim();
+        if (preferredRegion) payload.preferred_region = preferredRegion;
+        const vpnKeyId = String(d.get("vpn_key_id") || "").trim();
+        if (vpnKeyId) payload.vpn_key_id = vpnKeyId;
+        const maxDevices = String(d.get("max_devices") || "").trim();
+        if (maxDevices) payload.max_devices = Number(maxDevices);
+        const expiresAt = parseDateTimeLocal(d.get("expires_at"));
+        if (expiresAt) payload.expires_at = expiresAt;
+        runAction("Create subscription", () => req("/api/v1/subscriptions", { method: "POST", body: payload }))
+          .then((created) => {
+            renderSubscriptionCreateResult(created);
+            const createdSub = {
+              id: created.id,
+              user_id: payload.user_id,
+              profile_key: payload.profile_key,
+              preferred_region: payload.preferred_region || null,
+              is_active: created.is_active,
+              expires_at: created.expires_at,
+              hwid_enabled: payload.hwid_enabled,
+              max_devices: payload.max_devices || null,
+              root_vpn_key_id: created.vpn_key_id || null,
+              updated_at: new Date().toISOString(),
+            };
+            state.subscriptions = [createdSub, ...state.subscriptions].slice(0, TABLE_LIMIT);
+            render();
+          })
+          .catch(() => {});
+      });
+
+      refs.formSubListUser.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const d = new FormData(refs.formSubListUser);
+        const userId = String(d.get("user_id") || "").trim();
+        const activeOnly = d.get("active_only") === "on";
+        runAction("List subscriptions by user", () => req(`/api/v1/subscriptions/by-user/${encodeURIComponent(userId)}?active_only=${activeOnly ? "true" : "false"}`))
+          .then((rows) => {
+            state.subscriptions = Array.isArray(rows) ? rows : [];
+            render();
+          })
+          .catch(() => {});
+      });
+
+      refs.formSubManage.addEventListener("submit", (e) => {
+        e.preventDefault();
+        refs.subLoad.click();
+      });
+
+      async function loadSubscriptionById(subscriptionId) {
+        const id = String(subscriptionId || "").trim();
+        if (!id) throw new Error("subscription_id is required");
+        const sub = await req(`/api/v1/subscriptions/${encodeURIComponent(id)}`);
+        const index = state.subscriptions.findIndex((item) => item.id === sub.id);
+        if (index >= 0) state.subscriptions[index] = sub;
+        else state.subscriptions.unshift(sub);
+        state.subscriptions = state.subscriptions.slice(0, TABLE_LIMIT);
+        renderSubscriptionManageResult(sub, "ok");
+        render();
+        return sub;
+      }
+
+      refs.subLoad.addEventListener("click", () => {
+        const d = new FormData(refs.formSubManage);
+        const subId = String(d.get("subscription_id") || "").trim();
+        runAction("Load subscription", () => loadSubscriptionById(subId)).catch(() => {});
+      });
+
+      refs.subRotate.addEventListener("click", () => {
+        const d = new FormData(refs.formSubManage);
+        const subId = String(d.get("subscription_id") || "").trim();
+        runAction("Rotate subscription token", () => req(`/api/v1/subscriptions/${encodeURIComponent(subId)}/rotate-token`, { method: "POST", body: {} }))
+          .then((out) => renderSubscriptionManageResult(out, "warn"))
+          .catch(() => {});
+      });
+
+      refs.subActivate.addEventListener("click", () => {
+        const d = new FormData(refs.formSubManage);
+        const subId = String(d.get("subscription_id") || "").trim();
+        runAction("Activate subscription", () => req(`/api/v1/subscriptions/${encodeURIComponent(subId)}/activate`, { method: "POST", body: {} }))
+          .then((out) => {
+            renderSubscriptionManageResult(out, "ok");
+            return loadSubscriptionById(subId).catch(() => null);
+          })
+          .catch(() => {});
+      });
+
+      refs.subDeactivate.addEventListener("click", () => {
+        const d = new FormData(refs.formSubManage);
+        const subId = String(d.get("subscription_id") || "").trim();
+        runAction("Deactivate subscription", () => req(`/api/v1/subscriptions/${encodeURIComponent(subId)}/deactivate`, { method: "POST", body: {} }))
+          .then((out) => {
+            renderSubscriptionManageResult(out, "warn");
+            return loadSubscriptionById(subId).catch(() => null);
+          })
+          .catch(() => {});
+      });
+
+      refs.subDevicesLoad.addEventListener("click", () => {
+        const d = new FormData(refs.formSubManage);
+        const subId = String(d.get("subscription_id") || "").trim();
+        runAction("List subscription devices", () => req(`/api/v1/subscriptions/${encodeURIComponent(subId)}/devices?active_only=false`))
+          .then((rows) => {
+            state.subscriptionDevices = Array.isArray(rows) ? rows : [];
+            renderSubscriptionManageResult({ loaded_devices: state.subscriptionDevices.length }, "info");
+            render();
+          })
+          .catch(() => {});
+      });
+
+      refs.formSubRevokeDevice.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const d = new FormData(refs.formSubRevokeDevice);
+        const subId = String(d.get("subscription_id") || "").trim();
+        const deviceId = String(d.get("device_id") || "").trim();
+        runAction("Revoke subscription device", () => req(`/api/v1/subscriptions/${encodeURIComponent(subId)}/devices/${encodeURIComponent(deviceId)}/revoke`, { method: "POST", body: {} }))
+          .then((out) => {
+            renderSubscriptionManageResult(out, "warn");
+            return req(`/api/v1/subscriptions/${encodeURIComponent(subId)}/devices?active_only=false`);
+          })
+          .then((rows) => {
+            state.subscriptionDevices = Array.isArray(rows) ? rows : [];
+            render();
+          })
+          .catch(() => {});
+      });
+
+      refs.nodesBody.addEventListener("click", (ev) => {
+        const t = ev.target;
+        if (!(t instanceof HTMLElement)) return;
+        const sbtn = t.closest(".node-select");
+        const abtn = t.closest(".node-action");
+        if (sbtn && sbtn.dataset.id && state.status && state.status.nodes) {
+          const n = state.status.nodes.find((x) => x.id === sbtn.dataset.id);
+          if (n) { state.selectedNode = n; render(); setTab("overview"); }
+          return;
+        }
+        if (abtn && abtn.dataset.id && abtn.dataset.action) {
+          const id = abtn.dataset.id;
+          const action = abtn.dataset.action;
+          runAction(`Node ${action} ${id}`, () => req(action === "drain" ? `/api/v1/agent/nodes/${encodeURIComponent(id)}/drain` : `/api/v1/agent/nodes/${encodeURIComponent(id)}/enable`, { method: "POST", body: {} })).then(() => refreshAll()).catch(() => {});
+          return;
+        }
+        const cbtn = t.closest(".copy-value");
+        if (cbtn && cbtn.dataset.copy) {
+          copyToClipboard(cbtn.dataset.copy);
+        }
+      });
+
+      refs.selectedNodeCard.addEventListener("click", (ev) => {
+        const t = ev.target;
+        if (!(t instanceof HTMLElement) || !state.selectedNode) return;
+        const b = t.closest("[data-selected]");
+        if (!b) return;
+        const id = state.selectedNode.id;
+        const act = b.dataset.selected;
+        if (act === "role") {
+          const role = (document.getElementById("selected-role") || { value: "backend" }).value;
+          runAction(`Set role ${id} -> ${role}`, () => req(`/api/v1/agent/nodes/${encodeURIComponent(id)}/role`, { method: "POST", body: { role } })).then(() => refreshAll()).catch(() => {});
+          return;
+        }
+        runAction(`Node ${act} ${id}`, () => req(act === "drain" ? `/api/v1/agent/nodes/${encodeURIComponent(id)}/drain` : `/api/v1/agent/nodes/${encodeURIComponent(id)}/enable`, { method: "POST", body: {} })).then(() => refreshAll()).catch(() => {});
+      });
+
+      refs.routesBody.addEventListener("click", (ev) => {
+        const t = ev.target;
+        if (!(t instanceof HTMLElement)) return;
+        const cbtn = t.closest(".copy-value");
+        if (cbtn && cbtn.dataset.copy) {
+          copyToClipboard(cbtn.dataset.copy);
+          return;
+        }
+        const b = t.closest(".route-action");
+        if (!b || !b.dataset.id || !b.dataset.action) return;
+        runAction(`Route ${b.dataset.action} ${b.dataset.id}`, () => req("/api/v1/admin/set-route-health", { method: "POST", body: { route_id: b.dataset.id, action: b.dataset.action, cooldown_hours: 6 } })).then(() => refreshAll()).catch(() => {});
+      });
+
+      [refs.subCreateResult, refs.subManageResult, refs.subsBody, refs.subDevicesBody].forEach((container) => {
+        container.addEventListener("click", (ev) => {
+          const t = ev.target;
+          if (!(t instanceof HTMLElement)) return;
+          const cbtn = t.closest(".copy-value");
+          if (cbtn && cbtn.dataset.copy) {
+            copyToClipboard(cbtn.dataset.copy);
+          }
+        });
+      });
+
+      refs.formMigrate.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const d = new FormData(refs.formMigrate);
+        const payload = { source_backend_id: String(d.get("source_backend_id") || "").trim(), last_migration_reason: String(d.get("last_migration_reason") || "admin_manual").trim() || "admin_manual" };
+        const t = String(d.get("target_backend_id") || "").trim();
+        if (t) payload.target_backend_id = t;
+        runAction("Placement migration", () => req("/api/v1/admin/migrate-backend", { method: "POST", body: payload })).then(() => refreshAll()).catch(() => {});
+      });
+
+      refs.formProbeAuto.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const d = new FormData(refs.formProbeAuto);
+        const payload = { source: String(d.get("source") || "").trim() || null, require_recent_failure: true, max_probe_age_sec: 600, min_consecutive_failures: 2, include_already_draining: false, dry_run: d.get("dry_run") === "on", max_nodes: Number(d.get("max_nodes") || 20), last_migration_reason: String(d.get("last_migration_reason") || "probe_auto_failure").trim() || "probe_auto_failure" };
+        const t = String(d.get("target_backend_id") || "").trim();
+        if (t) payload.target_backend_id = t;
+        runAction("Probe auto policy", () => req("/api/v1/probe/admin/auto-drain-migrate-backends", { method: "POST", body: payload })).then(() => refreshAll()).catch(() => {});
+      });
+
+      refs.formRouteHealth.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const d = new FormData(refs.formRouteHealth);
+        const payload = { route_id: String(d.get("route_id") || "").trim(), action: String(d.get("action") || "set_healthy"), cooldown_hours: Number(d.get("cooldown_hours") || 6) };
+        runAction("Route health update", () => req("/api/v1/admin/set-route-health", { method: "POST", body: payload })).then(() => refreshAll()).catch(() => {});
+      });
+
+      refs.formProbeManual.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const d = new FormData(refs.formProbeManual);
+        const payload = { source_backend_id: String(d.get("source_backend_id") || "").trim(), require_recent_failure: true, max_probe_age_sec: 600, min_consecutive_failures: 1, source: String(d.get("source") || "").trim() || null, last_migration_reason: "probe_failure" };
+        const t = String(d.get("target_backend_id") || "").trim();
+        if (t) payload.target_backend_id = t;
+        runAction("Probe manual drain+migrate", () => req("/api/v1/probe/admin/drain-and-migrate-backend", { method: "POST", body: payload })).then(() => refreshAll()).catch(() => {});
+      });
+
+      refs.btnWarmup.addEventListener("click", () => runAction("Advance warmup tick", () => req("/api/v1/routes/admin/advance-warmup", { method: "POST", body: {} })).then(() => refreshAll()).catch(() => {}));
+      refs.btnCleanupProbe.addEventListener("click", () => runAction("Cleanup probe signals", () => req("/api/v1/probe/admin/cleanup-old-signals", { method: "POST", body: {} })).then(() => refreshAll()).catch(() => {}));
+
+      refs.token.value = state.token;
+      pushLog("Панель", "инициализирована", false);
+      updateTimer();
+      if (state.token) refreshAll().catch((e) => notify(`Ошибка начальной загрузки: ${e.message}`, true));
+    })();
+  </script>
+</body>
+</html>

@@ -16,8 +16,10 @@ from services.admin_ops.router import router as admin_ops_router
 from services.admin_status.runtime_service import RuntimeReadinessService
 from services.admin_status.schemas import RuntimeReadinessOut
 from services.admin_status.router import router as admin_status_router
+from services.admin_ui.router import router as admin_ui_router
 from services.artifacts.router import router as artifacts_router
 from services.connect.router import router as connect_router
+from services.nodes.reconciler import NodePlacementReconciler
 from services.nodes.router import router as node_router
 from services.placements.router import router as placements_router
 from services.probe.router import router as probe_router
@@ -44,11 +46,14 @@ async def lifespan(app: FastAPI):
 
     warmup_reconciler = RouteWarmupReconciler()
     probe_auto_drain_reconciler = ProbeAutoDrainReconciler()
+    node_auto_heal_reconciler = NodePlacementReconciler()
     await warmup_reconciler.start()
     await probe_auto_drain_reconciler.start()
+    await node_auto_heal_reconciler.start()
     try:
         yield
     finally:
+        await node_auto_heal_reconciler.stop()
         await probe_auto_drain_reconciler.stop()
         await warmup_reconciler.stop()
     log.info("Application shutdown")
@@ -67,6 +72,7 @@ api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(auth_router)
 api_router.include_router(admin_ops_router)
 api_router.include_router(admin_status_router)
+api_router.include_router(admin_ui_router)
 api_router.include_router(artifacts_router)
 api_router.include_router(connect_router)
 api_router.include_router(node_router)

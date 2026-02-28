@@ -71,6 +71,7 @@ async def test_connect_routeset_returns_routes(async_session):
     svc.placement_repository = AsyncMock()
     svc.node_repository = AsyncMock()
     svc.route_repository = AsyncMock()
+    svc.routing_service = AsyncMock()
     svc._select_backend = AsyncMock()
 
     user_id = uuid4()
@@ -90,7 +91,8 @@ async def test_connect_routeset_returns_routes(async_session):
 
     svc.user_repository.get_by_id = AsyncMock(return_value=MagicMock(id=user_id))
     svc.key_repository.get_latest_active_for_user = AsyncMock(return_value=key)
-    svc.placement_repository.get_by_key_id = AsyncMock(return_value=placement)
+    svc.placement_repository.list_by_key_id = AsyncMock(return_value=[placement])
+    svc.routing_service.select_nodes = AsyncMock(return_value=[backend, backend_2])
     svc.node_repository.get_by_id = AsyncMock(return_value=backend)
     svc.route_repository.list_resolved_active = AsyncMock(
         return_value=[(route_1, backend, tp), (route_2, backend_2, tp)]
@@ -123,6 +125,7 @@ async def test_connect_routeset_creates_placement_when_missing(async_session):
     svc.placement_repository = AsyncMock()
     svc.node_repository = AsyncMock()
     svc.route_repository = AsyncMock()
+    svc.routing_service = AsyncMock()
     svc._select_backend = AsyncMock()
 
     user_id = uuid4()
@@ -139,7 +142,8 @@ async def test_connect_routeset_creates_placement_when_missing(async_session):
 
     svc.user_repository.get_by_id = AsyncMock(return_value=MagicMock(id=user_id))
     svc.key_repository.get_latest_active_for_user = AsyncMock(return_value=key)
-    svc.placement_repository.get_by_key_id = AsyncMock(return_value=None)
+    svc.placement_repository.list_by_key_id = AsyncMock(return_value=[])
+    svc.routing_service.select_nodes = AsyncMock(return_value=[backend])
     svc._select_backend = AsyncMock(return_value=backend)
     svc.placement_repository.upsert_set_pending = AsyncMock(return_value=placement_new)
     svc.route_repository.list_resolved_active = AsyncMock(return_value=[(route, backend, tp)])
@@ -164,6 +168,7 @@ async def test_connect_routeset_keeps_primary_and_fallback_mix(async_session):
     svc.placement_repository = AsyncMock()
     svc.node_repository = AsyncMock()
     svc.route_repository = AsyncMock()
+    svc.routing_service = AsyncMock()
 
     user_id = uuid4()
     key = MagicMock(id=uuid4(), user_id=user_id, is_revoked=False, client_id=str(uuid4()))
@@ -188,7 +193,10 @@ async def test_connect_routeset_keeps_primary_and_fallback_mix(async_session):
 
     svc.user_repository.get_by_id = AsyncMock(return_value=MagicMock(id=user_id))
     svc.key_repository.get_latest_active_for_user = AsyncMock(return_value=key)
-    svc.placement_repository.get_by_key_id = AsyncMock(return_value=placement)
+    svc.placement_repository.list_by_key_id = AsyncMock(return_value=[placement])
+    svc.routing_service.select_nodes = AsyncMock(
+        return_value=[backend_primary, backend_f1, backend_f2]
+    )
     svc.node_repository.get_by_id = AsyncMock(return_value=backend_primary)
     svc.route_repository.list_resolved_active = AsyncMock(
         return_value=[
@@ -228,6 +236,7 @@ async def test_connect_routeset_includes_transport_insurance_when_available(asyn
     svc.placement_repository = AsyncMock()
     svc.node_repository = AsyncMock()
     svc.route_repository = AsyncMock()
+    svc.routing_service = AsyncMock()
 
     user_id = uuid4()
     key = MagicMock(id=uuid4(), user_id=user_id, is_revoked=False, client_id=str(uuid4()))
@@ -252,7 +261,10 @@ async def test_connect_routeset_includes_transport_insurance_when_available(asyn
 
     svc.user_repository.get_by_id = AsyncMock(return_value=MagicMock(id=user_id))
     svc.key_repository.get_latest_active_for_user = AsyncMock(return_value=key)
-    svc.placement_repository.get_by_key_id = AsyncMock(return_value=placement)
+    svc.placement_repository.list_by_key_id = AsyncMock(return_value=[placement])
+    svc.routing_service.select_nodes = AsyncMock(
+        return_value=[backend_primary, backend_f1, backend_f2]
+    )
     svc.node_repository.get_by_id = AsyncMock(return_value=backend_primary)
     svc.route_repository.list_resolved_active = AsyncMock(
         return_value=[
@@ -285,6 +297,7 @@ async def test_connect_routeset_prefers_fallback_backend_diversity(async_session
     svc.placement_repository = AsyncMock()
     svc.node_repository = AsyncMock()
     svc.route_repository = AsyncMock()
+    svc.routing_service = AsyncMock()
 
     user_id = uuid4()
     key = MagicMock(id=uuid4(), user_id=user_id, is_revoked=False, client_id=str(uuid4()))
@@ -309,7 +322,10 @@ async def test_connect_routeset_prefers_fallback_backend_diversity(async_session
 
     svc.user_repository.get_by_id = AsyncMock(return_value=MagicMock(id=user_id))
     svc.key_repository.get_latest_active_for_user = AsyncMock(return_value=key)
-    svc.placement_repository.get_by_key_id = AsyncMock(return_value=placement)
+    svc.placement_repository.list_by_key_id = AsyncMock(return_value=[placement])
+    svc.routing_service.select_nodes = AsyncMock(
+        return_value=[backend_primary, backend_f1, backend_f2]
+    )
     svc.node_repository.get_by_id = AsyncMock(return_value=backend_primary)
     svc.route_repository.list_resolved_active = AsyncMock(
         return_value=[
@@ -352,6 +368,7 @@ async def test_connect_routeset_applies_refresh_policy_defaults_on_invalid_setti
     svc.placement_repository = AsyncMock()
     svc.node_repository = AsyncMock()
     svc.route_repository = AsyncMock()
+    svc.routing_service = AsyncMock()
 
     user_id = uuid4()
     key = MagicMock(id=uuid4(), user_id=user_id, is_revoked=False, client_id=str(uuid4()))
@@ -367,7 +384,8 @@ async def test_connect_routeset_applies_refresh_policy_defaults_on_invalid_setti
 
     svc.user_repository.get_by_id = AsyncMock(return_value=MagicMock(id=user_id))
     svc.key_repository.get_latest_active_for_user = AsyncMock(return_value=key)
-    svc.placement_repository.get_by_key_id = AsyncMock(return_value=placement)
+    svc.placement_repository.list_by_key_id = AsyncMock(return_value=[placement])
+    svc.routing_service.select_nodes = AsyncMock(return_value=[backend])
     svc.node_repository.get_by_id = AsyncMock(return_value=backend)
     svc.route_repository.list_resolved_active = AsyncMock(return_value=[(route, backend, tp)])
     svc._build_route_uri = MagicMock(return_value="vless://route")
@@ -387,6 +405,7 @@ async def test_connect_routeset_raises_when_no_routes(async_session):
     svc.placement_repository = AsyncMock()
     svc.node_repository = AsyncMock()
     svc.route_repository = AsyncMock()
+    svc.routing_service = AsyncMock()
 
     user_id = uuid4()
     key = MagicMock(id=uuid4(), user_id=user_id, is_revoked=False, client_id=str(uuid4()))
@@ -400,7 +419,8 @@ async def test_connect_routeset_raises_when_no_routes(async_session):
 
     svc.user_repository.get_by_id = AsyncMock(return_value=MagicMock(id=user_id))
     svc.key_repository.get_latest_active_for_user = AsyncMock(return_value=key)
-    svc.placement_repository.get_by_key_id = AsyncMock(return_value=placement)
+    svc.placement_repository.list_by_key_id = AsyncMock(return_value=[placement])
+    svc.routing_service.select_nodes = AsyncMock(return_value=[backend])
     svc.node_repository.get_by_id = AsyncMock(return_value=backend)
     svc.route_repository.list_resolved_active = AsyncMock(return_value=[])
 
@@ -418,6 +438,7 @@ async def test_connect_routeset_caches_allowed_routes_for_telemetry(async_sessio
     svc.placement_repository = AsyncMock()
     svc.node_repository = AsyncMock()
     svc.route_repository = AsyncMock()
+    svc.routing_service = AsyncMock()
 
     user_id = uuid4()
     key = MagicMock(id=uuid4(), user_id=user_id, is_revoked=False, client_id=str(uuid4()))
@@ -433,7 +454,8 @@ async def test_connect_routeset_caches_allowed_routes_for_telemetry(async_sessio
 
     svc.user_repository.get_by_id = AsyncMock(return_value=MagicMock(id=user_id))
     svc.key_repository.get_latest_active_for_user = AsyncMock(return_value=key)
-    svc.placement_repository.get_by_key_id = AsyncMock(return_value=placement)
+    svc.placement_repository.list_by_key_id = AsyncMock(return_value=[placement])
+    svc.routing_service.select_nodes = AsyncMock(return_value=[backend])
     svc.node_repository.get_by_id = AsyncMock(return_value=backend)
     svc.route_repository.list_resolved_active = AsyncMock(return_value=[(route, backend, tp)])
     svc._build_route_uri = MagicMock(return_value="vless://route")

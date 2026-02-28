@@ -17,6 +17,7 @@ from services.vpn.subscriptions.schemas import (
     SubscriptionCreateIn,
     SubscriptionCreatedOut,
     SubscriptionDeviceOut,
+    SubscriptionOut,
     SubscriptionRotateOut,
 )
 from services.vpn.subscriptions.exceptions import (
@@ -121,6 +122,38 @@ async def create_subscription(
         service: SubscriptionService = Depends(get_subscription_service),
 ):
     return await service.create(data)
+
+
+@router.get(
+    "/by-user/{user_id}",
+    response_model=list[SubscriptionOut],
+    status_code=status.HTTP_200_OK,
+    summary="List subscriptions by user",
+    dependencies=[Depends(admin_auth)],
+)
+async def list_subscriptions_by_user(
+        user_id: UUID,
+        active_only: bool = False,
+        service: SubscriptionService = Depends(get_subscription_service),
+):
+    return await service.list_subscriptions_by_user(user_id=user_id, active_only=active_only)
+
+
+@router.get(
+    "/{subscription_id}",
+    response_model=SubscriptionOut,
+    status_code=status.HTTP_200_OK,
+    summary="Get subscription by id",
+    dependencies=[Depends(admin_auth)],
+)
+async def get_subscription_by_id(
+        subscription_id: UUID,
+        service: SubscriptionService = Depends(get_subscription_service),
+):
+    try:
+        return await service.get_subscription(subscription_id)
+    except SubscriptionNotFound:
+        raise HTTPException(status_code=404, detail="Subscription not found")
 
 
 @router.post(

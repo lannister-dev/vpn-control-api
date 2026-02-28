@@ -20,6 +20,7 @@ from services.connect.schemas import (
 from services.nodes.models import VpnNode
 from services.nodes.repository import VpnNodeRepository
 from services.nodes.schemas import NodeRole
+from services.placements.model import UserPlacement
 from services.placements.repository import UserPlacementRepository
 from services.placements.schemas import PlacementDesiredState
 from services.routes.repository import RouteRepository
@@ -70,42 +71,14 @@ class ConnectService:
 
         key = await self._resolve_routeset_key(payload=payload)
         key_id = self._as_uuid(key.id)
-        placement = await self.placement_repository.get_by_key_id(key_id)
-
-        selected_backend: VpnNode | None = None
-        if placement and placement.desired_state == PlacementDesiredState.active.value:
-            backend = await self.node_repository.get_by_id(placement.backend_node_id)
-            if backend is not None and self._is_backend_eligible(backend):
-                selected_backend = backend
-
-        if selected_backend is None:
-            selected_backend = await self._select_backend(preferred_region=payload.preferred_region)
-            selected_backend_id = self._as_uuid(str(selected_backend.id))
-            migration_reason = "connect_initial" if placement is None else "connect_rebalance"
-            placement = await self.placement_repository.upsert_set_pending(
-                key_id=key_id,
-                backend_node_id=selected_backend_id,
-                desired_state=PlacementDesiredState.active.value,
-                sticky_until=None,
-                last_migration_reason=migration_reason,
-            )
-            if not placement:
-                raise HTTPException(status_code=500, detail="Failed to create placement")
-        elif placement is None:
-            selected_backend_id = self._as_uuid(str(selected_backend.id))
-            # Defensive fallback: placement should always exist for active backend.
-            placement = await self.placement_repository.upsert_set_pending(
-                key_id=key_id,
-                backend_node_id=selected_backend_id,
-                desired_state=PlacementDesiredState.active.value,
-                sticky_until=None,
-                last_migration_reason="connect_initial",
-            )
-            if not placement:
-                raise HTTPException(status_code=500, detail="Failed to create placement")
+        desired_replicas = max(1, min(10, int(payload.max_routes)))
+        preferred_node_id, placement, allowed_backend_ids = await self._ensure_backend_placements_for_key(
+            key_id=key_id,
+            preferred_region=payload.preferred_region,
+            desired_replicas=desired_replicas,
+        )
 
         max_fetch = max(payload.max_routes * 4, 10)
-        preferred_node_id = self._as_uuid(selected_backend.id)
         route_rows = await self.route_repository.list_resolved_active(
             preferred_node_id=preferred_node_id,
             preferred_region=payload.preferred_region,
@@ -114,6 +87,9 @@ class ConnectService:
 
         resolved_routes: list[ResolvedRouteInternal] = []
         for route, node, transport_profile in route_rows:
+            backend_node_id = self._as_uuid(node.id)
+            if backend_node_id not in allowed_backend_ids:
+                continue
             uri = self._build_route_uri(
                 client_id=key.client_id,
                 node=node,
@@ -122,7 +98,6 @@ class ConnectService:
             if uri is None:
                 continue
             route_id = self._as_uuid(route.id)
-            backend_node_id = self._as_uuid(node.id)
             transport_profile_id = self._as_uuid(transport_profile.id)
             resolved_routes.append(
                 ResolvedRouteInternal(
@@ -168,6 +143,119 @@ class ConnectService:
             backoff_steps_sec=refresh_policy.backoff_steps_sec,
             routes=route_out_items,
         )
+
+    async def _ensure_backend_placements_for_key(
+            self,
+            *,
+            key_id: UUID,
+            preferred_region: str | None,
+            desired_replicas: int,
+    ) -> tuple[UUID, UserPlacement, set[UUID]]:
+        desired_replicas = max(1, min(10, int(desired_replicas)))
+        placements = await self._list_active_placements_for_key(key_id=key_id)
+        placements_by_backend: dict[UUID, UserPlacement] = {
+            placement.backend_node_id: placement for placement in placements
+        }
+
+        try:
+            candidate_nodes = await self.routing_service.select_nodes(
+                preferred_region=preferred_region,
+                role=NodeRole.backend.value,
+            )
+        except Exception:
+            logger_connect.exception(
+                "connect_routeset_select_nodes_failed",
+                key_id=str(key_id),
+                preferred_region=preferred_region,
+            )
+            candidate_nodes = []
+        edge_domain = self.settings.edge.public_domain.strip()
+        candidate_nodes = [
+            node
+            for node in candidate_nodes
+            if edge_domain or str(getattr(node, "public_domain", "") or "").strip()
+        ]
+        if not candidate_nodes and not placements_by_backend:
+            fallback = await self._select_backend(preferred_region=preferred_region)
+            candidate_nodes = [fallback]
+
+        if candidate_nodes:
+            target_nodes = candidate_nodes[:desired_replicas]
+            for node in target_nodes:
+                node_id = self._as_uuid(str(node.id))
+                if node_id in placements_by_backend:
+                    continue
+                created = await self.placement_repository.upsert_set_pending(
+                    key_id=key_id,
+                    backend_node_id=node_id,
+                    desired_state=PlacementDesiredState.active.value,
+                    sticky_until=None,
+                    last_migration_reason="connect_replica",
+                )
+                placements_by_backend[node_id] = created
+
+        preferred_placement: UserPlacement | None = None
+        for node in candidate_nodes:
+            node_id = self._as_uuid(str(node.id))
+            preferred_placement = placements_by_backend.get(node_id)
+            if preferred_placement is not None:
+                break
+        if preferred_placement is None and placements:
+            preferred_placement = placements[0]
+        if preferred_placement is None:
+            raise HTTPException(status_code=500, detail="Failed to select preferred placement")
+
+        preferred_backend_id = self._as_uuid(preferred_placement.backend_node_id)
+        allowed_backend_ids = set(placements_by_backend.keys())
+        if not allowed_backend_ids:
+            raise HTTPException(status_code=500, detail="No active placements available")
+        return preferred_backend_id, preferred_placement, allowed_backend_ids
+
+    async def _list_active_placements_for_key(self, *, key_id: UUID) -> list[UserPlacement]:
+        list_by_key = getattr(self.placement_repository, "list_by_key_id", None)
+        if callable(list_by_key):
+            try:
+                rows = await list_by_key(
+                    key_id=key_id,
+                    active_only=True,
+                    desired_state=PlacementDesiredState.active.value,
+                )
+            except TypeError:
+                rows = await list_by_key(
+                    key_id=key_id,
+                    active_only=True,
+                )
+            normalized_rows = self._normalize_placements(rows)
+            if normalized_rows:
+                return normalized_rows
+
+        get_by_key = getattr(self.placement_repository, "get_by_key_id", None)
+        if callable(get_by_key):
+            row = await get_by_key(key_id=key_id)
+            normalized_rows = self._normalize_placements(row)
+            if normalized_rows:
+                return normalized_rows
+        return []
+
+    def _normalize_placements(self, value: Any) -> list[UserPlacement]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            items = value
+        elif isinstance(value, tuple):
+            items = list(value)
+        else:
+            items = [value]
+
+        out: list[UserPlacement] = []
+        for item in items:
+            try:
+                backend_node_id = self._as_uuid(getattr(item, "backend_node_id"))
+                setattr(item, "backend_node_id", backend_node_id)
+                out.append(item)
+            except Exception:
+                continue
+        return out
 
     async def _resolve_routeset_key(self, *, payload: ConnectRouteSetIn):
         if payload.key_id is not None:

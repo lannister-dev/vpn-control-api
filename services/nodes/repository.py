@@ -121,6 +121,13 @@ class NodeAgentStateRepository(BaseRepository[NodeAgentState]):
         )
         await self.session.execute(stmt)
 
+    async def list_by_node_ids(self, node_ids: list[UUID]) -> list[NodeAgentState]:
+        if not node_ids:
+            return []
+        stmt = select(NodeAgentState).where(NodeAgentState.node_id.in_(node_ids))
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
 
 class NodeAgentIdentityRepository(BaseRepository[NodeAgentIdentity]):
     def __init__(self, session: AsyncSession):

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.config import get_settings
 from services.nodes.models import VpnNode, NodeAgentState
 from services.routing.repository import RoutingRepository
 from shared.database.session import AsyncDatabase
@@ -13,6 +15,7 @@ from shared.database.session import AsyncDatabase
 class RoutingService:
     def __init__(self, session: AsyncSession):
         self.repository = RoutingRepository(session)
+        self.node_state_stale_after_sec = max(30, int(get_settings().node_agent.stale_after_sec))
 
     async def select_nodes(
         self,
@@ -37,8 +40,9 @@ class RoutingService:
             role=role,
         )
         scored: list[tuple[float, VpnNode]] = []
+        now = datetime.now(timezone.utc)
         for node, agent_state, active_count in rows:
-            if not self._is_healthy(agent_state):
+            if not self._is_healthy(agent_state, now=now):
                 continue
             if active_count >= node.capacity:
                 continue
@@ -54,11 +58,15 @@ class RoutingService:
         scored.sort(key=lambda x: x[0], reverse=True)
         return [node for _, node in scored]
 
-    @staticmethod
-    def _is_healthy(agent_state: NodeAgentState | None) -> bool:
+    def _is_healthy(self, agent_state: NodeAgentState | None, *, now: datetime) -> bool:
         if agent_state is None:
             return False
-        return agent_state.is_healthy
+        if not agent_state.is_healthy:
+            return False
+        last_seen = self._to_utc_or_none(agent_state.last_seen_at)
+        if last_seen is None:
+            return False
+        return (now - last_seen).total_seconds() <= self.node_state_stale_after_sec
 
     @staticmethod
     def _calc_score(
@@ -79,6 +87,14 @@ class RoutingService:
         region_weight = 0.5 if preferred_region and node.region == preferred_region else 0.0
 
         return health_weight + load_weight + region_weight
+
+    @staticmethod
+    def _to_utc_or_none(value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
 
 
 def get_routing_service(

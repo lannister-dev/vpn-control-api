@@ -78,6 +78,61 @@ def _make_transport_profile(*, network="tcp", security="reality", port=443):
     return tp
 
 
+def _make_subscription_row(*, user_id=None, is_active=True):
+    now = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    sub = MagicMock()
+    sub.id = uuid4()
+    sub.user_id = user_id or uuid4()
+    sub.client_id = uuid4()
+    sub.root_vpn_key_id = None
+    sub.is_active = is_active
+    sub.expires_at = now + timedelta(days=30)
+    sub.profile_key = "ws_tls_v1"
+    sub.preferred_region = "fi"
+    sub.hwid_enabled = True
+    sub.max_devices = 2
+    sub.created_at = now
+    sub.updated_at = now
+    return sub
+
+
+@pytest.mark.asyncio
+async def test_get_subscription_returns_out(service):
+    sub = _make_subscription_row()
+    service.subscription_repository.get_by_id.return_value = sub
+
+    out = await service.get_subscription(sub.id)
+
+    assert out.id == sub.id
+    assert out.user_id == sub.user_id
+    assert out.profile_key == "ws_tls_v1"
+    assert out.hwid_enabled is True
+
+
+@pytest.mark.asyncio
+async def test_get_subscription_not_found_raises(service):
+    service.subscription_repository.get_by_id.return_value = None
+
+    with pytest.raises(SubscriptionNotFound):
+        await service.get_subscription(uuid4())
+
+
+@pytest.mark.asyncio
+async def test_list_subscriptions_by_user(service):
+    user_id = uuid4()
+    rows = [_make_subscription_row(user_id=user_id), _make_subscription_row(user_id=user_id)]
+    service.subscription_repository.list_by_user_id.return_value = rows
+
+    out = await service.list_subscriptions_by_user(user_id=user_id, active_only=True)
+
+    assert len(out) == 2
+    assert {item.user_id for item in out} == {user_id}
+    service.subscription_repository.list_by_user_id.assert_awaited_once_with(
+        user_id=user_id,
+        active_only=True,
+    )
+
+
 class TestValidateSubscription:
     def test_inactive_raises(self, service):
         sub = _make_sub(is_active=False)

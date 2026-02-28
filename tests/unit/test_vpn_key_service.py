@@ -68,25 +68,20 @@ class TestRevokeKey:
         key = MagicMock(is_revoked=True)
         service.key_repository.get_by_id.return_value = key
         await service.revoke_key(uuid4())
-        service.placement_repository.upsert_set_pending.assert_not_awaited()
+        service.placement_repository.set_desired_state_for_key.assert_not_awaited()
 
     async def test_success_with_placement(self, service):
         key = MagicMock(is_revoked=False)
         service.key_repository.get_by_id.return_value = key
-        placement = MagicMock()
-        placement.backend_node_id = uuid4()
-        placement.sticky_until = None
-        service.placement_repository.get_by_key_id.return_value = placement
         key_id = uuid4()
         await service.revoke_key(key_id)
         assert key.is_revoked is True
-        service.placement_repository.upsert_set_pending.assert_awaited_once()
+        service.placement_repository.set_desired_state_for_key.assert_awaited_once()
 
     async def test_success_without_placement(self, service):
         key = MagicMock(is_revoked=False)
         service.key_repository.get_by_id.return_value = key
-        service.placement_repository.get_by_key_id.return_value = None
         key_id = uuid4()
         await service.revoke_key(key_id)
         assert key.is_revoked is True
-        service.placement_repository.upsert_set_pending.assert_not_awaited()
+        service.placement_repository.set_desired_state_for_key.assert_awaited_once()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -16,9 +17,10 @@ def _node(*, region: str, capacity: int = 100):
     return node
 
 
-def _agent_state(*, is_healthy: bool = True):
+def _agent_state(*, is_healthy: bool = True, last_seen_at: datetime | None = None):
     state = MagicMock()
     state.is_healthy = is_healthy
+    state.last_seen_at = last_seen_at or datetime.now(timezone.utc)
     return state
 
 
@@ -58,3 +60,28 @@ async def test_select_nodes_returns_empty(async_session):
     out = await svc.select_nodes()
 
     assert out == []
+
+
+@pytest.mark.asyncio
+async def test_select_nodes_skips_stale_last_seen(async_session):
+    svc = RoutingService(async_session)
+    svc.repository = AsyncMock()
+    svc.node_state_stale_after_sec = 90
+
+    stale = _node(region="fi", capacity=100)
+    fresh = _node(region="fi", capacity=100)
+    svc.repository.list_available_nodes.return_value = [
+        (
+            stale,
+            _agent_state(
+                is_healthy=True,
+                last_seen_at=datetime.now(timezone.utc) - timedelta(seconds=300),
+            ),
+            1,
+        ),
+        (fresh, _agent_state(is_healthy=True), 1),
+    ]
+
+    out = await svc.select_nodes(preferred_region="fi")
+
+    assert out == [fresh]

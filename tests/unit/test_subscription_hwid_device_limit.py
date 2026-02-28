@@ -96,13 +96,16 @@ async def test_existing_hwid_path_skips_subscription_lock(service):
     service._enforce_rate_limit = AsyncMock()
     placement = MagicMock()
     placement.op_version = 4
-    service._ensure_backend_placement_for_key = AsyncMock(return_value=(uuid4(), placement))
+    preferred_backend_id = uuid4()
+    service._ensure_backend_placements_for_key = AsyncMock(
+        return_value=(preferred_backend_id, placement, {preferred_backend_id})
+    )
     route = MagicMock()
     route.id = uuid4()
     route.health_status = "healthy"
     route.effective_weight = 50
     node = MagicMock()
-    node.id = uuid4()
+    node.id = preferred_backend_id
     node.name = "be-fi-1"
     node.region = "fi"
     node.public_domain = "be-fi-1.example.com"
