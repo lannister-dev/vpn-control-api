@@ -62,7 +62,7 @@ async def lifespan(app: FastAPI):
 
     try:
         xray_nodes = _get_xray_nodes_config()
-        xray_timeout = int(os.getenv("XRAY_TIMEOUT_S", "5"))
+        xray_timeout = 5
         init_xray_clients(xray_nodes, timeout_s=xray_timeout)
         log.info(
             "XRay stats collector initialized",
