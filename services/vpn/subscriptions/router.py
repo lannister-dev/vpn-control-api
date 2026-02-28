@@ -46,6 +46,7 @@ router = APIRouter(prefix="/subscriptions", tags=["Subscriptions"])
             "Public endpoint for VPN clients.\n\n"
             "Returns a plain-text list of VLESS URIs (newline separated).\n"
             "Supports ETag / If-None-Match for efficient polling.\n\n"
+            "**HWID:** required via configured header.\n"
             "**Authentication:** none (token is the secret).\n"
             "**Rate limit:** enforced per subscription."
     ),
@@ -111,7 +112,7 @@ async def get_subscription_config(
     response_model=SubscriptionCreatedOut,
     status_code=status.HTTP_201_CREATED,
     summary="Create subscription",
-    description="Create a new VPN subscription and generate an access token.",
+    description="Create VPN subscription with HWID and generate an access token.",
     dependencies=[Depends(admin_auth)],
     responses={
         404: {"description": "User not found"},
@@ -208,21 +209,6 @@ async def deactivate_subscription(
         return {"status": "inactive", "revoked_keys": revoked_keys}
     except SubscriptionNotFound:
         raise HTTPException(status_code=404, detail="Subscription not found")
-
-
-@router.post(
-    "/{subscription_id}/bind-root-key/{vpn_key_id}",
-    status_code=status.HTTP_200_OK,
-    summary="Bind subscription to an existing key (legacy mode)",
-    dependencies=[Depends(admin_auth)],
-)
-async def bind_subscription_root_key(
-        subscription_id: UUID,
-        vpn_key_id: UUID,
-        service: SubscriptionService = Depends(get_subscription_service),
-):
-    await service.bind_root_key(subscription_id, vpn_key_id)
-    return {"status": "bound_root_key"}
 
 
 @router.get(

@@ -48,6 +48,7 @@ from services.vpn.subscriptions.exceptions import (
     SubscriptionTokenExpired,
 )
 from services.vpn.subscriptions.model import Subscription
+from services.vpn.subscriptions import redis_key
 from services.vpn.subscriptions.repository import SubscriptionDeviceRepository, SubscriptionRepository
 from services.vpn.subscriptions.schemas import (
     SubscriptionCreateIn,
@@ -120,90 +121,32 @@ class SubscriptionService:
         raw_token = SubscriptionUtils.generate()
         token_hash = SubscriptionUtils.hash(raw_token)
 
-        # Legacy client_id in subscription is used only when HWID mode is disabled.
         client_uuid = uuid4()
-
-        bound_key = None
-        if data.vpn_key_id is not None:
-            bound_key = await self.vpn_key_repository.get_by_id(data.vpn_key_id)
-            if not bound_key:
-                raise HTTPException(status_code=404, detail="Key not found")
-            if bound_key.user_id != data.user_id:
-                raise HTTPException(status_code=409, detail="Key does not belong to user")
-            if bound_key.is_revoked:
-                raise HTTPException(status_code=409, detail="Key is revoked")
-            try:
-                client_uuid = UUID(bound_key.client_id)
-            except Exception as exc:
-                raise HTTPException(status_code=409, detail="Key client_id is not a UUID") from exc
 
         try:
             profile = ProfileRegistry.get(data.profile_key).profile
         except ProfileRegistryError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-        transport = self._infer_transport(profile.type)
-
-        if bound_key is not None and bound_key.transport != transport.value:
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    f"Key transport '{bound_key.transport}' does not match profile transport '{transport.value}'"
-                ),
-            )
-
-        valid_until = data.expires_at
-        if valid_until is None:
-            valid_until = datetime.now(timezone.utc) + timedelta(days=365)
-
-        hwid_enabled = data.hwid_enabled
-        if hwid_enabled is None:
-            hwid_enabled = self.settings.subscriptions.require_hwid_default
-
-        if hwid_enabled and bound_key is not None:
-            raise HTTPException(
-                status_code=409,
-                detail="vpn_key_id binding is not supported for HWID subscriptions",
-            )
+        self._infer_transport(profile.type)
 
         internal = SubscriptionInternalCreate(
             user_id=data.user_id,
-            client_id=client_uuid,
-            root_vpn_key_id=bound_key.id if bound_key else None,
             token_hash=token_hash,
             is_active=True,
             expires_at=data.expires_at,
             profile_key=data.profile_key,
             preferred_region=data.preferred_region,
-            hwid_enabled=bool(hwid_enabled),
+            hwid_enabled=True,
             max_devices=data.max_devices,
         )
         subscription = await self.subscription_repository.create(internal.model_dump())
-
-        vpn_key_id: UUID | None = None
-
-        # Legacy mode: one key per subscription.
-        if not subscription.hwid_enabled and bound_key is None:
-            key_internal = VpnKeyInternalCreate(
-                user_id=data.user_id,
-                protocol=VpnProtocol.vless,
-                transport=transport,
-                client_id=str(client_uuid),
-                valid_until=valid_until,
-                traffic_limit_mb=1000,
-                is_revoked=False,
-            )
-            vpn_key = await self.vpn_key_repository.create(key_internal.model_dump())
-            vpn_key_id = vpn_key.id
-        elif bound_key is not None:
-            vpn_key_id = bound_key.id
 
         subscription_url = f"{self.settings.subscriptions.public_base_url}{raw_token}"
 
         return SubscriptionCreatedOut(
             id=subscription.id,
-            client_id=subscription.client_id,
-            vpn_key_id=vpn_key_id,
+            vpn_key_id=None,
             token=raw_token,
             subscription_url=subscription_url,
             expires_at=subscription.expires_at,
@@ -256,8 +199,8 @@ class SubscriptionService:
         if not updated:
             raise SubscriptionNotFound
 
-        await self._invalidate_rate_limit(sub.token_hash)
-        await self._invalidate_rate_limit(new_hash)
+        await self.redis.client.delete(redis_key.rate_limit(sub.token_hash))
+        await self.redis.client.delete(redis_key.rate_limit(new_hash))
         await self._invalidate_payload_cache_by_token_hash(sub.token_hash)
         await self._invalidate_payload_cache_by_token_hash(new_hash)
 
@@ -286,8 +229,9 @@ class SubscriptionService:
         )
         await self._invalidate_payload_cache_by_token_hash(subscription.token_hash)
 
-        key_ids = await self._collect_subscription_key_ids(subscription)
-
+        key_ids: set[UUID] = set(
+            await self.device_repository.list_key_ids_for_subscription(subscription.id)
+        )
         processed = 0
         for key_id in key_ids:
             key = await self.vpn_key_repository.get_by_id(key_id)
@@ -317,8 +261,9 @@ class SubscriptionService:
             ).model_dump(exclude_none=True),
         )
         await self._invalidate_payload_cache_by_token_hash(subscription.token_hash)
-        key_ids = await self._collect_subscription_key_ids(subscription)
-
+        key_ids: set[UUID] = set(
+            await self.device_repository.list_key_ids_for_subscription(subscription.id)
+        )
         restored = 0
         for key_id in key_ids:
             key = await self.vpn_key_repository.get_by_id(key_id)
@@ -335,40 +280,6 @@ class SubscriptionService:
                 reason="subscription_activate",
             )
         return restored
-
-    async def bind_root_key(self, subscription_id: UUID, vpn_key_id: UUID) -> None:
-        """
-        Admin-only helper: bind subscription to an existing key (legacy mode).
-        If subscription is HWID-enabled, binding is rejected.
-        """
-        sub = await self.subscription_repository.get_by_id(subscription_id)
-        if not sub:
-            raise SubscriptionNotFound(subscription_id)
-        if sub.hwid_enabled:
-            raise HTTPException(status_code=409, detail="Cannot bind root key for HWID subscription")
-
-        key = await self.vpn_key_repository.get_by_id(vpn_key_id)
-        if not key:
-            raise HTTPException(status_code=404, detail="Key not found")
-        if key.user_id != sub.user_id:
-            raise HTTPException(status_code=409, detail="Key does not belong to subscription user")
-        if key.is_revoked:
-            raise HTTPException(status_code=409, detail="Key is revoked")
-
-        try:
-            new_client_uuid = UUID(key.client_id)
-        except Exception as exc:
-            raise HTTPException(status_code=409, detail="Key client_id is not a UUID") from exc
-
-        await self.subscription_repository.update_by_id(
-            sub.id,
-            SubscriptionInternalUpdate(
-                root_vpn_key_id=key.id,
-                client_id=new_client_uuid,
-                updated_at=datetime.now(timezone.utc),
-            ).model_dump(exclude_none=True),
-        )
-        await self._invalidate_payload_cache_by_token_hash(sub.token_hash)
 
     async def list_devices(
             self,
@@ -431,15 +342,6 @@ class SubscriptionService:
         await self._invalidate_payload_cache_by_token_hash(subscription.token_hash)
         return changed
 
-    async def _collect_subscription_key_ids(self, subscription) -> set[UUID]:
-        key_ids: set[UUID] = set(
-            await self.device_repository.list_key_ids_for_subscription(subscription.id)
-        )
-        root_key_id = subscription.root_vpn_key_id
-        if root_key_id:
-            key_ids.add(root_key_id)
-        return key_ids
-
     async def build_payload(
             self,
             raw_token: str,
@@ -453,8 +355,8 @@ class SubscriptionService:
         token_hash = SubscriptionUtils.hash(raw_token)
         await self._enforce_rate_limit(token_hash)
         cache_ttl = max(0, int(self.settings.subscriptions.response_cache_ttl_sec))
-        cache_key = self._sub_payload_cache_key(token_hash=token_hash, hwid=hwid)
-        lock_key = self._sub_payload_build_lock_key(token_hash=token_hash, hwid=hwid)
+        cache_key = redis_key.payload_cache(token_hash=token_hash, hwid=hwid)
+        lock_key = redis_key.payload_build_lock(token_hash=token_hash, hwid=hwid)
         lock_acquired = False
         if cache_ttl > 0:
             cached_payload, cached_etag, cache_result = await self._read_payload_cache(cache_key)
@@ -880,55 +782,11 @@ class SubscriptionService:
         """
         Returns (client_id, vpn_key_id).
 
-        If HWID is enabled (per-sub or default), client_id is bound to the device-specific VpnKey.
-        Otherwise, subscription is bound to a single key (root key or legacy key by client_id).
+        Legacy mode is removed: request HWID is mandatory.
+        client_id is always bound to device-specific VpnKey.
         """
-        hwid_required = bool(
-            subscription.hwid_enabled or
-            self.settings.subscriptions.require_hwid_default
-        )
-        if not hwid and hwid_required:
-            raise SubscriptionHwidRequired()
-
         if not hwid:
-            # Prefer explicit binding when present.
-            if subscription.root_vpn_key_id:
-                key = await self.vpn_key_repository.get_by_id(subscription.root_vpn_key_id)
-                if not key:
-                    raise SubscriptionBuild("Root key not found")
-                if key.is_revoked:
-                    raise SubscriptionBuild("Root key is revoked")
-                return key.client_id, key.id
-
-            client_id = str(subscription.client_id)
-            key = await self.vpn_key_repository.get_one_by(client_id=client_id, is_active=True)
-            if key and not key.is_revoked:
-                return client_id, key.id
-
-            # Hardening: if there is no key matching subscription.client_id, create one on-demand.
-            if not subscription.profile_key:
-                raise SubscriptionBuild("profile_key is required")
-            try:
-                profile = ProfileRegistry.get(subscription.profile_key).profile
-            except ProfileRegistryError as exc:
-                raise SubscriptionBuild(str(exc)) from exc
-
-            transport = self._infer_transport(profile.type)
-            valid_until = subscription.expires_at
-            if valid_until is None:
-                valid_until = now + timedelta(days=365)
-
-            key_internal = VpnKeyInternalCreate(
-                user_id=subscription.user_id,
-                protocol=VpnProtocol.vless,
-                transport=transport,
-                client_id=client_id,
-                valid_until=valid_until,
-                traffic_limit_mb=1000,
-                is_revoked=False,
-            )
-            created = await self.vpn_key_repository.create(key_internal.model_dump())
-            return client_id, created.id
+            raise SubscriptionHwidRequired()
 
         hwid_hash = self._hash_hwid(hwid)
         device = await self.device_repository.get_active_by_sub_and_hwid_hash(
@@ -1031,34 +889,6 @@ class SubscriptionService:
             return UUID(value)
         raise TypeError(f"Expected UUID-compatible value, got {type(value)!r}")
 
-    def _rl_key(self, token_hash: str) -> str:
-        return f"sub:rl:{token_hash}"
-
-    def _sub_payload_cache_key(self, *, token_hash: str, hwid: str | None) -> str:
-        if hwid is None:
-            hwid_marker = "none"
-        else:
-            normalized = hwid.strip()
-            if not normalized:
-                hwid_marker = "empty"
-            else:
-                hwid_marker = hashlib.sha256(normalized.encode()).hexdigest()
-        return f"sub:cfg:{token_hash}:{hwid_marker}"
-
-    def _sub_payload_cache_index_key(self, *, token_hash: str) -> str:
-        return f"sub:cfg:index:{token_hash}"
-
-    def _sub_payload_build_lock_key(self, *, token_hash: str, hwid: str | None) -> str:
-        if hwid is None:
-            hwid_marker = "none"
-        else:
-            normalized = hwid.strip()
-            if not normalized:
-                hwid_marker = "empty"
-            else:
-                hwid_marker = hashlib.sha256(normalized.encode()).hexdigest()
-        return f"sub:cfg:lock:{token_hash}:{hwid_marker}"
-
     async def _read_payload_cache(self, cache_key: str) -> tuple[str | None, str | None, str]:
         try:
             raw_value = await self.redis.client.get(cache_key)
@@ -1092,7 +922,7 @@ class SubscriptionService:
         if ttl_sec <= 0:
             return True
         value = json.dumps({"etag": etag, "payload": payload})
-        index_key = self._sub_payload_cache_index_key(token_hash=token_hash)
+        index_key = redis_key.payload_cache_index(token_hash=token_hash)
         try:
             await self.redis.client.setex(cache_key, ttl_sec, value)
             await self.redis.client.sadd(index_key, cache_key)
@@ -1130,7 +960,7 @@ class SubscriptionService:
         return None, None, "wait_miss"
 
     async def _enforce_rate_limit(self, token_hash: str) -> None:
-        key = self._rl_key(token_hash)
+        key = redis_key.rate_limit(token_hash)
         current = int(await self.redis.client.incr(key))
         if current == 1:
             await self.redis.client.expire(key, RATE_LIMIT_WINDOW_SEC)
@@ -1160,16 +990,16 @@ class SubscriptionService:
         return selected, "ok"
 
     async def _invalidate_rate_limit(self, token_hash: str) -> None:
-        await self.redis.client.delete(self._rl_key(token_hash))
+        await self.redis.client.delete(redis_key.rate_limit(token_hash))
 
     async def _invalidate_payload_cache_by_token_hash(self, token_hash: str) -> None:
-        index_key = self._sub_payload_cache_index_key(token_hash=token_hash)
+        index_key = redis_key.payload_cache_index(token_hash=token_hash)
         try:
             keys = await self.redis.client.smembers(index_key)
             keys_to_delete = [
                 key
                 for key in keys
-                if isinstance(key, str) and key.startswith("sub:cfg:")
+                if isinstance(key, str) and redis_key.is_payload_cache_key(key)
             ]
             if keys_to_delete:
                 await self.redis.client.delete(*keys_to_delete)
@@ -1179,7 +1009,7 @@ class SubscriptionService:
 
 
 def get_subscription_service(
-    session: AsyncSession = Depends(AsyncDatabase.get_session),
-    redis: RedisClient = Depends(get_redis_client),
+        session: AsyncSession = Depends(AsyncDatabase.get_session),
+        redis: RedisClient = Depends(get_redis_client),
 ) -> SubscriptionService:
     return SubscriptionService(session, redis)

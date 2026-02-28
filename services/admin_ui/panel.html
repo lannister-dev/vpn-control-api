@@ -480,14 +480,8 @@
                   <input class="input" name="profile_key" value="ws_tls_v1" placeholder="profile_key (например: ws_tls_v1)" required />
                   <input class="input" name="preferred_region" placeholder="preferred_region (опционально)" />
                 </div>
-                <div class="row-2">
-                  <input class="input" name="expires_at" type="datetime-local" />
-                  <input class="input mono" name="vpn_key_id" placeholder="ID ключа (опционально)" />
-                </div>
-                <div class="row-2">
-                  <input class="input" name="max_devices" type="number" min="1" max="100" placeholder="max_devices (опционально)" />
-                  <label class="muted"><input type="checkbox" name="hwid_enabled" checked /> HWID-режим</label>
-                </div>
+                <div class="row-2"><input class="input" name="expires_at" type="datetime-local" /><input class="input" name="max_devices" type="number" min="1" max="100" placeholder="max_devices (опционально)" /></div>
+                <div class="muted">Legacy-режим удален: подписка создается только в HWID/device-key модели.</div>
                 <button class="btn btn-primary" type="submit">Создать подписку</button>
               </form>
               <div id="sub-create-result" class="stack empty">После создания здесь появится токен и URL.</div>
@@ -533,7 +527,7 @@
             <div class="card">
               <div class="muted">Список подписок пользователя</div>
               <table>
-                <thead><tr><th>ID подписки</th><th>ID пользователя</th><th>Профиль</th><th>Статус</th><th>HWID</th><th>Макс. устройств</th><th>Root key</th><th>Истекает</th><th>Обновлено</th></tr></thead>
+                <thead><tr><th>ID подписки</th><th>ID пользователя</th><th>Профиль</th><th>Статус</th><th>HWID</th><th>Макс. устройств</th><th>Истекает</th><th>Обновлено</th></tr></thead>
                 <tbody id="subs-body"></tbody>
               </table>
             </div>
@@ -880,8 +874,8 @@
 
         const subs = filteredSubscriptions();
         refs.subsBody.innerHTML = subs.length
-          ? subs.map((s) => `<tr><td class="mono">${esc(s.id)} <button class="btn-mini copy-value" data-copy="${esc(s.id)}">Копировать</button></td><td class="mono">${esc(s.user_id)}</td><td>${esc(s.profile_key || "-")}</td><td>${s.is_active ? chip("ok", "active") : chip("bad", "inactive")}</td><td>${s.hwid_enabled ? chip("info", "on") : chip("warn", "off")}</td><td class="mono">${esc(s.max_devices == null ? "-" : s.max_devices)}</td><td class="mono">${esc(s.root_vpn_key_id || "-")}</td><td>${fmtDate(s.expires_at)}</td><td>${fmtDate(s.updated_at)}</td></tr>`).join("")
-          : `<tr><td colspan="9" class="empty">Список подписок пока пуст. Используйте форму «Поиск подписок по пользователю».</td></tr>`;
+          ? subs.map((s) => `<tr><td class="mono">${esc(s.id)} <button class="btn-mini copy-value" data-copy="${esc(s.id)}">Копировать</button></td><td class="mono">${esc(s.user_id)}</td><td>${esc(s.profile_key || "-")}</td><td>${s.is_active ? chip("ok", "active") : chip("bad", "inactive")}</td><td>${s.hwid_enabled ? chip("info", "on") : chip("warn", "off")}</td><td class="mono">${esc(s.max_devices == null ? "-" : s.max_devices)}</td><td>${fmtDate(s.expires_at)}</td><td>${fmtDate(s.updated_at)}</td></tr>`).join("")
+          : `<tr><td colspan="8" class="empty">Список подписок пока пуст. Используйте форму «Поиск подписок по пользователю».</td></tr>`;
 
         refs.subDevicesBody.innerHTML = state.subscriptionDevices.length
           ? state.subscriptionDevices.map((d) => `<tr><td class="mono">${esc(d.id)} <button class="btn-mini copy-value" data-copy="${esc(d.id)}">Копировать</button></td><td class="mono">${esc(d.vpn_key_id)}</td><td>${d.is_active ? chip("ok", "active") : chip("warn", "inactive")}</td><td>${fmtDate(d.last_seen_at)}</td><td>${esc(d.user_agent || "-")}</td></tr>`).join("")
@@ -944,12 +938,9 @@
         const payload = {
           user_id: String(d.get("user_id") || "").trim(),
           profile_key: String(d.get("profile_key") || "").trim(),
-          hwid_enabled: d.get("hwid_enabled") === "on",
         };
         const preferredRegion = String(d.get("preferred_region") || "").trim();
         if (preferredRegion) payload.preferred_region = preferredRegion;
-        const vpnKeyId = String(d.get("vpn_key_id") || "").trim();
-        if (vpnKeyId) payload.vpn_key_id = vpnKeyId;
         const maxDevices = String(d.get("max_devices") || "").trim();
         if (maxDevices) payload.max_devices = Number(maxDevices);
         const expiresAt = parseDateTimeLocal(d.get("expires_at"));
@@ -964,9 +955,8 @@
               preferred_region: payload.preferred_region || null,
               is_active: created.is_active,
               expires_at: created.expires_at,
-              hwid_enabled: payload.hwid_enabled,
+              hwid_enabled: true,
               max_devices: payload.max_devices || null,
-              root_vpn_key_id: created.vpn_key_id || null,
               updated_at: new Date().toISOString(),
             };
             state.subscriptions = [createdSub, ...state.subscriptions].slice(0, TABLE_LIMIT);

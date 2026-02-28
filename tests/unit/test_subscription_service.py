@@ -7,6 +7,7 @@ from uuid import uuid4
 from datetime import datetime, timezone, timedelta
 from types import SimpleNamespace
 
+from services.vpn.subscriptions import redis_key
 from services.vpn.subscriptions.service import SubscriptionService
 from services.vpn.subscriptions.exceptions import (
     SubscriptionInactive,
@@ -232,12 +233,13 @@ class TestRateLimit:
     async def test_first_request_sets_expire(self, async_session, redis_client):
         svc = SubscriptionService(async_session, redis_client)
         redis_client.client.incr.return_value = 1
+        rate_limit_key = redis_key.rate_limit("token_hash")
 
         await svc._enforce_rate_limit("token_hash")
 
-        redis_client.client.incr.assert_awaited_once_with("sub:rl:token_hash")
+        redis_client.client.incr.assert_awaited_once_with(rate_limit_key)
         redis_client.client.expire.assert_awaited_once_with(
-            "sub:rl:token_hash",
+            rate_limit_key,
             RATE_LIMIT_WINDOW_SEC,
         )
 
@@ -254,26 +256,33 @@ class TestRateLimit:
     @pytest.mark.asyncio
     async def test_invalidate_payload_cache_uses_index_and_deletes_keys(self, async_session, redis_client):
         svc = SubscriptionService(async_session, redis_client)
+        token_hash = "hash"
+        first_payload_key = redis_key.payload_cache(token_hash=token_hash, hwid="a")
+        second_payload_key = redis_key.payload_cache(token_hash=token_hash, hwid="b")
+        index_key = redis_key.payload_cache_index(token_hash=token_hash)
         redis_client.client.smembers.return_value = {
-            "sub:cfg:hash:a",
-            "sub:cfg:hash:b",
+            first_payload_key,
+            second_payload_key,
             "not:sub:key",
         }
 
-        await svc._invalidate_payload_cache_by_token_hash("hash")
+        await svc._invalidate_payload_cache_by_token_hash(token_hash)
 
-        redis_client.client.smembers.assert_awaited_once_with("sub:cfg:index:hash")
+        redis_client.client.smembers.assert_awaited_once_with(index_key)
         first_delete_call = redis_client.client.delete.await_args_list[0]
-        assert set(first_delete_call.args) == {"sub:cfg:hash:a", "sub:cfg:hash:b"}
-        redis_client.client.delete.assert_any_await("sub:cfg:index:hash")
+        assert set(first_delete_call.args) == {first_payload_key, second_payload_key}
+        redis_client.client.delete.assert_any_await(index_key)
 
     @pytest.mark.asyncio
     async def test_write_payload_cache_updates_index(self, async_session, redis_client):
         svc = SubscriptionService(async_session, redis_client)
+        token_hash = "hash"
+        cache_key = redis_key.payload_cache(token_hash=token_hash, hwid=None)
+        index_key = redis_key.payload_cache_index(token_hash=token_hash)
 
         ok = await svc._write_payload_cache(
-            token_hash="hash",
-            cache_key="sub:cfg:hash:none",
+            token_hash=token_hash,
+            cache_key=cache_key,
             payload="vless://cached",
             etag="etag",
             ttl_sec=15,
@@ -282,10 +291,10 @@ class TestRateLimit:
         assert ok
         redis_client.client.setex.assert_awaited_once()
         redis_client.client.sadd.assert_awaited_once_with(
-            "sub:cfg:index:hash",
-            "sub:cfg:hash:none",
+            index_key,
+            cache_key,
         )
-        redis_client.client.expire.assert_awaited_once_with("sub:cfg:index:hash", 75)
+        redis_client.client.expire.assert_awaited_once_with(index_key, 75)
 
 
 @pytest.mark.asyncio
@@ -356,7 +365,8 @@ async def test_build_payload_releases_lock_when_build_fails(service):
 
     first_delete_call = service.redis.client.delete.await_args_list[0]
     assert len(first_delete_call.args) == 1
-    assert str(first_delete_call.args[0]).startswith("sub:cfg:lock:")
+    lock_prefix = redis_key.payload_build_lock(token_hash="", hwid=None).split("::", 1)[0] + ":"
+    assert str(first_delete_call.args[0]).startswith(lock_prefix)
 
 
 def test_route_selector_limits_size_and_keeps_fallback_diversity(service):
@@ -439,13 +449,11 @@ async def test_create_subscription_includes_subscription_url_when_base_url_set(s
     sub = MagicMock()
     sub.id = uuid4()
     sub.client_id = uuid4()
-    sub.hwid_enabled = False
+    sub.hwid_enabled = True
     sub.expires_at = datetime.now(timezone.utc) + timedelta(days=30)
     sub.is_active = True
     service.subscription_repository.create = AsyncMock(return_value=sub)
-    key = MagicMock()
-    key.id = uuid4()
-    service.vpn_key_repository.create = AsyncMock(return_value=key)
+    service.vpn_key_repository.create = AsyncMock()
 
     with patch("services.vpn.subscriptions.service.ProfileRegistry.get") as get_profile:
         get_profile.return_value = SimpleNamespace(
@@ -459,6 +467,7 @@ async def test_create_subscription_includes_subscription_url_when_base_url_set(s
         )
 
     assert out.subscription_url.startswith("https://api.example.com/subscriptions/sub/")
+    service.vpn_key_repository.create.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -469,13 +478,11 @@ async def test_create_subscription_url_uses_base_url_as_is(service):
     sub = MagicMock()
     sub.id = uuid4()
     sub.client_id = uuid4()
-    sub.hwid_enabled = False
+    sub.hwid_enabled = True
     sub.expires_at = datetime.now(timezone.utc) + timedelta(days=30)
     sub.is_active = True
     service.subscription_repository.create = AsyncMock(return_value=sub)
-    key = MagicMock()
-    key.id = uuid4()
-    service.vpn_key_repository.create = AsyncMock(return_value=key)
+    service.vpn_key_repository.create = AsyncMock()
 
     with patch("services.vpn.subscriptions.service.ProfileRegistry.get") as get_profile:
         get_profile.return_value = SimpleNamespace(
@@ -489,6 +496,7 @@ async def test_create_subscription_url_uses_base_url_as_is(service):
         )
 
     assert out.subscription_url.startswith("https://api.example.com/custom-prefix/")
+    service.vpn_key_repository.create.assert_not_awaited()
 
 
 def test_fit_routes_to_payload_limit_keeps_all_when_within_limit(service):

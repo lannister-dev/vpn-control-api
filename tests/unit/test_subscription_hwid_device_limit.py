@@ -8,15 +8,6 @@ import pytest
 
 from services.vpn.subscriptions.exceptions import SubscriptionHwidRequired, SubscriptionDeviceLimitReached
 from services.vpn.subscriptions.service import SubscriptionService
-from services.vpn.subscriptions.exceptions import SubscriptionBuild
-from shared.profiles.registry import ProfileRegistry
-
-
-WS_TLS_RAW = {
-    "type": "ws_tls",
-    "client": {"path": "/ws", "host": "cdn.example.com", "sni": "cdn.example.com"},
-    "metadata": {"display_name": "WS TLS"},
-}
 
 
 @pytest.fixture()
@@ -122,46 +113,3 @@ async def test_existing_hwid_path_skips_subscription_lock(service):
     service.session.execute.assert_not_awaited()
 
 
-@pytest.mark.asyncio
-async def test_legacy_creates_key_if_missing(async_session, redis_client, monkeypatch):
-    # HWID not required, no hwid provided -> should auto-create key for subscription.client_id
-    from services import config as cfg
-
-    settings = cfg.get_settings()
-    settings.subscriptions.require_hwid_default = False
-    monkeypatch.setattr(cfg, "get_settings", lambda: settings)
-
-    if not ProfileRegistry.all_keys():
-        # Keep this test independent from registry bootstrap.
-        ProfileRegistry.register("ws_tls_v1", WS_TLS_RAW)
-
-    svc = SubscriptionService(async_session, redis_client)
-    svc.subscription_repository = AsyncMock()
-    svc.device_repository = AsyncMock()
-    svc.vpn_key_repository = AsyncMock()
-    svc.routing_service = AsyncMock()
-    svc.placement_repository = AsyncMock()
-    svc.route_repository = AsyncMock()
-    svc.node_repository = AsyncMock()
-    svc._enforce_rate_limit = AsyncMock()
-
-    sub = _sub(hwid_enabled=False)
-    svc.subscription_repository.get_by_any_token_hash.return_value = sub
-    svc.vpn_key_repository.get_one_by.return_value = None
-    svc.placement_repository.get_by_key_id.return_value = None
-
-    created_key = MagicMock()
-    created_key.id = uuid4()
-    created_key.client_id = str(sub.client_id)
-    created_key.is_revoked = False
-    svc.vpn_key_repository.create.return_value = created_key
-
-    # No nodes selection path in this unit test: stop after resolve client.
-    svc.routing_service.select_nodes.return_value = []
-
-    with pytest.raises(SubscriptionBuild):
-        # build_payload will raise SubscriptionBuild("No available nodes") after key creation,
-        # which is fine for this test; we assert key creation happened.
-        await svc.build_payload(raw_token="tok", hwid=None, user_agent="ua")
-
-    svc.vpn_key_repository.create.assert_called_once()
