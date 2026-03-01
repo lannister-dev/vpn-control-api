@@ -812,7 +812,7 @@
         const n = state.selectedNode;
         if (!n) { refs.selectedNodeCard.innerHTML = `<div class="empty">Выберите сервер во вкладке «Серверы».</div>`; return; }
         const g = nodeGeo(n.region);
-        refs.selectedNodeCard.innerHTML = `<div class="stack"><div><strong>${esc(n.name)}</strong> ${chip("info", roleLabel(n.role))} ${chip("info", g.short)}</div><div class="mono muted">${esc(n.id)}</div><div class="muted">${esc(g.regionText)}</div><div class="mono muted">ws: ${esc(n.public_domain || "-")} | reality: ${esc(n.reality_ip || "-")}</div><div>${n.is_healthy ? chip("ok", "Здоров") : chip("bad", "Нездоров")} ${n.is_draining ? chip("warn", "Draining") : (!n.is_enabled ? chip("bad", "Отключен") : chip("ok", "Активен"))}</div><div class="actions"><button class="btn-mini" data-selected="drain">Drain</button><button class="btn-mini" data-selected="enable">Enable</button></div><div class="actions"><select id="selected-role" class="select"><option value="backend">Бэкенд</option><option value="gateway">Шлюз</option></select><button class="btn-mini" data-selected="role">Изменить роль</button></div></div>`;
+        refs.selectedNodeCard.innerHTML = `<div class="stack"><div><strong>${esc(n.name)}</strong> ${chip("info", roleLabel(n.role))} ${chip("info", g.short)}</div><div class="mono muted">${esc(n.id)}</div><div class="muted">${esc(g.regionText)}</div><div>${n.is_healthy ? chip("ok", "Здоров") : chip("bad", "Нездоров")} ${n.is_draining ? chip("warn", "Draining") : (!n.is_enabled ? chip("bad", "Отключен") : chip("ok", "Активен"))}</div><div class="actions"><button class="btn-mini" data-selected="drain">Drain</button><button class="btn-mini" data-selected="enable">Enable</button></div><div class="actions"><select id="selected-role" class="select"><option value="backend">Бэкенд</option><option value="gateway">Шлюз</option></select><button class="btn-mini" data-selected="role">Изменить роль</button></div><hr style="border:none;border-top:1px solid var(--border);margin:8px 0"><div style="font-weight:600;margin-bottom:4px">Конфигурация</div><div class="stack" style="gap:4px"><label class="muted" style="font-size:.85em">Region<input id="edit-region" class="input" value="${esc(n.region || "")}" style="margin-top:2px"></label><label class="muted" style="font-size:.85em">Public domain<input id="edit-public-domain" class="input" value="${esc(n.public_domain || "")}" style="margin-top:2px"></label><label class="muted" style="font-size:.85em">Reality IP<input id="edit-reality-ip" class="input" value="${esc(n.reality_ip || "")}" style="margin-top:2px"></label><label class="muted" style="font-size:.85em">Capacity<input id="edit-capacity" class="input" type="number" min="1" max="10000" value="${n.capacity || ""}" style="margin-top:2px"></label></div><div class="actions" style="margin-top:6px"><button class="btn-mini" data-selected="save-config">Сохранить</button></div></div>`;
         const role = document.getElementById("selected-role");
         if (role) role.value = n.role;
       }
@@ -1090,6 +1090,20 @@
         if (!b) return;
         const id = state.selectedNode.id;
         const act = b.dataset.selected;
+        if (act === "save-config") {
+          const body = {};
+          const region = (document.getElementById("edit-region") || {}).value;
+          const publicDomain = (document.getElementById("edit-public-domain") || {}).value;
+          const realityIp = (document.getElementById("edit-reality-ip") || {}).value;
+          const capacity = (document.getElementById("edit-capacity") || {}).value;
+          if (region !== undefined && region !== (state.selectedNode.region || "")) body.region = region;
+          if (publicDomain !== undefined && publicDomain !== (state.selectedNode.public_domain || "")) body.public_domain = publicDomain;
+          if (realityIp !== undefined && realityIp !== (state.selectedNode.reality_ip || "")) body.reality_ip = realityIp || null;
+          if (capacity !== undefined && capacity !== "" && Number(capacity) !== state.selectedNode.capacity) body.capacity = Number(capacity);
+          if (!Object.keys(body).length) { notify("Нет изменений", false); return; }
+          runAction(`Update node config ${id}`, () => req(`/api/v1/agent/nodes/${encodeURIComponent(id)}`, { method: "PATCH", body })).then(() => refreshAll()).catch(() => {});
+          return;
+        }
         if (act === "role") {
           const role = (document.getElementById("selected-role") || { value: "backend" }).value;
           runAction(`Set role ${id} -> ${role}`, () => req(`/api/v1/agent/nodes/${encodeURIComponent(id)}/role`, { method: "POST", body: { role } })).then(() => refreshAll()).catch(() => {});

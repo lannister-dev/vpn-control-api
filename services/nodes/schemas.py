@@ -43,6 +43,17 @@ class VpnNodeUpdate(BaseModel):
     capacity: int | None = None
 
 
+class AdminNodeUpdateIn(BaseModel):
+    name: str | None = None
+    region: str | None = None
+    public_domain: str | None = None
+    reality_ip: str | None = None
+    capacity: int | None = Field(default=None, ge=1, le=10000)
+    is_enabled: bool | None = None
+    is_draining: bool | None = None
+    model_config = ConfigDict(extra="forbid")
+
+
 class VpnNodeOut(BaseModel):
     id: str
     name: str

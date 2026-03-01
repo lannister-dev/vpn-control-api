@@ -7,6 +7,7 @@ from starlette.requests import Request
 from services.auth.dependencies import admin_auth, bootstrap_auth, node_auth
 from services.nodes.models import VpnNode
 from services.nodes.schemas import (
+    AdminNodeUpdateIn,
     NodeAgentInitialOut,
     NodeHeartbeatIn,
     NodeRole,
@@ -14,6 +15,7 @@ from services.nodes.schemas import (
     NodeSyncReportIn,
     NodeSyncReportOut,
     NodeSyncReportStatus,
+    VpnNodeOut,
     VpnNodeUpdate,
 )
 from services.placements.schemas import PlacementPageOut, PlacementReportIn, PlacementReportOut
@@ -211,3 +213,45 @@ async def set_node_role(
         VpnNodeUpdate(role=NodeRole(payload.role.value)).model_dump(exclude_unset=True),
     )
     return {"status": "role_updated", "role": payload.role.value}
+
+
+@router.patch(
+    "/nodes/{node_id}",
+    response_model=VpnNodeOut,
+    summary="Update node config by ID",
+    dependencies=[Depends(admin_auth)],
+)
+async def update_node_by_id(
+        node_id: UUID,
+        payload: AdminNodeUpdateIn,
+        service: VpnNodeService = Depends(get_vpn_node_service),
+):
+    data = payload.model_dump(exclude_unset=True)
+    if not data:
+        raise HTTPException(status_code=422, detail="Empty payload")
+    node = await service.vpn_node_repository.get_by_id(node_id)
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    updated = await service.vpn_node_repository.update_by_id(node_id, data)
+    return updated
+
+
+@router.patch(
+    "/nodes/by-key/{node_key}",
+    response_model=VpnNodeOut,
+    summary="Update node config by node_key",
+    dependencies=[Depends(admin_auth)],
+)
+async def update_node_by_key(
+        node_key: str,
+        payload: AdminNodeUpdateIn,
+        service: VpnNodeService = Depends(get_vpn_node_service),
+):
+    data = payload.model_dump(exclude_unset=True)
+    if not data:
+        raise HTTPException(status_code=422, detail="Empty payload")
+    node = await service.vpn_node_repository.get_by_node_key(node_key)
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    updated = await service.vpn_node_repository.update_by_id(node.id, data)
+    return updated
