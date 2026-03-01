@@ -57,6 +57,7 @@ async def test_admin_status_aggregates(async_session):
 
     backend = _node(role="backend", enabled=True, draining=False)
     gateway = _node(role="gateway", enabled=False, draining=True)
+    backend.reality_ip = "203.0.113.7"
     backend_state = _state(healthy=True)
     gateway_state = _state(healthy=False)
 
@@ -77,3 +78,5 @@ async def test_admin_status_aggregates(async_session):
     assert len(out.nodes) == 2
     by_id = {item.id: item for item in out.nodes}
     assert by_id[backend.id].placements_backend == 3
+    assert by_id[backend.id].reality_ip == "203.0.113.7"
+    assert by_id[gateway.id].reality_ip is None

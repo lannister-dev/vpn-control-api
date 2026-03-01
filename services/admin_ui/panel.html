@@ -431,14 +431,14 @@
         <div class="panel-head"><div class="panel-title">Серверы</div><button id="nodes-reload" class="btn btn-ghost">Перезагрузить</button></div>
         <div class="panel-body">
           <div class="filters">
-            <input id="nodes-search" class="input" placeholder="Поиск: имя, UUID, домен, регион" />
+            <input id="nodes-search" class="input" placeholder="Поиск: имя, UUID, домен, reality IP, регион" />
             <select id="nodes-role" class="select"><option value="">Любая роль</option><option value="backend">Бэкенд</option><option value="gateway">Шлюз</option></select>
             <select id="nodes-health" class="select"><option value="">Любое здоровье</option><option value="healthy">Здоров</option><option value="unhealthy">Нездоров</option></select>
             <select id="nodes-state" class="select"><option value="">Любое состояние</option><option value="active">Активен</option><option value="draining">Draining</option><option value="disabled">Отключен</option></select>
             <button id="nodes-clear" class="btn btn-ghost">Сброс</button>
           </div>
           <table>
-            <thead><tr><th>Сервер</th><th>Роль</th><th>Гео / регион</th><th>Домен</th><th>Здоровье</th><th>Состояние</th><th>Плейсменты</th><th>Последний heartbeat</th><th>Действия</th></tr></thead>
+            <thead><tr><th>Сервер</th><th>Роль</th><th>Гео / регион</th><th>WS домен</th><th>Reality IP</th><th>Здоровье</th><th>Состояние</th><th>Плейсменты</th><th>Последний heartbeat</th><th>Действия</th></tr></thead>
             <tbody id="nodes-body"></tbody>
           </table>
         </div>
@@ -771,7 +771,7 @@
           if (st === "active" && (n.is_draining || !n.is_enabled)) return false;
           if (q) {
             const g = nodeGeo(n.region);
-            const hay = [n.name, n.id, n.public_domain, n.region, g.country, g.code].join(" ").toLowerCase();
+            const hay = [n.name, n.id, n.public_domain, n.reality_ip, n.region, g.country, g.code].join(" ").toLowerCase();
             if (!hay.includes(q)) return false;
           }
           return true;
@@ -812,7 +812,7 @@
         const n = state.selectedNode;
         if (!n) { refs.selectedNodeCard.innerHTML = `<div class="empty">Выберите сервер во вкладке «Серверы».</div>`; return; }
         const g = nodeGeo(n.region);
-        refs.selectedNodeCard.innerHTML = `<div class="stack"><div><strong>${esc(n.name)}</strong> ${chip("info", roleLabel(n.role))} ${chip("info", g.short)}</div><div class="mono muted">${esc(n.id)}</div><div class="muted">${esc(g.regionText)}</div><div>${n.is_healthy ? chip("ok", "Здоров") : chip("bad", "Нездоров")} ${n.is_draining ? chip("warn", "Draining") : (!n.is_enabled ? chip("bad", "Отключен") : chip("ok", "Активен"))}</div><div class="actions"><button class="btn-mini" data-selected="drain">Drain</button><button class="btn-mini" data-selected="enable">Enable</button></div><div class="actions"><select id="selected-role" class="select"><option value="backend">Бэкенд</option><option value="gateway">Шлюз</option></select><button class="btn-mini" data-selected="role">Изменить роль</button></div></div>`;
+        refs.selectedNodeCard.innerHTML = `<div class="stack"><div><strong>${esc(n.name)}</strong> ${chip("info", roleLabel(n.role))} ${chip("info", g.short)}</div><div class="mono muted">${esc(n.id)}</div><div class="muted">${esc(g.regionText)}</div><div class="mono muted">ws: ${esc(n.public_domain || "-")} | reality: ${esc(n.reality_ip || "-")}</div><div>${n.is_healthy ? chip("ok", "Здоров") : chip("bad", "Нездоров")} ${n.is_draining ? chip("warn", "Draining") : (!n.is_enabled ? chip("bad", "Отключен") : chip("ok", "Активен"))}</div><div class="actions"><button class="btn-mini" data-selected="drain">Drain</button><button class="btn-mini" data-selected="enable">Enable</button></div><div class="actions"><select id="selected-role" class="select"><option value="backend">Бэкенд</option><option value="gateway">Шлюз</option></select><button class="btn-mini" data-selected="role">Изменить роль</button></div></div>`;
         const role = document.getElementById("selected-role");
         if (role) role.value = n.role;
       }
@@ -857,9 +857,9 @@
         refs.nodesBody.innerHTML = nodes.length
           ? nodes.map((n) => {
             const g = nodeGeo(n.region);
-            return `<tr><td><strong>${esc(n.name)}</strong><div class="mono muted">${esc(n.id)}</div></td><td>${esc(roleLabel(n.role))}</td><td><div class="geo"><span class="flag">${esc(g.flag)}</span>${esc(g.country)}</div><div class="mono muted">${esc(g.regionText)}</div></td><td class="mono">${esc(n.public_domain || "-")}</td><td>${n.is_healthy ? chip("ok", "Здоров") : chip("bad", "Нездоров")}</td><td>${n.is_draining ? chip("warn", "Draining") : (!n.is_enabled ? chip("bad", "Отключен") : chip("ok", "Активен"))}</td><td class="mono">${n.placements_backend}</td><td>${fmtDate(n.last_seen_at)}</td><td><div class="actions"><button class="btn-mini node-action" data-action="drain" data-id="${esc(n.id)}">Drain</button><button class="btn-mini node-action" data-action="enable" data-id="${esc(n.id)}">Enable</button><button class="btn-mini node-select" data-id="${esc(n.id)}">Выбрать</button><button class="btn-mini copy-value" data-copy="${esc(n.id)}">Копировать ID</button></div></td></tr>`;
+            return `<tr><td><strong>${esc(n.name)}</strong><div class="mono muted">${esc(n.id)}</div></td><td>${esc(roleLabel(n.role))}</td><td><div class="geo"><span class="flag">${esc(g.flag)}</span>${esc(g.country)}</div><div class="mono muted">${esc(g.regionText)}</div></td><td class="mono">${esc(n.public_domain || "-")}</td><td class="mono">${esc(n.reality_ip || "-")}</td><td>${n.is_healthy ? chip("ok", "Здоров") : chip("bad", "Нездоров")}</td><td>${n.is_draining ? chip("warn", "Draining") : (!n.is_enabled ? chip("bad", "Отключен") : chip("ok", "Активен"))}</td><td class="mono">${n.placements_backend}</td><td>${fmtDate(n.last_seen_at)}</td><td><div class="actions"><button class="btn-mini node-action" data-action="drain" data-id="${esc(n.id)}">Drain</button><button class="btn-mini node-action" data-action="enable" data-id="${esc(n.id)}">Enable</button><button class="btn-mini node-select" data-id="${esc(n.id)}">Выбрать</button><button class="btn-mini copy-value" data-copy="${esc(n.id)}">Копировать ID</button></div></td></tr>`;
           }).join("")
-          : `<tr><td colspan="9" class="empty">Нет серверов по текущим фильтрам.</td></tr>`;
+          : `<tr><td colspan="10" class="empty">Нет серверов по текущим фильтрам.</td></tr>`;
 
         const routes = filteredRoutes();
         refs.routesBody.innerHTML = routes.length

@@ -13,7 +13,7 @@ class VpnKey(Base):
 
     user_id: Mapped[UUID] = mapped_column(ForeignKey("user.id"))
     protocol: Mapped[str] = mapped_column(String(length=16))  # vless
-    transport: Mapped[str] = mapped_column(String(length=16))  # ws / xhttp / tcp
+    transport: Mapped[str] = mapped_column(String(length=16))  # ws / xhttp / reality
     client_id: Mapped[str] = mapped_column(String(length=36), unique=True, nullable=False)
     valid_until: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     traffic_limit_mb: Mapped[int] = mapped_column(nullable=False)

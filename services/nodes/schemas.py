@@ -16,6 +16,7 @@ class VpnNodeCreate(BaseModel):
     role: NodeRole = NodeRole.backend
     region: str
     public_domain: str
+    reality_ip: str | None = None
     internal_wg_ip: str
     node_key: str | None = None
     xray_api_port: int = 10085
@@ -31,6 +32,7 @@ class VpnNodeUpdate(BaseModel):
     role: NodeRole | None = None
     region: str | None = None
     public_domain: str | None = None
+    reality_ip: str | None = None
     internal_wg_ip: str | None = None
     node_key: str | None = None
     xray_api_port: int | None = None
@@ -47,6 +49,7 @@ class VpnNodeOut(BaseModel):
     role: NodeRole
     region: str
     public_domain: str
+    reality_ip: str | None = None
     internal_wg_ip: str
     node_key: str | None = None
     xray_api_port: int

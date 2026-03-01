@@ -23,6 +23,7 @@ class VpnNode(Base):
     role: Mapped[str] = mapped_column(String(length=16), nullable=False, server_default=text("'backend'"), index=True)
     region: Mapped[str] = mapped_column(String(length=32))  # de, nl, fi
     public_domain: Mapped[str] = mapped_column(String(length=255))
+    reality_ip: Mapped[str | None] = mapped_column(String(length=64), nullable=True)
     internal_wg_ip: Mapped[str] = mapped_column(String(length=64))  # 10.0.1.x
     node_key: Mapped[str | None] = mapped_column(String(length=128), unique=True, nullable=True, index=True)
     xray_api_port: Mapped[int] = mapped_column(Integer, default=10085)

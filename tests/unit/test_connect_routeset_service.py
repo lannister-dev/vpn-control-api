@@ -26,6 +26,7 @@ def _backend_node():
     n.role = "backend"
     n.region = "fi"
     n.public_domain = "be-fi-1.example.com"
+    n.reality_ip = "203.0.113.11"
     n.internal_wg_ip = "10.0.1.11"
     n.is_active = True
     n.is_enabled = True

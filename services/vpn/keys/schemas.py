@@ -14,6 +14,7 @@ class VpnTransport(str, Enum):
     ws = "ws"
     xhttp = "xhttp"
     tcp = "tcp"
+    reality = "reality"
 
 
 class VpnKeyCreate(BaseModel):

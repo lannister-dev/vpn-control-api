@@ -12,6 +12,7 @@ class AdminNodeStatusOut(BaseModel):
     role: NodeRole
     region: str
     public_domain: str
+    reality_ip: str | None = None
     is_enabled: bool
     is_draining: bool
     capacity: int

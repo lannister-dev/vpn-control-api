@@ -100,6 +100,7 @@ async def test_existing_hwid_path_skips_subscription_lock(service):
     node.name = "be-fi-1"
     node.region = "fi"
     node.public_domain = "be-fi-1.example.com"
+    node.reality_ip = "203.0.113.31"
     tp = MagicMock()
     tp.id = uuid4()
     tp.port = 443

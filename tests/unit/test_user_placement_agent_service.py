@@ -89,6 +89,24 @@ async def test_get_page_effective_inactive_when_expired(async_session):
 
 
 @pytest.mark.asyncio
+async def test_get_page_keeps_transport_from_key(async_session):
+    svc = PlacementAgentService(async_session)
+    svc.placement_repository = AsyncMock()
+
+    node = _node()
+    placement = _placement(backend_node_id=node.id)
+    key = _key()
+    key.transport = "tcp"
+    backend = _backend()
+    svc.placement_repository.list_for_backend_with_keys_page.return_value = [(placement, key, backend)]
+
+    out = await svc.get_page_for_backend(node=node, cursor=None, limit=10)
+
+    assert len(out.items) == 1
+    assert out.items[0].transport.value == "tcp"
+
+
+@pytest.mark.asyncio
 async def test_report_forbidden_backend(async_session):
     svc = PlacementAgentService(async_session)
     svc.placement_repository = AsyncMock()

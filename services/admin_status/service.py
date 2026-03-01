@@ -45,6 +45,8 @@ class AdminStatusService:
 
             role_raw = node.role
             role = NodeRole(role_raw) if role_raw in (NodeRole.backend.value, NodeRole.gateway.value) else NodeRole.backend
+            reality_ip_raw = getattr(node, "reality_ip", None)
+            reality_ip = reality_ip_raw if isinstance(reality_ip_raw, str) else None
 
             nodes.append(
                 AdminNodeStatusOut(
@@ -53,6 +55,7 @@ class AdminStatusService:
                     role=role,
                     region=node.region,
                     public_domain=node.public_domain,
+                    reality_ip=reality_ip,
                     is_enabled=node.is_enabled,
                     is_draining=node.is_draining,
                     capacity=node.capacity,

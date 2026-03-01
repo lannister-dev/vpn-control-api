@@ -54,9 +54,10 @@ def _make_sub(
     return sub
 
 
-def _make_node(*, public_domain="vpn.example.com", name="node1", region="de"):
+def _make_node(*, public_domain="vpn.example.com", reality_ip=None, name="node1", region="de"):
     n = MagicMock()
     n.public_domain = public_domain
+    n.reality_ip = public_domain if reality_ip is None else reality_ip
     n.name = name
     n.region = region
     return n
@@ -197,6 +198,21 @@ class TestBuildRouteUri:
         assert "@1.2.3.4:" in uri
         assert "prod.example.com" not in uri
 
+    def test_build_reality_uri_prefers_reality_ip(self, service):
+        node = _make_node(public_domain="reality.example.com", reality_ip="198.51.100.12")
+        transport_profile = _make_transport_profile(network="tcp", security="reality")
+        service.settings.edge.public_domain = "prod.example.com"
+
+        uri = service._build_route_uri(
+            client_id="cid",
+            node=node,
+            transport_profile=transport_profile,
+        )
+
+        assert uri is not None
+        assert "@198.51.100.12:" in uri
+        assert "reality.example.com" not in uri
+
     def test_missing_domain_returns_none(self, service):
         node = _make_node(public_domain="")
         transport_profile = _make_transport_profile()
@@ -245,6 +261,16 @@ class TestCalcEtag:
 
 def test_route_transport_compatibility(service):
     assert service._is_route_compatible_with_key_transport(
+        key_transport="reality",
+        transport_security="reality",
+        transport_network="tcp",
+    )
+    assert not service._is_route_compatible_with_key_transport(
+        key_transport="reality",
+        transport_security="tls",
+        transport_network="ws",
+    )
+    assert not service._is_route_compatible_with_key_transport(
         key_transport="tcp",
         transport_security="reality",
         transport_network="tcp",

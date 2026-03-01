@@ -398,14 +398,13 @@ class SubscriptionService:
             key = await self.vpn_key_repository.get_by_id(vpn_key_id)
             if not key:
                 raise SubscriptionBuild("Device key not found")
-            key_transport = self._normalize_key_transport(getattr(key, "transport", None))
 
             max_routes = max(1, min(10, int(self.settings.subscriptions.smart_route_max_count)))
             selected_backend_id, placement, allowed_backend_ids = await self._ensure_backend_placements_for_key(
                 key_id=vpn_key_id,
                 preferred_region=subscription.preferred_region,
                 desired_replicas=max_routes,
-                key_transport=key_transport,
+                key_transport=key.transport,
             )
             route_rows = await self.route_repository.list_resolved_active(
                 preferred_node_id=selected_backend_id,
@@ -430,7 +429,7 @@ class SubscriptionService:
                 transport_security = transport_profile.security
                 transport_network = transport_profile.network
                 if not self._is_route_compatible_with_key_transport(
-                    key_transport=key_transport,
+                    key_transport=key.transport,
                     transport_security=transport_security,
                     transport_network=transport_network,
                 ):
@@ -548,7 +547,7 @@ class SubscriptionService:
         if profile_type == ProfileType.ws_tls:
             return VpnTransport.ws
         if profile_type == ProfileType.reality_tcp:
-            return VpnTransport.tcp
+            return VpnTransport.reality
         raise HTTPException(status_code=422, detail=f"Unsupported profile type: {profile_type}")
 
     async def _ensure_backend_placements_for_key(
@@ -761,33 +760,25 @@ class SubscriptionService:
     def _resolve_ws_public_host(self, node: VpnNode) -> str:
         edge_domain = self.settings.edge.public_domain
         if edge_domain:
-            return edge_domain.strip()
-        return node.public_domain.strip()
-
-    @staticmethod
-    def _resolve_reality_public_host(node: VpnNode) -> str:
-        return node.public_domain.strip()
+            return edge_domain
+        return node.public_domain
 
     def _resolve_route_host_for_transport(self, *, node: VpnNode, transport_profile) -> str:
         network = transport_profile.network
         security = transport_profile.security
         if security == "reality" and network == "tcp":
-            return self._resolve_reality_public_host(node)
+            return node.reality_ip
         return self._resolve_ws_public_host(node)
 
     def _node_has_required_public_host(self, *, node: VpnNode, key_transport: str | None) -> bool:
+        if key_transport == VpnTransport.reality.value:
+            return bool(node.reality_ip)
         if key_transport == VpnTransport.tcp.value:
-            return bool(self._resolve_reality_public_host(node))
+            return False
         if key_transport == VpnTransport.ws.value:
             return bool(self._resolve_ws_public_host(node))
-        return bool(self._resolve_reality_public_host(node) or self._resolve_ws_public_host(node))
+        return bool(node.reality_ip or self._resolve_ws_public_host(node))
 
-    @staticmethod
-    def _normalize_key_transport(raw_transport: object) -> str | None:
-        if not isinstance(raw_transport, str):
-            return None
-        normalized = raw_transport.strip().lower()
-        return normalized or None
 
     @staticmethod
     def _is_route_compatible_with_key_transport(
@@ -796,8 +787,10 @@ class SubscriptionService:
             transport_security: str,
             transport_network: str,
     ) -> bool:
-        if key_transport == VpnTransport.tcp.value:
+        if key_transport == VpnTransport.reality.value:
             return transport_security == "reality" and transport_network == "tcp"
+        if key_transport == VpnTransport.tcp.value:
+            return False
         if key_transport == VpnTransport.ws.value:
             return transport_security == "tls" and transport_network == "ws"
         if key_transport == VpnTransport.xhttp.value:

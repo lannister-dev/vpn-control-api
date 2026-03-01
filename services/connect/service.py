@@ -257,7 +257,7 @@ class ConnectService:
         key_internal = VpnKeyInternalCreate(
             user_id=payload.user_id,
             protocol=VpnProtocol.vless,
-            transport=VpnTransport.tcp,
+            transport=VpnTransport.reality,
             client_id=str(uuid4()),
             valid_until=valid_until,
             traffic_limit_mb=payload.traffic_limit_mb,
@@ -411,24 +411,30 @@ class ConnectService:
         return None
 
     def _resolve_ws_public_host(self, node: VpnNode) -> str:
-        edge_domain = self.settings.edge.public_domain.strip()
+        edge_domain = self.settings.edge.public_domain
         if edge_domain:
             return edge_domain
-        return node.public_domain.strip()
+        return node.public_domain
+
+    @staticmethod
+    def _resolve_reality_host(node: VpnNode) -> str:
+        return node.reality_ip or ""
 
     def _resolve_route_host_for_transport(self, *, node: VpnNode, transport_profile) -> str:
         network = transport_profile.network
         security = transport_profile.security
         if security == "reality" and network == "tcp":
-            return node.public_domain
+            return self._resolve_reality_host(node)
         return self._resolve_ws_public_host(node)
 
     def _node_has_required_public_host(self, *, node: VpnNode, key_transport: str | None) -> bool:
+        if key_transport == VpnTransport.reality.value:
+            return bool(self._resolve_reality_host(node))
         if key_transport == VpnTransport.tcp.value:
-            return bool(node.public_domain)
+            return False
         if key_transport == VpnTransport.ws.value:
             return bool(self._resolve_ws_public_host(node))
-        return bool(node.public_domain or self._resolve_ws_public_host(node))
+        return bool(self._resolve_reality_host(node) or self._resolve_ws_public_host(node))
 
     @staticmethod
     def _normalize_key_transport(raw_transport: object) -> str | None:
@@ -444,8 +450,10 @@ class ConnectService:
             transport_security: str,
             transport_network: str,
     ) -> bool:
-        if key_transport == VpnTransport.tcp.value:
+        if key_transport == VpnTransport.reality.value:
             return transport_security == "reality" and transport_network == "tcp"
+        if key_transport == VpnTransport.tcp.value:
+            return False
         if key_transport == VpnTransport.ws.value:
             return transport_security == "tls" and transport_network == "ws"
         if key_transport == VpnTransport.xhttp.value:

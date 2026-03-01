@@ -13,13 +13,14 @@ def _redis():
     return SimpleNamespace(client=MagicMock())
 
 
-def _node(*, role="backend", public_domain="prod.example.com"):
+def _node(*, role="backend", public_domain="prod.example.com", reality_ip=None):
     n = MagicMock()
     n.id = uuid4()
     n.name = "be-fi"
     n.role = role
     n.region = "fi"
     n.public_domain = public_domain
+    n.reality_ip = public_domain if reality_ip is None else reality_ip
     n.internal_wg_ip = "10.0.1.10"
     n.is_active = True
     n.is_enabled = True
@@ -99,3 +100,17 @@ async def test_build_route_uri_reality_uses_node_host_even_with_global_edge_doma
     assert uri is not None
     assert "@1.2.3.4:" in uri
     assert "prod.example.com" not in uri
+
+
+@pytest.mark.asyncio
+async def test_build_route_uri_reality_prefers_reality_ip(async_session):
+    svc = ConnectService(async_session, _redis())
+    svc.settings.edge.public_domain = "prod.example.com"
+    node = _node(public_domain="reality.example.com", reality_ip="203.0.113.10")
+    tp = _transport_profile(network="tcp", security="reality", port=443)
+
+    uri = svc._build_route_uri(client_id="cid", node=node, transport_profile=tp)
+
+    assert uri is not None
+    assert "@203.0.113.10:" in uri
+    assert "reality.example.com" not in uri
