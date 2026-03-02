@@ -1,4 +1,3 @@
-
 <!doctype html>
 <html lang="ru">
 <head>
@@ -204,6 +203,7 @@
       gap: 14px;
       padding: 20px;
       animation: fade-up 260ms ease;
+      position: relative;
     }
     .hero {
       border: 1px solid var(--line-strong);
@@ -304,24 +304,150 @@
     .log-item { border: 1px solid var(--line); border-radius: 9px; background: rgba(15, 23, 42, 0.36); padding: 7px 8px; font-size: 12px; }
     .log-item.error { color: #ffc3bd; }
     .empty { color: var(--muted); font-size: 12px; padding: 7px 0; }
-    .toast {
+
+    /* Toast stack */
+    .toast-container {
       position: fixed;
       right: 22px;
       bottom: 22px;
-      z-index: 30;
+      z-index: 40;
+      display: flex;
+      flex-direction: column-reverse;
+      gap: 8px;
+      pointer-events: none;
+    }
+    .toast-container .toast {
+      position: relative;
       opacity: 0;
       transform: translateX(8px);
-      transition: 160ms ease;
-      pointer-events: none;
+      transition: 200ms ease;
+      pointer-events: auto;
       border: 1px solid var(--line);
       border-radius: 12px;
       background: rgba(15, 23, 42, 0.94);
+      backdrop-filter: blur(12px);
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
-      padding: 10px 12px;
+      padding: 10px 32px 10px 12px;
       max-width: 460px;
+      font-size: 13px;
     }
-    .toast.show { opacity: 1; transform: translateY(0); }
-    .toast.error { border-color: rgba(255, 127, 133, 0.5); }
+    .toast-container .toast.show { opacity: 1; transform: translateX(0); }
+    .toast-container .toast.error { border-color: rgba(255, 127, 133, 0.5); }
+    .toast-close {
+      position: absolute;
+      top: 50%;
+      right: 8px;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 16px;
+      line-height: 1;
+      padding: 2px;
+    }
+    .toast-close:hover { color: var(--text); }
+
+    /* Confirmation modal */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: fade-up 160ms ease;
+    }
+    .modal-box {
+      background: rgba(15, 23, 42, 0.96);
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      padding: 20px;
+      max-width: 420px;
+      width: 90%;
+      box-shadow: var(--shadow);
+    }
+    .modal-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+    .modal-body { color: var(--muted); font-size: 13px; margin-bottom: 16px; line-height: 1.5; }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .modal-actions .btn { width: auto; padding: 8px 16px; }
+
+    /* Loading bar */
+    .loading-bar {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      overflow: hidden;
+      z-index: 10;
+      border-radius: 3px;
+    }
+    .loading-bar::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent, var(--ok), transparent);
+      animation: loading-slide 1.2s ease-in-out infinite;
+    }
+    @keyframes loading-slide {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid var(--line);
+      border-top-color: var(--ok);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* UUID click-to-copy */
+    .uuid {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 12px;
+      border-bottom: 1px dashed var(--muted);
+      cursor: pointer;
+      transition: color 120ms ease;
+      color: var(--muted);
+    }
+    .uuid:hover { color: var(--info); }
+
+    /* Capacity bar */
+    .capacity-bar {
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 3px;
+    }
+    .capacity-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 300ms ease;
+    }
+    .capacity-fill.low { background: var(--ok); }
+    .capacity-fill.mid { background: var(--warn); }
+    .capacity-fill.high { background: var(--bad); }
+
+    /* Sortable table headers */
+    th.sortable { cursor: pointer; user-select: none; transition: color 120ms ease; }
+    th.sortable:hover { color: var(--info); }
+
+    /* Ops card colored sections */
+    .ops-card { border-left: 3px solid transparent; }
+    .ops-info { border-left-color: var(--info); }
+    .ops-danger { border-left-color: var(--bad); }
+    .ops-warn { border-left-color: var(--warn); }
+
     @keyframes fade-up {
       from { opacity: 0; transform: translateY(4px); }
       to { opacity: 1; transform: translateY(0); }
@@ -392,12 +518,12 @@
       </section>
     </aside>
 
-    <section class="content">
+    <section id="content-area" class="content">
       <header class="hero">
         <div class="hero-head">
           <div>
-            <div class="hero-title">Home</div>
-            <div class="crumbs">Dashboard • Overview • Home</div>
+            <div id="hero-title" class="hero-title">Home</div>
+            <div id="crumbs" class="crumbs">Dashboard &bull; Home</div>
             <div id="hero-status" class="muted">Введите токен и загрузите данные.</div>
           </div>
           <div class="mono muted">API /api/v1</div>
@@ -422,7 +548,7 @@
             <div class="card"><div class="muted">Серверы, требующие внимания</div><div id="node-alert-list" class="stack"></div></div>
           </div>
           <div class="stack">
-            <div class="card"><div class="muted">Выбранный сервер</div><div id="selected-node-card" class="empty">Выберите сервер во вкладке «Серверы».</div></div>
+            <div class="card"><div class="muted">Выбранный сервер</div><div id="selected-node-card" class="empty">Выберите сервер во вкладке &laquo;Серверы&raquo;.</div></div>
             <div class="card"><div class="muted">Журнал операций</div><div id="action-log" class="log"></div></div>
           </div>
         </div>
@@ -438,7 +564,7 @@
             <button id="nodes-clear" class="btn btn-ghost">Сброс</button>
           </div>
           <table>
-            <thead><tr><th>Сервер</th><th>Роль</th><th>Гео / регион</th><th>WS домен</th><th>Reality IP</th><th>Здоровье</th><th>Состояние</th><th>Плейсменты</th><th>Последний heartbeat</th><th>Действия</th></tr></thead>
+            <thead id="nodes-head"><tr><th>Сервер</th><th>Роль</th><th>Гео</th><th>Здоровье</th><th>Состояние</th><th>Нагрузка</th><th>Heartbeat</th><th>Действия</th></tr></thead>
             <tbody id="nodes-body"></tbody>
           </table>
         </div>
@@ -448,7 +574,7 @@
         <div class="panel-head"><div class="panel-title">Маршруты</div><div class="actions"><select id="routes-status" class="select"><option value="">Любой статус</option><option value="healthy">healthy</option><option value="degraded">degraded</option><option value="suspected">suspected</option><option value="blocked">blocked</option><option value="warming_up">warming_up</option></select><input id="routes-search" class="input mono" placeholder="Поиск UUID/имени" /><button id="routes-reload" class="btn btn-ghost">Перезагрузить</button></div></div>
         <div class="panel-body">
           <table>
-            <thead><tr><th>Маршрут</th><th>ID backend-ноды</th><th>Статус</th><th>Вес</th><th>Прогрев</th><th>Действия</th></tr></thead>
+            <thead id="routes-head"><tr><th>Маршрут</th><th>Backend</th><th>Статус</th><th>Вес</th><th>Прогрев</th><th>Действия</th></tr></thead>
             <tbody id="routes-body"></tbody>
           </table>
         </div>
@@ -459,7 +585,7 @@
         <div class="panel-body">
           <div id="placements-meta" class="card muted">Данные еще не загружены.</div>
           <table>
-            <thead><tr><th>ID плейсмента</th><th>ID ключа</th><th>ID backend-ноды</th><th>op_version</th><th>Желаемое состояние</th><th>Применение</th><th>Причина</th><th>Обновлено</th></tr></thead>
+            <thead><tr><th>ID плейсмента</th><th>ID ключа</th><th>ID backend-ноды</th><th>Версия</th><th>Желаемое</th><th>Применение</th><th>Причина</th><th>Обновлено</th></tr></thead>
             <tbody id="placements-body"></tbody>
           </table>
         </div>
@@ -546,12 +672,12 @@
         <div class="panel-head"><div class="panel-title">Операции</div><div class="muted">Управление миграциями, route health и probe-политиками</div></div>
         <div class="panel-body two-col">
           <div class="stack">
-	            <div class="card"><div class="muted">Миграция плейсментов между backend-нодами</div><form id="form-migrate" class="stack"><input class="input mono" name="source_backend_id" placeholder="ID исходной backend-ноды (UUID)" required /><input class="input mono" name="target_backend_id" placeholder="ID целевой backend-ноды (опционально)" /><input class="input" name="last_migration_reason" value="admin_manual" placeholder="Причина миграции" /><button class="btn btn-primary" type="submit">Запустить миграцию</button></form></div>
-	            <div class="card"><div class="muted">Авто drain+migrate по probe-сигналам</div><form id="form-probe-auto" class="stack"><div class="row-2"><input class="input" name="source" placeholder="Источник probe (опционально)" /><input class="input mono" name="target_backend_id" placeholder="ID целевой backend-ноды (опционально)" /></div><div class="row-2"><input class="input" name="max_nodes" type="number" min="1" max="200" value="20" /><label class="muted"><input type="checkbox" name="dry_run" checked /> Только проверка (dry run)</label></div><input class="input" name="last_migration_reason" value="probe_auto_failure" placeholder="Причина миграции" /><button class="btn btn-danger" type="submit">Применить probe-политику</button></form></div>
+	            <div class="card ops-card ops-info"><div class="muted">Миграция плейсментов между backend-нодами</div><form id="form-migrate" class="stack"><input class="input mono" name="source_backend_id" placeholder="ID исходной backend-ноды (UUID)" required /><input class="input mono" name="target_backend_id" placeholder="ID целевой backend-ноды (опционально)" /><input class="input" name="last_migration_reason" value="admin_manual" placeholder="Причина миграции" /><button class="btn btn-primary" type="submit">Запустить миграцию</button></form></div>
+	            <div class="card ops-card ops-danger"><div class="muted">Авто drain+migrate по probe-сигналам</div><form id="form-probe-auto" class="stack"><div class="row-2"><input class="input" name="source" placeholder="Источник probe (опционально)" /><input class="input mono" name="target_backend_id" placeholder="ID целевой backend-ноды (опционально)" /></div><div class="row-2"><input class="input" name="max_nodes" type="number" min="1" max="200" value="20" /><label class="muted"><input type="checkbox" name="dry_run" checked /> Только проверка (dry run)</label></div><input class="input" name="last_migration_reason" value="probe_auto_failure" placeholder="Причина миграции" /><button class="btn btn-danger" type="submit">Применить probe-политику</button></form></div>
           </div>
           <div class="stack">
-	            <div class="card"><div class="muted">Изменение состояния маршрута</div><form id="form-route-health" class="stack"><input class="input mono" name="route_id" placeholder="ID маршрута (UUID)" required /><select class="select" name="action"><option value="set_healthy">set_healthy</option><option value="set_degraded">set_degraded</option><option value="set_suspected">set_suspected</option><option value="block">block</option><option value="recover">recover</option></select><input class="input" name="cooldown_hours" type="number" min="1" max="72" value="6" placeholder="Cooldown (часы)" /><button class="btn btn-warn" type="submit">Обновить route health</button></form></div>
-	            <div class="card"><div class="muted">Ручной drain+migrate одной backend-ноды</div><form id="form-probe-manual" class="stack"><input class="input mono" name="source_backend_id" placeholder="ID исходной backend-ноды (UUID)" required /><input class="input mono" name="target_backend_id" placeholder="ID целевой backend-ноды (опционально)" /><input class="input" name="source" placeholder="Источник probe (опционально)" /><button class="btn btn-danger" type="submit">Drain и migrate</button></form></div>
+	            <div class="card ops-card ops-warn"><div class="muted">Изменение состояния маршрута</div><form id="form-route-health" class="stack"><input class="input mono" name="route_id" placeholder="ID маршрута (UUID)" required /><select class="select" name="action"><option value="set_healthy">set_healthy</option><option value="set_degraded">set_degraded</option><option value="set_suspected">set_suspected</option><option value="block">block</option><option value="recover">recover</option></select><input class="input" name="cooldown_hours" type="number" min="1" max="72" value="6" placeholder="Cooldown (часы)" /><button class="btn btn-warn" type="submit">Обновить route health</button></form></div>
+	            <div class="card ops-card ops-danger"><div class="muted">Ручной drain+migrate одной backend-ноды</div><form id="form-probe-manual" class="stack"><input class="input mono" name="source_backend_id" placeholder="ID исходной backend-ноды (UUID)" required /><input class="input mono" name="target_backend_id" placeholder="ID целевой backend-ноды (опционально)" /><input class="input" name="source" placeholder="Источник probe (опционально)" /><button class="btn btn-danger" type="submit">Drain и migrate</button></form></div>
             <div class="row-2"><button id="btn-warmup" class="btn btn-info">Сдвинуть warmup tick</button><button id="btn-cleanup-probe" class="btn btn-ghost">Очистить старые probe-сигналы</button></div>
           </div>
         </div>
@@ -559,21 +685,24 @@
     </section>
     </div>
   </main>
-  <div id="toast" class="toast"></div>
+  <div id="toast-container" class="toast-container"></div>
+  <div id="confirm-modal"></div>
 
   <script>
     (function () {
       const REFRESH_MS = 15000;
       const TOKEN_KEY = "control-plane-admin-token";
       const TABLE_LIMIT = 500;
+      const TAB_LABELS = { overview: "Home", nodes: "Серверы", routes: "Маршруты", placements: "Плейсменты", subscriptions: "Подписки", ops: "Операции" };
 
       const $ = (id) => document.getElementById(id);
       const refs = {
         token: $("admin-token"), saveToken: $("save-token"), refreshAll: $("refresh-all"), live: $("live-refresh"), refreshInterval: $("refresh-interval"),
         readyDot: $("ready-dot"), readinessText: $("readiness-text"), lastSync: $("last-sync"), heroStatus: $("hero-status"),
+        heroTitle: $("hero-title"), crumbs: $("crumbs"), contentArea: $("content-area"),
         kpiNodes: $("kpi-nodes"), kpiHealthy: $("kpi-healthy"), kpiDraining: $("kpi-draining"), kpiPlacements: $("kpi-placements"), kpiRoutes: $("kpi-routes"), kpiProbeFail: $("kpi-probe-fail"),
         readinessList: $("readiness-list"), routeHealthList: $("route-health-list"), probeFailList: $("probe-fail-list"), nodeAlertList: $("node-alert-list"), selectedNodeCard: $("selected-node-card"), actionLog: $("action-log"),
-        nodesBody: $("nodes-body"), routesBody: $("routes-body"), placementsBody: $("placements-body"), placementsMeta: $("placements-meta"),
+        nodesHead: $("nodes-head"), nodesBody: $("nodes-body"), routesHead: $("routes-head"), routesBody: $("routes-body"), placementsBody: $("placements-body"), placementsMeta: $("placements-meta"),
         subsBody: $("subs-body"), subDevicesBody: $("sub-devices-body"), subCreateResult: $("sub-create-result"), subManageResult: $("sub-manage-result"),
         nodesSearch: $("nodes-search"), nodesRole: $("nodes-role"), nodesHealth: $("nodes-health"), nodesState: $("nodes-state"), nodesClear: $("nodes-clear"), nodesReload: $("nodes-reload"),
         routesStatus: $("routes-status"), routesSearch: $("routes-search"), routesReload: $("routes-reload"),
@@ -581,19 +710,73 @@
         formSubCreate: $("form-sub-create"), formSubListUser: $("form-sub-list-user"), formSubManage: $("form-sub-manage"), formSubRevokeDevice: $("form-sub-revoke-device"),
         subLoad: $("sub-load"), subRotate: $("sub-rotate"), subActivate: $("sub-activate"), subDeactivate: $("sub-deactivate"), subDevicesLoad: $("sub-devices-load"),
         formMigrate: $("form-migrate"), formProbeAuto: $("form-probe-auto"), formRouteHealth: $("form-route-health"), formProbeManual: $("form-probe-manual"),
-        btnWarmup: $("btn-warmup"), btnCleanupProbe: $("btn-cleanup-probe"), toast: $("toast"),
+        btnWarmup: $("btn-warmup"), btnCleanupProbe: $("btn-cleanup-probe"),
+        toastContainer: $("toast-container"), confirmModal: $("confirm-modal"),
         navButtons: Array.from(document.querySelectorAll(".nav button[data-tab]")),
         panels: { overview: $("tab-overview"), nodes: $("tab-nodes"), routes: $("tab-routes"), placements: $("tab-placements"), subscriptions: $("tab-subscriptions"), ops: $("tab-ops") },
       };
 
-      const state = { token: localStorage.getItem(TOKEN_KEY) || "", timer: null, selectedNode: null, status: null, readiness: null, routes: [], placements: [], probes: [], subscriptions: [], subscriptionDevices: [], logs: [] };
+      const state = { token: localStorage.getItem(TOKEN_KEY) || "", timer: null, selectedNode: null, status: null, readiness: null, routes: [], placements: [], probes: [], subscriptions: [], subscriptionDevices: [], logs: [], activeTab: "overview", loading: false };
 
       const esc = (v) => String(v ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
       const fmtDate = (v) => { if (!v) return "-"; const d = new Date(v); return Number.isNaN(d.getTime()) ? "-" : d.toLocaleString(); };
       const chip = (cls, txt) => `<span class="badge ${cls}">${esc(txt)}</span>`;
       const roleLabel = (r) => (r === "backend" ? "Бэкенд" : (r === "gateway" ? "Шлюз" : r));
       const routeStatusLabel = (s) => ({ healthy: "Стабильный", degraded: "Деградация", suspected: "Подозрение", blocked: "Заблокирован", warming_up: "Прогрев" }[s] || s);
-      const UNKNOWN_FLAG = "🌐";
+
+      /* --- Phase 2 helpers --- */
+      function shortId(uuid, len) { return String(uuid || "").substring(0, len || 8); }
+      function uuidCell(uuid) {
+        const id = String(uuid || "");
+        return `<span class="uuid" title="${esc(id)}" data-copy="${esc(id)}">${esc(shortId(id))}&hellip;</span>`;
+      }
+      function nodeNameById(nodeId) {
+        if (!state.status || !state.status.nodes) return null;
+        const n = state.status.nodes.find((x) => x.id === nodeId);
+        return n ? n.name : null;
+      }
+      function relTime(v) {
+        if (!v) return "-";
+        const d = new Date(v);
+        if (Number.isNaN(d.getTime())) return "-";
+        const sec = Math.floor((Date.now() - d.getTime()) / 1000);
+        if (sec < 0) return "just now";
+        if (sec < 60) return sec + "s ago";
+        if (sec < 3600) return Math.floor(sec / 60) + "m ago";
+        if (sec < 86400) return Math.floor(sec / 3600) + "h ago";
+        return Math.floor(sec / 86400) + "d ago";
+      }
+      function capacityBar(used, total) {
+        if (!total || total <= 0) return `<span class="mono">${used || 0}</span>`;
+        const pct = Math.min(100, Math.round((used / total) * 100));
+        const cls = pct < 60 ? "low" : pct < 85 ? "mid" : "high";
+        return `<div><span class="mono" style="font-size:11px">${used}/${total}</span><div class="capacity-bar"><div class="capacity-fill ${cls}" style="width:${pct}%"></div></div></div>`;
+      }
+
+      /* --- Sorting --- */
+      const sortState = {};
+      function toggleSort(tableId, key) {
+        if (sortState[tableId] && sortState[tableId].key === key) {
+          sortState[tableId].asc = !sortState[tableId].asc;
+        } else {
+          sortState[tableId] = { key: key, asc: true };
+        }
+        render();
+      }
+      function sortTh(tableId, key, label) {
+        const s = sortState[tableId];
+        const arrow = s && s.key === key ? (s.asc ? " \u25B2" : " \u25BC") : "";
+        return `<th class="sortable" data-sort-key="${key}" data-sort-table="${tableId}">${label}${arrow}</th>`;
+      }
+      function sortedBy(arr, tableId, comparators) {
+        const s = sortState[tableId];
+        if (!s || !comparators[s.key]) return arr;
+        const sorted = [...arr].sort(comparators[s.key]);
+        return s.asc ? sorted : sorted.reverse();
+      }
+
+      /* --- Geo --- */
+      const UNKNOWN_FLAG = "\uD83C\uDF10";
       const REGION_TO_COUNTRY_CODE = {
         fi: "FI", hel: "FI", de: "DE", fra: "DE", nl: "NL", ams: "NL", pl: "PL", waw: "PL",
         gb: "GB", uk: "GB", lon: "GB", fr: "FR", par: "FR", es: "ES", mad: "ES", it: "IT",
@@ -620,7 +803,6 @@
         if (region == null) return null;
         const regionClean = String(region).trim().toLowerCase();
         if (!regionClean) return null;
-
         const tokens = extractRegionTokens(regionClean);
         for (const token of tokens) {
           const mapped = REGION_TO_COUNTRY_CODE[token];
@@ -646,14 +828,31 @@
         const flag = flagEmojiFromCountryCode(code);
         const regionText = String(region || "unknown");
         const short = `${flag} ${country}`;
-        return { code, country, flag, short, regionText, full: `${short} · ${regionText}` };
+        return { code, country, flag, short, regionText, full: `${short} \u00B7 ${regionText}` };
       }
 
+      /* --- Phase 1.3: Toast stack --- */
       function notify(message, isError) {
-        refs.toast.textContent = message;
-        refs.toast.className = "toast show" + (isError ? " error" : "");
-        clearTimeout(notify._t);
-        notify._t = setTimeout(() => refs.toast.className = "toast", 2500);
+        const el = document.createElement("div");
+        el.className = "toast" + (isError ? " error" : "");
+        el.innerHTML = `<span>${esc(message)}</span><button class="toast-close">&times;</button>`;
+        refs.toastContainer.appendChild(el);
+        requestAnimationFrame(() => el.classList.add("show"));
+        const dismiss = () => { el.classList.remove("show"); setTimeout(() => el.remove(), 200); };
+        el.querySelector(".toast-close").addEventListener("click", dismiss);
+        setTimeout(dismiss, isError ? 6000 : 3500);
+        while (refs.toastContainer.children.length > 4) refs.toastContainer.firstChild.remove();
+      }
+
+      /* --- Phase 1.1: Confirmation modal --- */
+      function confirmAction(title, body, btnClass) {
+        return new Promise((resolve) => {
+          refs.confirmModal.innerHTML = `<div class="modal-overlay"><div class="modal-box"><div class="modal-title">${esc(title)}</div><div class="modal-body">${esc(body)}</div><div class="modal-actions"><button class="btn btn-ghost" data-confirm="cancel">Отмена</button><button class="btn ${btnClass || "btn-danger"}" data-confirm="ok">Подтвердить</button></div></div></div>`;
+          const cleanup = (result) => { refs.confirmModal.innerHTML = ""; resolve(result); };
+          refs.confirmModal.querySelector('[data-confirm="cancel"]').addEventListener("click", () => cleanup(false));
+          refs.confirmModal.querySelector('[data-confirm="ok"]').addEventListener("click", () => cleanup(true));
+          refs.confirmModal.querySelector(".modal-overlay").addEventListener("click", (ev) => { if (ev.target === ev.currentTarget) cleanup(false); });
+        });
       }
 
       function pushLog(title, payload, isError) {
@@ -690,9 +889,9 @@
         if (!text) return;
         try {
           await navigator.clipboard.writeText(text);
-          notify("ID скопирован в буфер обмена", false);
+          notify("Скопировано в буфер обмена", false);
         } catch (_) {
-          notify("Не удалось скопировать ID", true);
+          notify("Не удалось скопировать", true);
         }
       }
 
@@ -736,7 +935,7 @@
         }
         refs.subCreateResult.innerHTML = `
           <div>${chip("ok", "Подписка создана")}</div>
-          <div class="mono">subscription_id: ${esc(created.id)} <button class="btn-mini copy-value" data-copy="${esc(created.id)}">Копировать</button></div>
+          <div class="mono">subscription_id: ${uuidCell(created.id)}</div>
           <div class="mono">token: ${esc(created.token)} <button class="btn-mini copy-value" data-copy="${esc(created.token)}">Копировать</button></div>
           <div class="mono">url: ${esc(created.subscription_url)} <button class="btn-mini copy-value" data-copy="${esc(created.subscription_url)}">Копировать</button></div>
           <div class="muted">active: ${created.is_active ? "yes" : "no"}, expires: ${fmtDate(created.expires_at)}</div>
@@ -751,9 +950,13 @@
         refs.subManageResult.innerHTML = `<div>${chip(statusCls || "info", "Результат")}</div><div class="mono">${esc(JSON.stringify(payload))}</div>`;
       }
 
+      /* --- Phase 2.5: Dynamic breadcrumbs --- */
       function setTab(tab) {
+        state.activeTab = tab;
         refs.navButtons.forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
         Object.keys(refs.panels).forEach((k) => refs.panels[k].classList.toggle("active", k === tab));
+        refs.heroTitle.textContent = TAB_LABELS[tab] || "Home";
+        refs.crumbs.textContent = "Dashboard \u2022 " + (TAB_LABELS[tab] || tab);
       }
 
       function filteredNodes() {
@@ -784,7 +987,8 @@
         return state.routes.filter((r) => {
           if (status && r.health_status !== status) return false;
           if (q) {
-            const hay = [r.id, r.name, r.node_id, r.transport_profile_id].join(" ").toLowerCase();
+            const nodeName = nodeNameById(r.node_id) || "";
+            const hay = [r.id, r.name, r.node_id, r.transport_profile_id, nodeName].join(" ").toLowerCase();
             if (!hay.includes(q)) return false;
           }
           return true;
@@ -808,15 +1012,59 @@
       function filteredSubscriptions() {
         return state.subscriptions.slice(0, TABLE_LIMIT);
       }
+
+      /* --- Phase 4: Extended selected node card --- */
       function renderSelectedNode() {
         const n = state.selectedNode;
-        if (!n) { refs.selectedNodeCard.innerHTML = `<div class="empty">Выберите сервер во вкладке «Серверы».</div>`; return; }
+        if (!n) { refs.selectedNodeCard.innerHTML = `<div class="empty">Выберите сервер во вкладке &laquo;Серверы&raquo;.</div>`; return; }
         const g = nodeGeo(n.region);
-        refs.selectedNodeCard.innerHTML = `<div class="stack"><div><strong>${esc(n.name)}</strong> ${chip("info", roleLabel(n.role))} ${chip("info", g.short)}</div><div class="mono muted">${esc(n.id)}</div><div class="muted">${esc(g.regionText)}</div><div>${n.is_healthy ? chip("ok", "Здоров") : chip("bad", "Нездоров")} ${n.is_draining ? chip("warn", "Draining") : (!n.is_enabled ? chip("bad", "Отключен") : chip("ok", "Активен"))}</div><div class="actions"><button class="btn-mini" data-selected="drain">Drain</button><button class="btn-mini" data-selected="enable">Enable</button></div><div class="actions"><select id="selected-role" class="select"><option value="backend">Бэкенд</option><option value="gateway">Шлюз</option></select><button class="btn-mini" data-selected="role">Изменить роль</button></div><hr style="border:none;border-top:1px solid var(--border);margin:8px 0"><div style="font-weight:600;margin-bottom:4px">Конфигурация</div><div class="stack" style="gap:4px"><label class="muted" style="font-size:.85em">Region<input id="edit-region" class="input" value="${esc(n.region || "")}" style="margin-top:2px"></label><label class="muted" style="font-size:.85em">Public domain<input id="edit-public-domain" class="input" value="${esc(n.public_domain || "")}" style="margin-top:2px"></label><label class="muted" style="font-size:.85em">Reality IP<input id="edit-reality-ip" class="input" value="${esc(n.reality_ip || "")}" style="margin-top:2px"></label><label class="muted" style="font-size:.85em">Capacity<input id="edit-capacity" class="input" type="number" min="1" max="10000" value="${n.capacity || ""}" style="margin-top:2px"></label></div><div class="actions" style="margin-top:6px"><button class="btn-mini" data-selected="save-config">Сохранить</button></div></div>`;
-        const role = document.getElementById("selected-role");
-        if (role) role.value = n.role;
+        const nodeRoutes = state.routes.filter((r) => r.node_id === n.id);
+        const nodePlacementsCount = state.placements.filter((p) => p.backend_node_id === n.id).length;
+
+        let html = `<div class="stack">`;
+        /* Identity */
+        html += `<div><div style="font-weight:700;font-size:16px">${esc(n.name)}</div>`;
+        html += `<div style="margin:4px 0">${chip("info", roleLabel(n.role))} ${chip("info", g.short)}</div>`;
+        html += `<div>${uuidCell(n.id)}</div>`;
+        if (n.public_domain) html += `<div class="mono muted" style="font-size:11px">domain: ${esc(n.public_domain)}</div>`;
+        if (n.reality_ip) html += `<div class="mono muted" style="font-size:11px">reality: ${esc(n.reality_ip)}</div>`;
+        html += `</div>`;
+        /* Status */
+        html += `<div>${n.is_healthy ? chip("ok", "Здоров") : chip("bad", "Нездоров")} ${n.is_draining ? chip("warn", "Draining") : (!n.is_enabled ? chip("bad", "Отключен") : chip("ok", "Активен"))}</div>`;
+        /* Capacity */
+        html += `<div><div class="muted" style="font-size:11px;margin-bottom:2px">Нагрузка</div>${capacityBar(n.placements_backend, n.capacity)}</div>`;
+        /* Node routes */
+        html += `<div><div class="muted" style="font-size:11px;margin-bottom:4px">Маршруты (${nodeRoutes.length})</div>`;
+        if (nodeRoutes.length) {
+          html += nodeRoutes.map((r) => {
+            const sCls = r.health_status === "healthy" ? "ok" : (r.health_status === "blocked" ? "bad" : "warn");
+            return `<div style="font-size:12px;margin-bottom:2px">${esc(r.name)} ${chip(sCls, routeStatusLabel(r.health_status))}</div>`;
+          }).join("");
+        } else {
+          html += `<div class="empty">Нет маршрутов</div>`;
+        }
+        html += `</div>`;
+        /* Placements count */
+        html += `<div class="muted" style="font-size:11px">Плейсменты на ноде: <strong style="color:var(--text)">${nodePlacementsCount}</strong></div>`;
+        /* Actions */
+        html += `<div class="actions"><button class="btn-mini" data-selected="drain">Drain</button><button class="btn-mini" data-selected="enable">Enable</button></div>`;
+        /* Config (collapsed) */
+        html += `<details><summary style="cursor:pointer;font-weight:600;font-size:13px;margin:4px 0">Конфигурация</summary><div class="stack" style="margin-top:8px;gap:4px">`;
+        html += `<label class="muted" style="font-size:.85em">Region<input id="edit-region" class="input" value="${esc(n.region || "")}" style="margin-top:2px"></label>`;
+        html += `<label class="muted" style="font-size:.85em">Public domain<input id="edit-public-domain" class="input" value="${esc(n.public_domain || "")}" style="margin-top:2px"></label>`;
+        html += `<label class="muted" style="font-size:.85em">Reality IP<input id="edit-reality-ip" class="input" value="${esc(n.reality_ip || "")}" style="margin-top:2px"></label>`;
+        html += `<label class="muted" style="font-size:.85em">Capacity<input id="edit-capacity" class="input" type="number" min="1" max="10000" value="${n.capacity || ""}" style="margin-top:2px"></label>`;
+        html += `<div class="actions" style="margin-top:4px"><button class="btn-mini" data-selected="save-config">Сохранить</button></div>`;
+        html += `</div></details>`;
+        /* Role change */
+        html += `<div class="actions"><select id="selected-role" class="select" style="width:auto"><option value="backend">Бэкенд</option><option value="gateway">Шлюз</option></select><button class="btn-mini" data-selected="role">Изменить роль</button></div>`;
+        html += `</div>`;
+        refs.selectedNodeCard.innerHTML = html;
+        const roleEl = document.getElementById("selected-role");
+        if (roleEl) roleEl.value = n.role;
       }
 
+      /* --- Main render --- */
       function render() {
         if (state.status) {
           const t = state.status.totals || {};
@@ -838,7 +1086,7 @@
 
         const fails = state.probes.filter((p) => !p.is_reachable).slice(0, 8);
         refs.probeFailList.innerHTML = fails.length
-          ? fails.map((p) => `<div class="card">${chip("bad", p.source)} <span class="mono">${esc(p.node_id)}</span><div class="muted">${esc(p.error || "unreachable")} | ${fmtDate(p.checked_at)}</div></div>`).join("")
+          ? fails.map((p) => `<div class="card">${chip("bad", p.source)} ${uuidCell(p.node_id)}<div class="muted">${esc(p.error || "unreachable")} | ${fmtDate(p.checked_at)}</div></div>`).join("")
           : `<div class="empty">Сбоев probe не найдено.</div>`;
 
         const alertNodes = ((state.status && state.status.nodes) || [])
@@ -847,79 +1095,128 @@
         refs.nodeAlertList.innerHTML = alertNodes.length
           ? alertNodes.map((n) => {
             const g = nodeGeo(n.region);
-            return `<div class="card"><div><strong>${esc(n.name)}</strong> ${chip("info", roleLabel(n.role))}</div><div class="geo"><span class="flag">${esc(g.flag)}</span>${esc(g.country)}</div><div class="mono muted">${esc(n.id)}</div><div>${n.is_healthy ? "" : chip("bad", "Нездоров")} ${n.is_draining ? chip("warn", "Draining") : ""} ${!n.is_enabled ? chip("bad", "Отключен") : ""}</div></div>`;
+            return `<div class="card"><div><strong>${esc(n.name)}</strong> ${chip("info", roleLabel(n.role))}</div><div class="geo"><span class="flag">${esc(g.flag)}</span>${esc(g.country)}</div><div>${uuidCell(n.id)}</div><div>${n.is_healthy ? "" : chip("bad", "Нездоров")} ${n.is_draining ? chip("warn", "Draining") : ""} ${!n.is_enabled ? chip("bad", "Отключен") : ""}</div></div>`;
           }).join("")
           : `<div class="empty">Проблемных серверов не обнаружено.</div>`;
 
         renderSelectedNode();
 
-        const nodes = filteredNodes();
+        /* --- Nodes table (Phase 2.6: 8 columns + sorting) --- */
+        const nodeComparators = {
+          name: (a, b) => (a.name || "").localeCompare(b.name || ""),
+          role: (a, b) => (a.role || "").localeCompare(b.role || ""),
+          region: (a, b) => { const ga = nodeGeo(a.region); const gb = nodeGeo(b.region); return ga.country.localeCompare(gb.country); },
+          health: (a, b) => (a.is_healthy === b.is_healthy ? 0 : a.is_healthy ? -1 : 1),
+          load: (a, b) => ((a.capacity ? a.placements_backend / a.capacity : 0) - (b.capacity ? b.placements_backend / b.capacity : 0)),
+          heartbeat: (a, b) => (new Date(a.last_seen_at || 0).getTime() - new Date(b.last_seen_at || 0).getTime()),
+        };
+        refs.nodesHead.innerHTML = `<tr>${sortTh("nodes", "name", "Сервер")}${sortTh("nodes", "role", "Роль")}${sortTh("nodes", "region", "Гео")}${sortTh("nodes", "health", "Здоровье")}<th>Состояние</th>${sortTh("nodes", "load", "Нагрузка")}${sortTh("nodes", "heartbeat", "Heartbeat")}<th>Действия</th></tr>`;
+
+        const nodes = sortedBy(filteredNodes(), "nodes", nodeComparators);
         refs.nodesBody.innerHTML = nodes.length
           ? nodes.map((n) => {
             const g = nodeGeo(n.region);
-            return `<tr><td><strong>${esc(n.name)}</strong><div class="mono muted">${esc(n.id)}</div></td><td>${esc(roleLabel(n.role))}</td><td><div class="geo"><span class="flag">${esc(g.flag)}</span>${esc(g.country)}</div><div class="mono muted">${esc(g.regionText)}</div></td><td class="mono">${esc(n.public_domain || "-")}</td><td class="mono">${esc(n.reality_ip || "-")}</td><td>${n.is_healthy ? chip("ok", "Здоров") : chip("bad", "Нездоров")}</td><td>${n.is_draining ? chip("warn", "Draining") : (!n.is_enabled ? chip("bad", "Отключен") : chip("ok", "Активен"))}</td><td class="mono">${n.placements_backend}</td><td>${fmtDate(n.last_seen_at)}</td><td><div class="actions"><button class="btn-mini node-action" data-action="drain" data-id="${esc(n.id)}">Drain</button><button class="btn-mini node-action" data-action="enable" data-id="${esc(n.id)}">Enable</button><button class="btn-mini node-select" data-id="${esc(n.id)}">Выбрать</button><button class="btn-mini copy-value" data-copy="${esc(n.id)}">Копировать ID</button></div></td></tr>`;
+            return `<tr><td><strong>${esc(n.name)}</strong><div>${uuidCell(n.id)}</div>${n.public_domain ? `<div class="mono muted" style="font-size:11px">${esc(n.public_domain)}</div>` : ""}${n.reality_ip ? `<div class="mono muted" style="font-size:11px">reality: ${esc(n.reality_ip)}</div>` : ""}</td><td>${esc(roleLabel(n.role))}</td><td><div class="geo"><span class="flag">${esc(g.flag)}</span>${esc(g.country)}</div><div class="mono muted">${esc(g.regionText)}</div></td><td>${n.is_healthy ? chip("ok", "Здоров") : chip("bad", "Нездоров")}</td><td>${n.is_draining ? chip("warn", "Draining") : (!n.is_enabled ? chip("bad", "Отключен") : chip("ok", "Активен"))}</td><td>${capacityBar(n.placements_backend, n.capacity)}</td><td><span title="${esc(fmtDate(n.last_seen_at))}">${relTime(n.last_seen_at)}</span></td><td><div class="actions"><button class="btn-mini node-action" data-action="drain" data-id="${esc(n.id)}">Drain</button><button class="btn-mini node-action" data-action="enable" data-id="${esc(n.id)}">Enable</button><button class="btn-mini node-select" data-id="${esc(n.id)}">Выбрать</button></div></td></tr>`;
           }).join("")
-          : `<tr><td colspan="10" class="empty">Нет серверов по текущим фильтрам.</td></tr>`;
+          : `<tr><td colspan="8" class="empty">Нет серверов по текущим фильтрам.</td></tr>`;
 
-        const routes = filteredRoutes();
+        /* --- Routes table (Phase 2.2: node name) --- */
+        const routeComparators = {
+          name: (a, b) => (a.name || "").localeCompare(b.name || ""),
+          backend: (a, b) => (nodeNameById(a.node_id) || "").localeCompare(nodeNameById(b.node_id) || ""),
+          status: (a, b) => (a.health_status || "").localeCompare(b.health_status || ""),
+          weight: (a, b) => ((a.effective_weight || 0) - (b.effective_weight || 0)),
+        };
+        refs.routesHead.innerHTML = `<tr>${sortTh("routes", "name", "Маршрут")}${sortTh("routes", "backend", "Backend")}${sortTh("routes", "status", "Статус")}${sortTh("routes", "weight", "Вес")}<th>Прогрев</th><th>Действия</th></tr>`;
+
+        const routes = sortedBy(filteredRoutes(), "routes", routeComparators);
         refs.routesBody.innerHTML = routes.length
-          ? routes.map((r) => `<tr><td><strong>${esc(r.name)}</strong><div class="mono muted">${esc(r.id)}</div></td><td class="mono">${esc(r.node_id)} <button class="btn-mini copy-value" data-copy="${esc(r.node_id)}">Копировать</button></td><td>${r.health_status === "healthy" ? chip("ok", routeStatusLabel(r.health_status)) : (r.health_status === "blocked" ? chip("bad", routeStatusLabel(r.health_status)) : chip("warn", routeStatusLabel(r.health_status)))}</td><td class="mono">${esc(r.effective_weight)} / ${esc(r.base_weight)}</td><td class="mono">${esc(r.warmup_stage == null ? "-" : r.warmup_stage)}</td><td><div class="actions"><button class="btn-mini route-action" data-id="${esc(r.id)}" data-action="set_healthy">Healthy</button><button class="btn-mini route-action" data-id="${esc(r.id)}" data-action="set_degraded">Degrade</button><button class="btn-mini route-action" data-id="${esc(r.id)}" data-action="block">Block</button><button class="btn-mini copy-value" data-copy="${esc(r.id)}">Копировать ID</button></div></td></tr>`).join("")
+          ? routes.map((r) => {
+            const nName = nodeNameById(r.node_id);
+            return `<tr><td><strong>${esc(r.name)}</strong><div>${uuidCell(r.id)}</div></td><td>${nName ? `<strong>${esc(nName)}</strong> ` : ""}${uuidCell(r.node_id)}</td><td>${r.health_status === "healthy" ? chip("ok", routeStatusLabel(r.health_status)) : (r.health_status === "blocked" ? chip("bad", routeStatusLabel(r.health_status)) : chip("warn", routeStatusLabel(r.health_status)))}</td><td class="mono">${esc(r.effective_weight)} / ${esc(r.base_weight)}</td><td class="mono">${esc(r.warmup_stage == null ? "-" : r.warmup_stage)}</td><td><div class="actions"><button class="btn-mini route-action" data-id="${esc(r.id)}" data-action="set_healthy">Healthy</button><button class="btn-mini route-action" data-id="${esc(r.id)}" data-action="set_degraded">Degrade</button><button class="btn-mini route-action" data-id="${esc(r.id)}" data-action="block">Block</button></div></td></tr>`;
+          }).join("")
           : `<tr><td colspan="6" class="empty">Нет маршрутов по фильтрам.</td></tr>`;
 
+        /* --- Placements table (Phase 2.3: sync indicator) --- */
         const placements = filteredPlacements().slice(0, TABLE_LIMIT);
         renderPlacementMeta();
         refs.placementsBody.innerHTML = placements.length
-          ? placements.map((p) => `<tr><td class="mono">${esc(p.id)}</td><td class="mono">${esc(p.key_id)}</td><td class="mono">${esc(p.backend_node_id)}</td><td class="mono">${esc(p.op_version)}</td><td>${p.desired_state === "active" ? chip("ok", "active") : chip("warn", "inactive")}</td><td>${p.applied_state === "applied" ? chip("ok", "applied") : (p.applied_state === "pending" ? chip("warn", "pending") : chip("bad", "error"))}</td><td>${esc(p.last_migration_reason || "-")}</td><td>${fmtDate(p.updated_at)}</td></tr>`).join("")
+          ? placements.map((p) => {
+            const unsync = p.op_version !== p.applied_version;
+            return `<tr><td>${uuidCell(p.id)}</td><td>${uuidCell(p.key_id)}</td><td>${uuidCell(p.backend_node_id)}</td><td class="mono">${esc(p.op_version)}/${esc(p.applied_version != null ? p.applied_version : "?")}${unsync ? " " + chip("warn", "unsync") : ""}</td><td>${p.desired_state === "active" ? chip("ok", "active") : chip("warn", "inactive")}</td><td>${p.applied_state === "applied" ? chip("ok", "applied") : (p.applied_state === "pending" ? chip("warn", "pending") : chip("bad", "error"))}</td><td>${esc(p.last_migration_reason || "-")}</td><td>${fmtDate(p.updated_at)}</td></tr>`;
+          }).join("")
           : `<tr><td colspan="8" class="empty">Нет плейсментов по фильтрам.</td></tr>`;
 
+        /* --- Subscriptions table (Phase 2.1: truncated UUID) --- */
         const subs = filteredSubscriptions();
         refs.subsBody.innerHTML = subs.length
-          ? subs.map((s) => `<tr><td class="mono">${esc(s.id)} <button class="btn-mini copy-value" data-copy="${esc(s.id)}">Копировать</button></td><td class="mono">${esc(s.user_id)}</td><td>${esc(s.profile_key || "-")}</td><td>${s.is_active ? chip("ok", "active") : chip("bad", "inactive")}</td><td>${s.hwid_enabled ? chip("info", "on") : chip("warn", "off")}</td><td class="mono">${esc(s.max_devices == null ? "-" : s.max_devices)}</td><td>${fmtDate(s.expires_at)}</td><td>${fmtDate(s.updated_at)}</td></tr>`).join("")
-          : `<tr><td colspan="8" class="empty">Список подписок пока пуст. Используйте форму «Поиск подписок по пользователю».</td></tr>`;
+          ? subs.map((s) => `<tr><td>${uuidCell(s.id)}</td><td>${uuidCell(s.user_id)}</td><td>${esc(s.profile_key || "-")}</td><td>${s.is_active ? chip("ok", "active") : chip("bad", "inactive")}</td><td>${s.hwid_enabled ? chip("info", "on") : chip("warn", "off")}</td><td class="mono">${esc(s.max_devices == null ? "-" : s.max_devices)}</td><td>${fmtDate(s.expires_at)}</td><td>${fmtDate(s.updated_at)}</td></tr>`).join("")
+          : `<tr><td colspan="8" class="empty">Список подписок пока пуст. Используйте форму &laquo;Поиск подписок по пользователю&raquo;.</td></tr>`;
 
+        /* --- Devices table (Phase 2.1: truncated UUID) --- */
         refs.subDevicesBody.innerHTML = state.subscriptionDevices.length
-          ? state.subscriptionDevices.map((d) => `<tr><td class="mono">${esc(d.id)} <button class="btn-mini copy-value" data-copy="${esc(d.id)}">Копировать</button></td><td class="mono">${esc(d.vpn_key_id)}</td><td>${d.is_active ? chip("ok", "active") : chip("warn", "inactive")}</td><td>${fmtDate(d.last_seen_at)}</td><td>${esc(d.user_agent || "-")}</td></tr>`).join("")
+          ? state.subscriptionDevices.map((d) => `<tr><td>${uuidCell(d.id)}</td><td>${uuidCell(d.vpn_key_id)}</td><td>${d.is_active ? chip("ok", "active") : chip("warn", "inactive")}</td><td>${fmtDate(d.last_seen_at)}</td><td>${esc(d.user_agent || "-")}</td></tr>`).join("")
           : `<tr><td colspan="5" class="empty">Устройства не загружены.</td></tr>`;
       }
 
-      async function refreshAll() {
-        if (!state.token) { refs.heroStatus.textContent = "Введите токен администратора и нажмите «Сохранить токен»."; return; }
-        const [status, readiness, routes, probes, placements] = await Promise.all([
-          req("/api/v1/admin/status"),
-          req("/api/v1/admin/readiness"),
-          req("/api/v1/routes?limit=500"),
-          req("/api/v1/probe/reports/recent?limit=60"),
-          req("/api/v1/placements?limit=500"),
-        ]);
-        state.status = status;
-        state.readiness = readiness;
-        state.routes = routes;
-        state.probes = probes;
-        state.placements = placements;
-        refs.heroStatus.textContent = `Снимок состояния: ${fmtDate(status.generated_at)}`;
-        refs.readinessText.textContent = readiness.ready ? "ready" : "not ready";
-        refs.readyDot.classList.toggle("ok", !!readiness.ready);
-        refs.lastSync.textContent = new Date().toLocaleString();
-        if (state.selectedNode && status.nodes) {
-          const cur = status.nodes.find((n) => n.id === state.selectedNode.id);
-          if (cur) state.selectedNode = cur;
+      /* --- Phase 3.1: Tab-aware refresh + Phase 1.2: Loading bar --- */
+      async function refreshAll(fullRefresh) {
+        if (fullRefresh === undefined) fullRefresh = true;
+        if (!state.token) { refs.heroStatus.textContent = "Введите токен администратора и нажмите \u00ABСохранить токен\u00BB."; return; }
+        state.loading = true;
+        const bar = document.createElement("div");
+        bar.className = "loading-bar";
+        refs.contentArea.prepend(bar);
+        try {
+          const [status, readiness] = await Promise.all([
+            req("/api/v1/admin/status"),
+            req("/api/v1/admin/readiness"),
+          ]);
+          state.status = status;
+          state.readiness = readiness;
+
+          const tab = state.activeTab;
+          const fetches = [];
+          if (fullRefresh || tab === "routes" || tab === "overview") {
+            fetches.push(req("/api/v1/routes?limit=500").then((r) => { state.routes = r; }));
+          }
+          if (fullRefresh || tab === "overview" || tab === "ops") {
+            fetches.push(req("/api/v1/probe/reports/recent?limit=60").then((p) => { state.probes = p; }));
+          }
+          if (fullRefresh || tab === "placements") {
+            fetches.push(req("/api/v1/placements?limit=500").then((p) => { state.placements = p; }));
+          }
+          await Promise.all(fetches);
+
+          refs.heroStatus.textContent = `Снимок состояния: ${fmtDate(status.generated_at)}`;
+          refs.readinessText.textContent = readiness.ready ? "ready" : "not ready";
+          refs.readyDot.classList.toggle("ok", !!readiness.ready);
+          refs.lastSync.textContent = new Date().toLocaleString();
+          if (state.selectedNode && status.nodes) {
+            const cur = status.nodes.find((n) => n.id === state.selectedNode.id);
+            if (cur) state.selectedNode = cur;
+          }
+          render();
+        } finally {
+          state.loading = false;
+          bar.remove();
         }
-        render();
       }
 
       function updateTimer() {
         if (state.timer) { clearInterval(state.timer); state.timer = null; }
         const interval = Number(refs.refreshInterval.value || REFRESH_MS);
-        if (refs.live.checked) state.timer = setInterval(() => refreshAll().catch((e) => notify(`Ошибка обновления: ${e.message}`, true)), interval);
+        if (refs.live.checked) state.timer = setInterval(() => refreshAll(false).catch((e) => notify(`Ошибка обновления: ${e.message}`, true)), interval);
       }
 
+      /* --- Event listeners --- */
       refs.navButtons.forEach((b) => b.addEventListener("click", () => setTab(b.dataset.tab)));
       refs.saveToken.addEventListener("click", () => {
         state.token = refs.token.value.trim();
         if (state.token) { localStorage.setItem(TOKEN_KEY, state.token); notify("Токен сохранен", false); refreshAll().catch((e) => notify(`Ошибка загрузки: ${e.message}`, true)); }
         else { localStorage.removeItem(TOKEN_KEY); notify("Токен очищен", false); }
       });
-      refs.refreshAll.addEventListener("click", () => refreshAll().catch((e) => notify(`Ошибка обновления: ${e.message}`, true)));
+      refs.refreshAll.addEventListener("click", () => refreshAll(true).catch((e) => notify(`Ошибка обновления: ${e.message}`, true)));
       refs.live.addEventListener("change", updateTimer);
       refs.refreshInterval.addEventListener("change", updateTimer);
 
@@ -928,9 +1225,9 @@
         el.addEventListener("change", render);
       });
       refs.nodesClear.addEventListener("click", () => { refs.nodesSearch.value = ""; refs.nodesRole.value = ""; refs.nodesHealth.value = ""; refs.nodesState.value = ""; render(); });
-      refs.nodesReload.addEventListener("click", () => refreshAll().catch((e) => notify(`Ошибка обновления: ${e.message}`, true)));
-      refs.routesReload.addEventListener("click", () => refreshAll().catch((e) => notify(`Ошибка обновления: ${e.message}`, true)));
-      refs.placementsReload.addEventListener("click", () => refreshAll().catch((e) => notify(`Ошибка обновления: ${e.message}`, true)));
+      refs.nodesReload.addEventListener("click", () => refreshAll(true).catch((e) => notify(`Ошибка обновления: ${e.message}`, true)));
+      refs.routesReload.addEventListener("click", () => refreshAll(true).catch((e) => notify(`Ошибка обновления: ${e.message}`, true)));
+      refs.placementsReload.addEventListener("click", () => refreshAll(true).catch((e) => notify(`Ошибка обновления: ${e.message}`, true)));
 
       refs.formSubCreate.addEventListener("submit", (e) => {
         e.preventDefault();
@@ -1021,9 +1318,13 @@
           .catch(() => {});
       });
 
-      refs.subDeactivate.addEventListener("click", () => {
+      /* Phase 1.1: Confirm deactivate */
+      refs.subDeactivate.addEventListener("click", async () => {
         const d = new FormData(refs.formSubManage);
         const subId = String(d.get("subscription_id") || "").trim();
+        if (!subId) { notify("Укажите ID подписки", true); return; }
+        const ok = await confirmAction("Деактивация подписки", `Вы уверены, что хотите деактивировать подписку ${shortId(subId)}\u2026?`);
+        if (!ok) return;
         runAction("Deactivate subscription", () => req(`/api/v1/subscriptions/${encodeURIComponent(subId)}/deactivate`, { method: "POST", body: {} }))
           .then((out) => {
             renderSubscriptionManageResult(out, "warn");
@@ -1061,7 +1362,8 @@
           .catch(() => {});
       });
 
-      refs.nodesBody.addEventListener("click", (ev) => {
+      /* Phase 1.1: Confirm node drain/enable in table */
+      refs.nodesBody.addEventListener("click", async (ev) => {
         const t = ev.target;
         if (!(t instanceof HTMLElement)) return;
         const sbtn = t.closest(".node-select");
@@ -1074,16 +1376,22 @@
         if (abtn && abtn.dataset.id && abtn.dataset.action) {
           const id = abtn.dataset.id;
           const action = abtn.dataset.action;
+          const nodeName = nodeNameById(id) || shortId(id);
+          const ok = await confirmAction(
+            action === "drain" ? "Drain ноды" : "Enable ноды",
+            action === "drain"
+              ? `Перевести "${nodeName}" в режим drain? Новые подключения будут направлены на другие ноды.`
+              : `Активировать ноду "${nodeName}"?`,
+            action === "drain" ? "btn-warn" : "btn-primary"
+          );
+          if (!ok) return;
           runAction(`Node ${action} ${id}`, () => req(action === "drain" ? `/api/v1/agent/nodes/${encodeURIComponent(id)}/drain` : `/api/v1/agent/nodes/${encodeURIComponent(id)}/enable`, { method: "POST", body: {} })).then(() => refreshAll()).catch(() => {});
           return;
         }
-        const cbtn = t.closest(".copy-value");
-        if (cbtn && cbtn.dataset.copy) {
-          copyToClipboard(cbtn.dataset.copy);
-        }
       });
 
-      refs.selectedNodeCard.addEventListener("click", (ev) => {
+      /* Phase 1.1: Confirm node drain/enable in selected card */
+      refs.selectedNodeCard.addEventListener("click", async (ev) => {
         const t = ev.target;
         if (!(t instanceof HTMLElement) || !state.selectedNode) return;
         const b = t.closest("[data-selected]");
@@ -1109,20 +1417,31 @@
           runAction(`Set role ${id} -> ${role}`, () => req(`/api/v1/agent/nodes/${encodeURIComponent(id)}/role`, { method: "POST", body: { role } })).then(() => refreshAll()).catch(() => {});
           return;
         }
+        /* drain / enable */
+        const nodeName = state.selectedNode.name || shortId(id);
+        const ok = await confirmAction(
+          act === "drain" ? "Drain ноды" : "Enable ноды",
+          act === "drain"
+            ? `Перевести "${nodeName}" в режим drain? Новые подключения будут направлены на другие ноды.`
+            : `Активировать ноду "${nodeName}"?`,
+          act === "drain" ? "btn-warn" : "btn-primary"
+        );
+        if (!ok) return;
         runAction(`Node ${act} ${id}`, () => req(act === "drain" ? `/api/v1/agent/nodes/${encodeURIComponent(id)}/drain` : `/api/v1/agent/nodes/${encodeURIComponent(id)}/enable`, { method: "POST", body: {} })).then(() => refreshAll()).catch(() => {});
       });
 
-      refs.routesBody.addEventListener("click", (ev) => {
+      /* Phase 1.1: Confirm route block */
+      refs.routesBody.addEventListener("click", async (ev) => {
         const t = ev.target;
         if (!(t instanceof HTMLElement)) return;
-        const cbtn = t.closest(".copy-value");
-        if (cbtn && cbtn.dataset.copy) {
-          copyToClipboard(cbtn.dataset.copy);
-          return;
-        }
         const b = t.closest(".route-action");
         if (!b || !b.dataset.id || !b.dataset.action) return;
-        runAction(`Route ${b.dataset.action} ${b.dataset.id}`, () => req("/api/v1/admin/set-route-health", { method: "POST", body: { route_id: b.dataset.id, action: b.dataset.action, cooldown_hours: 6 } })).then(() => refreshAll()).catch(() => {});
+        const action = b.dataset.action;
+        if (action === "block") {
+          const ok = await confirmAction("Блокировка маршрута", `Заблокировать маршрут ${shortId(b.dataset.id)}\u2026? Трафик будет перенаправлен.`);
+          if (!ok) return;
+        }
+        runAction(`Route ${action} ${b.dataset.id}`, () => req("/api/v1/admin/set-route-health", { method: "POST", body: { route_id: b.dataset.id, action: action, cooldown_hours: 6 } })).then(() => refreshAll()).catch(() => {});
       });
 
       [refs.subCreateResult, refs.subManageResult, refs.subsBody, refs.subDevicesBody].forEach((container) => {
@@ -1136,43 +1455,75 @@
         });
       });
 
-      refs.formMigrate.addEventListener("submit", (e) => {
+      /* Phase 1.1: Confirm migration */
+      refs.formMigrate.addEventListener("submit", async (e) => {
         e.preventDefault();
         const d = new FormData(refs.formMigrate);
         const payload = { source_backend_id: String(d.get("source_backend_id") || "").trim(), last_migration_reason: String(d.get("last_migration_reason") || "admin_manual").trim() || "admin_manual" };
         const t = String(d.get("target_backend_id") || "").trim();
         if (t) payload.target_backend_id = t;
+        const srcName = nodeNameById(payload.source_backend_id) || shortId(payload.source_backend_id);
+        const ok = await confirmAction("Миграция плейсментов", `Мигрировать все плейсменты с ноды "${srcName}"?`, "btn-warn");
+        if (!ok) return;
         runAction("Placement migration", () => req("/api/v1/admin/migrate-backend", { method: "POST", body: payload })).then(() => refreshAll()).catch(() => {});
       });
 
-      refs.formProbeAuto.addEventListener("submit", (e) => {
+      /* Phase 1.1: Confirm probe auto */
+      refs.formProbeAuto.addEventListener("submit", async (e) => {
         e.preventDefault();
         const d = new FormData(refs.formProbeAuto);
         const payload = { source: String(d.get("source") || "").trim() || null, require_recent_failure: true, max_probe_age_sec: 600, min_consecutive_failures: 2, include_already_draining: false, dry_run: d.get("dry_run") === "on", max_nodes: Number(d.get("max_nodes") || 20), last_migration_reason: String(d.get("last_migration_reason") || "probe_auto_failure").trim() || "probe_auto_failure" };
         const t = String(d.get("target_backend_id") || "").trim();
         if (t) payload.target_backend_id = t;
+        const ok = await confirmAction("Probe auto-политика", `Применить автоматическую drain+migrate политику?${payload.dry_run ? " (dry run)" : " \u26A0 БОЕВОЙ РЕЖИМ"}`, payload.dry_run ? "btn-warn" : "btn-danger");
+        if (!ok) return;
         runAction("Probe auto policy", () => req("/api/v1/probe/admin/auto-drain-migrate-backends", { method: "POST", body: payload })).then(() => refreshAll()).catch(() => {});
       });
 
-      refs.formRouteHealth.addEventListener("submit", (e) => {
+      refs.formRouteHealth.addEventListener("submit", async (e) => {
         e.preventDefault();
         const d = new FormData(refs.formRouteHealth);
         const payload = { route_id: String(d.get("route_id") || "").trim(), action: String(d.get("action") || "set_healthy"), cooldown_hours: Number(d.get("cooldown_hours") || 6) };
+        if (payload.action === "block") {
+          const ok = await confirmAction("Блокировка маршрута", `Заблокировать маршрут ${shortId(payload.route_id)}\u2026?`);
+          if (!ok) return;
+        }
         runAction("Route health update", () => req("/api/v1/admin/set-route-health", { method: "POST", body: payload })).then(() => refreshAll()).catch(() => {});
       });
 
-      refs.formProbeManual.addEventListener("submit", (e) => {
+      /* Phase 1.1: Confirm probe manual */
+      refs.formProbeManual.addEventListener("submit", async (e) => {
         e.preventDefault();
         const d = new FormData(refs.formProbeManual);
         const payload = { source_backend_id: String(d.get("source_backend_id") || "").trim(), require_recent_failure: true, max_probe_age_sec: 600, min_consecutive_failures: 1, source: String(d.get("source") || "").trim() || null, last_migration_reason: "probe_failure" };
         const t = String(d.get("target_backend_id") || "").trim();
         if (t) payload.target_backend_id = t;
+        const srcName = nodeNameById(payload.source_backend_id) || shortId(payload.source_backend_id);
+        const ok = await confirmAction("Drain и миграция", `Drain и migrate ноды "${srcName}"?`);
+        if (!ok) return;
         runAction("Probe manual drain+migrate", () => req("/api/v1/probe/admin/drain-and-migrate-backend", { method: "POST", body: payload })).then(() => refreshAll()).catch(() => {});
       });
 
       refs.btnWarmup.addEventListener("click", () => runAction("Advance warmup tick", () => req("/api/v1/routes/admin/advance-warmup", { method: "POST", body: {} })).then(() => refreshAll()).catch(() => {}));
       refs.btnCleanupProbe.addEventListener("click", () => runAction("Cleanup probe signals", () => req("/api/v1/probe/admin/cleanup-old-signals", { method: "POST", body: {} })).then(() => refreshAll()).catch(() => {}));
 
+      /* Global delegated click: UUID copy + sortable headers */
+      document.addEventListener("click", (ev) => {
+        const el = ev.target;
+        if (!(el instanceof HTMLElement)) return;
+        const uuid = el.closest(".uuid");
+        if (uuid && uuid.dataset.copy) {
+          copyToClipboard(uuid.dataset.copy);
+          return;
+        }
+        const th = el.closest("th.sortable");
+        if (th && th.dataset.sortKey && th.dataset.sortTable) {
+          toggleSort(th.dataset.sortTable, th.dataset.sortKey);
+          return;
+        }
+      });
+
+      /* --- Init --- */
       refs.token.value = state.token;
       pushLog("Панель", "инициализирована", false);
       updateTimer();
