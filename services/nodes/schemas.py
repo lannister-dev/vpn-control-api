@@ -55,7 +55,7 @@ class AdminNodeUpdateIn(BaseModel):
 
 
 class VpnNodeOut(BaseModel):
-    id: str
+    id: UUID
     name: str
     role: NodeRole
     region: str
