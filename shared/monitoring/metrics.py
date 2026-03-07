@@ -12,6 +12,23 @@ SUBSCRIPTION_BUILD_DURATION = Histogram(
     "Time to build subscription payload",
 )
 
+SUBSCRIPTION_CACHE_TOTAL = Counter(
+    "subscription_cache_total",
+    "Subscription response cache operations by result",
+    ["result"],
+)
+
+SUBSCRIPTION_PAYLOAD_SIZE_BYTES = Histogram(
+    "subscription_payload_size_bytes",
+    "Built subscription payload size in bytes",
+)
+
+SUBSCRIPTION_PAYLOAD_GUARDRAIL_TOTAL = Counter(
+    "subscription_payload_guardrail_total",
+    "Subscription payload guardrail outcomes",
+    ["result"],
+)
+
 # ── Node Agent ─────────────────────────────────────────────────
 NODE_BOOTSTRAP_TOTAL = Counter(
     "node_bootstrap_total",
@@ -24,16 +41,45 @@ NODE_HEARTBEAT_TOTAL = Counter(
     "Node heartbeat events",
 )
 
+NODE_SYNC_REPORT_TOTAL = Counter(
+    "node_sync_report_total",
+    "Node sync report events",
+    ["status"],
+)
+
 NODE_PLACEMENT_REPORT_TOTAL = Counter(
     "node_placement_report_total",
     "Placement reconciliation reports",
     ["status"],
 )
 
-NODE_BACKEND_PEER_REPORT_TOTAL = Counter(
-    "node_backend_peer_report_total",
-    "Backend peer reconciliation reports",
-    ["status"],
+NODE_STATE_FRESHNESS_SECONDS = Gauge(
+    "node_state_freshness_seconds",
+    "Seconds since last heartbeat for active node (-1 if missing)",
+    ["node_id"],
+)
+
+PLACEMENT_ORPHAN_ACTIVE_TOTAL = Gauge(
+    "placement_orphan_active_total",
+    "Active placements currently bound to unavailable backends",
+)
+
+PLACEMENT_ACTIVE_BY_BACKEND = Gauge(
+    "placement_active_by_backend",
+    "Desired active placements by backend node",
+    ["node_id"],
+)
+
+PLACEMENT_AUTO_HEAL_TOTAL = Counter(
+    "placement_auto_heal_total",
+    "Placement auto-heal actions",
+    ["action", "result"],
+)
+
+CONNECT_TELEMETRY_TOTAL = Counter(
+    "connect_telemetry_total",
+    "Client connect telemetry events processed",
+    ["event", "status", "action"],
 )
 
 # ── Probe ───────────────────────────────────────────

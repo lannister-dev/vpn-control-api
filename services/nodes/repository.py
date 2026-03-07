@@ -6,7 +6,7 @@ from sqlalchemy import select, func, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.nodes.models import VpnNode, NodeAgentState
+from services.nodes.models import VpnNode, NodeAgentState, NodeAgentIdentity
 from shared.database.base_repository import BaseRepository
 from shared.database.session import AsyncDatabase
 
@@ -16,7 +16,22 @@ class VpnNodeRepository(BaseRepository[VpnNode]):
         super().__init__(VpnNode, session)
 
     async def get_by_internal_ip(self, source_ip: str) -> VpnNode | None:
-        stmt = select(self.model).where(self.model.internal_wg_ip == source_ip)
+        nodes = await self.list_by_internal_ip(source_ip=source_ip)
+        if len(nodes) != 1:
+            return None
+        return nodes[0]
+
+    async def list_by_internal_ip(self, source_ip: str) -> list[VpnNode]:
+        stmt = (
+            select(self.model)
+            .where(self.model.internal_wg_ip == source_ip)
+            .order_by(self.model.updated_at.desc())
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_by_node_key(self, node_key: str) -> VpnNode | None:
+        stmt = select(self.model).where(self.model.node_key == node_key)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -105,3 +120,69 @@ class NodeAgentStateRepository(BaseRepository[NodeAgentState]):
             },
         )
         await self.session.execute(stmt)
+
+    async def list_by_node_ids(self, node_ids: list[UUID]) -> list[NodeAgentState]:
+        if not node_ids:
+            return []
+        stmt = select(NodeAgentState).where(NodeAgentState.node_id.in_(node_ids))
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+
+class NodeAgentIdentityRepository(BaseRepository[NodeAgentIdentity]):
+    def __init__(self, session: AsyncSession):
+        super().__init__(NodeAgentIdentity, session)
+        self.session = session
+
+    async def get_by_node_and_instance(
+        self,
+        *,
+        node_id: UUID,
+        agent_instance_id: UUID,
+    ) -> NodeAgentIdentity | None:
+        stmt = (
+            select(NodeAgentIdentity)
+            .where(NodeAgentIdentity.node_id == node_id)
+            .where(NodeAgentIdentity.agent_instance_id == agent_instance_id)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def upsert_token(
+        self,
+        *,
+        node_id: UUID,
+        agent_instance_id: UUID,
+        token_hash: str,
+    ) -> None:
+        stmt = insert(NodeAgentIdentity).values(
+            node_id=node_id,
+            agent_instance_id=agent_instance_id,
+            auth_token_hash=token_hash,
+        )
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_node_agent_identity_node_agent",
+            set_={
+                "auth_token_hash": token_hash,
+                "updated_at": func.now(),
+            },
+        )
+        await self.session.execute(stmt)
+
+    async def get_by_instance_and_token_hash(
+        self,
+        *,
+        agent_instance_id: UUID,
+        token_hash: str,
+    ) -> NodeAgentIdentity | None:
+        stmt = (
+            select(NodeAgentIdentity)
+            .where(NodeAgentIdentity.agent_instance_id == agent_instance_id)
+            .where(NodeAgentIdentity.auth_token_hash == token_hash)
+            .limit(2)
+        )
+        result = await self.session.execute(stmt)
+        items = list(result.scalars().all())
+        if len(items) != 1:
+            return None
+        return items[0]

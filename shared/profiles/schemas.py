@@ -162,3 +162,24 @@ ProfileIn = Annotated[
     WsTlsProfileIn | RealityTcpProfileIn,
     Field(discriminator="type"),
 ]
+
+
+class ArtifactProfile(BaseModel):
+    artifact_key: str
+    name: str
+    protocol: str = "vless"
+    network: str = Field(min_length=1, max_length=16)
+    security: str = Field(min_length=1, max_length=16)
+    flow: str | None = Field(default=None, max_length=64)
+    reality_public_key: str | None = Field(default=None, max_length=128)
+    reality_short_id: str | None = Field(default=None, max_length=32)
+    reality_server_name: str | None = Field(default=None, max_length=255)
+    tls_fingerprint: str = Field(default="chrome", min_length=1, max_length=64)
+    grpc_service_name: str | None = Field(default=None, max_length=64)
+    port: int = Field(ge=1, le=65535)
+
+
+class ArtifactProfileMapResult(BaseModel):
+    desired_profiles: list[ArtifactProfile]
+    skipped_profiles: list[str]
+    profiles_total: int

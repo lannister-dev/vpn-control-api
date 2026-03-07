@@ -1,24 +1,26 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException
 
-from services.connect.schemas import ConnectIn
 from services.connect.service import ConnectService
-from shared.profiles.types import ProfileType
 
 
-def _node(*, role="gateway"):
+def _redis():
+    return SimpleNamespace(client=MagicMock())
+
+
+def _node(*, role="backend", public_domain="prod.example.com", reality_ip=None):
     n = MagicMock()
     n.id = uuid4()
-    n.name = "gw-fi"
+    n.name = "be-fi"
     n.role = role
     n.region = "fi"
-    n.public_domain = "prod.example.com"
+    n.public_domain = public_domain
+    n.reality_ip = public_domain if reality_ip is None else reality_ip
     n.internal_wg_ip = "10.0.1.10"
     n.is_active = True
     n.is_enabled = True
@@ -26,287 +28,89 @@ def _node(*, role="gateway"):
     return n
 
 
-def _placement(*, key_id, backend_node_id, gateway_node_id, desired_state="active", op_version=2):
-    p = MagicMock()
-    p.id = uuid4()
-    p.key_id = key_id
-    p.backend_node_id = backend_node_id
-    p.gateway_node_id = gateway_node_id
-    p.desired_state = desired_state
-    p.op_version = op_version
-    return p
-
-
-def _profile():
-    p = MagicMock()
-    p.type = ProfileType.ws_tls
-    return p
-
-
-@pytest.mark.asyncio
-async def test_connect_user_not_found(async_session):
-    svc = ConnectService(async_session)
-    svc.user_repository = AsyncMock()
-    svc.user_repository.get_by_id = AsyncMock(return_value=None)
-
-    with pytest.raises(HTTPException) as exc:
-        await svc.connect(ConnectIn(user_id=uuid4()))
-    assert exc.value.status_code == 404
+def _transport_profile(*, network="tcp", security="reality", port=443):
+    tp = MagicMock()
+    tp.id = uuid4()
+    tp.name = "route-profile"
+    tp.network = network
+    tp.security = security
+    tp.reality_server_name = "www.google.com"
+    tp.reality_public_key = "A" * 20
+    tp.reality_short_id = "abcd1234"
+    tp.tls_fingerprint = "chrome"
+    tp.grpc_service_name = "vl"
+    tp.flow = "xtls-rprx-vision"
+    tp.port = port
+    return tp
 
 
 @pytest.mark.asyncio
-async def test_connect_existing_key_success(monkeypatch, async_session):
-    svc = ConnectService(async_session)
-    svc.user_repository = AsyncMock()
-    svc.key_repository = AsyncMock()
-    svc.backend_peer_repository = AsyncMock()
-    svc.placement_repository = AsyncMock()
-    svc._select_backend = AsyncMock()
-    svc._select_gateway = AsyncMock()
-    svc._ensure_backend_peers_for_all_gateways = AsyncMock()
+async def test_select_backend_skips_nodes_without_public_domain(async_session):
+    svc = ConnectService(async_session, _redis())
+    svc.settings.edge.public_domain = ""
+    svc.routing_service = AsyncMock()
 
-    user_id = uuid4()
-    key_id = uuid4()
-    client_id = str(uuid4())
-    gateway = _node()
-    backend = _node()
-    placement = MagicMock(id=uuid4(), op_version=2)
-    key = MagicMock(
-        id=key_id,
-        user_id=user_id,
-        is_revoked=False,
-        transport="ws",
-        client_id=client_id,
-    )
+    empty_domain = _node(public_domain="")
+    with_domain = _node(public_domain="be-2.example.com")
+    svc.routing_service.select_nodes = AsyncMock(return_value=[empty_domain, with_domain])
 
-    svc.user_repository.get_by_id = AsyncMock(return_value=MagicMock(id=user_id))
-    svc.key_repository.get_by_id = AsyncMock(return_value=key)
-    svc.placement_repository.get_by_key_id = AsyncMock(return_value=None)
-    svc._select_backend.return_value = backend
-    svc._select_gateway.return_value = gateway
-    svc.backend_peer_repository.ensure_active_pair = AsyncMock()
-    svc.placement_repository.upsert_set_pending = AsyncMock(return_value=placement)
-    monkeypatch.setattr(svc, "_resolve_profile", lambda _: _profile())
-    monkeypatch.setattr("services.connect.service.VlessUriBuilder.build", lambda **_: "vless://ok")
+    out = await svc._select_backend(preferred_region="fi")
 
-    out = await svc.connect(
-        ConnectIn(
-            user_id=user_id,
-            key_id=key_id,
-            profile_key="ws_tls_v1",
-        )
-    )
-
-    assert out.key_id == key_id
-    assert out.client_id == client_id
-    assert out.uri == "vless://ok"
-    svc.placement_repository.upsert_set_pending.assert_awaited_once()
-    _, kwargs = svc.placement_repository.upsert_set_pending.await_args
-    assert kwargs["gateway_node_id"] is None
+    assert out.id == with_domain.id
 
 
 @pytest.mark.asyncio
-async def test_connect_creates_key_when_missing(monkeypatch, async_session):
-    svc = ConnectService(async_session)
-    svc.user_repository = AsyncMock()
-    svc.key_repository = AsyncMock()
-    svc.backend_peer_repository = AsyncMock()
-    svc.placement_repository = AsyncMock()
-    svc._select_backend = AsyncMock()
-    svc._select_gateway = AsyncMock()
-    svc._ensure_backend_peers_for_all_gateways = AsyncMock()
+async def test_select_backend_uses_global_edge_domain(async_session):
+    svc = ConnectService(async_session, _redis())
+    svc.settings.edge.public_domain = "vpn.example.com"
+    svc.routing_service = AsyncMock()
 
-    user_id = uuid4()
-    gateway = _node()
-    backend = _node()
-    placement = MagicMock(id=uuid4(), op_version=1)
-    created_key = MagicMock(
-        id=uuid4(),
-        user_id=user_id,
-        is_revoked=False,
-        transport="ws",
-        client_id=str(uuid4()),
-        valid_until=datetime.now(timezone.utc),
-    )
+    empty_domain = _node(public_domain="")
+    svc.routing_service.select_nodes = AsyncMock(return_value=[empty_domain])
 
-    svc.user_repository.get_by_id = AsyncMock(return_value=MagicMock(id=user_id))
-    svc.key_repository.get_latest_active_for_user = AsyncMock(return_value=None)
-    svc.key_repository.create = AsyncMock(return_value=created_key)
-    svc.placement_repository.get_by_key_id = AsyncMock(return_value=None)
-    svc._select_backend.return_value = backend
-    svc._select_gateway.return_value = gateway
-    svc.backend_peer_repository.ensure_active_pair = AsyncMock()
-    svc.placement_repository.upsert_set_pending = AsyncMock(return_value=placement)
-    monkeypatch.setattr(svc, "_resolve_profile", lambda _: _profile())
-    monkeypatch.setattr("services.connect.service.VlessUriBuilder.build", lambda **_: "vless://new")
+    out = await svc._select_backend(preferred_region="fi")
 
-    out = await svc.connect(
-        ConnectIn(
-            user_id=user_id,
-            profile_key="ws_tls_v1",
-            traffic_limit_mb=500,
-        )
-    )
-
-    assert out.key_id == created_key.id
-    assert out.uri == "vless://new"
-    svc.key_repository.create.assert_awaited_once()
-    _, kwargs = svc.placement_repository.upsert_set_pending.await_args
-    assert kwargs["gateway_node_id"] is None
+    assert out.id == empty_domain.id
 
 
 @pytest.mark.asyncio
-async def test_connect_reuses_existing_placement(monkeypatch, async_session):
-    svc = ConnectService(async_session)
-    svc.user_repository = AsyncMock()
-    svc.key_repository = AsyncMock()
-    svc.backend_peer_repository = AsyncMock()
-    svc.placement_repository = AsyncMock()
-    svc.node_repository = AsyncMock()
-    svc._select_backend = AsyncMock()
-    svc._select_gateway = AsyncMock()
-    svc._ensure_backend_peers_for_all_gateways = AsyncMock()
+async def test_build_route_uri_grpc_tls(async_session):
+    svc = ConnectService(async_session, _redis())
+    svc.settings.edge.public_domain = ""
+    node = _node(public_domain="be-grpc.example.com")
+    tp = _transport_profile(network="grpc", security="tls", port=443)
 
-    user_id = uuid4()
-    key_id = uuid4()
-    client_id = str(uuid4())
-    backend = _node(role="backend")
-    gateway = _node(role="gateway")
-    placement = _placement(
-        key_id=key_id,
-        backend_node_id=backend.id,
-        gateway_node_id=gateway.id,
-        desired_state="active",
-        op_version=7,
-    )
-    key = MagicMock(
-        id=key_id,
-        user_id=user_id,
-        is_revoked=False,
-        transport="ws",
-        client_id=client_id,
-    )
+    uri = svc._build_route_uri(client_id="cid", node=node, transport_profile=tp)
 
-    svc.user_repository.get_by_id = AsyncMock(return_value=MagicMock(id=user_id))
-    svc.key_repository.get_by_id = AsyncMock(return_value=key)
-    svc.placement_repository.get_by_key_id = AsyncMock(return_value=placement)
-    svc.node_repository.get_by_id = AsyncMock(side_effect=[backend, gateway])
-    svc.backend_peer_repository.ensure_active_pair = AsyncMock()
-    svc.placement_repository.upsert_set_pending = AsyncMock()
-    monkeypatch.setattr(svc, "_resolve_profile", lambda _: _profile())
-    monkeypatch.setattr("services.connect.service.VlessUriBuilder.build", lambda **_: "vless://reuse")
-
-    out = await svc.connect(
-        ConnectIn(
-            user_id=user_id,
-            key_id=key_id,
-            profile_key="ws_tls_v1",
-        )
-    )
-
-    assert out.key_id == key_id
-    assert out.placement_op_version == 7
-    assert out.uri == "vless://reuse"
-    svc._select_backend.assert_not_awaited()
-    svc._select_gateway.assert_not_awaited()
-    svc.placement_repository.upsert_set_pending.assert_not_awaited()
+    assert uri is not None
+    assert "type=grpc" in uri
+    assert "security=tls" in uri
+    assert "serviceName=vl" in uri
 
 
 @pytest.mark.asyncio
-async def test_connect_rebalances_when_existing_route_invalid(monkeypatch, async_session):
-    svc = ConnectService(async_session)
-    svc.user_repository = AsyncMock()
-    svc.key_repository = AsyncMock()
-    svc.backend_peer_repository = AsyncMock()
-    svc.placement_repository = AsyncMock()
-    svc.node_repository = AsyncMock()
-    svc._select_backend = AsyncMock()
-    svc._select_gateway = AsyncMock()
-    svc._ensure_backend_peers_for_all_gateways = AsyncMock()
+async def test_build_route_uri_reality_uses_node_host_even_with_global_edge_domain(async_session):
+    svc = ConnectService(async_session, _redis())
+    svc.settings.edge.public_domain = "prod.example.com"
+    node = _node(public_domain="1.2.3.4")
+    tp = _transport_profile(network="tcp", security="reality", port=443)
 
-    user_id = uuid4()
-    key_id = uuid4()
-    client_id = str(uuid4())
-    bad_backend = _node(role="backend")
-    bad_backend.is_draining = True
-    gateway = _node(role="gateway")
-    backend = _node(role="backend")
-    placement_existing = _placement(
-        key_id=key_id,
-        backend_node_id=bad_backend.id,
-        gateway_node_id=gateway.id,
-        desired_state="active",
-        op_version=2,
-    )
-    placement_new = _placement(
-        key_id=key_id,
-        backend_node_id=backend.id,
-        gateway_node_id=gateway.id,
-        desired_state="active",
-        op_version=3,
-    )
-    key = MagicMock(
-        id=key_id,
-        user_id=user_id,
-        is_revoked=False,
-        transport="ws",
-        client_id=client_id,
-    )
+    uri = svc._build_route_uri(client_id="cid", node=node, transport_profile=tp)
 
-    svc.user_repository.get_by_id = AsyncMock(return_value=MagicMock(id=user_id))
-    svc.key_repository.get_by_id = AsyncMock(return_value=key)
-    svc.placement_repository.get_by_key_id = AsyncMock(return_value=placement_existing)
-    svc.node_repository.get_by_id = AsyncMock(return_value=bad_backend)
-    svc._select_backend.return_value = backend
-    svc._select_gateway.return_value = gateway
-    svc.backend_peer_repository.ensure_active_pair = AsyncMock()
-    svc.placement_repository.upsert_set_pending = AsyncMock(return_value=placement_new)
-    monkeypatch.setattr(svc, "_resolve_profile", lambda _: _profile())
-    monkeypatch.setattr("services.connect.service.VlessUriBuilder.build", lambda **_: "vless://rebalance")
-
-    out = await svc.connect(
-        ConnectIn(
-            user_id=user_id,
-            key_id=key_id,
-            profile_key="ws_tls_v1",
-        )
-    )
-
-    assert out.placement_op_version == 3
-    assert out.uri == "vless://rebalance"
-    svc.placement_repository.upsert_set_pending.assert_awaited_once()
-    _, kwargs = svc.placement_repository.upsert_set_pending.await_args
-    assert kwargs["last_migration_reason"] == "connect_rebalance"
-    assert kwargs["gateway_node_id"] is None
+    assert uri is not None
+    assert "@1.2.3.4:" in uri
+    assert "prod.example.com" not in uri
 
 
 @pytest.mark.asyncio
-async def test_select_gateway_rejects_backend_role(async_session):
-    svc = ConnectService(async_session)
-    svc.node_repository = AsyncMock()
+async def test_build_route_uri_reality_prefers_reality_ip(async_session):
+    svc = ConnectService(async_session, _redis())
+    svc.settings.edge.public_domain = "prod.example.com"
+    node = _node(public_domain="reality.example.com", reality_ip="203.0.113.10")
+    tp = _transport_profile(network="tcp", security="reality", port=443)
 
-    gateway_id = uuid4()
-    svc.node_repository.get_by_id = AsyncMock(return_value=_node(role="backend"))
+    uri = svc._build_route_uri(client_id="cid", node=node, transport_profile=tp)
 
-    with pytest.raises(HTTPException) as exc:
-        await svc._select_gateway(
-            gateway_node_id=gateway_id,
-            preferred_region="fi",
-            fallback=_node(role="backend"),
-        )
-    assert exc.value.status_code == 409
-
-
-@pytest.mark.asyncio
-async def test_select_gateway_legacy_fallback_to_backend(async_session):
-    svc = ConnectService(async_session)
-    svc.node_repository = AsyncMock()
-    svc.node_repository.list_public = AsyncMock(return_value=[])
-
-    fallback = _node(role="backend")
-    out = await svc._select_gateway(
-        gateway_node_id=None,
-        preferred_region="fi",
-        fallback=fallback,
-    )
-    assert out == fallback
+    assert uri is not None
+    assert "@203.0.113.10:" in uri
+    assert "reality.example.com" not in uri

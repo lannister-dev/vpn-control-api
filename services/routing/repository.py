@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from uuid import UUID
 
 from sqlalchemy import select, func
@@ -67,4 +68,7 @@ class RoutingRepository:
             )
 
         result = await self.session.execute(stmt)
-        return [(row[0], row[1], row[2]) for row in result.all()]
+        rows = result.all()
+        if inspect.isawaitable(rows):
+            rows = await rows
+        return [(row[0], row[1], row[2]) for row in rows]

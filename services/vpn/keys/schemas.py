@@ -14,6 +14,7 @@ class VpnTransport(str, Enum):
     ws = "ws"
     xhttp = "xhttp"
     tcp = "tcp"
+    reality = "reality"
 
 
 class VpnKeyCreate(BaseModel):
@@ -31,6 +32,8 @@ class VpnKeyOut(BaseModel):
     client_id: str
     valid_until: datetime
     traffic_limit_mb: int
+    used_traffic_bytes: int
+    last_reported_total_bytes: int
     is_revoked: bool
 
     model_config = ConfigDict(from_attributes=True)
@@ -43,6 +46,8 @@ class VpnKeyInternalCreate(BaseModel):
     client_id: str
     valid_until: datetime
     traffic_limit_mb: int
+    used_traffic_bytes: int = 0
+    last_reported_total_bytes: int = 0
     is_revoked: bool = False
 
     @field_validator("valid_until")
@@ -59,6 +64,8 @@ class VpnKeyInternal(BaseModel):
     client_id: str
     valid_until: datetime | None
     traffic_limit_mb: int | None
+    used_traffic_bytes: int | None = 0
+    last_reported_total_bytes: int | None = 0
     is_revoked: bool
 
     model_config = ConfigDict(from_attributes=True)

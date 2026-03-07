@@ -1,9 +1,7 @@
 from datetime import datetime
-from typing import cast
 from uuid import UUID
 
 from fastapi import Depends
-from sqlalchemy.engine import CursorResult
 from sqlalchemy import and_, func, or_, select, update as sa_update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,19 +18,49 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
         super().__init__(UserPlacement, session)
 
     async def get_by_key_id(self, key_id: UUID) -> UserPlacement | None:
-        res = await self.session.execute(
-            select(self.model).where(
-                self.model.key_id == key_id,
-                self.model.is_active.is_(True),
-            )
+        rows = await self.list_by_key_id(key_id=key_id, active_only=True)
+        if not rows:
+            return None
+        return rows[0]
+
+    async def get_by_key_and_backend(
+        self,
+        *,
+        key_id: UUID,
+        backend_node_id: UUID,
+        active_only: bool = True,
+    ) -> UserPlacement | None:
+        stmt = (
+            select(self.model)
+            .where(self.model.key_id == key_id)
+            .where(self.model.backend_node_id == backend_node_id)
         )
+        if active_only:
+            stmt = stmt.where(self.model.is_active.is_(True))
+        res = await self.session.execute(stmt)
         return res.scalar_one_or_none()
 
+    async def list_by_key_id(
+        self,
+        *,
+        key_id: UUID,
+        active_only: bool = True,
+        desired_state: str | None = None,
+    ) -> list[UserPlacement]:
+        stmt = select(self.model).where(self.model.key_id == key_id)
+        if active_only:
+            stmt = stmt.where(self.model.is_active.is_(True))
+        if desired_state is not None:
+            stmt = stmt.where(self.model.desired_state == desired_state)
+        stmt = stmt.order_by(self.model.updated_at.desc(), self.model.id.asc())
+        res = await self.session.execute(stmt)
+        return list(res.scalars().all())
+
     async def list_active(
-            self,
-            *,
-            backend_node_id: UUID | None = None,
-            limit: int | None = None,
+        self,
+        *,
+        backend_node_id: UUID | None = None,
+        limit: int | None = None,
     ) -> list[UserPlacement]:
         stmt = select(self.model).where(self.model.is_active.is_(True))
         if backend_node_id:
@@ -52,25 +80,24 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
         res = await self.session.execute(stmt)
         return {row[0]: int(row[1]) for row in res.all()}
 
-    async def count_active_by_gateway_node(self) -> dict[UUID, int]:
+    async def count_desired_active_by_backend_node(self) -> dict[UUID, int]:
         stmt = (
-            select(self.model.gateway_node_id, func.count(self.model.id))
+            select(self.model.backend_node_id, func.count(self.model.id))
             .where(
                 self.model.is_active.is_(True),
-                self.model.gateway_node_id.is_not(None),
+                self.model.desired_state == "active",
             )
-            .group_by(self.model.gateway_node_id)
+            .group_by(self.model.backend_node_id)
         )
         res = await self.session.execute(stmt)
         return {row[0]: int(row[1]) for row in res.all()}
 
-    async def list_for_gateway_with_keys_page(
-            self,
-            *,
-            gateway_node_id: UUID,
-            cursor: tuple[int, UUID] | None,
-            limit: int,
-            include_unbound: bool = True,
+    async def list_for_backend_with_keys_page(
+        self,
+        *,
+        backend_node_id: UUID,
+        cursor: tuple[int, UUID] | None,
+        limit: int,
     ) -> list[tuple[UserPlacement, VpnKey, VpnNode]]:
         stmt = (
             select(self.model, VpnKey, VpnNode)
@@ -78,19 +105,11 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
             .join(VpnNode, VpnNode.id == self.model.backend_node_id)
             .where(
                 self.model.is_active.is_(True),
+                self.model.backend_node_id == backend_node_id,
                 VpnKey.is_active.is_(True),
                 VpnNode.is_active.is_(True),
             )
         )
-        if include_unbound:
-            stmt = stmt.where(
-                or_(
-                    self.model.gateway_node_id == gateway_node_id,
-                    self.model.gateway_node_id.is_(None),
-                )
-            )
-        else:
-            stmt = stmt.where(self.model.gateway_node_id == gateway_node_id)
 
         if cursor is not None:
             op, pid = cursor
@@ -104,23 +123,20 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
         stmt = stmt.order_by(self.model.op_version.asc(), self.model.id.asc()).limit(limit)
         res = await self.session.execute(stmt)
         rows: list[tuple[UserPlacement, VpnKey, VpnNode]] = list(res.tuples().all())
-
         return rows
 
     async def upsert_set_pending(
-            self,
-            *,
-            key_id: UUID,
-            backend_node_id: UUID,
-            gateway_node_id: UUID | None,
-            desired_state: str,
-            sticky_until,
-            last_migration_reason: str | None,
+        self,
+        *,
+        key_id: UUID,
+        backend_node_id: UUID,
+        desired_state: str,
+        sticky_until,
+        last_migration_reason: str | None,
     ) -> UserPlacement:
         stmt = insert(self.model).values(
             key_id=key_id,
             backend_node_id=backend_node_id,
-            gateway_node_id=gateway_node_id,
             desired_state=desired_state,
             applied_state="pending",
             op_version=1,
@@ -130,10 +146,8 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
             is_active=True,
         )
         stmt = stmt.on_conflict_do_update(
-            constraint="uq_user_placement_key_id",
+            constraint="uq_user_placement_key_backend",
             set_={
-                "backend_node_id": backend_node_id,
-                "gateway_node_id": gateway_node_id,
                 "desired_state": desired_state,
                 "applied_state": "pending",
                 "op_version": self.model.op_version + 1,
@@ -143,17 +157,65 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
             },
         )
         await self.session.execute(stmt)
-        return await self.get_by_key_id(key_id)
+        row = await self.get_by_key_and_backend(
+            key_id=key_id,
+            backend_node_id=backend_node_id,
+            active_only=True,
+        )
+        if row is None:
+            raise RuntimeError("placement upsert failed to load placement row")
+        return row
 
-    async def apply_gateway_report(
-            self,
-            *,
-            placement_id: UUID,
-            expected_op_version: int,
-            applied_state: str,
-            applied_version: int,
-            updated_at: datetime,
-            reporter_gateway_id: UUID,
+    async def set_desired_state_for_key(
+        self,
+        *,
+        key_id: UUID,
+        desired_state: str,
+        last_migration_reason: str | None,
+        updated_at: datetime,
+        backend_node_ids: list[UUID] | None = None,
+    ) -> int:
+        stmt = (
+            sa_update(self.model)
+            .where(self.model.key_id == key_id)
+            .where(self.model.is_active.is_(True))
+            .where(
+                or_(
+                    self.model.desired_state != desired_state,
+                    self.model.applied_state != "pending",
+                )
+            )
+        )
+        if backend_node_ids is not None:
+            if not backend_node_ids:
+                return 0
+            stmt = stmt.where(self.model.backend_node_id.in_(backend_node_ids))
+
+        result = await self.session.execute(
+            stmt.values(
+                desired_state=desired_state,
+                applied_state="pending",
+                op_version=self.model.op_version + 1,
+                last_migration_reason=last_migration_reason,
+                updated_at=updated_at,
+            )
+        )
+        rowcount = result.rowcount
+        if callable(rowcount):
+            rowcount = rowcount()
+        if rowcount is None or rowcount < 0:
+            return 0
+        return int(rowcount)
+
+    async def apply_backend_report(
+        self,
+        *,
+        placement_id: UUID,
+        expected_op_version: int,
+        applied_state: str,
+        applied_version: int,
+        updated_at: datetime,
+        reporter_backend_id: UUID,
     ) -> int:
         values: dict = {
             "applied_state": applied_state,
@@ -164,12 +226,7 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
             sa_update(self.model)
             .where(self.model.id == placement_id)
             .where(self.model.op_version == expected_op_version)
-            .where(
-                or_(
-                    self.model.gateway_node_id.is_(None),
-                    self.model.gateway_node_id == reporter_gateway_id,
-                )
-            )
+            .where(self.model.backend_node_id == reporter_backend_id)
             .values(**values)
             .returning(self.model.id)
         )
@@ -177,36 +234,92 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
         return len(updated_ids)
 
     async def bulk_migrate_backend(
-            self,
-            *,
-            placement_ids: list[UUID],
-            target_backend_id: UUID,
-            last_migration_reason: str | None,
-            updated_at: datetime,
+        self,
+        *,
+        placement_ids: list[UUID],
+        target_backend_id: UUID,
+        last_migration_reason: str | None,
+        updated_at: datetime,
     ) -> int:
         if not placement_ids:
             return 0
 
-        result = cast(
-            CursorResult,
+        source_result = await self.session.execute(
+            select(self.model).where(
+                self.model.id.in_(placement_ids),
+                self.model.is_active.is_(True),
+            )
+        )
+        if not hasattr(source_result, "scalars"):
+            rowcount = getattr(source_result, "rowcount", None)
+            if callable(rowcount):
+                rowcount = rowcount()
+            if rowcount is None or rowcount < 0:
+                return 0
+            return int(rowcount)
+        source_rows = list(source_result.scalars().all())
+        if not source_rows:
+            return 0
+
+        key_ids = [row.key_id for row in source_rows]
+        target_result = await self.session.execute(
+            select(self.model).where(
+                self.model.key_id.in_(key_ids),
+                self.model.backend_node_id == target_backend_id,
+                self.model.is_active.is_(True),
+            )
+        )
+        target_rows = list(target_result.scalars().all())
+        target_by_key: dict[UUID, UserPlacement] = {
+            row.key_id: row for row in target_rows
+        }
+
+        migrated = 0
+        for source in source_rows:
+            existing_target = target_by_key.get(source.key_id)
+            if existing_target is None:
+                await self.session.execute(
+                    sa_update(self.model)
+                    .where(self.model.id == source.id)
+                    .values(
+                        backend_node_id=target_backend_id,
+                        applied_state="pending",
+                        op_version=self.model.op_version + 1,
+                        last_migration_reason=last_migration_reason,
+                        updated_at=updated_at,
+                    )
+                )
+                migrated += 1
+                continue
+
+            if existing_target.id == source.id:
+                continue
+
+            # Target already has placement for this key. Merge desired state there
+            # and retire source row to avoid unique(key_id, backend_node_id) conflicts.
             await self.session.execute(
                 sa_update(self.model)
-                .where(self.model.id.in_(placement_ids))
+                .where(self.model.id == existing_target.id)
                 .values(
-                    backend_node_id=target_backend_id,
+                    desired_state=source.desired_state,
                     applied_state="pending",
                     op_version=self.model.op_version + 1,
+                    sticky_until=source.sticky_until,
                     last_migration_reason=last_migration_reason,
+                    is_active=True,
                     updated_at=updated_at,
                 )
-            ),
-        )
-        rowcount = result.rowcount
-        if callable(rowcount):
-            rowcount = rowcount()
-        if rowcount is None or rowcount < 0:
-            return 0
-        return int(rowcount)
+            )
+            await self.session.execute(
+                sa_update(self.model)
+                .where(self.model.id == source.id)
+                .values(
+                    is_active=False,
+                    updated_at=updated_at,
+                )
+            )
+            migrated += 1
+        return migrated
 
 
 def get_user_placement_repository(

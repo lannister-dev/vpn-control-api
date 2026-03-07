@@ -1,48 +1,25 @@
 from __future__ import annotations
 
+import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 from datetime import datetime, timezone, timedelta
+from types import SimpleNamespace
 
+from services.vpn.subscriptions import redis_key
 from services.vpn.subscriptions.service import SubscriptionService
 from services.vpn.subscriptions.exceptions import (
     SubscriptionInactive,
     SubscriptionExpired,
     SubscriptionTokenExpired,
     SubscriptionBuild,
+    SubscriptionNotFound,
     SubscriptionRateLimited,
 )
 from services.vpn.subscriptions.constants import RATE_LIMIT_REQUESTS, RATE_LIMIT_WINDOW_SEC
-from shared.profiles.registry import ProfileRegistry
-from shared.profiles.schemas import (
-    WsTlsProfile,
-    WsTlsClientConfig,
-    RealityTcpProfile,
-    RealityTcpClientConfig,
-    ProfileMetadata,
-    ProfileType,
-    NodePublic,
-)
-
-
-WS_TLS_RAW = {
-    "type": "ws_tls",
-    "client": {"path": "/ws", "host": "cdn.example.com", "sni": "cdn.example.com"},
-    "metadata": {"display_name": "WS TLS"},
-}
-
-REALITY_TCP_RAW = {
-    "type": "reality_tcp",
-    "client": {
-        "sni": "www.cloudflare.com",
-        "flow": "xtls-rprx-vision",
-        "fingerprint": "chrome",
-        "public_key": "AAAAAAAAAAAAAAAA",
-        "short_id": "abcd1234",
-    },
-    "metadata": {"display_name": "Reality TCP"},
-}
+from services.vpn.subscriptions.schemas import ResolvedSubscriptionRoute, SubscriptionCreateIn
+from shared.profiles.types import ProfileType
 
 
 @pytest.fixture()
@@ -77,12 +54,85 @@ def _make_sub(
     return sub
 
 
-def _make_node(*, public_domain="vpn.example.com", name="node1", region="de"):
+def _make_node(*, public_domain="vpn.example.com", reality_ip=None, name="node1", region="de"):
     n = MagicMock()
     n.public_domain = public_domain
+    n.reality_ip = public_domain if reality_ip is None else reality_ip
     n.name = name
     n.region = region
     return n
+
+
+def _make_transport_profile(*, network="tcp", security="reality", port=443):
+    tp = MagicMock()
+    tp.id = uuid4()
+    tp.name = "reality-google"
+    tp.network = network
+    tp.security = security
+    tp.reality_server_name = "www.google.com"
+    tp.reality_public_key = "A" * 20
+    tp.reality_short_id = "abcd1234"
+    tp.tls_fingerprint = "chrome"
+    tp.grpc_service_name = "vl"
+    tp.flow = "xtls-rprx-vision"
+    tp.port = port
+    tp.updated_at = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    return tp
+
+
+def _make_subscription_row(*, user_id=None, is_active=True):
+    now = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    sub = MagicMock()
+    sub.id = uuid4()
+    sub.user_id = user_id or uuid4()
+    sub.client_id = uuid4()
+    sub.root_vpn_key_id = None
+    sub.is_active = is_active
+    sub.expires_at = now + timedelta(days=30)
+    sub.profile_key = "ws_tls_v1"
+    sub.preferred_region = "fi"
+    sub.hwid_enabled = True
+    sub.max_devices = 2
+    sub.created_at = now
+    sub.updated_at = now
+    return sub
+
+
+@pytest.mark.asyncio
+async def test_get_subscription_returns_out(service):
+    sub = _make_subscription_row()
+    service.subscription_repository.get_by_id.return_value = sub
+
+    out = await service.get_subscription(sub.id)
+
+    assert out.id == sub.id
+    assert out.user_id == sub.user_id
+    assert out.profile_key == "ws_tls_v1"
+    assert out.hwid_enabled is True
+
+
+@pytest.mark.asyncio
+async def test_get_subscription_not_found_raises(service):
+    service.subscription_repository.get_by_id.return_value = None
+
+    with pytest.raises(SubscriptionNotFound):
+        await service.get_subscription(uuid4())
+
+
+@pytest.mark.asyncio
+async def test_list_subscriptions_by_user(service):
+    user_id = uuid4()
+    rows = [_make_subscription_row(user_id=user_id), _make_subscription_row(user_id=user_id)]
+    service.subscription_repository.list_by_user_id.return_value = rows
+
+    out = await service.list_subscriptions_by_user(user_id=user_id, active_only=True)
+
+    assert len(out) == 2
+    assert {item.user_id for item in out} == {user_id}
+    service.subscription_repository.list_by_user_id.assert_awaited_once_with(
+        user_id=user_id,
+        active_only=True,
+    )
 
 
 class TestValidateSubscription:
@@ -119,63 +169,127 @@ class TestValidateSubscription:
         service._validate_subscription(sub, "hash")
 
 
-class TestBuildUris:
-    def test_nodes_x_profiles(self, service):
-        ProfileRegistry.register("ws1", WS_TLS_RAW)
-        profiles = [ProfileRegistry.get("ws1").profile]
-        nodes = [_make_node(), _make_node(public_domain="vpn2.example.com", name="node2")]
+class TestBuildRouteUri:
+    def test_build_reality_uri(self, service):
+        node = _make_node()
+        transport_profile = _make_transport_profile(network="tcp", security="reality")
 
-        uris = service._build_uris(
+        uri = service._build_route_uri(
             client_id="cid",
-            nodes=nodes,
-            profiles=profiles,
+            node=node,
+            transport_profile=transport_profile,
         )
-        assert len(uris) == 2
-        assert all(u.startswith("vless://") for u in uris)
 
-    def test_region_mismatch_skipped(self, service):
-        raw = {**WS_TLS_RAW, "metadata": {"display_name": "WS", "region_support": ["de"]}}
-        ProfileRegistry.register("ws_de", raw)
-        profiles = [ProfileRegistry.get("ws_de").profile]
-        node_us = _make_node(region="us")
+        assert uri is not None
+        assert uri.startswith("vless://")
 
-        uris = service._build_uris(client_id="cid", nodes=[node_us], profiles=profiles)
-        assert uris == []
+    def test_build_reality_uri_uses_node_host_even_with_global_edge_domain(self, service):
+        node = _make_node(public_domain="1.2.3.4")
+        transport_profile = _make_transport_profile(network="tcp", security="reality")
+        service.settings.edge.public_domain = "prod.example.com"
 
-    def test_empty_nodes(self, service):
-        ProfileRegistry.register("ws1", WS_TLS_RAW)
-        profiles = [ProfileRegistry.get("ws1").profile]
-        uris = service._build_uris(client_id="cid", nodes=[], profiles=profiles)
-        assert uris == []
+        uri = service._build_route_uri(
+            client_id="cid",
+            node=node,
+            transport_profile=transport_profile,
+        )
+
+        assert uri is not None
+        assert "@1.2.3.4:" in uri
+        assert "prod.example.com" not in uri
+
+    def test_build_reality_uri_prefers_reality_ip(self, service):
+        node = _make_node(public_domain="reality.example.com", reality_ip="198.51.100.12")
+        transport_profile = _make_transport_profile(network="tcp", security="reality")
+        service.settings.edge.public_domain = "prod.example.com"
+
+        uri = service._build_route_uri(
+            client_id="cid",
+            node=node,
+            transport_profile=transport_profile,
+        )
+
+        assert uri is not None
+        assert "@198.51.100.12:" in uri
+        assert "reality.example.com" not in uri
+
+    def test_missing_domain_returns_none(self, service):
+        node = _make_node(public_domain="")
+        transport_profile = _make_transport_profile()
+        service.settings.edge.public_domain = ""
+
+        uri = service._build_route_uri(
+            client_id="cid",
+            node=node,
+            transport_profile=transport_profile,
+        )
+
+        assert uri is None
+
+    def test_build_grpc_tls_uri(self, service):
+        node = _make_node()
+        transport_profile = _make_transport_profile(network="grpc", security="tls")
+
+        uri = service._build_route_uri(
+            client_id="cid",
+            node=node,
+            transport_profile=transport_profile,
+        )
+
+        assert uri is not None
+        assert "type=grpc" in uri
+        assert "security=tls" in uri
+        assert "serviceName=vl" in uri
 
 
 class TestCalcEtag:
     def test_deterministic(self, service):
         sub = _make_sub()
-        node = MagicMock()
-        node.public_domain = "vpn.example.com"
-        profile = MagicMock()
-        profile.type = "ws_tls"
-        profile.version = 1
+        route_signatures = ["route-a|40", "route-b|30"]
 
-        e1 = service._calc_etag(sub, [node], [profile], client_id="cid")
-        e2 = service._calc_etag(sub, [node], [profile], client_id="cid")
+        e1 = service._calc_etag(sub, route_signatures, client_id="cid", placement_op_version=3)
+        e2 = service._calc_etag(sub, route_signatures, client_id="cid", placement_op_version=3)
         assert e1 == e2
         assert len(e1) == 64  # sha256 hex
 
-    def test_different_sub_different_etag(self, service):
-        sub1 = _make_sub()
-        sub2 = _make_sub()
-        node = MagicMock()
-        node.public_domain = "vpn.example.com"
-        profile = MagicMock()
-        profile.type = "ws_tls"
-        profile.version = 1
-
-        e1 = service._calc_etag(sub1, [node], [profile], client_id="cid")
-        e2 = service._calc_etag(sub2, [node], [profile], client_id="cid")
-        # different UUIDs → different etags
+    def test_route_order_changes_etag(self, service):
+        sub = _make_sub()
+        e1 = service._calc_etag(sub, ["route-a|40", "route-b|30"], client_id="cid")
+        e2 = service._calc_etag(sub, ["route-b|30", "route-a|40"], client_id="cid")
         assert e1 != e2
+
+
+def test_route_transport_compatibility(service):
+    assert service._is_route_compatible_with_key_transport(
+        key_transport="reality",
+        transport_security="reality",
+        transport_network="tcp",
+    )
+    assert not service._is_route_compatible_with_key_transport(
+        key_transport="reality",
+        transport_security="tls",
+        transport_network="ws",
+    )
+    assert not service._is_route_compatible_with_key_transport(
+        key_transport="tcp",
+        transport_security="reality",
+        transport_network="tcp",
+    )
+    assert not service._is_route_compatible_with_key_transport(
+        key_transport="tcp",
+        transport_security="tls",
+        transport_network="ws",
+    )
+    assert service._is_route_compatible_with_key_transport(
+        key_transport="ws",
+        transport_security="tls",
+        transport_network="ws",
+    )
+    assert not service._is_route_compatible_with_key_transport(
+        key_transport="ws",
+        transport_security="reality",
+        transport_network="tcp",
+    )
 
 
 class TestRateLimit:
@@ -183,12 +297,13 @@ class TestRateLimit:
     async def test_first_request_sets_expire(self, async_session, redis_client):
         svc = SubscriptionService(async_session, redis_client)
         redis_client.client.incr.return_value = 1
+        rate_limit_key = redis_key.rate_limit("token_hash")
 
         await svc._enforce_rate_limit("token_hash")
 
-        redis_client.client.incr.assert_awaited_once_with("sub:rl:token_hash")
+        redis_client.client.incr.assert_awaited_once_with(rate_limit_key)
         redis_client.client.expire.assert_awaited_once_with(
-            "sub:rl:token_hash",
+            rate_limit_key,
             RATE_LIMIT_WINDOW_SEC,
         )
 
@@ -201,3 +316,334 @@ class TestRateLimit:
             await svc._enforce_rate_limit("token_hash")
 
         redis_client.client.expire.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_invalidate_payload_cache_uses_index_and_deletes_keys(self, async_session, redis_client):
+        svc = SubscriptionService(async_session, redis_client)
+        token_hash = "hash"
+        first_payload_key = redis_key.payload_cache(token_hash=token_hash, hwid="a")
+        second_payload_key = redis_key.payload_cache(token_hash=token_hash, hwid="b")
+        index_key = redis_key.payload_cache_index(token_hash=token_hash)
+        redis_client.client.smembers.return_value = {
+            first_payload_key,
+            second_payload_key,
+            "not:sub:key",
+        }
+
+        await svc._invalidate_payload_cache_by_token_hash(token_hash)
+
+        redis_client.client.smembers.assert_awaited_once_with(index_key)
+        first_delete_call = redis_client.client.delete.await_args_list[0]
+        assert set(first_delete_call.args) == {first_payload_key, second_payload_key}
+        redis_client.client.delete.assert_any_await(index_key)
+
+    @pytest.mark.asyncio
+    async def test_write_payload_cache_updates_index(self, async_session, redis_client):
+        svc = SubscriptionService(async_session, redis_client)
+        token_hash = "hash"
+        cache_key = redis_key.payload_cache(token_hash=token_hash, hwid=None)
+        index_key = redis_key.payload_cache_index(token_hash=token_hash)
+
+        ok = await svc._write_payload_cache(
+            token_hash=token_hash,
+            cache_key=cache_key,
+            payload="vless://cached",
+            etag="etag",
+            ttl_sec=15,
+        )
+
+        assert ok
+        redis_client.client.setex.assert_awaited_once()
+        redis_client.client.sadd.assert_awaited_once_with(
+            index_key,
+            cache_key,
+        )
+        redis_client.client.expire.assert_awaited_once_with(index_key, 75)
+
+
+@pytest.mark.asyncio
+async def test_build_payload_uses_cached_payload_without_db_lookup(service):
+    service.settings.subscriptions.response_cache_ttl_sec = 15
+    service._enforce_rate_limit = AsyncMock()
+    service.redis.client.get.return_value = json.dumps(
+        {"etag": "etag-cached", "payload": "vless://cached"}
+    )
+
+    payload, etag, not_modified = await service.build_payload(raw_token="tok")
+
+    assert payload == "vless://cached"
+    assert etag == "etag-cached"
+    assert not not_modified
+    service.subscription_repository.get_by_any_token_hash.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_build_payload_uses_cached_etag_for_304_without_db_lookup(service):
+    service.settings.subscriptions.response_cache_ttl_sec = 15
+    service._enforce_rate_limit = AsyncMock()
+    service.redis.client.get.return_value = json.dumps(
+        {"etag": "etag-cached", "payload": "vless://cached"}
+    )
+
+    payload, etag, not_modified = await service.build_payload(
+        raw_token="tok",
+        if_none_match="etag-cached",
+    )
+
+    assert payload == ""
+    assert etag == "etag-cached"
+    assert not_modified
+    service.subscription_repository.get_by_any_token_hash.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_build_payload_waits_on_lock_contention_and_uses_wait_hit_cache(service):
+    service.settings.subscriptions.response_cache_ttl_sec = 15
+    service._enforce_rate_limit = AsyncMock()
+    service.redis.client.get.side_effect = [
+        None,
+        json.dumps({"etag": "etag-wait", "payload": "vless://waited"}),
+    ]
+    service.redis.client.set.return_value = None
+
+    with patch("services.vpn.subscriptions.service.asyncio.sleep", new=AsyncMock()):
+        payload, etag, not_modified = await service.build_payload(raw_token="tok")
+
+    assert payload == "vless://waited"
+    assert etag == "etag-wait"
+    assert not not_modified
+    service.subscription_repository.get_by_any_token_hash.assert_not_awaited()
+    service.redis.client.set.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_build_payload_releases_lock_when_build_fails(service):
+    service.settings.subscriptions.response_cache_ttl_sec = 15
+    service._enforce_rate_limit = AsyncMock()
+    service.redis.client.get.return_value = None
+    service.redis.client.set.return_value = True
+    service.subscription_repository.get_by_any_token_hash.return_value = None
+
+    with pytest.raises(SubscriptionNotFound):
+        await service.build_payload(raw_token="tok")
+
+    first_delete_call = service.redis.client.delete.await_args_list[0]
+    assert len(first_delete_call.args) == 1
+    lock_prefix = redis_key.payload_build_lock(token_hash="", hwid=None).split("::", 1)[0] + ":"
+    assert str(first_delete_call.args[0]).startswith(lock_prefix)
+
+
+def test_route_selector_limits_size_and_keeps_fallback_diversity(service):
+    preferred_backend = uuid4()
+    fallback_backend_1 = uuid4()
+    fallback_backend_2 = uuid4()
+
+    service.settings.subscriptions.smart_route_max_count = 4
+    routes = [
+        ResolvedSubscriptionRoute(
+            route_id=uuid4(),
+            backend_node_id=preferred_backend,
+            transport_security="reality",
+            transport_network="tcp",
+            uri="vless://p1",
+            route=MagicMock(),
+            node=MagicMock(),
+            transport_profile=MagicMock(),
+        ),
+        ResolvedSubscriptionRoute(
+            route_id=uuid4(),
+            backend_node_id=preferred_backend,
+            transport_security="reality",
+            transport_network="tcp",
+            uri="vless://p2",
+            route=MagicMock(),
+            node=MagicMock(),
+            transport_profile=MagicMock(),
+        ),
+        ResolvedSubscriptionRoute(
+            route_id=uuid4(),
+            backend_node_id=fallback_backend_1,
+            transport_security="reality",
+            transport_network="tcp",
+            uri="vless://f1",
+            route=MagicMock(),
+            node=MagicMock(),
+            transport_profile=MagicMock(),
+        ),
+        ResolvedSubscriptionRoute(
+            route_id=uuid4(),
+            backend_node_id=fallback_backend_1,
+            transport_security="reality",
+            transport_network="tcp",
+            uri="vless://f1b",
+            route=MagicMock(),
+            node=MagicMock(),
+            transport_profile=MagicMock(),
+        ),
+        ResolvedSubscriptionRoute(
+            route_id=uuid4(),
+            backend_node_id=fallback_backend_2,
+            transport_security="tls",
+            transport_network="grpc",
+            uri="vless://f2",
+            route=MagicMock(),
+            node=MagicMock(),
+            transport_profile=MagicMock(),
+        ),
+    ]
+
+    out = service.route_selector.select(
+        routes=routes,
+        preferred_backend_id=preferred_backend,
+        max_routes=service.settings.subscriptions.smart_route_max_count,
+    )
+
+    assert len(out) == 4
+    assert out[0].backend_node_id == preferred_backend
+    assert out[1].backend_node_id == preferred_backend
+    assert out[2].backend_node_id == fallback_backend_1
+    assert out[3].backend_node_id == fallback_backend_2
+
+
+@pytest.mark.asyncio
+async def test_create_subscription_includes_subscription_url_when_base_url_set(service):
+    user_id = uuid4()
+    service.settings.subscriptions.public_base_url = "https://api.example.com/subscriptions/sub/"
+    service.user_repository.get_by_id = AsyncMock(return_value=MagicMock())
+    sub = MagicMock()
+    sub.id = uuid4()
+    sub.client_id = uuid4()
+    sub.hwid_enabled = True
+    sub.expires_at = datetime.now(timezone.utc) + timedelta(days=30)
+    sub.is_active = True
+    service.subscription_repository.create = AsyncMock(return_value=sub)
+    service.vpn_key_repository.create = AsyncMock()
+
+    with patch("services.vpn.subscriptions.service.ProfileRegistry.get") as get_profile:
+        get_profile.return_value = SimpleNamespace(
+            profile=SimpleNamespace(type=ProfileType.reality_tcp)
+        )
+        out = await service.create(
+            SubscriptionCreateIn(
+                user_id=user_id,
+                profile_key="default-reality",
+            )
+        )
+
+    assert out.subscription_url.startswith("https://api.example.com/subscriptions/sub/")
+    service.vpn_key_repository.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_create_subscription_url_uses_base_url_as_is(service):
+    user_id = uuid4()
+    service.settings.subscriptions.public_base_url = "https://api.example.com/custom-prefix/"
+    service.user_repository.get_by_id = AsyncMock(return_value=MagicMock())
+    sub = MagicMock()
+    sub.id = uuid4()
+    sub.client_id = uuid4()
+    sub.hwid_enabled = True
+    sub.expires_at = datetime.now(timezone.utc) + timedelta(days=30)
+    sub.is_active = True
+    service.subscription_repository.create = AsyncMock(return_value=sub)
+    service.vpn_key_repository.create = AsyncMock()
+
+    with patch("services.vpn.subscriptions.service.ProfileRegistry.get") as get_profile:
+        get_profile.return_value = SimpleNamespace(
+            profile=SimpleNamespace(type=ProfileType.reality_tcp)
+        )
+        out = await service.create(
+            SubscriptionCreateIn(
+                user_id=user_id,
+                profile_key="default-reality",
+            )
+        )
+
+    assert out.subscription_url.startswith("https://api.example.com/custom-prefix/")
+    service.vpn_key_repository.create.assert_not_awaited()
+
+
+def test_fit_routes_to_payload_limit_keeps_all_when_within_limit(service):
+    routes = [
+        ResolvedSubscriptionRoute(
+            route_id=uuid4(),
+            backend_node_id=uuid4(),
+            transport_security="reality",
+            transport_network="tcp",
+            uri="vless://a",
+            route=MagicMock(),
+            node=MagicMock(),
+            transport_profile=MagicMock(),
+        ),
+        ResolvedSubscriptionRoute(
+            route_id=uuid4(),
+            backend_node_id=uuid4(),
+            transport_security="tls",
+            transport_network="grpc",
+            uri="vless://b",
+            route=MagicMock(),
+            node=MagicMock(),
+            transport_profile=MagicMock(),
+        ),
+    ]
+    selected, result = service._fit_routes_to_payload_limit(
+        routes=routes,
+        max_payload_bytes=1024,
+    )
+
+    assert result == "ok"
+    assert selected == routes
+
+
+def test_fit_routes_to_payload_limit_trims_when_needed(service):
+    routes = [
+        ResolvedSubscriptionRoute(
+            route_id=uuid4(),
+            backend_node_id=uuid4(),
+            transport_security="reality",
+            transport_network="tcp",
+            uri="vless://12345",
+            route=MagicMock(),
+            node=MagicMock(),
+            transport_profile=MagicMock(),
+        ),
+        ResolvedSubscriptionRoute(
+            route_id=uuid4(),
+            backend_node_id=uuid4(),
+            transport_security="tls",
+            transport_network="grpc",
+            uri="vless://67890",
+            route=MagicMock(),
+            node=MagicMock(),
+            transport_profile=MagicMock(),
+        ),
+    ]
+    selected, result = service._fit_routes_to_payload_limit(
+        routes=routes,
+        max_payload_bytes=len("vless://12345"),
+    )
+
+    assert result == "trimmed"
+    assert selected == [routes[0]]
+
+
+def test_fit_routes_to_payload_limit_rejects_if_single_route_too_large(service):
+    routes = [
+        ResolvedSubscriptionRoute(
+            route_id=uuid4(),
+            backend_node_id=uuid4(),
+            transport_security="reality",
+            transport_network="tcp",
+            uri="vless://this-is-too-long",
+            route=MagicMock(),
+            node=MagicMock(),
+            transport_profile=MagicMock(),
+        ),
+    ]
+    selected, result = service._fit_routes_to_payload_limit(
+        routes=routes,
+        max_payload_bytes=8,
+    )
+
+    assert result == "rejected"
+    assert selected == []

@@ -36,10 +36,11 @@ from services.users.models import User
 from services.vpn.keys.models import VpnKey, KeyAssignment
 from services.nodes.models import VpnNode, NodeAgentState
 from services.placements.model import UserPlacement
-from services.backend_peers.model import BackendPeer
 from services.probe.model import ProbeSignal
 from services.artifacts.models import ProfileArtifact
 from services.vpn.subscriptions.model import Subscription
+from services.routes.model import Route, TransportProfile
+from services.traffic.model import TrafficUsage
 
 target_metadata = Base.metadata
 

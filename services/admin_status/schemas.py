@@ -12,6 +12,7 @@ class AdminNodeStatusOut(BaseModel):
     role: NodeRole
     region: str
     public_domain: str
+    reality_ip: str | None = None
     is_enabled: bool
     is_draining: bool
     capacity: int
@@ -19,9 +20,6 @@ class AdminNodeStatusOut(BaseModel):
     last_seen_at: datetime | None
     last_sync_at: datetime | None
     placements_backend: int
-    placements_gateway: int
-    backend_peers_backend: int
-    backend_peers_gateway: int
 
 
 class AdminStatusTotalsOut(BaseModel):
@@ -30,10 +28,33 @@ class AdminStatusTotalsOut(BaseModel):
     nodes_draining: int
     nodes_healthy: int
     placements_total: int
-    backend_peers_total: int
 
 
 class AdminStatusOut(BaseModel):
     generated_at: datetime
     totals: AdminStatusTotalsOut
     nodes: list[AdminNodeStatusOut]
+
+
+class AdminReadinessCheckOut(BaseModel):
+    name: str
+    ok: bool
+    detail: str
+
+
+class AdminReadinessOut(BaseModel):
+    generated_at: datetime
+    ready: bool
+    checks: list[AdminReadinessCheckOut]
+
+
+class RuntimeReadinessCheckOut(BaseModel):
+    name: str
+    ok: bool
+    detail: str
+
+
+class RuntimeReadinessOut(BaseModel):
+    generated_at: datetime
+    ready: bool
+    checks: list[RuntimeReadinessCheckOut]

@@ -21,7 +21,6 @@ class PlacementAppliedState(str, Enum):
 class UserPlacementUpsertIn(BaseModel):
     key_id: UUID
     backend_node_id: UUID
-    gateway_node_id: UUID | None = None
     desired_state: PlacementDesiredState = PlacementDesiredState.active
     sticky_until: datetime | None = None
     last_migration_reason: str | None = Field(default=None, max_length=64)
@@ -43,7 +42,6 @@ class UserPlacementOut(BaseModel):
     id: UUID
     key_id: UUID
     backend_node_id: UUID
-    gateway_node_id: UUID | None
     desired_state: PlacementDesiredState
     applied_state: PlacementAppliedState
     op_version: int
@@ -83,7 +81,6 @@ class PlacementAssignmentOut(BaseModel):
     applied_state: PlacementAppliedState
     applied_version: int
     backend_node_id: UUID
-    gateway_node_id: UUID | None
 
     protocol: VpnProtocol
     client_id: str

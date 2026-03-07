@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from services.alerts.service import AlertService, get_alert_service
 from services.config import get_settings
 from services.nodes.repository import VpnNodeRepository
-
+from services.routes.repository import RouteRepository
+from services.routes.schemas import RouteHealthStatus, RouteStateUpdate
 from services.probe.repository import ProbeSignalRepository
 from services.nodes.schemas import NodeRole
 from services.probe.schemas import (
@@ -33,15 +34,21 @@ class ProbeIngestionService:
             *,
             node_repository: VpnNodeRepository,
             probe_repository: ProbeSignalRepository,
+            route_repository: RouteRepository,
             alert_service: AlertService,
             target_port: int,
             retention_days: int,
+            auto_route_health_enabled: bool,
+            route_block_cooldown_hours: int,
     ):
         self.node_repository = node_repository
         self.probe_repository = probe_repository
+        self.route_repository = route_repository
         self.alert_service = alert_service
         self.target_port = target_port
         self.retention_days = retention_days
+        self.auto_route_health_enabled = auto_route_health_enabled
+        self.route_block_cooldown_hours = max(1, route_block_cooldown_hours)
 
     async def report(self, payload: ProbeReportIn) -> ProbeReportOut:
         node = await self.node_repository.get_by_id(payload.node_id)
@@ -68,14 +75,30 @@ class ProbeIngestionService:
         row = await self.probe_repository.create(
             create_data.model_dump()
         )
+        latest = await self.probe_repository.get_latest_for_node(
+            node_id=payload.node_id,
+            source=payload.source,
+        )
         status = "reachable" if payload.is_reachable else "failed"
         PROBE_REPORT_TOTAL.labels(status=status).inc()
-        await self._maybe_send_probe_alert(
-            node=node,
-            source=payload.source,
-            previous=previous,
-            current=row,
-        )
+        if latest is not None and latest.id == row.id:
+            await self._maybe_send_probe_alert(
+                node=node,
+                source=payload.source,
+                previous=previous,
+                current=row,
+            )
+            await self._apply_route_health_policy(
+                node=node,
+                signal=row,
+            )
+        else:
+            logger_probe.info(
+                "probe_report_stale_side_effects_skipped",
+                node_id=str(payload.node_id),
+                source=payload.source,
+                report_id=str(row.id),
+            )
         return ProbeReportOut.model_validate(row)
 
     async def list_targets(
@@ -90,18 +113,16 @@ class ProbeIngestionService:
 
         targets: list[ProbeTargetOut] = []
         for node in rows:
-            if not include_disabled and not getattr(node, "is_enabled", True):
+            if not include_disabled and not node.is_enabled:
                 continue
-            if not include_draining and getattr(node, "is_draining", False):
+            if not include_draining and node.is_draining:
                 continue
 
-            host = (getattr(node, "public_domain", "") or "").strip()
+            host = (node.public_domain or "").strip()
             if not host:
                 continue
 
-            node_role = getattr(node, "role", NodeRole.backend.value)
-            if not isinstance(node_role, str):
-                node_role = str(node_role)
+            node_role = node.role
 
             targets.append(
                 ProbeTargetOut(
@@ -170,6 +191,69 @@ class ProbeIngestionService:
             )
         return deleted
 
+    async def _apply_route_health_policy(self, *, node, signal) -> None:
+        if not self.auto_route_health_enabled:
+            return
+        if node.role != NodeRole.backend.value:
+            return
+
+        routes = await self.route_repository.list_active(node_id=node.id, limit=2000)
+        if not routes:
+            return
+
+        checked_at = self._to_utc(signal.checked_at)
+        if signal.is_reachable:
+            await self._recover_routes_after_probe(routes=routes, checked_at=checked_at)
+            return
+        await self._block_routes_after_probe(routes=routes, checked_at=checked_at)
+
+    async def _block_routes_after_probe(self, *, routes: list, checked_at: datetime) -> None:
+        cooldown_until = checked_at + timedelta(hours=self.route_block_cooldown_hours)
+        for route in routes:
+            # Keep route in blocked mode while extending cooldown from latest failed probe.
+            updated_state = RouteStateUpdate(
+                health_status=RouteHealthStatus.blocked,
+                effective_weight=0,
+                cooldown_until=cooldown_until,
+                warmup_stage=None,
+                warmup_started_at=None,
+                updated_at=datetime.now(timezone.utc),
+            )
+            await self.route_repository.update_by_id(
+                item_id=route.id,
+                data=updated_state.model_dump(),
+            )
+
+    async def _recover_routes_after_probe(self, *, routes: list, checked_at: datetime) -> None:
+        for route in routes:
+            if route.health_status != RouteHealthStatus.blocked.value:
+                continue
+            cooldown_until = route.cooldown_until
+            if cooldown_until is not None:
+                cooldown_until = self._to_utc(cooldown_until)
+                if cooldown_until > checked_at:
+                    continue
+
+            warmup_weight = min(int(route.base_weight), 10)
+            updated_state = RouteStateUpdate(
+                health_status=RouteHealthStatus.warming_up,
+                effective_weight=warmup_weight,
+                cooldown_until=None,
+                warmup_stage=0,
+                warmup_started_at=checked_at,
+                updated_at=datetime.now(timezone.utc),
+            )
+            await self.route_repository.update_by_id(
+                item_id=route.id,
+                data=updated_state.model_dump(),
+            )
+
+    @staticmethod
+    def _to_utc(value: datetime) -> datetime:
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
 
 def get_probe_ingestion_service(
         session: AsyncSession = Depends(AsyncDatabase.get_session),
@@ -179,7 +263,10 @@ def get_probe_ingestion_service(
     return ProbeIngestionService(
         node_repository=VpnNodeRepository(session),
         probe_repository=ProbeSignalRepository(session),
+        route_repository=RouteRepository(session),
         alert_service=alert_service,
         target_port=probe_settings.target_port,
         retention_days=probe_settings.retention_days,
+        auto_route_health_enabled=probe_settings.auto_route_health_enabled,
+        route_block_cooldown_hours=probe_settings.route_block_cooldown_hours,
     )

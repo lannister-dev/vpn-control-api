@@ -4,8 +4,6 @@ from fastapi import APIRouter, Depends, Query, status
 
 from services.auth.dependencies import admin_auth
 from services.placements.schemas import (
-    PlacementMigrateBackendIn,
-    PlacementMigrateBackendOut,
     UserPlacementOut,
     UserPlacementUpsertIn,
 )
@@ -48,27 +46,13 @@ async def list_placements(
 
 @router.get(
     "/by-key/{key_id}",
-    response_model=UserPlacementOut,
+    response_model=list[UserPlacementOut],
     status_code=status.HTTP_200_OK,
     dependencies=[Depends(admin_auth)],
-    summary="Get placement by key id",
+    summary="List placements by key id",
 )
 async def get_placement_by_key(
         key_id: UUID,
         service: UserPlacementService = Depends(get_user_placement_service),
 ):
-    return await service.get_by_key_id(key_id)
-
-
-@router.post(
-    "/migrate-backend",
-    response_model=PlacementMigrateBackendOut,
-    status_code=status.HTTP_200_OK,
-    dependencies=[Depends(admin_auth)],
-    summary="Migrate active placements from source backend to target backend",
-)
-async def migrate_backend_placements(
-        payload: PlacementMigrateBackendIn,
-        service: UserPlacementService = Depends(get_user_placement_service),
-):
-    return await service.migrate_backend(payload)
+    return await service.list_by_key_id(key_id)

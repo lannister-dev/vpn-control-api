@@ -1,4 +1,5 @@
 from __future__ import annotations
+from datetime import datetime, timezone
 from uuid import uuid4, UUID
 from fastapi import HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,7 +43,7 @@ class VpnKeyService:
             status_code=status.HTTP_410_GONE,
             detail=(
                 "Legacy key assignment API is disabled. "
-                "Use /api/v1/placements for gateway/backend placement management."
+                "Use /api/v1/placements for backend placement management."
             ),
         )
 
@@ -61,17 +62,11 @@ class VpnKeyService:
         VPN_KEY_OPERATION_TOTAL.labels(operation="revoked").inc()
 
     async def _set_placement_inactive(self, *, key_id: UUID) -> None:
-        placement = await self.placement_repository.get_by_key_id(key_id)
-        if placement is None:
-            return
-
-        await self.placement_repository.upsert_set_pending(
+        await self.placement_repository.set_desired_state_for_key(
             key_id=key_id,
-            backend_node_id=placement.backend_node_id,
-            gateway_node_id=placement.gateway_node_id,
             desired_state=PlacementDesiredState.inactive.value,
-            sticky_until=placement.sticky_until,
             last_migration_reason="key_revoke",
+            updated_at=datetime.now(timezone.utc),
         )
 
 

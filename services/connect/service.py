@@ -1,116 +1,238 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.backend_peers.repository import BackendPeerRepository
 from services.config import get_settings
-from services.connect.schemas import ConnectIn, ConnectOut
+from services.connect.cache_keys import connect_telemetry_allowed_routes_key
+from services.connect.policy import build_connect_refresh_policy
+from services.connect.schemas import (
+    ConnectRouteOut,
+    ConnectRouteSetIn,
+    ConnectRouteSetOut,
+    ResolvedRouteInternal,
+)
 from services.nodes.models import VpnNode
 from services.nodes.repository import VpnNodeRepository
 from services.nodes.schemas import NodeRole
+from services.placements.model import UserPlacement
 from services.placements.repository import UserPlacementRepository
 from services.placements.schemas import PlacementDesiredState
+from services.routes.repository import RouteRepository
+from services.routing.selector import RouteSelector
 from services.routing.service import RoutingService
 from services.users.repository import UserRepository
 from services.vpn.keys.repository import VpnKeyRepository
 from services.vpn.keys.schemas import VpnKeyInternalCreate, VpnProtocol, VpnTransport
 from shared.database.session import AsyncDatabase
 from shared.profiles.builder import VlessUriBuilder
-from shared.profiles.exceptions import ProfileRegistryError
-from shared.profiles.registry import ProfileRegistry
-from shared.profiles.schemas import NodePublic, RealityTcpProfile, WsTlsProfile
-from shared.profiles.types import ProfileType
+from shared.profiles.schemas import (
+    NodePublic,
+    ProfileMetadata,
+    RealityTcpClientConfig,
+    RealityTcpProfile,
+    WsTlsClientConfig,
+    WsTlsProfile,
+)
+from shared.profiles.transport import VlessUri
+from shared.redis.client import RedisClient, get_redis_client
+from shared.utils.node_display import format_node_display_name
+from shared.utils.logger import StructuredLogger
+
+
+logger_connect = StructuredLogger(logging.getLogger("connect-service"))
 
 
 class ConnectService:
-    def __init__(self, session: AsyncSession):
+    def __init__(self, session: AsyncSession, redis: RedisClient):
         self.settings = get_settings()
+        self.redis = redis
         self.user_repository = UserRepository(session)
         self.key_repository = VpnKeyRepository(session)
         self.node_repository = VpnNodeRepository(session)
-        self.backend_peer_repository = BackendPeerRepository(session)
         self.placement_repository = UserPlacementRepository(session)
+        self.route_repository = RouteRepository(session)
         self.routing_service = RoutingService(session)
+        self.route_selector = RouteSelector[ResolvedRouteInternal](
+            get_backend_id=lambda item: item.route.backend_node_id,
+            get_transport_key=lambda item: (item.transport_security, item.transport_network),
+            get_route_id=lambda item: item.route.route_id,
+        )
 
-    async def connect(self, payload: ConnectIn) -> ConnectOut:
+    async def connect_routeset(self, payload: ConnectRouteSetIn) -> ConnectRouteSetOut:
         user = await self.user_repository.get_by_id(payload.user_id)
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
-        profile = self._resolve_profile(payload.profile_key)
-        transport = self._infer_transport(profile.type)
+        key = await self._resolve_routeset_key(payload=payload)
+        key_id = self._as_uuid(key.id)
+        key_transport = self._normalize_key_transport(getattr(key, "transport", None))
+        desired_replicas = max(1, min(10, int(payload.max_routes)))
+        preferred_node_id, placement, allowed_backend_ids = await self._ensure_backend_placements_for_key(
+            key_id=key_id,
+            preferred_region=payload.preferred_region,
+            desired_replicas=desired_replicas,
+            key_transport=key_transport,
+        )
 
-        key = await self._resolve_key(payload=payload, transport=transport)
-        existing_placement = await self.placement_repository.get_by_key_id(key.id)
-        if existing_placement and existing_placement.desired_state == PlacementDesiredState.active.value:
-            existing_route = await self._resolve_existing_route(
-                existing_placement=existing_placement,
-                preferred_region=payload.preferred_region,
+        max_fetch = max(payload.max_routes * 4, 10)
+        route_rows = await self.route_repository.list_resolved_active(
+            preferred_node_id=preferred_node_id,
+            preferred_region=payload.preferred_region,
+            limit=max_fetch,
+        )
+
+        resolved_routes: list[ResolvedRouteInternal] = []
+        for route, node, transport_profile in route_rows:
+            backend_node_id = self._as_uuid(node.id)
+            if backend_node_id not in allowed_backend_ids:
+                continue
+            transport_security = transport_profile.security
+            transport_network = transport_profile.network
+            if not self._is_route_compatible_with_key_transport(
+                key_transport=key_transport,
+                transport_security=transport_security,
+                transport_network=transport_network,
+            ):
+                continue
+            uri = self._build_route_uri(
+                client_id=key.client_id,
+                node=node,
+                transport_profile=transport_profile,
             )
-            if existing_route is not None:
-                backend_node, gateway_node = existing_route
-                await self._ensure_backend_peers_for_all_gateways(
-                    backend_node=backend_node,
-                    selected_gateway=gateway_node,
-                    preferred_region=payload.preferred_region,
+            if uri is None:
+                continue
+            route_id = self._as_uuid(route.id)
+            transport_profile_id = self._as_uuid(transport_profile.id)
+            resolved_routes.append(
+                ResolvedRouteInternal(
+                    route=ConnectRouteOut(
+                        route_id=route_id,
+                        route_name=route.name,
+                        backend_node_id=backend_node_id,
+                        transport_profile_id=transport_profile_id,
+                        health_status=route.health_status,
+                        effective_weight=route.effective_weight,
+                        uri=uri,
+                    ),
+                    transport_security=transport_security,
+                    transport_network=transport_network,
                 )
-                return self._build_connect_out(
-                    key=key,
-                    placement=existing_placement,
-                    backend_node=backend_node,
-                    gateway_node=gateway_node,
-                    profile=profile,
-                )
-
-        backend_node = await self._select_backend(preferred_region=payload.preferred_region)
-        gateway_node = await self._select_gateway(
-            gateway_node_id=payload.gateway_node_id,
-            preferred_region=payload.preferred_region,
-            fallback=backend_node,
-        )
-        await self._ensure_backend_peers_for_all_gateways(
-            backend_node=backend_node,
-            selected_gateway=gateway_node,
-            preferred_region=payload.preferred_region,
+            )
+        routes = self.route_selector.select(
+            routes=resolved_routes,
+            preferred_backend_id=preferred_node_id,
+            max_routes=payload.max_routes,
         )
 
-        migration_reason = "connect_initial" if existing_placement is None else "connect_rebalance"
-        placement = await self.placement_repository.upsert_set_pending(
-            key_id=key.id,
-            backend_node_id=backend_node.id,
-            gateway_node_id=None,
-            desired_state=PlacementDesiredState.active.value,
-            sticky_until=None,
-            last_migration_reason=migration_reason,
+        if not routes:
+            raise HTTPException(status_code=503, detail="No available routes")
+
+        placement_id = self._as_uuid(placement.id)
+        refresh_policy = build_connect_refresh_policy(self.settings.routes)
+        route_out_items = [item.route for item in routes]
+        await self._cache_allowed_telemetry_routes(
+            key_id=key_id,
+            route_ids=[item.route_id for item in route_out_items],
+            ttl_sec=refresh_policy.max_cache_age_sec,
         )
-        if not placement:
-            raise HTTPException(status_code=500, detail="Failed to create placement")
-        return self._build_connect_out(
-            key=key,
-            placement=placement,
-            backend_node=backend_node,
-            gateway_node=gateway_node,
-            profile=profile,
+        return ConnectRouteSetOut(
+            key_id=key_id,
+            client_id=key.client_id,
+            placement_id=placement_id,
+            placement_op_version=placement.op_version,
+            config_version=placement.op_version,
+            selection_strategy="ordered_fallback",
+            refresh_interval_sec=refresh_policy.refresh_interval_sec,
+            max_cache_age_sec=refresh_policy.max_cache_age_sec,
+            backoff_steps_sec=refresh_policy.backoff_steps_sec,
+            routes=route_out_items,
         )
 
-    def _resolve_profile(self, profile_key: str) -> WsTlsProfile | RealityTcpProfile:
+    async def _ensure_backend_placements_for_key(
+            self,
+            *,
+            key_id: UUID,
+            preferred_region: str | None,
+            desired_replicas: int,
+            key_transport: str | None,
+    ) -> tuple[UUID, UserPlacement, set[UUID]]:
+        desired_replicas = max(1, min(10, int(desired_replicas)))
+        placements = await self._list_active_placements_for_key(key_id=key_id)
+        placements_by_backend: dict[UUID, UserPlacement] = {
+            placement.backend_node_id: placement for placement in placements
+        }
+
         try:
-            return ProfileRegistry.get(profile_key).profile
-        except ProfileRegistryError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
+            candidate_nodes = await self.routing_service.select_nodes(
+                preferred_region=preferred_region,
+                role=NodeRole.backend.value,
+            )
+        except Exception:
+            logger_connect.exception(
+                "connect_routeset_select_nodes_failed",
+                key_id=str(key_id),
+                preferred_region=preferred_region,
+            )
+            candidate_nodes = []
+        candidate_nodes = [
+            node
+            for node in candidate_nodes
+            if self._node_has_required_public_host(node=node, key_transport=key_transport)
+        ]
+        if not candidate_nodes and not placements_by_backend:
+            fallback = await self._select_backend(
+                preferred_region=preferred_region,
+                key_transport=key_transport,
+            )
+            candidate_nodes = [fallback]
 
-    def _infer_transport(self, profile_type: ProfileType) -> VpnTransport:
-        if profile_type == ProfileType.ws_tls:
-            return VpnTransport.ws
-        if profile_type == ProfileType.reality_tcp:
-            return VpnTransport.tcp
-        raise HTTPException(status_code=422, detail=f"Unsupported profile type: {profile_type}")
+        if candidate_nodes:
+            target_nodes = candidate_nodes[:desired_replicas]
+            for node in target_nodes:
+                node_id = self._as_uuid(str(node.id))
+                if node_id in placements_by_backend:
+                    continue
+                created = await self.placement_repository.upsert_set_pending(
+                    key_id=key_id,
+                    backend_node_id=node_id,
+                    desired_state=PlacementDesiredState.active.value,
+                    sticky_until=None,
+                    last_migration_reason="connect_replica",
+                )
+                placements_by_backend[node_id] = created
 
-    async def _resolve_key(self, *, payload: ConnectIn, transport: VpnTransport):
+        preferred_placement: UserPlacement | None = None
+        for node in candidate_nodes:
+            node_id = self._as_uuid(str(node.id))
+            preferred_placement = placements_by_backend.get(node_id)
+            if preferred_placement is not None:
+                break
+        if preferred_placement is None and placements:
+            preferred_placement = placements[0]
+        if preferred_placement is None:
+            raise HTTPException(status_code=500, detail="Failed to select preferred placement")
+
+        preferred_backend_id = self._as_uuid(preferred_placement.backend_node_id)
+        allowed_backend_ids = set(placements_by_backend.keys())
+        if not allowed_backend_ids:
+            raise HTTPException(status_code=500, detail="No active placements available")
+        return preferred_backend_id, preferred_placement, allowed_backend_ids
+
+    async def _list_active_placements_for_key(self, *, key_id: UUID) -> list[UserPlacement]:
+        rows = await self.placement_repository.list_by_key_id(
+            key_id=key_id,
+            active_only=True,
+            desired_state=PlacementDesiredState.active.value,
+        )
+        return [row for row in rows if row.backend_node_id is not None]
+
+    async def _resolve_routeset_key(self, *, payload: ConnectRouteSetIn):
         if payload.key_id is not None:
             key = await self.key_repository.get_by_id(payload.key_id)
             if not key:
@@ -119,16 +241,11 @@ class ConnectService:
                 raise HTTPException(status_code=409, detail="Key does not belong to user")
             if key.is_revoked:
                 raise HTTPException(status_code=409, detail="Key is revoked")
-            if key.transport != transport.value:
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"Key transport '{key.transport}' does not match profile transport '{transport.value}'",
-                )
             return key
 
         key = await self.key_repository.get_latest_active_for_user(
             user_id=payload.user_id,
-            transport=transport.value,
+            transport=None,
         )
         if key:
             return key
@@ -140,7 +257,7 @@ class ConnectService:
         key_internal = VpnKeyInternalCreate(
             user_id=payload.user_id,
             protocol=VpnProtocol.vless,
-            transport=transport,
+            transport=VpnTransport.reality,
             client_id=str(uuid4()),
             valid_until=valid_until,
             traffic_limit_mb=payload.traffic_limit_mb,
@@ -148,165 +265,224 @@ class ConnectService:
         )
         return await self.key_repository.create(key_internal.model_dump())
 
-    async def _select_backend(self, *, preferred_region: str | None) -> VpnNode:
+    async def _select_backend(
+            self,
+            *,
+            preferred_region: str | None,
+            key_transport: str | None = None,
+    ) -> VpnNode:
         candidates = await self.routing_service.select_nodes(
             preferred_region=preferred_region,
             role=NodeRole.backend.value,
         )
-        if not candidates:
-            raise HTTPException(status_code=503, detail="No eligible backend node available")
-        return candidates[0]
-
-    async def _resolve_existing_route(
-            self,
-            *,
-            existing_placement,
-            preferred_region: str | None,
-    ) -> tuple[VpnNode, VpnNode] | None:
-        backend_node = await self.node_repository.get_by_id(existing_placement.backend_node_id)
-        if backend_node is None or not self._is_backend_eligible(backend_node):
-            return None
-
-        if existing_placement.gateway_node_id is not None:
-            gateway_node = await self.node_repository.get_by_id(existing_placement.gateway_node_id)
-            if gateway_node is None or not self._is_gateway_eligible(gateway_node, strict_role=True):
-                return None
-        else:
-            gateway_node = await self._select_gateway(
-                gateway_node_id=None,
-                preferred_region=preferred_region,
-                fallback=backend_node,
-            )
-
-        return backend_node, gateway_node
-
-    async def _select_gateway(
-            self,
-            *,
-            gateway_node_id: UUID | None,
-            preferred_region: str | None,
-            fallback: VpnNode,
-    ) -> VpnNode:
-        if gateway_node_id is not None:
-            gateway = await self.node_repository.get_by_id(gateway_node_id)
-            if not gateway:
-                raise HTTPException(status_code=404, detail="Gateway node not found")
-            if not self._is_gateway_eligible(gateway, strict_role=True):
-                raise HTTPException(status_code=409, detail="Gateway node is not eligible")
-            return gateway
-
-        if self._is_gateway_eligible(fallback, strict_role=True):
-            return fallback
-
-        public_nodes = await self.node_repository.list_public(
-            preferred_region=preferred_region,
-            role=NodeRole.gateway.value,
-        )
-        for node in public_nodes:
-            if self._is_gateway_eligible(node, strict_role=True):
-                return node
-
-        # Transitional fallback for single-node/legacy setups before roles are configured.
-        if self._is_gateway_eligible(fallback, strict_role=False):
-            return fallback
-
-        raise HTTPException(status_code=503, detail="No eligible gateway node available")
-
-    async def _ensure_backend_peers_for_all_gateways(
-            self,
-            *,
-            backend_node: VpnNode,
-            selected_gateway: VpnNode,
-            preferred_region: str | None,
-    ) -> None:
-        gateways_by_id: dict[UUID, VpnNode] = {}
-        gateways_by_id[selected_gateway.id] = selected_gateway
-
-        regional_gateways = await self.node_repository.list_public(
-            preferred_region=preferred_region,
-            role=NodeRole.gateway.value,
-        )
-        if not isinstance(regional_gateways, list):
-            regional_gateways = []
-
-        if not regional_gateways and preferred_region:
-            regional_gateways = await self.node_repository.list_public(
-                role=NodeRole.gateway.value,
-            )
-            if not isinstance(regional_gateways, list):
-                regional_gateways = []
-
-        for gateway in regional_gateways:
-            if self._is_gateway_eligible(gateway, strict_role=True):
-                gateways_by_id[gateway.id] = gateway
-
-        for gateway in gateways_by_id.values():
-            await self.backend_peer_repository.ensure_active_pair(
-                backend_node_id=backend_node.id,
-                gateway_node_id=gateway.id,
-            )
+        for candidate in candidates:
+            if self._node_has_required_public_host(
+                node=candidate,
+                key_transport=key_transport,
+            ):
+                return candidate
+        raise HTTPException(status_code=503, detail="No eligible backend node available")
 
     def _is_backend_eligible(self, node: VpnNode) -> bool:
-        if not getattr(node, "is_active", True):
+        if not node.is_active:
             return False
-        if not getattr(node, "is_enabled", True):
+        if not node.is_enabled:
             return False
-        if getattr(node, "is_draining", False):
+        if node.is_draining:
             return False
-        role = getattr(node, "role", None)
-        if not isinstance(role, str):
-            role = None
-        if role != NodeRole.backend.value:
+        if node.role != NodeRole.backend.value:
             return False
-        return bool((getattr(node, "internal_wg_ip", "") or "").strip())
+        return bool((node.internal_wg_ip or "").strip())
 
-    def _is_gateway_eligible(self, node: VpnNode, *, strict_role: bool) -> bool:
-        if not getattr(node, "is_active", True):
-            return False
-        if not getattr(node, "is_enabled", True):
-            return False
-        if getattr(node, "is_draining", False):
-            return False
-        role = getattr(node, "role", None)
-        if not isinstance(role, str):
-            role = None
-        if strict_role and role != NodeRole.gateway.value:
-            return False
-        return bool((getattr(node, "public_domain", "") or "").strip())
+    def _as_uuid(self, value: Any) -> UUID:
+        if isinstance(value, UUID):
+            return value
+        if isinstance(value, str):
+            return UUID(value)
+        raise TypeError(f"Expected UUID-compatible value, got {type(value)!r}")
 
-    def _build_connect_out(
+    def _build_route_uri(
             self,
             *,
-            key,
-            placement,
-            backend_node: VpnNode,
-            gateway_node: VpnNode,
-            profile: WsTlsProfile | RealityTcpProfile,
-    ) -> ConnectOut:
-        public_domain = self.settings.edge.public_domain or gateway_node.public_domain
-        node_public = NodePublic(
-            domain=public_domain,
-            port=443,
-            remark=gateway_node.name,
-            region=gateway_node.region,
+            client_id: str,
+            node: VpnNode,
+            transport_profile,
+    ) -> str | None:
+        domain = self._resolve_route_host_for_transport(
+            node=node,
+            transport_profile=transport_profile,
         )
-        uri = VlessUriBuilder.build(
-            client_id=key.client_id,
-            node=node_public,
-            profile=profile,
-        )
-        return ConnectOut(
-            key_id=key.id,
-            client_id=key.client_id,
-            gateway_node_id=gateway_node.id,
-            backend_node_id=backend_node.id,
-            placement_id=placement.id,
-            placement_op_version=placement.op_version,
-            uri=uri,
+        if not domain:
+            return None
+        node_display_name = format_node_display_name(
+            node_name=str(node.name),
+            region=node.region,
         )
 
+        network = (transport_profile.network or "").strip().lower()
+        security = (transport_profile.security or "").strip().lower()
+        if security == "tls" and network == "grpc":
+            service_name = (transport_profile.grpc_service_name or "").strip() or "vl"
+            fingerprint = (transport_profile.tls_fingerprint or "").strip() or "chrome"
+            try:
+                return VlessUri(
+                    client_id=client_id,
+                    host=domain,
+                    port=transport_profile.port,
+                    query={
+                        "type": "grpc",
+                        "security": "tls",
+                        "encryption": "none",
+                        "serviceName": service_name,
+                        "sni": domain,
+                        "fp": fingerprint,
+                    },
+                    remark=node_display_name,
+                ).render()
+            except Exception:
+                return None
+
+        profile = self._resolve_profile_from_transport(
+            transport_profile=transport_profile,
+            fallback_domain=domain,
+            region=node.region,
+        )
+        if profile is None:
+            return None
+
+        node_public = NodePublic(
+            domain=domain,
+            port=transport_profile.port,
+            remark=node_display_name,
+            region=node.region,
+        )
+        try:
+            return VlessUriBuilder.build(
+                client_id=client_id,
+                node=node_public,
+                profile=profile,
+            )
+        except Exception:
+            return None
+
+    def _resolve_profile_from_transport(
+            self,
+            *,
+            transport_profile,
+            fallback_domain: str,
+            region: str | None,
+    ) -> WsTlsProfile | RealityTcpProfile | None:
+        network = (transport_profile.network or "").strip().lower()
+        security = (transport_profile.security or "").strip().lower()
+
+        metadata = ProfileMetadata(
+            display_name=transport_profile.name or "route-profile",
+            region_support=[region] if region else [],
+        )
+
+        if security == "reality" and network == "tcp":
+            sni = (transport_profile.reality_server_name or "").strip()
+            public_key = (transport_profile.reality_public_key or "").strip()
+            short_id = (transport_profile.reality_short_id or "").strip()
+            fingerprint = (transport_profile.tls_fingerprint or "").strip() or "chrome"
+            if not sni or not public_key or not short_id:
+                return None
+            return RealityTcpProfile(
+                metadata=metadata,
+                client=RealityTcpClientConfig(
+                    sni=sni,
+                    flow=transport_profile.flow,
+                    fingerprint=fingerprint,
+                    public_key=public_key,
+                    short_id=short_id,
+                ),
+            )
+
+        if security == "tls" and network == "ws":
+            return WsTlsProfile(
+                metadata=metadata,
+                client=WsTlsClientConfig(
+                    path="/api/v1/stream",
+                    host=fallback_domain,
+                    sni=fallback_domain,
+                ),
+            )
+
+        return None
+
+    def _resolve_ws_public_host(self, node: VpnNode) -> str:
+        edge_domain = self.settings.edge.public_domain
+        if edge_domain:
+            return edge_domain
+        return node.public_domain
+
+    @staticmethod
+    def _resolve_reality_host(node: VpnNode) -> str:
+        return node.reality_ip or ""
+
+    def _resolve_route_host_for_transport(self, *, node: VpnNode, transport_profile) -> str:
+        network = transport_profile.network
+        security = transport_profile.security
+        if security == "reality" and network == "tcp":
+            return self._resolve_reality_host(node)
+        return self._resolve_ws_public_host(node)
+
+    def _node_has_required_public_host(self, *, node: VpnNode, key_transport: str | None) -> bool:
+        if key_transport == VpnTransport.reality.value:
+            return bool(self._resolve_reality_host(node))
+        if key_transport == VpnTransport.tcp.value:
+            return False
+        if key_transport == VpnTransport.ws.value:
+            return bool(self._resolve_ws_public_host(node))
+        return bool(self._resolve_reality_host(node) or self._resolve_ws_public_host(node))
+
+    @staticmethod
+    def _normalize_key_transport(raw_transport: object) -> str | None:
+        if not isinstance(raw_transport, str):
+            return None
+        normalized = raw_transport.strip().lower()
+        return normalized or None
+
+    @staticmethod
+    def _is_route_compatible_with_key_transport(
+            *,
+            key_transport: str | None,
+            transport_security: str,
+            transport_network: str,
+    ) -> bool:
+        if key_transport == VpnTransport.reality.value:
+            return transport_security == "reality" and transport_network == "tcp"
+        if key_transport == VpnTransport.tcp.value:
+            return False
+        if key_transport == VpnTransport.ws.value:
+            return transport_security == "tls" and transport_network == "ws"
+        if key_transport == VpnTransport.xhttp.value:
+            return transport_security == "tls" and transport_network == "xhttp"
+        return True
+
+    async def _cache_allowed_telemetry_routes(
+            self,
+            *,
+            key_id: UUID,
+            route_ids: list[UUID],
+            ttl_sec: int,
+    ) -> None:
+        if not route_ids:
+            return
+        cache_key = connect_telemetry_allowed_routes_key(key_id=key_id)
+        try:
+            await self.redis.client.delete(cache_key)
+            await self.redis.client.sadd(cache_key, *[str(route_id) for route_id in route_ids])
+            await self.redis.client.expire(cache_key, max(30, int(ttl_sec)))
+        except Exception:
+            logger_connect.exception(
+                "connect_routeset_cache_allowed_routes_failed",
+                key_id=str(key_id),
+                routes=len(route_ids),
+            )
 
 def get_connect_service(
     session: AsyncSession = Depends(AsyncDatabase.get_session),
+    redis: RedisClient = Depends(get_redis_client),
 ) -> ConnectService:
-    return ConnectService(session)
+    return ConnectService(session, redis)

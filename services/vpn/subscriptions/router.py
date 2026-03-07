@@ -5,15 +5,19 @@ from fastapi import (
     Depends,
     HTTPException,
     Request,
+    Response,
     status,
 )
 from fastapi.responses import PlainTextResponse
 from services.auth.dependencies import admin_auth
 
+from services.vpn.subscriptions.adapter import SubscriptionPublicAdapter
+from services.vpn.subscriptions.dependencies import get_subscription_public_adapter
 from services.vpn.subscriptions.schemas import (
     SubscriptionCreateIn,
     SubscriptionCreatedOut,
     SubscriptionDeviceOut,
+    SubscriptionOut,
     SubscriptionRotateOut,
 )
 from services.vpn.subscriptions.exceptions import (
@@ -28,7 +32,6 @@ from services.vpn.subscriptions.exceptions import (
 )
 from services.vpn.subscriptions.service import get_subscription_service, SubscriptionService
 from shared.monitoring.metrics import SUBSCRIPTION_REQUEST_TOTAL
-from services.config import get_settings
 
 router = APIRouter(prefix="/subscriptions", tags=["Subscriptions"])
 
@@ -43,6 +46,7 @@ router = APIRouter(prefix="/subscriptions", tags=["Subscriptions"])
             "Public endpoint for VPN clients.\n\n"
             "Returns a plain-text list of VLESS URIs (newline separated).\n"
             "Supports ETag / If-None-Match for efficient polling.\n\n"
+            "**HWID:** required via configured header.\n"
             "**Authentication:** none (token is the secret).\n"
             "**Rate limit:** enforced per subscription."
     ),
@@ -60,10 +64,10 @@ async def get_subscription_config(
         token: str,
         request: Request,
         service: SubscriptionService = Depends(get_subscription_service),
+        adapter: SubscriptionPublicAdapter = Depends(get_subscription_public_adapter),
 ):
     try:
-        settings = get_settings()
-        hwid = request.headers.get(settings.subscriptions.hwid_header)
+        hwid = request.headers.get(adapter.hwid_header)
         user_agent = request.headers.get("user-agent")
 
         payload, etag, not_modified = await service.build_payload(
@@ -72,55 +76,33 @@ async def get_subscription_config(
             user_agent=user_agent,
             if_none_match=request.headers.get("if-none-match"),
         )
-        if not_modified:
-            SUBSCRIPTION_REQUEST_TOTAL.labels(result="not_modified").inc()
-            return PlainTextResponse(status_code=status.HTTP_304_NOT_MODIFIED)
+        public_response = adapter.build_success_response(
+            etag=etag,
+            payload=payload,
+            not_modified=not_modified,
+        )
+        SUBSCRIPTION_REQUEST_TOTAL.labels(result=public_response.metric_result).inc()
+        if public_response.payload is None:
+            return Response(status_code=public_response.status_code, headers=public_response.headers)
 
-        SUBSCRIPTION_REQUEST_TOTAL.labels(result="success").inc()
         return PlainTextResponse(
-            content=payload, headers={"ETag": etag}
+            content=public_response.payload,
+            status_code=public_response.status_code,
+            headers=public_response.headers,
         )
-
-    except SubscriptionNotFound:
-        SUBSCRIPTION_REQUEST_TOTAL.labels(result="not_found").inc()
-        raise HTTPException(status_code=404, detail="Subscription not found")
-
-    except SubscriptionHwidRequired:
-        SUBSCRIPTION_REQUEST_TOTAL.labels(result="hwid_required").inc()
-        raise HTTPException(status_code=404, detail="Subscription not found")
-
-    except SubscriptionDeviceLimitReached:
-        SUBSCRIPTION_REQUEST_TOTAL.labels(result="device_limit").inc()
-        raise HTTPException(status_code=403, detail="Device limit reached")
-
-    except SubscriptionInactive:
-        SUBSCRIPTION_REQUEST_TOTAL.labels(result="inactive").inc()
-        raise HTTPException(status_code=403, detail="Subscription is not active")
-
-    except SubscriptionExpired:
-        SUBSCRIPTION_REQUEST_TOTAL.labels(result="expired").inc()
-        raise HTTPException(status_code=403, detail="Subscription is not active")
-
-    except SubscriptionTokenExpired:
-        SUBSCRIPTION_REQUEST_TOTAL.labels(result="token_expired").inc()
-        raise HTTPException(status_code=403, detail="Subscription is not active")
-
-    except SubscriptionRateLimited:
-        SUBSCRIPTION_REQUEST_TOTAL.labels(result="rate_limited").inc()
-        raise HTTPException(status_code=429, detail="Rate limit exceeded")
-
-    except SubscriptionBuild as exc:
-        SUBSCRIPTION_REQUEST_TOTAL.labels(result="build_error").inc()
-        msg = str(exc)
-        if msg.startswith("No available "):
-            raise HTTPException(
-                status_code=503,
-                detail=f"Failed to build subscription: {exc}",
-            )
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to build subscription: {exc}"
-        )
+    except (
+            SubscriptionNotFound,
+            SubscriptionHwidRequired,
+            SubscriptionDeviceLimitReached,
+            SubscriptionInactive,
+            SubscriptionExpired,
+            SubscriptionTokenExpired,
+            SubscriptionRateLimited,
+            SubscriptionBuild,
+    ) as exc:
+        mapped = adapter.map_error(exc)
+        SUBSCRIPTION_REQUEST_TOTAL.labels(result=mapped.metric_result).inc()
+        raise HTTPException(status_code=mapped.status_code, detail=mapped.detail)
 
 
 #================== ADMINS ==================
@@ -130,7 +112,7 @@ async def get_subscription_config(
     response_model=SubscriptionCreatedOut,
     status_code=status.HTTP_201_CREATED,
     summary="Create subscription",
-    description="Create a new VPN subscription and generate an access token.",
+    description="Create VPN subscription with HWID and generate an access token.",
     dependencies=[Depends(admin_auth)],
     responses={
         404: {"description": "User not found"},
@@ -141,6 +123,38 @@ async def create_subscription(
         service: SubscriptionService = Depends(get_subscription_service),
 ):
     return await service.create(data)
+
+
+@router.get(
+    "/by-user/{user_id}",
+    response_model=list[SubscriptionOut],
+    status_code=status.HTTP_200_OK,
+    summary="List subscriptions by user",
+    dependencies=[Depends(admin_auth)],
+)
+async def list_subscriptions_by_user(
+        user_id: UUID,
+        active_only: bool = False,
+        service: SubscriptionService = Depends(get_subscription_service),
+):
+    return await service.list_subscriptions_by_user(user_id=user_id, active_only=active_only)
+
+
+@router.get(
+    "/{subscription_id}",
+    response_model=SubscriptionOut,
+    status_code=status.HTTP_200_OK,
+    summary="Get subscription by id",
+    dependencies=[Depends(admin_auth)],
+)
+async def get_subscription_by_id(
+        subscription_id: UUID,
+        service: SubscriptionService = Depends(get_subscription_service),
+):
+    try:
+        return await service.get_subscription(subscription_id)
+    except SubscriptionNotFound:
+        raise HTTPException(status_code=404, detail="Subscription not found")
 
 
 @router.post(
@@ -195,21 +209,6 @@ async def deactivate_subscription(
         return {"status": "inactive", "revoked_keys": revoked_keys}
     except SubscriptionNotFound:
         raise HTTPException(status_code=404, detail="Subscription not found")
-
-
-@router.post(
-    "/{subscription_id}/bind-root-key/{vpn_key_id}",
-    status_code=status.HTTP_200_OK,
-    summary="Bind subscription to an existing key (legacy mode)",
-    dependencies=[Depends(admin_auth)],
-)
-async def bind_subscription_root_key(
-        subscription_id: UUID,
-        vpn_key_id: UUID,
-        service: SubscriptionService = Depends(get_subscription_service),
-):
-    await service.bind_root_key(subscription_id, vpn_key_id)
-    return {"status": "bound_root_key"}
 
 
 @router.get(
