@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import Depends
+from sqlalchemy import or_
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,6 +36,30 @@ class VpnKeyRepository(BaseRepository[VpnKey]):
         stmt = stmt.order_by(self.model.valid_until.desc(), self.model.created_at.desc()).limit(1)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def list_by_client_ids(
+            self,
+            *,
+            client_ids: list[str],
+            active_only: bool = True,
+    ) -> list[VpnKey]:
+        normalized = [item.strip() for item in client_ids if isinstance(item, str) and item.strip()]
+        if not normalized:
+            return []
+
+        stmt = select(self.model).where(self.model.client_id.in_(normalized))
+        if active_only:
+            now = datetime.now(timezone.utc)
+            stmt = stmt.where(
+                self.model.is_active.is_(True),
+                self.model.valid_until > now,
+                or_(
+                    self.model.is_revoked.is_(False),
+                    self.model.is_revoked.is_(None),
+                ),
+            )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
 
 
 async def get_vpn_key_repository(

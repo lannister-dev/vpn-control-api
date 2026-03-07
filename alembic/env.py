@@ -40,6 +40,7 @@ from services.probe.model import ProbeSignal
 from services.artifacts.models import ProfileArtifact
 from services.vpn.subscriptions.model import Subscription
 from services.routes.model import Route, TransportProfile
+from services.traffic.model import TrafficUsage
 
 target_metadata = Base.metadata
 

@@ -25,6 +25,17 @@ class RedisConfig:
 
 
 @dataclass
+class NatsConfig:
+    enabled: bool = False
+    server: str = "nats://localhost:4222"
+    name: str = "vpn-control-api"
+    users_traffic_subject: str = "users.traffic"
+    users_traffic_queue: str = "vpn-control-api-users-traffic"
+    reconnect_time_wait: int = 2
+    max_reconnect_attempts: int = -1
+
+
+@dataclass
 class DocsConfig:
     username: str
     password_hash: str
@@ -118,9 +129,17 @@ class EdgeConfig:
 
 
 @dataclass
+class TrafficConfig:
+    cleanup_enabled: bool = False
+    cleanup_tick_sec: int = 3600
+    history_retention_days: int = 14
+
+
+@dataclass
 class Settings:
     database: DbConfig
     redis: RedisConfig
+    nats: NatsConfig
     admin: AdminConfig
     docs: DocsConfig
     profiles_vpn: ProfilesVpnConfig
@@ -130,6 +149,7 @@ class Settings:
     probe: ProbeConfig
     routes: RoutesConfig
     edge: EdgeConfig
+    traffic: TrafficConfig
 
 
 @lru_cache
@@ -154,6 +174,15 @@ def get_settings() -> Settings:
         broker_url=env.str("REDIS_BROKER_URL"),
         assignments_cache_ttl=env.int("REDIS_ASSIGNMENTS_CACHE_TTL", default=10),
         assignment_lock_ttl=env.int("REDIS_ASSIGNMENT_LOCK_TTL", default=30)
+    )
+    nats = NatsConfig(
+        enabled=env.bool("NATS_ENABLED", default=False),
+        server=env.str("NATS_SERVER", default="nats://localhost:4222"),
+        name=env.str("NATS_NAME", default="vpn-control-api"),
+        users_traffic_subject=env.str("NATS_USERS_TRAFFIC_SUBJECT", default="users.traffic"),
+        users_traffic_queue=env.str("NATS_USERS_TRAFFIC_QUEUE", default="vpn-control-api-users-traffic"),
+        reconnect_time_wait=env.int("NATS_RECONNECT_TIME_WAIT", default=2),
+        max_reconnect_attempts=env.int("NATS_RECONNECT_ATTEMPTS", default=-1),
     )
 
     admin = AdminConfig(
@@ -251,10 +280,16 @@ def get_settings() -> Settings:
     edge = EdgeConfig(
         public_domain=env.str("VPN_PUBLIC_DOMAIN", default=""),
     )
+    traffic = TrafficConfig(
+        cleanup_enabled=env.bool("TRAFFIC_CLEANUP_ENABLED", default=False),
+        cleanup_tick_sec=max(300, env.int("TRAFFIC_CLEANUP_TICK_SEC", default=3600)),
+        history_retention_days=max(1, env.int("TRAFFIC_HISTORY_RETENTION_DAYS", default=14)),
+    )
 
     return Settings(
         database=database,
         redis=redis,
+        nats=nats,
         admin=admin,
         docs=docs,
         profiles_vpn=profiles_vpn,
@@ -264,4 +299,5 @@ def get_settings() -> Settings:
         probe=probe,
         routes=routes,
         edge=edge,
+        traffic=traffic,
     )
