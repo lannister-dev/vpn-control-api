@@ -67,3 +67,15 @@ What it does:
 - Runtime orchestrator gate: `GET /api/readyz` (DB + Redis)
 - Runtime gate endpoint: `GET /api/v1/admin/readiness`
 - Expected baseline before launch: `pytest -q` is green and bootstrap dry-run/apply completed.
+
+## Git Workflow (dev-first)
+
+- Work only in personal branches (`feature/*`, `fix/*`, `chore/*`).
+- Open Pull Request from personal branch to `dev`.
+- CI workflow `Dev PR Checks` runs automatically and must be green.
+- Merge into `dev` only after successful checks.
+
+Recommended GitHub branch protection for `dev`:
+- Require a pull request before merging.
+- Require status checks to pass before merging: `tests`.
+- Restrict who can push to `dev` (disable direct push for contributors).

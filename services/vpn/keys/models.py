@@ -2,7 +2,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import ForeignKey, String, UniqueConstraint, Boolean, text, Index, Integer, DateTime
+from sqlalchemy import BigInteger, ForeignKey, String, UniqueConstraint, Boolean, text, Index, Integer, DateTime
 from sqlalchemy.orm import mapped_column, Mapped, relationship
 
 from shared.database.base_model import Base
@@ -17,6 +17,18 @@ class VpnKey(Base):
     client_id: Mapped[str] = mapped_column(String(length=36), unique=True, nullable=False)
     valid_until: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     traffic_limit_mb: Mapped[int] = mapped_column(nullable=False)
+    used_traffic_bytes: Mapped[int] = mapped_column(
+        BigInteger,
+        nullable=False,
+        default=0,
+        server_default=text("0"),
+    )
+    last_reported_total_bytes: Mapped[int] = mapped_column(
+        BigInteger,
+        nullable=False,
+        default=0,
+        server_default=text("0"),
+    )
     is_revoked: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"), nullable=False)
 
     user: Mapped["User"] = relationship(back_populates="keys")
