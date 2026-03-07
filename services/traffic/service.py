@@ -3,14 +3,24 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timedelta, timezone
+from uuid import UUID
 
+from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.placements.repository import UserPlacementRepository
 from services.traffic.repository import TrafficUsageRepository
 from services.placements.schemas import PlacementDesiredState
-from services.traffic.schemas import TrafficUsageCreate, UserTrafficIn
+from services.traffic.schemas import (
+    TrafficHistoryItemOut,
+    TrafficHistoryListOut,
+    TrafficKeySummaryListOut,
+    TrafficKeySummaryOut,
+    TrafficUsageCreate,
+    UserTrafficIn,
+)
 from services.vpn.keys.repository import VpnKeyRepository
+from shared.database.session import AsyncDatabase
 from shared.monitoring.metrics import VPN_KEY_OPERATION_TOTAL
 from services.traffic.constants import _MIGRATION_REASON, _MIB
 from shared.utils.logger import StructuredLogger
@@ -134,3 +144,64 @@ class UserTrafficService:
     async def cleanup_history(self, *, retention_days: int) -> int:
         cutoff = datetime.now(timezone.utc) - timedelta(days=max(1, int(retention_days)))
         return await self.traffic_usage_repository.delete_older_than(cutoff=cutoff)
+
+
+class TrafficAdminService:
+    """Read-only service for admin traffic inspection endpoints."""
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+        self.key_repository = VpnKeyRepository(session)
+        self.traffic_usage_repository = TrafficUsageRepository(session)
+
+    async def list_keys_with_traffic(
+        self,
+        *,
+        user_id: UUID | None = None,
+        is_revoked: bool | None = None,
+        search: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> TrafficKeySummaryListOut:
+        keys, total = await self.key_repository.list_with_traffic_summary(
+            user_id=user_id,
+            is_revoked=is_revoked,
+            search=search,
+            limit=limit,
+            offset=offset,
+        )
+        return TrafficKeySummaryListOut(
+            items=[TrafficKeySummaryOut.model_validate(k) for k in keys],
+            total=total,
+            limit=limit,
+            offset=offset,
+        )
+
+    async def get_key_traffic_history(
+        self,
+        *,
+        key_id: UUID,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> TrafficHistoryListOut:
+        rows, total = await self.traffic_usage_repository.list_by_key_id(
+            key_id=key_id,
+            date_from=date_from,
+            date_to=date_to,
+            limit=limit,
+            offset=offset,
+        )
+        return TrafficHistoryListOut(
+            items=[TrafficHistoryItemOut.model_validate(r) for r in rows],
+            total=total,
+            limit=limit,
+            offset=offset,
+        )
+
+
+def get_traffic_admin_service(
+    session: AsyncSession = Depends(AsyncDatabase.get_session),
+) -> TrafficAdminService:
+    return TrafficAdminService(session)

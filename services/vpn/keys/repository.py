@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import Depends
-from sqlalchemy import or_
+from sqlalchemy import or_, String
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -60,6 +60,48 @@ class VpnKeyRepository(BaseRepository[VpnKey]):
             )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+
+    async def list_with_traffic_summary(
+            self,
+            *,
+            user_id: UUID | None = None,
+            is_revoked: bool | None = None,
+            search: str | None = None,
+            limit: int = 50,
+            offset: int = 0,
+    ) -> tuple[list[VpnKey], int]:
+        from sqlalchemy import func
+
+        base = select(self.model)
+        count_base = select(func.count(self.model.id))
+
+        conditions = []
+        if user_id is not None:
+            conditions.append(self.model.user_id == user_id)
+        if is_revoked is not None:
+            conditions.append(self.model.is_revoked.is_(is_revoked))
+        if search:
+            term = f"%{search}%"
+            conditions.append(
+                or_(
+                    self.model.client_id.ilike(term),
+                    self.model.id.cast(String).ilike(term),
+                    self.model.user_id.cast(String).ilike(term),
+                )
+            )
+
+        for cond in conditions:
+            base = base.where(cond)
+            count_base = count_base.where(cond)
+
+        total_result = await self.session.execute(count_base)
+        total = total_result.scalar() or 0
+
+        stmt = base.order_by(self.model.created_at.desc()).limit(limit).offset(offset)
+        result = await self.session.execute(stmt)
+        keys = list(result.scalars().all())
+        return keys, total
 
 
 async def get_vpn_key_repository(
