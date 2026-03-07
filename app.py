@@ -29,6 +29,7 @@ from services.routes.router import router as routes_router
 from services.routes.reconciler import RouteWarmupReconciler
 from services.traffic.consumer import UserTrafficNatsConsumer
 from services.traffic.reconciler import TrafficHistoryCleanupReconciler
+from services.traffic.router import router as traffic_admin_router
 from services.vpn.keys.router import router as vpn_router
 from services.vpn.subscriptions.router import router as subscriptions_router
 
@@ -88,6 +89,7 @@ api_router.include_router(node_router)
 api_router.include_router(placements_router)
 api_router.include_router(probe_router)
 api_router.include_router(routes_router)
+api_router.include_router(traffic_admin_router)
 api_router.include_router(vpn_router)
 api_router.include_router(subscriptions_router)
 

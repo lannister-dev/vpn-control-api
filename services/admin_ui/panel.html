@@ -153,6 +153,7 @@
       gap: 10px;
       position: relative;
       transition: all 140ms ease;
+      white-space: nowrap;
     }
     .nav button[disabled] {
       opacity: 0.52;
@@ -204,6 +205,8 @@
       padding: 20px;
       animation: fade-up 260ms ease;
       position: relative;
+      min-width: 0;
+      overflow: hidden;
     }
     .hero {
       border: 1px solid var(--line-strong);
@@ -221,7 +224,7 @@
       font-size: 12px;
       letter-spacing: 0.03em;
     }
-    .kpis { margin-top: 14px; display: grid; grid-template-columns: repeat(6, minmax(110px, 1fr)); gap: 10px; }
+    .kpis { margin-top: 14px; display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
     .kpi {
       border: 1px solid var(--line);
       border-radius: 14px;
@@ -235,7 +238,7 @@
       border-color: rgba(45, 212, 191, 0.35);
       box-shadow: var(--teal-ring);
     }
-    .kpi-name { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em; }
+    .kpi-name { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em; white-space: nowrap; }
     .kpi-value { margin-top: 5px; font-size: 22px; font-family: "JetBrains Mono", monospace; }
     .panel {
       display: none;
@@ -244,6 +247,8 @@
       background: var(--panel-glass);
       backdrop-filter: blur(12px);
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      min-width: 0;
+      overflow: hidden;
     }
     .panel.active { display: block; }
     .panel-head {
@@ -256,7 +261,7 @@
       gap: 8px;
     }
     .panel-title { font-size: 14px; font-weight: 700; }
-    .panel-body { padding: 12px 14px; }
+    .panel-body { padding: 12px 14px; overflow-x: auto; }
     .two-col { display: grid; grid-template-columns: 1.2fr 1fr; gap: 12px; }
     .card {
       border: 1px solid var(--line);
@@ -273,18 +278,26 @@
     }
     .filters { display: grid; grid-template-columns: 1.6fr repeat(3, minmax(110px, 1fr)) auto; gap: 10px; margin-bottom: 10px; }
     .stack { display: grid; gap: 8px; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th, td { border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding: 9px 7px; text-align: left; vertical-align: middle; }
-    th { color: rgba(159, 179, 207, 0.84); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: auto; }
+    th, td {
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 9px 7px;
+      text-align: left;
+      vertical-align: middle;
+      word-break: normal;
+      overflow-wrap: normal;
+    }
+    th { color: rgba(159, 179, 207, 0.84); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; }
     tbody tr:hover td { background: rgba(45, 212, 191, 0.06); }
-    .badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 2px 8px; font-size: 11px; border: 1px solid transparent; }
+    .badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 2px 8px; font-size: 11px; border: 1px solid transparent; white-space: nowrap; }
     .ok { color: #acfbe0; border-color: rgba(94, 233, 181, 0.44); background: rgba(94, 233, 181, 0.14); }
     .warn { color: #ffdfa0; border-color: rgba(245, 198, 107, 0.41); background: rgba(245, 198, 107, 0.14); }
     .bad { color: #ffbbb5; border-color: rgba(255, 127, 133, 0.43); background: rgba(255, 127, 133, 0.14); }
     .info { color: #b7f7ff; border-color: rgba(103, 217, 246, 0.43); background: rgba(103, 217, 246, 0.14); }
     .flag { font-size: 15px; margin-right: 6px; vertical-align: middle; }
     .geo { color: #cfe3ff; font-size: 12px; font-weight: 600; }
-    .actions { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+    .actions { display: inline-flex; gap: 6px; flex-wrap: wrap; max-width: 100%; }
+    .actions .btn-mini { flex: 0 0 auto; }
     .btn-mini {
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -294,6 +307,16 @@
       font-size: 11px;
       cursor: pointer;
       transition: all 130ms ease;
+      white-space: nowrap;
+    }
+    #tab-traffic .panel-body > table { min-width: 0; }
+    #traffic-history-section table { min-width: 0; }
+    #traffic-head th,
+    #traffic-body td,
+    #traffic-history-body td {
+      word-break: normal;
+      overflow-wrap: break-word;
+      white-space: normal;
     }
     .btn-mini:hover {
       border-color: rgba(45, 212, 191, 0.44);
@@ -442,6 +465,12 @@
     th.sortable { cursor: pointer; user-select: none; transition: color 120ms ease; }
     th.sortable:hover { color: var(--info); }
 
+    /* Traffic near-limit pulse */
+    tr.traffic-alert td:first-child::before {
+      content: "\26A0";
+      margin-right: 4px;
+    }
+
     /* Ops card colored sections */
     .ops-card { border-left: 3px solid transparent; }
     .ops-info { border-left-color: var(--info); }
@@ -456,6 +485,8 @@
       .kpis { grid-template-columns: repeat(3, minmax(110px, 1fr)); }
       .filters { grid-template-columns: 1fr 1fr 1fr; }
       .two-col { grid-template-columns: 1fr; }
+      .panel-head { flex-direction: column; align-items: flex-start; }
+      .panel-head .actions { width: 100%; }
     }
     @media (max-width: 980px) {
       .layout { grid-template-columns: 1fr; min-height: auto; }
@@ -467,6 +498,8 @@
       .shell { padding: 10px; }
       .content { padding: 12px; }
       .hero-title { font-size: 24px; }
+      .panel-head .actions { flex-direction: column; }
+      .panel-head .actions .input, .panel-head .actions .select { max-width: 100% !important; }
     }
   </style>
 </head>
@@ -496,6 +529,7 @@
           <button data-tab="routes"><span class="nav-icon">R</span><span>Routes</span></button>
           <button data-tab="placements"><span class="nav-icon">P</span><span>Placements</span></button>
           <button data-tab="subscriptions"><span class="nav-icon">S</span><span>Subscriptions</span></button>
+          <button data-tab="traffic"><span class="nav-icon">T</span><span>Traffic</span></button>
           <button disabled><span class="nav-icon">U</span><span>Users</span></button>
           <button disabled><span class="nav-icon">A</span><span>API Tokens</span></button>
         </section>
@@ -535,6 +569,9 @@
           <div class="kpi"><div class="kpi-name">Плейсменты</div><div id="kpi-placements" class="kpi-value">-</div></div>
           <div class="kpi"><div class="kpi-name">Маршруты</div><div id="kpi-routes" class="kpi-value">-</div></div>
           <div class="kpi"><div class="kpi-name">Сбои probe</div><div id="kpi-probe-fail" class="kpi-value">-</div></div>
+          <div class="kpi"><div class="kpi-name">Ключей (трафик)</div><div id="kpi-traffic-keys" class="kpi-value">-</div></div>
+          <div class="kpi"><div class="kpi-name">Отозвано</div><div id="kpi-traffic-revoked" class="kpi-value">-</div></div>
+          <div class="kpi"><div class="kpi-name">Суммарный трафик</div><div id="kpi-traffic-total" class="kpi-value">-</div></div>
         </div>
       </header>
 
@@ -668,6 +705,68 @@
         </div>
       </section>
 
+      <section id="tab-traffic" class="panel">
+        <div class="panel-head">
+          <div class="panel-title">Трафик</div>
+          <div class="actions">
+            <input id="traffic-search" class="input mono" placeholder="UUID ключа, client_id" style="max-width:220px" />
+            <input id="traffic-user-id" class="input mono" placeholder="UUID пользователя" style="max-width:220px" />
+            <select id="traffic-revoked" class="select" style="max-width:150px">
+              <option value="">Все ключи</option>
+              <option value="false">Активные</option>
+              <option value="true">Отозванные</option>
+            </select>
+            <button id="traffic-reload" class="btn btn-primary">Загрузить</button>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div id="traffic-meta" class="card muted" style="margin-bottom:10px">Нажмите «Загрузить» для получения данных о трафике.</div>
+          <div style="overflow-x:auto">
+            <table>
+              <thead id="traffic-head"><tr>
+                <th>Ключ / client_id</th>
+                <th>Пользователь</th>
+                <th>Протокол</th>
+                <th>Использовано</th>
+                <th>Лимит</th>
+                <th>Остаток</th>
+                <th>Использование</th>
+                <th>Статус</th>
+                <th>Истекает</th>
+                <th>Действия</th>
+              </tr></thead>
+              <tbody id="traffic-body"></tbody>
+            </table>
+          </div>
+          <div id="traffic-pagination" class="actions" style="margin-top:10px;justify-content:center"></div>
+        </div>
+        <div id="traffic-history-section" style="display:none">
+          <div class="panel-head" style="border-top:1px solid var(--line)">
+            <div class="panel-title">История трафика: <span id="traffic-history-key-label" class="mono"></span></div>
+            <div class="actions">
+              <input id="traffic-history-from" class="input" type="date" title="Дата от" style="max-width:150px" />
+              <input id="traffic-history-to" class="input" type="date" title="Дата до" style="max-width:150px" />
+              <button id="traffic-history-reload" class="btn btn-ghost">Обновить</button>
+              <button id="traffic-history-close" class="btn btn-ghost">Закрыть</button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div id="traffic-history-key-info" class="card muted" style="margin-bottom:10px"></div>
+            <div id="traffic-chart-container" style="margin-bottom:12px;border:1px solid var(--line);border-radius:12px;background:rgba(15,23,42,0.44);padding:10px;display:none">
+              <div class="muted" style="font-size:11px;margin-bottom:6px">Дельта трафика за период</div>
+              <canvas id="traffic-chart" height="120" style="width:100%;display:block"></canvas>
+            </div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead><tr><th>Дата</th><th>Дельта</th><th>Всего (reported)</th></tr></thead>
+                <tbody id="traffic-history-body"></tbody>
+              </table>
+            </div>
+            <div id="traffic-history-pagination" class="actions" style="margin-top:10px;justify-content:center"></div>
+          </div>
+        </div>
+      </section>
+
       <section id="tab-ops" class="panel">
         <div class="panel-head"><div class="panel-title">Операции</div><div class="muted">Управление миграциями, route health и probe-политиками</div></div>
         <div class="panel-body two-col">
@@ -693,14 +792,14 @@
       const REFRESH_MS = 15000;
       const TOKEN_KEY = "control-plane-admin-token";
       const TABLE_LIMIT = 500;
-      const TAB_LABELS = { overview: "Home", nodes: "Серверы", routes: "Маршруты", placements: "Плейсменты", subscriptions: "Подписки", ops: "Операции" };
+      const TAB_LABELS = { overview: "Home", nodes: "Серверы", routes: "Маршруты", placements: "Плейсменты", subscriptions: "Подписки", traffic: "Трафик", ops: "Операции" };
 
       const $ = (id) => document.getElementById(id);
       const refs = {
         token: $("admin-token"), saveToken: $("save-token"), refreshAll: $("refresh-all"), live: $("live-refresh"), refreshInterval: $("refresh-interval"),
         readyDot: $("ready-dot"), readinessText: $("readiness-text"), lastSync: $("last-sync"), heroStatus: $("hero-status"),
         heroTitle: $("hero-title"), crumbs: $("crumbs"), contentArea: $("content-area"),
-        kpiNodes: $("kpi-nodes"), kpiHealthy: $("kpi-healthy"), kpiDraining: $("kpi-draining"), kpiPlacements: $("kpi-placements"), kpiRoutes: $("kpi-routes"), kpiProbeFail: $("kpi-probe-fail"),
+        kpiNodes: $("kpi-nodes"), kpiHealthy: $("kpi-healthy"), kpiDraining: $("kpi-draining"), kpiPlacements: $("kpi-placements"), kpiRoutes: $("kpi-routes"), kpiProbeFail: $("kpi-probe-fail"), kpiTrafficKeys: $("kpi-traffic-keys"), kpiTrafficRevoked: $("kpi-traffic-revoked"), kpiTrafficTotal: $("kpi-traffic-total"),
         readinessList: $("readiness-list"), routeHealthList: $("route-health-list"), probeFailList: $("probe-fail-list"), nodeAlertList: $("node-alert-list"), selectedNodeCard: $("selected-node-card"), actionLog: $("action-log"),
         nodesHead: $("nodes-head"), nodesBody: $("nodes-body"), routesHead: $("routes-head"), routesBody: $("routes-body"), placementsBody: $("placements-body"), placementsMeta: $("placements-meta"),
         subsBody: $("subs-body"), subDevicesBody: $("sub-devices-body"), subCreateResult: $("sub-create-result"), subManageResult: $("sub-manage-result"),
@@ -711,12 +810,20 @@
         subLoad: $("sub-load"), subRotate: $("sub-rotate"), subActivate: $("sub-activate"), subDeactivate: $("sub-deactivate"), subDevicesLoad: $("sub-devices-load"),
         formMigrate: $("form-migrate"), formProbeAuto: $("form-probe-auto"), formRouteHealth: $("form-route-health"), formProbeManual: $("form-probe-manual"),
         btnWarmup: $("btn-warmup"), btnCleanupProbe: $("btn-cleanup-probe"),
+        trafficSearch: $("traffic-search"), trafficUserId: $("traffic-user-id"), trafficRevoked: $("traffic-revoked"), trafficReload: $("traffic-reload"),
+        trafficHead: $("traffic-head"), trafficBody: $("traffic-body"), trafficMeta: $("traffic-meta"), trafficPagination: $("traffic-pagination"),
+        trafficHistorySection: $("traffic-history-section"), trafficHistoryKeyLabel: $("traffic-history-key-label"),
+        trafficHistoryKeyInfo: $("traffic-history-key-info"),
+        trafficHistoryFrom: $("traffic-history-from"), trafficHistoryTo: $("traffic-history-to"),
+        trafficHistoryReload: $("traffic-history-reload"), trafficHistoryClose: $("traffic-history-close"),
+        trafficHistoryBody: $("traffic-history-body"), trafficHistoryPagination: $("traffic-history-pagination"),
+        trafficChartContainer: $("traffic-chart-container"), trafficChart: $("traffic-chart"),
         toastContainer: $("toast-container"), confirmModal: $("confirm-modal"),
         navButtons: Array.from(document.querySelectorAll(".nav button[data-tab]")),
-        panels: { overview: $("tab-overview"), nodes: $("tab-nodes"), routes: $("tab-routes"), placements: $("tab-placements"), subscriptions: $("tab-subscriptions"), ops: $("tab-ops") },
+        panels: { overview: $("tab-overview"), nodes: $("tab-nodes"), routes: $("tab-routes"), placements: $("tab-placements"), subscriptions: $("tab-subscriptions"), traffic: $("tab-traffic"), ops: $("tab-ops") },
       };
 
-      const state = { token: localStorage.getItem(TOKEN_KEY) || "", timer: null, selectedNode: null, status: null, readiness: null, routes: [], placements: [], probes: [], subscriptions: [], subscriptionDevices: [], logs: [], activeTab: "overview", loading: false };
+      const state = { token: localStorage.getItem(TOKEN_KEY) || "", timer: null, selectedNode: null, status: null, readiness: null, routes: [], placements: [], probes: [], subscriptions: [], subscriptionDevices: [], logs: [], activeTab: "overview", loading: false, trafficKeys: [], trafficTotal: 0, trafficLimit: 50, trafficOffset: 0, trafficHistory: [], trafficHistoryTotal: 0, trafficHistoryLimit: 50, trafficHistoryOffset: 0, trafficHistoryKeyId: null, trafficHistoryKeyData: null };
 
       const esc = (v) => String(v ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
       const fmtDate = (v) => { if (!v) return "-"; const d = new Date(v); return Number.isNaN(d.getTime()) ? "-" : d.toLocaleString(); };
@@ -739,12 +846,14 @@
         if (!v) return "-";
         const d = new Date(v);
         if (Number.isNaN(d.getTime())) return "-";
-        const sec = Math.floor((Date.now() - d.getTime()) / 1000);
-        if (sec < 0) return "just now";
-        if (sec < 60) return sec + "s ago";
-        if (sec < 3600) return Math.floor(sec / 60) + "m ago";
-        if (sec < 86400) return Math.floor(sec / 3600) + "h ago";
-        return Math.floor(sec / 86400) + "d ago";
+        const diff = Date.now() - d.getTime();
+        const sec = Math.floor(Math.abs(diff) / 1000);
+        const suffix = diff < 0 ? "" : " ago";
+        const prefix = diff < 0 ? "in " : "";
+        if (sec < 60) return prefix + sec + "s" + suffix;
+        if (sec < 3600) return prefix + Math.floor(sec / 60) + "m" + suffix;
+        if (sec < 86400) return prefix + Math.floor(sec / 3600) + "h" + suffix;
+        return prefix + Math.floor(sec / 86400) + "d" + suffix;
       }
       function capacityBar(used, total) {
         if (!total || total <= 0) return `<span class="mono">${used || 0}</span>`;
@@ -957,6 +1066,9 @@
         Object.keys(refs.panels).forEach((k) => refs.panels[k].classList.toggle("active", k === tab));
         refs.heroTitle.textContent = TAB_LABELS[tab] || "Home";
         refs.crumbs.textContent = "Dashboard \u2022 " + (TAB_LABELS[tab] || tab);
+        if (tab === "traffic" && state.token && state.trafficKeys.length === 0) {
+          loadTrafficKeys().catch((e) => notify("\u041E\u0448\u0438\u0431\u043A\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0438 \u0442\u0440\u0430\u0444\u0438\u043A\u0430: " + e.message, true));
+        }
       }
 
       function filteredNodes() {
@@ -1185,6 +1297,9 @@
           }
           if (fullRefresh || tab === "placements") {
             fetches.push(req("/api/v1/placements?limit=500").then((p) => { state.placements = p; }));
+          }
+          if (tab === "traffic" && state.trafficKeys.length > 0) {
+            fetches.push(loadTrafficKeys().catch(() => {}));
           }
           await Promise.all(fetches);
 
@@ -1506,6 +1621,309 @@
 
       refs.btnWarmup.addEventListener("click", () => runAction("Advance warmup tick", () => req("/api/v1/routes/admin/advance-warmup", { method: "POST", body: {} })).then(() => refreshAll()).catch(() => {}));
       refs.btnCleanupProbe.addEventListener("click", () => runAction("Cleanup probe signals", () => req("/api/v1/probe/admin/cleanup-old-signals", { method: "POST", body: {} })).then(() => refreshAll()).catch(() => {}));
+
+      /* --- Traffic tab --- */
+      function fmtBytes(bytes) {
+        if (bytes == null || bytes <= 0) return "0 B";
+        const units = ["B", "KB", "MB", "GB", "TB"];
+        let i = 0;
+        let v = bytes;
+        while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+        return v.toFixed(i === 0 ? 0 : 2) + " " + units[i];
+      }
+
+      function trafficPct(usedBytes, limitMb) {
+        if (!limitMb || limitMb <= 0) return null;
+        const limitBytes = limitMb * 1024 * 1024;
+        return Math.min(100, Math.round((usedBytes / limitBytes) * 100));
+      }
+
+      function trafficBar(usedBytes, limitMb) {
+        const pct = trafficPct(usedBytes, limitMb);
+        if (pct === null) return `<span class="muted">без лимита</span>`;
+        const cls = pct < 60 ? "low" : pct < 85 ? "mid" : "high";
+        return `<div><span class="mono" style="font-size:11px">${pct}%</span><div class="capacity-bar"><div class="capacity-fill ${cls}" style="width:${pct}%"></div></div></div>`;
+      }
+
+      function trafficRemaining(usedBytes, limitMb) {
+        if (!limitMb || limitMb <= 0) return `<span class="muted">\u221E</span>`;
+        const limitBytes = limitMb * 1024 * 1024;
+        const rem = Math.max(0, limitBytes - (usedBytes || 0));
+        const pct = trafficPct(usedBytes, limitMb);
+        const cls = pct >= 90 ? "bad" : (pct >= 75 ? "warn" : "");
+        return `<span class="mono ${cls}">${fmtBytes(rem)}</span>`;
+      }
+
+      async function loadTrafficKeys() {
+        const params = new URLSearchParams();
+        const search = refs.trafficSearch.value.trim();
+        if (search) params.set("search", search);
+        const userId = refs.trafficUserId.value.trim();
+        if (userId) params.set("user_id", userId);
+        const revoked = refs.trafficRevoked.value;
+        if (revoked !== "") params.set("is_revoked", revoked);
+        params.set("limit", String(state.trafficLimit));
+        params.set("offset", String(state.trafficOffset));
+        const data = await req(`/api/v1/admin/traffic/keys?${params}`);
+        state.trafficKeys = data.items || [];
+        state.trafficTotal = data.total || 0;
+        renderTraffic();
+        updateTrafficKpis();
+      }
+
+      function updateTrafficKpis() {
+        const keys = state.trafficKeys;
+        refs.kpiTrafficKeys.textContent = String(state.trafficTotal);
+        const revokedCount = keys.filter((k) => k.is_revoked).length;
+        refs.kpiTrafficRevoked.textContent = String(revokedCount);
+        const totalBytes = keys.reduce((sum, k) => sum + (k.used_traffic_bytes || 0), 0);
+        refs.kpiTrafficTotal.textContent = fmtBytes(totalBytes);
+      }
+
+      async function loadTrafficHistory() {
+        if (!state.trafficHistoryKeyId) return;
+        const params = new URLSearchParams();
+        params.set("limit", String(state.trafficHistoryLimit));
+        params.set("offset", String(state.trafficHistoryOffset));
+        const df = refs.trafficHistoryFrom.value;
+        const dt = refs.trafficHistoryTo.value;
+        if (df) params.set("date_from", new Date(df).toISOString());
+        if (dt) params.set("date_to", new Date(dt + "T23:59:59").toISOString());
+        const data = await req(`/api/v1/admin/traffic/keys/${encodeURIComponent(state.trafficHistoryKeyId)}/history?${params}`);
+        state.trafficHistory = data.items || [];
+        state.trafficHistoryTotal = data.total || 0;
+        renderTrafficHistory();
+        renderTrafficChart();
+      }
+
+      function renderPagination(container, total, limit, offset, onPage) {
+        const pages = Math.ceil(total / limit);
+        const current = Math.floor(offset / limit);
+        if (pages <= 1) { container.innerHTML = ""; return; }
+        let html = "";
+        if (current > 0) html += `<button class="btn-mini" data-page="${current - 1}">&laquo;</button>`;
+        const start = Math.max(0, current - 3);
+        const end = Math.min(pages, current + 4);
+        for (let i = start; i < end; i++) {
+          html += `<button class="btn-mini${i === current ? " ok" : ""}" data-page="${i}">${i + 1}</button>`;
+        }
+        if (current < pages - 1) html += `<button class="btn-mini" data-page="${current + 1}">&raquo;</button>`;
+        html += `<span class="muted" style="font-size:11px;margin-left:8px">${total} записей</span>`;
+        container.innerHTML = html;
+        container.querySelectorAll("[data-page]").forEach((btn) => {
+          btn.addEventListener("click", () => onPage(Number(btn.dataset.page)));
+        });
+      }
+
+      /* Traffic table sorting */
+      const trafficComparators = {
+        used: (a, b) => (a.used_traffic_bytes || 0) - (b.used_traffic_bytes || 0),
+        limit: (a, b) => (a.traffic_limit_mb || 0) - (b.traffic_limit_mb || 0),
+        pct: (a, b) => (trafficPct(a.used_traffic_bytes, a.traffic_limit_mb) || 0) - (trafficPct(b.used_traffic_bytes, b.traffic_limit_mb) || 0),
+        status: (a, b) => (a.is_revoked === b.is_revoked ? 0 : a.is_revoked ? 1 : -1),
+        expires: (a, b) => new Date(a.valid_until || 0).getTime() - new Date(b.valid_until || 0).getTime(),
+      };
+
+      function renderTraffic() {
+        const keys = state.trafficKeys;
+        const activeCount = keys.filter((k) => !k.is_revoked).length;
+        const revokedCount = keys.filter((k) => k.is_revoked).length;
+        const nearLimit = keys.filter((k) => { const p = trafficPct(k.used_traffic_bytes, k.traffic_limit_mb); return p !== null && p >= 90; }).length;
+        let metaHtml = `${chip("info", "всего: " + state.trafficTotal)} ${chip("ok", "активных: " + activeCount)} ${chip("bad", "отозванных: " + revokedCount)}`;
+        if (nearLimit > 0) metaHtml += ` ${chip("warn", "\u26A0 близко к лимиту: " + nearLimit)}`;
+        refs.trafficMeta.innerHTML = metaHtml;
+
+        refs.trafficHead.innerHTML = `<tr>${sortTh("traffic", "client_id", "Ключ / client_id")}<th>Пользователь</th><th>Протокол</th>${sortTh("traffic", "used", "Использовано")}${sortTh("traffic", "limit", "Лимит")}<th>Остаток</th>${sortTh("traffic", "pct", "Использование")}${sortTh("traffic", "status", "Статус")}${sortTh("traffic", "expires", "Истекает")}<th>Действия</th></tr>`;
+
+        const sorted = sortedBy([...keys], "traffic", trafficComparators);
+        refs.trafficBody.innerHTML = sorted.length
+          ? sorted.map((k) => {
+            const pct = trafficPct(k.used_traffic_bytes, k.traffic_limit_mb);
+            const isNearLimit = pct !== null && pct >= 90 && !k.is_revoked;
+            const statusChip = k.is_revoked ? chip("bad", "отозван") : (isNearLimit ? chip("warn", "\u26A0 лимит") : chip("ok", "активен"));
+            const rowStyle = isNearLimit ? ' style="background:rgba(245,198,107,0.06)"' : (k.is_revoked ? ' style="background:rgba(255,127,133,0.04)"' : "");
+            return `<tr${rowStyle}>
+              <td><div>${uuidCell(k.id)}</div><div class="mono muted" style="font-size:11px">${esc(k.client_id)}</div></td>
+              <td>${uuidCell(k.user_id)}</td>
+              <td><span class="mono">${esc(k.protocol)}/${esc(k.transport)}</span></td>
+              <td class="mono">${fmtBytes(k.used_traffic_bytes)}</td>
+              <td class="mono">${k.traffic_limit_mb ? fmtBytes(k.traffic_limit_mb * 1024 * 1024) : "\u2014"}</td>
+              <td>${trafficRemaining(k.used_traffic_bytes, k.traffic_limit_mb)}</td>
+              <td>${trafficBar(k.used_traffic_bytes, k.traffic_limit_mb)}</td>
+              <td>${statusChip}</td>
+              <td>${relTime(k.valid_until)}</td>
+              <td><button class="btn-mini traffic-history-btn" data-key-idx="${esc(keys.indexOf(k))}" data-key-id="${esc(k.id)}" data-client-id="${esc(k.client_id)}">История</button></td>
+            </tr>`;
+          }).join("")
+          : `<tr><td colspan="10" class="empty">Нет данных. Нажмите \u00ABЗагрузить\u00BB.</td></tr>`;
+        renderPagination(refs.trafficPagination, state.trafficTotal, state.trafficLimit, state.trafficOffset, (page) => {
+          state.trafficOffset = page * state.trafficLimit;
+          loadTrafficKeys().catch((e) => notify("\u041E\u0448\u0438\u0431\u043A\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0438 \u0442\u0440\u0430\u0444\u0438\u043A\u0430: " + e.message, true));
+        });
+      }
+
+      function renderTrafficHistoryKeyInfo() {
+        const k = state.trafficHistoryKeyData;
+        if (!k) { refs.trafficHistoryKeyInfo.innerHTML = ""; return; }
+        const pct = trafficPct(k.used_traffic_bytes, k.traffic_limit_mb);
+        refs.trafficHistoryKeyInfo.innerHTML = `
+          <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+            <div>${uuidCell(k.id)} <span class="mono muted" style="font-size:11px">${esc(k.client_id)}</span></div>
+            <div>${chip("info", esc(k.protocol) + "/" + esc(k.transport))}</div>
+            <div>${k.is_revoked ? chip("bad", "отозван") : chip("ok", "активен")}</div>
+            <div class="mono" style="font-size:12px">${fmtBytes(k.used_traffic_bytes)} / ${k.traffic_limit_mb ? fmtBytes(k.traffic_limit_mb * 1024 * 1024) : "\u221E"}${pct !== null ? " (" + pct + "%)" : ""}</div>
+            <div>${trafficBar(k.used_traffic_bytes, k.traffic_limit_mb)}</div>
+          </div>`;
+      }
+
+      function renderTrafficHistory() {
+        renderTrafficHistoryKeyInfo();
+        refs.trafficHistoryBody.innerHTML = state.trafficHistory.length
+          ? state.trafficHistory.map((h) => `<tr>
+              <td>${fmtDate(h.created_at)}</td>
+              <td class="mono">${fmtBytes(h.delta_bytes)}</td>
+              <td class="mono">${fmtBytes(h.reported_total_bytes)}</td>
+            </tr>`).join("")
+          : `<tr><td colspan="3" class="empty">Нет записей за выбранный период.</td></tr>`;
+        renderPagination(refs.trafficHistoryPagination, state.trafficHistoryTotal, state.trafficHistoryLimit, state.trafficHistoryOffset, (page) => {
+          state.trafficHistoryOffset = page * state.trafficHistoryLimit;
+          loadTrafficHistory().catch((e) => notify("\u041E\u0448\u0438\u0431\u043A\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0438 \u0438\u0441\u0442\u043E\u0440\u0438\u0438: " + e.message, true));
+        });
+      }
+
+      /* Sparkline chart for traffic history */
+      function renderTrafficChart() {
+        const items = state.trafficHistory;
+        if (items.length < 2) {
+          refs.trafficChartContainer.style.display = "none";
+          return;
+        }
+        refs.trafficChartContainer.style.display = "block";
+        const canvas = refs.trafficChart;
+        const ctx = canvas.getContext("2d");
+        const dpr = window.devicePixelRatio || 1;
+        const rect = canvas.parentElement.getBoundingClientRect();
+        canvas.width = (rect.width - 20) * dpr;
+        canvas.height = 120 * dpr;
+        canvas.style.width = (rect.width - 20) + "px";
+        canvas.style.height = "120px";
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const w = rect.width - 20;
+        const h = 120;
+        ctx.clearRect(0, 0, w, h);
+
+        const pts = [...items].reverse();
+        const vals = pts.map((p) => p.delta_bytes);
+        const maxV = Math.max(...vals, 1);
+        const padTop = 10, padBot = 20, padLeft = 4, padRight = 4;
+        const chartW = w - padLeft - padRight;
+        const chartH = h - padTop - padBot;
+
+        /* Grid lines */
+        ctx.strokeStyle = "rgba(255,255,255,0.06)";
+        ctx.lineWidth = 1;
+        for (let i = 0; i <= 3; i++) {
+          const y = padTop + chartH * (1 - i / 3);
+          ctx.beginPath(); ctx.moveTo(padLeft, y); ctx.lineTo(w - padRight, y); ctx.stroke();
+        }
+
+        /* Fill area */
+        ctx.beginPath();
+        pts.forEach((p, i) => {
+          const x = padLeft + (i / (pts.length - 1)) * chartW;
+          const y = padTop + chartH * (1 - vals[i] / maxV);
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        });
+        ctx.lineTo(padLeft + chartW, padTop + chartH);
+        ctx.lineTo(padLeft, padTop + chartH);
+        ctx.closePath();
+        const grad = ctx.createLinearGradient(0, padTop, 0, h);
+        grad.addColorStop(0, "rgba(45,212,191,0.28)");
+        grad.addColorStop(1, "rgba(45,212,191,0.02)");
+        ctx.fillStyle = grad;
+        ctx.fill();
+
+        /* Line */
+        ctx.beginPath();
+        pts.forEach((p, i) => {
+          const x = padLeft + (i / (pts.length - 1)) * chartW;
+          const y = padTop + chartH * (1 - vals[i] / maxV);
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        });
+        ctx.strokeStyle = "#2dd4bf";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        /* Dots */
+        pts.forEach((p, i) => {
+          const x = padLeft + (i / (pts.length - 1)) * chartW;
+          const y = padTop + chartH * (1 - vals[i] / maxV);
+          ctx.beginPath();
+          ctx.arc(x, y, 3, 0, Math.PI * 2);
+          ctx.fillStyle = "#2dd4bf";
+          ctx.fill();
+        });
+
+        /* X-axis labels (first, middle, last) */
+        ctx.fillStyle = "rgba(159,179,207,0.7)";
+        ctx.font = "10px 'JetBrains Mono', monospace";
+        ctx.textBaseline = "top";
+        const labelY = h - padBot + 4;
+        if (pts.length >= 2) {
+          const fmtShort = (dt) => { const d = new Date(dt); return (d.getMonth() + 1) + "/" + d.getDate() + " " + d.getHours() + ":" + String(d.getMinutes()).padStart(2, "0"); };
+          ctx.textAlign = "left";
+          ctx.fillText(fmtShort(pts[0].created_at), padLeft, labelY);
+          ctx.textAlign = "right";
+          ctx.fillText(fmtShort(pts[pts.length - 1].created_at), w - padRight, labelY);
+          if (pts.length > 4) {
+            const mid = Math.floor(pts.length / 2);
+            ctx.textAlign = "center";
+            ctx.fillText(fmtShort(pts[mid].created_at), padLeft + (mid / (pts.length - 1)) * chartW, labelY);
+          }
+        }
+
+        /* Y-axis label */
+        ctx.textAlign = "right";
+        ctx.fillText(fmtBytes(maxV), w - padRight, padTop - 2);
+      }
+
+      refs.trafficReload.addEventListener("click", () => {
+        state.trafficOffset = 0;
+        loadTrafficKeys().catch((e) => notify("\u041E\u0448\u0438\u0431\u043A\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0438 \u0442\u0440\u0430\u0444\u0438\u043A\u0430: " + e.message, true));
+      });
+
+      /* Enter key triggers search */
+      [refs.trafficSearch, refs.trafficUserId].forEach((el) => {
+        el.addEventListener("keydown", (ev) => {
+          if (ev.key === "Enter") { ev.preventDefault(); refs.trafficReload.click(); }
+        });
+      });
+
+      refs.trafficBody.addEventListener("click", (ev) => {
+        const btn = ev.target.closest(".traffic-history-btn");
+        if (!btn) return;
+        state.trafficHistoryKeyId = btn.dataset.keyId;
+        state.trafficHistoryOffset = 0;
+        const idx = Number(btn.dataset.keyIdx);
+        state.trafficHistoryKeyData = state.trafficKeys[idx] || null;
+        refs.trafficHistoryKeyLabel.textContent = btn.dataset.clientId || btn.dataset.keyId;
+        refs.trafficHistorySection.style.display = "block";
+        refs.trafficHistorySection.scrollIntoView({ behavior: "smooth", block: "start" });
+        loadTrafficHistory().catch((e) => notify("\u041E\u0448\u0438\u0431\u043A\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0438 \u0438\u0441\u0442\u043E\u0440\u0438\u0438: " + e.message, true));
+      });
+
+      refs.trafficHistoryReload.addEventListener("click", () => {
+        state.trafficHistoryOffset = 0;
+        loadTrafficHistory().catch((e) => notify("\u041E\u0448\u0438\u0431\u043A\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0438 \u0438\u0441\u0442\u043E\u0440\u0438\u0438: " + e.message, true));
+      });
+
+      refs.trafficHistoryClose.addEventListener("click", () => {
+        refs.trafficHistorySection.style.display = "none";
+        refs.trafficChartContainer.style.display = "none";
+        state.trafficHistoryKeyId = null;
+        state.trafficHistoryKeyData = null;
+        state.trafficHistory = [];
+      });
 
       /* Global delegated click: UUID copy + sortable headers */
       document.addEventListener("click", (ev) => {
