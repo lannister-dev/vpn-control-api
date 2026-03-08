@@ -148,7 +148,9 @@ class AdminAuthService:
             )
             return None
 
-        sub = claims.get("sub")
+        # Telegram OIDC returns both `sub` (OIDC subject) and `id` (Telegram user ID).
+        # Access control and local admin linkage are based on Telegram user ID.
+        sub = claims.get("id", claims.get("sub"))
         try:
             telegram_id = int(sub)
         except (TypeError, ValueError):
@@ -226,7 +228,7 @@ class AdminAuthService:
         return SessionCheckOut(
             authenticated=True,
             username=user.username,
-            role=user.role,
+            role=AdminRole(user.role),
             csrf_token=csrf,
         )
 
@@ -457,7 +459,7 @@ class AdminAuthService:
             ip=ip_address,
         )
         return (
-            LoginOut(username=user.username, role=user.role, csrf_token=csrf),
+            LoginOut(username=user.username, role=AdminRole(user.role), csrf_token=csrf),
             session_id,
         )
 
