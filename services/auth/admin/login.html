@@ -124,6 +124,41 @@
       display: flex;
       justify-content: center;
     }
+    .btn-telegram {
+      width: 100%;
+      max-width: 300px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 12px 16px;
+      border-radius: 12px;
+      border: 1px solid rgba(56, 189, 248, 0.45);
+      background: linear-gradient(135deg, rgba(14, 165, 233, 0.28), rgba(56, 189, 248, 0.18));
+      color: #e4ecff;
+      font-size: 14px;
+      font-weight: 700;
+      text-decoration: none;
+      transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+      box-shadow: 0 8px 28px rgba(14, 165, 233, 0.18);
+    }
+    .btn-telegram:hover {
+      transform: translateY(-1px);
+      border-color: rgba(125, 211, 252, 0.75);
+      box-shadow: 0 14px 32px rgba(14, 165, 233, 0.24);
+    }
+    .btn-telegram:active {
+      transform: translateY(0);
+    }
+    .btn-telegram .icon {
+      width: 18px;
+      height: 18px;
+      flex: 0 0 18px;
+    }
+    .btn-telegram .label {
+      line-height: 1;
+      white-space: nowrap;
+    }
     .hidden { display: none !important; }
   </style>
 </head>
@@ -150,8 +185,11 @@
     <div id="tg-section" class="hidden">
       <div class="divider">или</div>
       <div class="tg-login-wrap">
-        <a id="tg-login-link" class="btn-login" href="{{TELEGRAM_OIDC_START_URL}}" style="text-decoration:none;text-align:center;display:inline-block;max-width:280px;">
-          Войти через Telegram
+        <a id="tg-login-link" class="btn-telegram" href="{{TELEGRAM_OIDC_START_URL}}">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path fill="currentColor" d="M21.5 4.6c-.3-.3-.8-.4-1.3-.2L3.6 10.9c-.6.2-1 .8-.9 1.4.1.6.5 1.1 1.1 1.2l4.6 1 1.9 5.7c.2.6.8 1.1 1.5 1h.1c.7 0 1.3-.4 1.6-1l2.7-4.5 4.1 3.2c.4.3.9.4 1.3.2.4-.2.8-.6.9-1.1L23 5.8c.1-.5-.1-.9-.4-1.2Zm-8.3 12.3-.8 1.3-.9-2.8 8.2-6.8-6.5 8.3Z"/>
+          </svg>
+          <span class="label">Войти через Telegram</span>
         </a>
       </div>
     </div>
