@@ -1,7 +1,7 @@
 import secrets
 from uuid import UUID
 
-from fastapi import Header, Depends, HTTPException, Security
+from fastapi import Header, Depends, HTTPException, Request, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette import status
 
@@ -70,39 +70,44 @@ async def node_auth(
     AUTH_ATTEMPT_TOTAL.labels(type="node", result="success").inc()
     return node
 
-admin_bearer = HTTPBearer(auto_error=False)
+async def _admin_auth_session(request) -> bool:
+    """Try session cookie auth. Returns True if valid."""
+    from services.auth.admin.constants import SESSION_COOKIE_NAME
+    from services.auth.admin.crypto import hash_session_id
+
+    settings = get_settings()
+    if not settings.admin_auth.enabled:
+        return False
+
+    session_id = request.cookies.get(SESSION_COOKIE_NAME)
+    if not session_id:
+        return False
+
+    from services.auth.admin.service import AdminAuthService
+    from shared.database.session import AsyncDatabase
+
+    session_hash = hash_session_id(session_id)
+    async with AsyncDatabase.get_session_maker()() as db_session:
+        svc = AdminAuthService(db_session)
+        result = await svc.validate_session(session_hash)
+        return result is not None
+
 
 async def admin_auth(
-        credentials: HTTPAuthorizationCredentials | None = Security(admin_bearer),
+        request: Request,
 ) -> None:
     """
-    Validates admin access using a static Bearer API key.
+    Validates admin access using admin session cookie only.
     """
-    if not credentials:
-        AUTH_ATTEMPT_TOTAL.labels(type="admin", result="failure").inc()
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing Authorization header",
-        )
+    if await _admin_auth_session(request):
+        AUTH_ATTEMPT_TOTAL.labels(type="admin", result="success").inc()
+        return
 
-    if credentials.scheme.lower() != "bearer":
-        AUTH_ATTEMPT_TOTAL.labels(type="admin", result="failure").inc()
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authorization scheme",
-        )
-    raw_token = credentials.credentials
-    expected_hash = get_settings().admin.api_key_hash
-    provided_hash = AuthUtils.hash_admin_api_key(raw_token)
-
-    if not secrets.compare_digest(provided_hash, expected_hash):
-        AUTH_ATTEMPT_TOTAL.labels(type="admin", result="failure").inc()
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid admin token",
-        )
-
-    AUTH_ATTEMPT_TOTAL.labels(type="admin", result="success").inc()
+    AUTH_ATTEMPT_TOTAL.labels(type="admin", result="failure").inc()
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or expired admin session",
+    )
 
 
 connect_bearer = HTTPBearer(auto_error=False)
