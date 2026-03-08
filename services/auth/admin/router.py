@@ -181,11 +181,21 @@ async def login_telegram_callback(
 ):
     ip = client_ip(request)
     if error:
+        await service.audit_repository.log_event(
+            action="login_failure",
+            detail=f"reason=telegram_callback_error error={error}",
+            ip_address=ip,
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Telegram login error: {error_description or error}",
         )
     if not code or not state:
+        await service.audit_repository.log_event(
+            action="login_failure",
+            detail="reason=telegram_callback_missing_params",
+            ip_address=ip,
+        )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing OIDC callback parameters")
     if not login_rate_limiter.is_allowed(ip):
         raise HTTPException(
@@ -196,6 +206,11 @@ async def login_telegram_callback(
     cookie_nonce = request.cookies.get(TG_OIDC_NONCE_COOKIE_NAME)
     if not cookie_state or state != cookie_state or not cookie_nonce:
         login_rate_limiter.record(ip)
+        await service.audit_repository.log_event(
+            action="login_failure",
+            detail="reason=telegram_invalid_oidc_state",
+            ip_address=ip,
+        )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid OIDC state")
 
     settings = get_settings()
