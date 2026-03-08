@@ -91,6 +91,7 @@ async def login_password(
     )
     if result is None:
         login_rate_limiter.record(ip)
+        await service.session.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
@@ -186,6 +187,7 @@ async def login_telegram_callback(
             detail=f"reason=telegram_callback_error error={error}",
             ip_address=ip,
         )
+        await service.session.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Telegram login error: {error_description or error}",
@@ -196,6 +198,7 @@ async def login_telegram_callback(
             detail="reason=telegram_callback_missing_params",
             ip_address=ip,
         )
+        await service.session.commit()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing OIDC callback parameters")
     if not login_rate_limiter.is_allowed(ip):
         raise HTTPException(
@@ -211,6 +214,7 @@ async def login_telegram_callback(
             detail="reason=telegram_invalid_oidc_state",
             ip_address=ip,
         )
+        await service.session.commit()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid OIDC state")
 
     settings = get_settings()
@@ -226,6 +230,7 @@ async def login_telegram_callback(
     )
     if result is None:
         login_rate_limiter.record(ip)
+        await service.session.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Telegram login failed",
