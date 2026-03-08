@@ -105,8 +105,18 @@ class AdminAuthService:
     ) -> tuple[LoginOut, str] | None:
         settings = get_settings()
         if not settings.admin_auth.telegram_login_enabled:
+            await self.audit_repository.log_event(
+                action="login_failure",
+                detail="reason=telegram_login_disabled",
+                ip_address=ip_address,
+            )
             return None
         if not settings.admin_auth.telegram_client_id or not settings.admin_auth.telegram_client_secret:
+            await self.audit_repository.log_event(
+                action="login_failure",
+                detail="reason=telegram_oidc_client_not_configured",
+                ip_address=ip_address,
+            )
             return None
 
         token_data = self._exchange_telegram_code(
