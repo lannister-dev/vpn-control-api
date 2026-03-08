@@ -511,11 +511,16 @@
         <h1><span id="ready-dot" class="dot"></span>VPN Control Plane</h1>
         <div class="muted">Панель уровня NOC: управление узлами, маршрутами и плейсментами.</div>
       </section>
-      <section class="row">
-        <input id="admin-token" class="input mono" type="password" placeholder="Токен администратора" />
-        <div class="row-2">
-          <button id="save-token" class="btn btn-primary">Сохранить токен</button>
-          <button id="refresh-all" class="btn btn-ghost">Обновить</button>
+      <section id="auth-section" class="row">
+        <div id="session-user-info" class="row" style="display:none;">
+          <div class="muted" style="font-size:13px;">
+            <span id="session-username" style="color:var(--ok);font-weight:600;"></span>
+            <span id="session-role" class="badge" style="margin-left:6px;"></span>
+          </div>
+          <div class="row-2">
+            <button id="btn-logout" class="btn btn-warn">Выйти</button>
+            <button id="refresh-all" class="btn btn-ghost">Обновить</button>
+          </div>
         </div>
       </section>
       <nav class="nav">
@@ -530,7 +535,7 @@
           <button data-tab="placements"><span class="nav-icon">P</span><span>Placements</span></button>
           <button data-tab="subscriptions"><span class="nav-icon">S</span><span>Subscriptions</span></button>
           <button data-tab="traffic"><span class="nav-icon">T</span><span>Traffic</span></button>
-          <button disabled><span class="nav-icon">U</span><span>Users</span></button>
+          <button data-tab="admin-users"><span class="nav-icon">U</span><span>Admin Users</span></button>
           <button disabled><span class="nav-icon">A</span><span>API Tokens</span></button>
         </section>
         <section class="nav-group">
@@ -767,6 +772,67 @@
         </div>
       </section>
 
+      <section id="tab-admin-users" class="panel">
+        <div class="panel-head">
+          <div class="panel-title">Admin Users</div>
+          <div class="muted">Управление пользователями панели: роли, пароли, сессии</div>
+          <div class="panel-controls" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+            <input id="au-search" class="input mono" style="width:180px;" placeholder="Поиск..." />
+            <select id="au-role" class="select" style="width:120px;"><option value="">Все роли</option><option value="admin">admin</option><option value="operator">operator</option><option value="viewer">viewer</option></select>
+            <select id="au-status" class="select" style="width:120px;"><option value="">Все</option><option value="true">Активные</option><option value="false">Неактивные</option></select>
+            <button id="au-reload" class="btn btn-ghost">Обновить</button>
+            <button id="au-create-btn" class="btn btn-primary">Создать</button>
+          </div>
+        </div>
+        <div class="panel-body" style="overflow-x:auto;">
+          <table class="data-table"><thead><tr id="au-head">
+            <th>Username</th><th>Role</th><th>Status</th><th>Telegram</th><th>Sessions</th><th>Создан</th><th style="white-space:nowrap;">Действия</th>
+          </tr></thead><tbody id="au-body"><tr><td colspan="7" class="empty">Загрузите данные.</td></tr></tbody></table>
+          <div id="au-meta" class="muted" style="margin-top:8px;"></div>
+        </div>
+        <!-- Create user modal -->
+        <div id="au-create-modal" style="display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;">
+          <div class="card" style="width:420px;max-width:90vw;padding:24px;">
+            <div style="font-weight:700;font-size:16px;margin-bottom:16px;">Новый admin user</div>
+            <form id="au-create-form" class="stack" style="display:grid;gap:12px;">
+              <input class="input mono" name="username" placeholder="Username" required minlength="1" maxlength="64" />
+              <input class="input mono" name="password" type="password" placeholder="Пароль (мин. 8 символов)" minlength="8" maxlength="256" />
+              <input class="input mono" name="telegram_id" type="number" placeholder="Telegram ID (опционально)" />
+              <select class="select" name="role"><option value="viewer">viewer</option><option value="operator">operator</option><option value="admin">admin</option></select>
+              <div class="row-2"><button class="btn btn-primary" type="submit">Создать</button><button class="btn btn-ghost" type="button" id="au-create-cancel">Отмена</button></div>
+            </form>
+          </div>
+        </div>
+        <!-- Edit user modal -->
+        <div id="au-edit-modal" style="display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.6);align-items:center;justify-content:center;">
+          <div class="card" style="width:420px;max-width:90vw;padding:24px;">
+            <div style="font-weight:700;font-size:16px;margin-bottom:16px;">Редактировать: <span id="au-edit-name"></span></div>
+            <form id="au-edit-form" class="stack" style="display:grid;gap:12px;">
+              <input type="hidden" name="user_id" id="au-edit-uid" />
+              <label class="muted" style="font-size:12px;">Роль</label>
+              <select class="select" name="role" id="au-edit-role"><option value="viewer">viewer</option><option value="operator">operator</option><option value="admin">admin</option></select>
+              <label class="muted" style="font-size:12px;">Статус</label>
+              <select class="select" name="is_active" id="au-edit-active"><option value="true">Активен</option><option value="false">Деактивирован</option></select>
+              <div class="row-2"><button class="btn btn-primary" type="submit">Сохранить</button><button class="btn btn-ghost" type="button" id="au-edit-cancel">Отмена</button></div>
+            </form>
+            <div style="border-top:1px solid var(--line);margin-top:16px;padding-top:16px;display:grid;gap:8px;">
+              <div style="font-weight:600;font-size:13px;">Пароль</div>
+              <form id="au-pw-form" style="display:grid;gap:8px;">
+                <input class="input mono" name="new_password" type="password" placeholder="Новый пароль (мин. 8 символов)" minlength="8" required />
+                <button class="btn btn-warn" type="submit">Сбросить пароль</button>
+              </form>
+              <div style="border-top:1px solid var(--line);margin-top:8px;padding-top:12px;display:grid;gap:8px;">
+                <div style="font-weight:600;font-size:13px;">Сессии: <span id="au-edit-sessions-count">0</span></div>
+                <button class="btn btn-warn" type="button" id="au-revoke-sessions">Отозвать все сессии</button>
+              </div>
+              <div style="border-top:1px solid var(--line);margin-top:8px;padding-top:12px;">
+                <button class="btn btn-danger" type="button" id="au-delete-user">Удалить пользователя</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section id="tab-ops" class="panel">
         <div class="panel-head"><div class="panel-title">Операции</div><div class="muted">Управление миграциями, route health и probe-политиками</div></div>
         <div class="panel-body two-col">
@@ -790,13 +856,15 @@
   <script>
     (function () {
       const REFRESH_MS = 15000;
-      const TOKEN_KEY = "control-plane-admin-token";
       const TABLE_LIMIT = 500;
-      const TAB_LABELS = { overview: "Home", nodes: "Серверы", routes: "Маршруты", placements: "Плейсменты", subscriptions: "Подписки", traffic: "Трафик", ops: "Операции" };
+      const TAB_LABELS = { overview: "Home", nodes: "Серверы", routes: "Маршруты", placements: "Плейсменты", subscriptions: "Подписки", traffic: "Трафик", "admin-users": "Admin Users", ops: "Операции" };
+      let sessionAuth = false;
+      let csrfToken = null;
 
       const $ = (id) => document.getElementById(id);
       const refs = {
-        token: $("admin-token"), saveToken: $("save-token"), refreshAll: $("refresh-all"), live: $("live-refresh"), refreshInterval: $("refresh-interval"),
+        refreshAll: $("refresh-all"), live: $("live-refresh"), refreshInterval: $("refresh-interval"),
+        sessionUserInfo: $("session-user-info"), sessionUsername: $("session-username"), sessionRole: $("session-role"), btnLogout: $("btn-logout"),
         readyDot: $("ready-dot"), readinessText: $("readiness-text"), lastSync: $("last-sync"), heroStatus: $("hero-status"),
         heroTitle: $("hero-title"), crumbs: $("crumbs"), contentArea: $("content-area"),
         kpiNodes: $("kpi-nodes"), kpiHealthy: $("kpi-healthy"), kpiDraining: $("kpi-draining"), kpiPlacements: $("kpi-placements"), kpiRoutes: $("kpi-routes"), kpiProbeFail: $("kpi-probe-fail"), kpiTrafficKeys: $("kpi-traffic-keys"), kpiTrafficRevoked: $("kpi-traffic-revoked"), kpiTrafficTotal: $("kpi-traffic-total"),
@@ -820,10 +888,10 @@
         trafficChartContainer: $("traffic-chart-container"), trafficChart: $("traffic-chart"),
         toastContainer: $("toast-container"), confirmModal: $("confirm-modal"),
         navButtons: Array.from(document.querySelectorAll(".nav button[data-tab]")),
-        panels: { overview: $("tab-overview"), nodes: $("tab-nodes"), routes: $("tab-routes"), placements: $("tab-placements"), subscriptions: $("tab-subscriptions"), traffic: $("tab-traffic"), ops: $("tab-ops") },
+        panels: { overview: $("tab-overview"), nodes: $("tab-nodes"), routes: $("tab-routes"), placements: $("tab-placements"), subscriptions: $("tab-subscriptions"), traffic: $("tab-traffic"), "admin-users": $("tab-admin-users"), ops: $("tab-ops") },
       };
 
-      const state = { token: localStorage.getItem(TOKEN_KEY) || "", timer: null, selectedNode: null, status: null, readiness: null, routes: [], placements: [], probes: [], subscriptions: [], subscriptionDevices: [], logs: [], activeTab: "overview", loading: false, trafficKeys: [], trafficTotal: 0, trafficLimit: 50, trafficOffset: 0, trafficHistory: [], trafficHistoryTotal: 0, trafficHistoryLimit: 50, trafficHistoryOffset: 0, trafficHistoryKeyId: null, trafficHistoryKeyData: null };
+      const state = { timer: null, selectedNode: null, status: null, readiness: null, routes: [], placements: [], probes: [], subscriptions: [], subscriptionDevices: [], logs: [], activeTab: "overview", loading: false, trafficKeys: [], trafficTotal: 0, trafficLimit: 50, trafficOffset: 0, trafficHistory: [], trafficHistoryTotal: 0, trafficHistoryLimit: 50, trafficHistoryOffset: 0, trafficHistoryKeyId: null, trafficHistoryKeyData: null, adminUsers: [], adminUsersTotal: 0 };
 
       const esc = (v) => String(v ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
       const fmtDate = (v) => { if (!v) return "-"; const d = new Date(v); return Number.isNaN(d.getTime()) ? "-" : d.toLocaleString(); };
@@ -976,8 +1044,14 @@
         const opt = options || {};
         const headers = { Accept: "application/json" };
         if (opt.body != null) headers["Content-Type"] = "application/json";
-        if (state.token) headers.Authorization = "Bearer " + state.token;
-        const r = await fetch(path, { method: opt.method || "GET", headers, body: opt.body != null ? JSON.stringify(opt.body) : undefined });
+        if (csrfToken && opt.method && opt.method !== "GET") headers["x-csrf-token"] = csrfToken;
+        const fetchOpts = { method: opt.method || "GET", headers, body: opt.body != null ? JSON.stringify(opt.body) : undefined, credentials: "same-origin" };
+        const r = await fetch(path, fetchOpts);
+        if (r.status === 401 && sessionAuth) {
+          sessionAuth = false;
+          window.location.href = "/api/v1/auth/admin/login";
+          throw new Error("Session expired");
+        }
         if (!r.ok) {
           const raw = await r.text();
           let detail = raw;
@@ -988,7 +1062,7 @@
       }
 
       async function runAction(title, fn) {
-        if (!state.token) { notify("Сначала укажите токен администратора", true); return null; }
+        if (!sessionAuth) { window.location.href = "/api/v1/auth/admin/login"; return null; }
         try { const out = await fn(); pushLog(title, out, false); notify(`${title}: выполнено`, false); return out; }
         catch (e) { pushLog(title, e.message, true); notify(`${title}: ${e.message}`, true); throw e; }
       }
@@ -1059,6 +1133,154 @@
         refs.subManageResult.innerHTML = `<div>${chip(statusCls || "info", "Результат")}</div><div class="mono">${esc(JSON.stringify(payload))}</div>`;
       }
 
+      /* --- Admin Users --- */
+      const auBody = $("au-body");
+      const auMeta = $("au-meta");
+      const auSearch = $("au-search");
+      const auRole = $("au-role");
+      const auStatus = $("au-status");
+      const auReload = $("au-reload");
+      const auCreateBtn = $("au-create-btn");
+      const auCreateModal = $("au-create-modal");
+      const auCreateForm = $("au-create-form");
+      const auCreateCancel = $("au-create-cancel");
+      const auEditModal = $("au-edit-modal");
+      const auEditForm = $("au-edit-form");
+      const auEditCancel = $("au-edit-cancel");
+      const auEditName = $("au-edit-name");
+      const auEditUid = $("au-edit-uid");
+      const auEditRole = $("au-edit-role");
+      const auEditActive = $("au-edit-active");
+      const auPwForm = $("au-pw-form");
+      const auRevokeSessions = $("au-revoke-sessions");
+      const auDeleteUser = $("au-delete-user");
+      const auEditSessionsCount = $("au-edit-sessions-count");
+
+      async function loadAdminUsers() {
+        const params = new URLSearchParams();
+        const s = auSearch.value.trim();
+        if (s) params.set("search", s);
+        const r = auRole.value;
+        if (r) params.set("role", r);
+        const a = auStatus.value;
+        if (a) params.set("is_active", a);
+        params.set("limit", "100");
+        const data = await req(`/api/v1/auth/admin/users?${params}`);
+        state.adminUsers = data.items || [];
+        state.adminUsersTotal = data.total || 0;
+        renderAdminUsers();
+      }
+
+      function renderAdminUsers() {
+        if (!state.adminUsers.length) {
+          auBody.innerHTML = `<tr><td colspan="7" class="empty">Нет пользователей.</td></tr>`;
+          auMeta.textContent = "";
+          return;
+        }
+        auBody.innerHTML = state.adminUsers.map((u) => {
+          const roleCls = u.role === "admin" ? "bad" : (u.role === "operator" ? "warn" : "info");
+          const statusCls = u.is_active ? "ok" : "warn";
+          return `<tr>
+            <td>${esc(u.username)}</td>
+            <td>${chip(roleCls, u.role)}</td>
+            <td>${chip(statusCls, u.is_active ? "active" : "inactive")}</td>
+            <td class="mono">${u.telegram_id ? esc(u.telegram_id) : "-"}</td>
+            <td>-</td>
+            <td style="white-space:nowrap;">${fmtDate(u.created_at)}</td>
+            <td><button class="btn-mini au-edit-btn" data-uid="${esc(u.id)}" data-uname="${esc(u.username)}" data-urole="${esc(u.role)}" data-uactive="${u.is_active}">Edit</button></td>
+          </tr>`;
+        }).join("");
+        auMeta.textContent = `Показано ${state.adminUsers.length} из ${state.adminUsersTotal}`;
+      }
+
+      function showModal(el) { el.style.display = "flex"; }
+      function hideModal(el) { el.style.display = "none"; }
+
+      auCreateBtn.addEventListener("click", () => { auCreateForm.reset(); showModal(auCreateModal); });
+      auCreateCancel.addEventListener("click", () => hideModal(auCreateModal));
+      auCreateModal.addEventListener("click", (e) => { if (e.target === auCreateModal) hideModal(auCreateModal); });
+
+      auCreateForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const fd = new FormData(auCreateForm);
+        const body = { username: fd.get("username"), role: fd.get("role") };
+        const pw = fd.get("password");
+        if (pw) body.password = pw;
+        const tgId = fd.get("telegram_id");
+        if (tgId) body.telegram_id = Number(tgId);
+        try {
+          await req("/api/v1/auth/admin/users", { method: "POST", body });
+          notify("Пользователь создан", false);
+          hideModal(auCreateModal);
+          await loadAdminUsers();
+        } catch (err) { notify("Ошибка: " + err.message, true); }
+      });
+
+      auEditCancel.addEventListener("click", () => hideModal(auEditModal));
+      auEditModal.addEventListener("click", (e) => { if (e.target === auEditModal) hideModal(auEditModal); });
+
+      async function openEditModal(uid, uname, urole, uactive) {
+        auEditUid.value = uid;
+        auEditName.textContent = uname;
+        auEditRole.value = urole;
+        auEditActive.value = String(uactive);
+        auEditSessionsCount.textContent = "...";
+        showModal(auEditModal);
+        try {
+          const data = await req(`/api/v1/auth/admin/users/${uid}/sessions`);
+          auEditSessionsCount.textContent = String(data.total || 0);
+        } catch (_) { auEditSessionsCount.textContent = "?"; }
+      }
+
+      auEditForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const uid = auEditUid.value;
+        const body = { role: auEditRole.value, is_active: auEditActive.value === "true" };
+        try {
+          await req(`/api/v1/auth/admin/users/${uid}`, { method: "PATCH", body });
+          notify("Пользователь обновлен", false);
+          hideModal(auEditModal);
+          await loadAdminUsers();
+        } catch (err) { notify("Ошибка: " + err.message, true); }
+      });
+
+      auPwForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const uid = auEditUid.value;
+        const fd = new FormData(auPwForm);
+        try {
+          await req(`/api/v1/auth/admin/users/${uid}/reset-password`, { method: "POST", body: { new_password: fd.get("new_password") } });
+          notify("Пароль сброшен", false);
+          auPwForm.reset();
+        } catch (err) { notify("Ошибка: " + err.message, true); }
+      });
+
+      auRevokeSessions.addEventListener("click", async () => {
+        const uid = auEditUid.value;
+        try {
+          const r = await req(`/api/v1/auth/admin/users/${uid}/revoke-sessions`, { method: "POST" });
+          notify(`Отозвано сессий: ${r.revoked}`, false);
+          auEditSessionsCount.textContent = "0";
+        } catch (err) { notify("Ошибка: " + err.message, true); }
+      });
+
+      auDeleteUser.addEventListener("click", async () => {
+        const uid = auEditUid.value;
+        const name = auEditName.textContent;
+        if (!confirm(`Удалить пользователя "${name}"? Это необратимо.`)) return;
+        try {
+          await req(`/api/v1/auth/admin/users/${uid}`, { method: "DELETE" });
+          notify("Пользователь удален", false);
+          hideModal(auEditModal);
+          await loadAdminUsers();
+        } catch (err) { notify("Ошибка: " + err.message, true); }
+      });
+
+      auReload.addEventListener("click", () => loadAdminUsers().catch((e) => notify("Ошибка: " + e.message, true)));
+      auSearch.addEventListener("input", () => loadAdminUsers().catch(() => {}));
+      auRole.addEventListener("change", () => loadAdminUsers().catch(() => {}));
+      auStatus.addEventListener("change", () => loadAdminUsers().catch(() => {}));
+
       /* --- Phase 2.5: Dynamic breadcrumbs --- */
       function setTab(tab) {
         state.activeTab = tab;
@@ -1066,8 +1288,11 @@
         Object.keys(refs.panels).forEach((k) => refs.panels[k].classList.toggle("active", k === tab));
         refs.heroTitle.textContent = TAB_LABELS[tab] || "Home";
         refs.crumbs.textContent = "Dashboard \u2022 " + (TAB_LABELS[tab] || tab);
-        if (tab === "traffic" && state.token && state.trafficKeys.length === 0) {
+        if (tab === "traffic" && state.trafficKeys.length === 0) {
           loadTrafficKeys().catch((e) => notify("\u041E\u0448\u0438\u0431\u043A\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0438 \u0442\u0440\u0430\u0444\u0438\u043A\u0430: " + e.message, true));
+        }
+        if (tab === "admin-users" && state.adminUsers.length === 0) {
+          loadAdminUsers().catch((e) => notify("Ошибка загрузки admin users: " + e.message, true));
         }
       }
 
@@ -1274,7 +1499,7 @@
       /* --- Phase 3.1: Tab-aware refresh + Phase 1.2: Loading bar --- */
       async function refreshAll(fullRefresh) {
         if (fullRefresh === undefined) fullRefresh = true;
-        if (!state.token) { refs.heroStatus.textContent = "Введите токен администратора и нажмите \u00ABСохранить токен\u00BB."; return; }
+        if (!sessionAuth) { refs.heroStatus.textContent = "Требуется авторизация."; return; }
         state.loading = true;
         const bar = document.createElement("div");
         bar.className = "loading-bar";
@@ -1326,12 +1551,7 @@
 
       /* --- Event listeners --- */
       refs.navButtons.forEach((b) => b.addEventListener("click", () => setTab(b.dataset.tab)));
-      refs.saveToken.addEventListener("click", () => {
-        state.token = refs.token.value.trim();
-        if (state.token) { localStorage.setItem(TOKEN_KEY, state.token); notify("Токен сохранен", false); refreshAll().catch((e) => notify(`Ошибка загрузки: ${e.message}`, true)); }
-        else { localStorage.removeItem(TOKEN_KEY); notify("Токен очищен", false); }
-      });
-      refs.refreshAll.addEventListener("click", () => refreshAll(true).catch((e) => notify(`Ошибка обновления: ${e.message}`, true)));
+      if (refs.refreshAll) refs.refreshAll.addEventListener("click", () => refreshAll(true).catch((e) => notify(`Ошибка обновления: ${e.message}`, true)));
       refs.live.addEventListener("change", updateTimer);
       refs.refreshInterval.addEventListener("change", updateTimer);
 
@@ -1939,13 +2159,54 @@
           toggleSort(th.dataset.sortTable, th.dataset.sortKey);
           return;
         }
+        const auEdit = el.closest(".au-edit-btn");
+        if (auEdit) {
+          openEditModal(auEdit.dataset.uid, auEdit.dataset.uname, auEdit.dataset.urole, auEdit.dataset.uactive === "true");
+          return;
+        }
       });
 
+      /* --- Session auth helpers --- */
+      async function checkSession() {
+        try {
+          const res = await fetch("/api/v1/auth/admin/session", { credentials: "same-origin" });
+          if (!res.ok) return false;
+          const data = await res.json();
+          if (data.authenticated) {
+            sessionAuth = true;
+            csrfToken = data.csrf_token || null;
+            refs.sessionUserInfo.style.display = "";
+            refs.sessionUsername.textContent = data.username;
+            refs.sessionRole.textContent = data.role;
+            return true;
+          }
+        } catch (_) {}
+        return false;
+      }
+
+      if (refs.btnLogout) {
+        refs.btnLogout.addEventListener("click", async () => {
+          try {
+            await fetch("/api/v1/auth/admin/logout", { method: "POST", credentials: "same-origin" });
+          } catch (_) {}
+          sessionAuth = false;
+          csrfToken = null;
+          window.location.href = "/api/v1/auth/admin/login";
+        });
+      }
+
       /* --- Init --- */
-      refs.token.value = state.token;
       pushLog("Панель", "инициализирована", false);
       updateTimer();
-      if (state.token) refreshAll().catch((e) => notify(`Ошибка начальной загрузки: ${e.message}`, true));
+
+      (async () => {
+        const hasSession = await checkSession();
+        if (hasSession) {
+          refreshAll().catch((e) => notify(`Ошибка начальной загрузки: ${e.message}`, true));
+        } else {
+          window.location.href = "/api/v1/auth/admin/login";
+        }
+      })();
     })();
   </script>
 </body>

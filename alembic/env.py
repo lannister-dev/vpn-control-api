@@ -41,6 +41,7 @@ from services.artifacts.models import ProfileArtifact
 from services.vpn.subscriptions.model import Subscription
 from services.routes.model import Route, TransportProfile
 from services.traffic.model import TrafficUsage
+from services.auth.admin.models import AdminUser, AdminSession, AdminAuditEvent
 
 target_metadata = Base.metadata
 

@@ -29,6 +29,7 @@ from services.routes.router import router as routes_router
 from services.routes.reconciler import RouteWarmupReconciler
 from services.traffic.consumer import UserTrafficNatsConsumer
 from services.traffic.reconciler import TrafficHistoryCleanupReconciler
+from services.auth.admin.router import router as admin_auth_router
 from services.traffic.router import router as traffic_admin_router
 from services.vpn.keys.router import router as vpn_router
 from services.vpn.subscriptions.router import router as subscriptions_router
@@ -79,6 +80,7 @@ runtime_readiness_service = RuntimeReadinessService()
 
 # Routers
 api_router = APIRouter(prefix="/api/v1")
+api_router.include_router(admin_auth_router)
 api_router.include_router(auth_router)
 api_router.include_router(admin_ops_router)
 api_router.include_router(admin_status_router)

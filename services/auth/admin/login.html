@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VPN Control Plane - Вход</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #020617;
+      --surface: rgba(15, 23, 42, 0.56);
+      --panel: rgba(15, 23, 42, 0.48);
+      --text: #e4ecff;
+      --muted: #9fb3cf;
+      --line: rgba(255, 255, 255, 0.11);
+      --ok: #5ee9b5;
+      --bad: #ff7f85;
+      --info: #67d9f6;
+      --radius: 16px;
+      --shadow: 0 30px 120px rgba(0, 0, 0, 0.55);
+      --teal-ring: 0 0 0 1px rgba(45, 212, 191, 0.25), 0 0 24px rgba(45, 212, 191, 0.12);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text);
+      font-family: Manrope, "Segoe UI", sans-serif;
+      background: radial-gradient(ellipse at top, rgba(20, 184, 166, 0.35) 0%, rgba(2, 6, 23, 0.85) 55%, rgba(2, 6, 23, 0.95) 100%);
+    }
+    .login-card {
+      width: 100%;
+      max-width: 420px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      backdrop-filter: blur(18px);
+      box-shadow: var(--shadow);
+      padding: 48px 36px;
+    }
+    .brand {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    .brand h1 {
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+    }
+    .brand p {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 6px;
+    }
+    .form-group {
+      margin-bottom: 16px;
+    }
+    .form-group label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .input {
+      width: 100%;
+      padding: 12px 14px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 14px;
+      color: var(--text);
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .input:focus {
+      border-color: rgba(45, 212, 191, 0.5);
+      box-shadow: var(--teal-ring);
+    }
+    .btn-login {
+      width: 100%;
+      padding: 14px;
+      font-family: Manrope, sans-serif;
+      font-size: 15px;
+      font-weight: 700;
+      color: #020617;
+      background: linear-gradient(135deg, #5ee9b5, #2dd4bf);
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: opacity 0.2s;
+      margin-top: 8px;
+    }
+    .btn-login:hover { opacity: 0.88; }
+    .btn-login:disabled { opacity: 0.5; cursor: not-allowed; }
+    .error-msg {
+      color: var(--bad);
+      font-size: 13px;
+      text-align: center;
+      margin-top: 12px;
+      min-height: 20px;
+    }
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 24px 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .divider::before, .divider::after {
+      content: "";
+      flex: 1;
+      border-top: 1px solid var(--line);
+    }
+    .tg-login-wrap {
+      display: flex;
+      justify-content: center;
+    }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="login-card">
+    <div class="brand">
+      <h1>VPN Control Plane</h1>
+      <p>Авторизация в панели управления</p>
+    </div>
+
+    <form id="login-form" autocomplete="on">
+      <div class="form-group">
+        <label for="username">Имя пользователя</label>
+        <input id="username" class="input" type="text" autocomplete="username" required />
+      </div>
+      <div class="form-group">
+        <label for="password">Пароль</label>
+        <input id="password" class="input" type="password" autocomplete="current-password" required />
+      </div>
+      <button type="submit" class="btn-login" id="btn-login">Войти</button>
+      <div class="error-msg" id="error-msg"></div>
+    </form>
+
+    <div id="tg-section" class="hidden">
+      <div class="divider">или</div>
+      <div class="tg-login-wrap">
+        <a id="tg-login-link" class="btn-login" href="{{TELEGRAM_OIDC_START_URL}}" style="text-decoration:none;text-align:center;display:inline-block;max-width:280px;">
+          Войти через Telegram
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const TELEGRAM_ENABLED = {{TELEGRAM_LOGIN_ENABLED}};
+    const BASE = location.origin;
+
+    const form = document.getElementById("login-form");
+    const errorEl = document.getElementById("error-msg");
+    const btnLogin = document.getElementById("btn-login");
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      errorEl.textContent = "";
+      btnLogin.disabled = true;
+
+      const username = document.getElementById("username").value.trim();
+      const password = document.getElementById("password").value;
+
+      try {
+        const res = await fetch(`${BASE}/api/v1/auth/admin/login/password`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({ username, password }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.detail || `Ошибка ${res.status}`);
+        }
+        window.location.href = `${BASE}/api/v1/admin/panel`;
+      } catch (err) {
+        errorEl.textContent = err.message;
+      } finally {
+        btnLogin.disabled = false;
+      }
+    });
+
+    // Telegram OIDC entry point
+    if (TELEGRAM_ENABLED) {
+      document.getElementById("tg-section").classList.remove("hidden");
+    }
+  </script>
+</body>
+</html>
