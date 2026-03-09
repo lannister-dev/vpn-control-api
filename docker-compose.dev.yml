@@ -1,0 +1,67 @@
+x-healthcheck-common: &healthcheck-common
+  test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/readyz').read()"]
+  interval: 10s
+  timeout: 5s
+  retries: 3
+  start_period: 10s
+
+x-deploy-common: &deploy-common
+  replicas: 1
+  update_config:
+    parallelism: 1
+    delay: 5s
+    order: start-first
+    failure_action: rollback
+  restart_policy:
+    condition: on-failure
+    max_attempts: 3
+  resources:
+    limits:
+      cpus: "0.75"
+      memory: 384M
+    reservations:
+      cpus: "0.15"
+      memory: 96M
+
+services:
+  control-api:
+    image: harbor.lannister-dev.ru/vpn-service/control-api:${IMAGE_TAG:-dev}
+    command:
+      - uvicorn
+      - app:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --proxy-headers
+      - --forwarded-allow-ips=*
+    deploy:
+      <<: *deploy-common
+      placement:
+        constraints:
+          - node.role == manager
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.vpn-control-api-dev.rule=Host(`dev.lannister-dev.ru`) && PathPrefix(`/api`)"
+        - "traefik.http.routers.vpn-control-api-dev.entrypoints=websecure"
+        - "traefik.http.routers.vpn-control-api-dev.service=vpn-control-api-dev"
+        - "traefik.http.services.vpn-control-api-dev.loadbalancer.server.port=8000"
+        #Prometheus
+        - "prometheus-scrape=true"
+        - "prometheus-app=control-api"
+        - "prometheus-env=monitoring"
+        - "prometheus-metrics-port=8000"
+        - "prometheus-metrics-path=/api/monitoring"
+        - "prometheus-scrape-profile=important"
+    healthcheck: *healthcheck-common
+    networks:
+      - monitoring
+      - traefik_swarm
+    env_file:
+      - .env.dev
+
+networks:
+  monitoring:
+    external: true
+  traefik_swarm:
+    external: true
