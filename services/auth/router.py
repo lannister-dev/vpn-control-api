@@ -2,8 +2,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from starlette import status
 from services.auth.utils import AuthUtils
+from services.nodes.auth_utils import identity_accepts_token
 from services.nodes.service import get_vpn_node_service, VpnNodeService
-import secrets
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -37,7 +37,7 @@ async def verify_node_token(
         node_id=node.id,
         agent_instance_id=agent_instance_id,
     )
-    if identity is None or not secrets.compare_digest(identity.auth_token_hash, token_hash):
+    if identity is None or not identity_accepts_token(identity, token_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid node token",
