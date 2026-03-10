@@ -95,6 +95,9 @@ class HeartbeatDetails(BaseModel):
 class NodeSyncDetails(BaseModel):
     synced_count: int = Field(ge=0)
     reported_at: datetime
+    inventory_hash: str | None = None
+    inventory_count: int | None = Field(default=None, ge=0)
+    full_resync_completed: bool | None = None
 
 
 class NodeAgentDetails(BaseModel):
@@ -122,6 +125,9 @@ class NodeHeartbeatIn(BaseModel):
 class NodeSyncReportIn(BaseModel):
     synced_count: int = Field(ge=0)
     config_version: int | None = Field(default=None, ge=0)
+    inventory_hash: str | None = Field(default=None, min_length=1, max_length=128)
+    inventory_count: int | None = Field(default=None, ge=0)
+    full_resync_completed: bool | None = None
 
 
 class NodeSyncReportStatus(str, Enum):
@@ -155,6 +161,7 @@ class NodeAgentInitialOut(BaseModel):
     node_id: str
     node_auth_token: str
     agent_instance_id: str
+    full_resync_required: bool = True
 
 
 class NodeAgentStateCreate(BaseModel):

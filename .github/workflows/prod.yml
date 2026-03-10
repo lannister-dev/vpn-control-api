@@ -24,7 +24,7 @@ jobs:
 
   deploy:
     needs: tests
-    runs-on: [ self-hosted, dev ]
+    runs-on: [ self-hosted, prod ]
     env:
       IMAGE_NAME: control-api
     steps:

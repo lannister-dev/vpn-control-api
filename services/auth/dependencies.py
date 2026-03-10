@@ -1,4 +1,5 @@
 import secrets
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import Header, Depends, HTTPException, Security
@@ -8,6 +9,7 @@ from starlette import status
 from services.auth.utils import AuthUtils
 from services.config import get_settings
 from services.nodes.models import VpnNode
+from services.nodes.auth_utils import identity_accepts_token
 from services.nodes.service import VpnNodeService, get_vpn_node_service
 from shared.monitoring.metrics import AUTH_ATTEMPT_TOTAL
 
@@ -20,6 +22,7 @@ async def node_auth(
     credentials: HTTPAuthorizationCredentials | None = Security(node_bearer),
     service: VpnNodeService = Depends(get_vpn_node_service),
 ) -> VpnNode:
+    now = datetime.now(timezone.utc)
     if credentials is None:
         AUTH_ATTEMPT_TOTAL.labels(type="node", result="failure").inc()
         raise HTTPException(
@@ -44,7 +47,7 @@ async def node_auth(
                 node_id=node.id,
                 agent_instance_id=x_agent_instance_id,
             )
-            if identity is not None and secrets.compare_digest(identity.auth_token_hash, token_hash):
+            if identity is not None and identity_accepts_token(identity, token_hash, now=now):
                 AUTH_ATTEMPT_TOTAL.labels(type="node", result="success").inc()
                 return node
 
@@ -53,6 +56,12 @@ async def node_auth(
         token_hash=token_hash,
     )
     if identity is None:
+        AUTH_ATTEMPT_TOTAL.labels(type="node", result="failure").inc()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid node token",
+        )
+    if not identity_accepts_token(identity, token_hash, now=now):
         AUTH_ATTEMPT_TOTAL.labels(type="node", result="failure").inc()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
