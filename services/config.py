@@ -74,6 +74,7 @@ class SubscriptionsConfig:
 @dataclass
 class NodeAgentConfig:
     sync_report_debounce_sec: int = 10
+    auth_token_rotation_grace_sec: int = 300
     bootstrap_allow_create: bool = True
     heartbeat_unhealthy_drain_threshold: int = 2
     heartbeat_healthy_undrain_threshold: int = 3
@@ -237,6 +238,10 @@ def get_settings() -> Settings:
 
     node_agent = NodeAgentConfig(
         sync_report_debounce_sec=env.int("NODE_SYNC_REPORT_DEBOUNCE_SEC", default=10),
+        auth_token_rotation_grace_sec=max(
+            0,
+            env.int("NODE_AUTH_TOKEN_ROTATION_GRACE_SEC", default=300),
+        ),
         bootstrap_allow_create=env.bool("NODE_BOOTSTRAP_ALLOW_CREATE", default=True),
         heartbeat_unhealthy_drain_threshold=max(
             1,

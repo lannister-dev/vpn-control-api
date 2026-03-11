@@ -79,3 +79,25 @@ Recommended GitHub branch protection for `dev`:
 - Require a pull request before merging.
 - Require status checks to pass before merging: `tests`.
 - Restrict who can push to `dev` (disable direct push for contributors).
+
+## Dev Pipeline
+
+- CI for `dev` branch and PRs into `dev`: `.github/workflows/dev-pr.yml`
+- CD for development environment: `.github/workflows/dev-deploy.yml`
+  - triggers on push to `dev` and manual `workflow_dispatch`
+  - runs tests before deploy
+  - builds and pushes image tags `<sha7>` and `:dev`
+  - deploys Docker Swarm stack `control-api-dev` using `docker-compose.dev.yml`
+
+Required GitHub secrets (environment `development`):
+- `HARBOR_URL`
+- `HARBOR_PROJECT`
+- `HARBOR_USERNAME`
+- `HARBOR_PASSWORD`
+- `CONTROL_API_ENV_DEV` (multiline env content)
+
+Use `control-api.dev.env.example` as template for `CONTROL_API_ENV_DEV`.
+
+Local dev deploy (Swarm):
+- prepare env file: `.env.dev`
+- deploy: `docker stack deploy --with-registry-auth --prune -c docker-compose.dev.yml control-api-dev`

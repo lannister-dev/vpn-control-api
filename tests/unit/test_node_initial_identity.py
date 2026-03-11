@@ -34,6 +34,7 @@ async def test_initial_with_agent_instance_issues_identity_token_without_node_ro
     assert out.node_id == str(node_id)
     assert out.agent_instance_id == str(agent_instance_id)
     assert out.node_auth_token
+    assert out.full_resync_required is True
     service.vpn_node_repository.update_by_id.assert_not_awaited()
     service.vpn_node_repository.create.assert_not_awaited()
     service.node_agent_identity_repository.upsert_token.assert_awaited_once()
@@ -63,6 +64,7 @@ async def test_initial_strict_mode_creates_node_by_node_key(async_session):
     assert out.node_id == str(created_node.id)
     assert out.agent_instance_id == str(agent_instance_id)
     assert out.node_auth_token
+    assert out.full_resync_required is True
     service.vpn_node_repository.create.assert_awaited_once()
     service.vpn_node_repository.update_by_id.assert_not_awaited()
     service.node_agent_identity_repository.upsert_token.assert_awaited_once()

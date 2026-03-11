@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -135,3 +136,62 @@ async def test_node_auth_without_node_id_uses_agent_identity_token():
         agent_instance_id=agent_instance_id,
         token_hash=AuthUtils.hash_node_token(raw_token),
     )
+
+
+@pytest.mark.asyncio
+async def test_node_auth_accepts_previous_token_within_grace_window():
+    node_id = uuid4()
+    agent_instance_id = uuid4()
+    raw_token = "old-agent-token"
+    node = SimpleNamespace(id=node_id, auth_token_hash="unused-for-identity")
+    identity = SimpleNamespace(
+        auth_token_hash=AuthUtils.hash_node_token("new-agent-token"),
+        prev_auth_token_hash=AuthUtils.hash_node_token(raw_token),
+        prev_auth_token_valid_until=datetime.now(timezone.utc) + timedelta(minutes=5),
+    )
+    service = SimpleNamespace(
+        vpn_node_repository=SimpleNamespace(get_by_id=AsyncMock(return_value=node)),
+        node_agent_identity_repository=SimpleNamespace(
+            get_by_node_and_instance=AsyncMock(return_value=identity),
+            get_by_instance_and_token_hash=AsyncMock(return_value=identity),
+        ),
+    )
+
+    authed_node = await node_auth(
+        x_node_id=str(node_id),
+        x_agent_instance_id=agent_instance_id,
+        credentials=HTTPAuthorizationCredentials(scheme="Bearer", credentials=raw_token),
+        service=service,
+    )
+
+    assert authed_node is node
+
+
+@pytest.mark.asyncio
+async def test_node_auth_rejects_previous_token_after_grace_window():
+    node_id = uuid4()
+    agent_instance_id = uuid4()
+    raw_token = "expired-agent-token"
+    node = SimpleNamespace(id=node_id, auth_token_hash="unused-for-identity")
+    identity = SimpleNamespace(
+        auth_token_hash=AuthUtils.hash_node_token("new-agent-token"),
+        prev_auth_token_hash=AuthUtils.hash_node_token(raw_token),
+        prev_auth_token_valid_until=datetime.now(timezone.utc) - timedelta(seconds=1),
+    )
+    service = SimpleNamespace(
+        vpn_node_repository=SimpleNamespace(get_by_id=AsyncMock(return_value=node)),
+        node_agent_identity_repository=SimpleNamespace(
+            get_by_node_and_instance=AsyncMock(return_value=identity),
+            get_by_instance_and_token_hash=AsyncMock(return_value=identity),
+        ),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await node_auth(
+            x_node_id=str(node_id),
+            x_agent_instance_id=agent_instance_id,
+            credentials=HTTPAuthorizationCredentials(scheme="Bearer", credentials=raw_token),
+            service=service,
+        )
+
+    assert exc.value.status_code == 401

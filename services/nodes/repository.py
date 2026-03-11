@@ -1,8 +1,8 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import Depends
-from sqlalchemy import select, func, update
+from sqlalchemy import select, func, update, or_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -154,16 +154,27 @@ class NodeAgentIdentityRepository(BaseRepository[NodeAgentIdentity]):
         node_id: UUID,
         agent_instance_id: UUID,
         token_hash: str,
+        previous_token_valid_until: datetime | None,
+        full_resync_required: bool = True,
     ) -> None:
+        now = datetime.now(timezone.utc)
         stmt = insert(NodeAgentIdentity).values(
             node_id=node_id,
             agent_instance_id=agent_instance_id,
             auth_token_hash=token_hash,
+            prev_auth_token_hash=None,
+            prev_auth_token_valid_until=None,
+            full_resync_required=full_resync_required,
+            last_bootstrap_at=now,
         )
         stmt = stmt.on_conflict_do_update(
             constraint="uq_node_agent_identity_node_agent",
             set_={
+                "prev_auth_token_hash": NodeAgentIdentity.auth_token_hash,
+                "prev_auth_token_valid_until": previous_token_valid_until,
                 "auth_token_hash": token_hash,
+                "full_resync_required": full_resync_required,
+                "last_bootstrap_at": now,
                 "updated_at": func.now(),
             },
         )
@@ -178,7 +189,12 @@ class NodeAgentIdentityRepository(BaseRepository[NodeAgentIdentity]):
         stmt = (
             select(NodeAgentIdentity)
             .where(NodeAgentIdentity.agent_instance_id == agent_instance_id)
-            .where(NodeAgentIdentity.auth_token_hash == token_hash)
+            .where(
+                or_(
+                    NodeAgentIdentity.auth_token_hash == token_hash,
+                    NodeAgentIdentity.prev_auth_token_hash == token_hash,
+                )
+            )
             .limit(2)
         )
         result = await self.session.execute(stmt)
@@ -186,3 +202,13 @@ class NodeAgentIdentityRepository(BaseRepository[NodeAgentIdentity]):
         if len(items) != 1:
             return None
         return items[0]
+
+    async def clear_full_resync_required_for_node(self, *, node_id: UUID) -> None:
+        await self.session.execute(
+            update(NodeAgentIdentity)
+            .where(NodeAgentIdentity.node_id == node_id)
+            .values(
+                full_resync_required=False,
+                updated_at=func.now(),
+            )
+        )
