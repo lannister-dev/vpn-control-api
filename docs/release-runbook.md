@@ -7,7 +7,123 @@
 - Admin auth token is available.
 - Active profiles artifact exists in DB.
 
-## 2. Bootstrap profiles and routes
+## 2. Apply migrations
+
+Preferred path: run migrations from GitHub Actions UI.
+
+Development:
+1. Open GitHub Actions.
+2. Run workflow `Dev DB Migrate`.
+3. Choose:
+   - `image_tag=dev` or a specific image tag
+   - `alembic_command=upgrade head`
+
+Production:
+1. Open GitHub Actions.
+2. Run workflow `Prod DB Migrate`.
+3. Choose:
+   - `image_tag=prod` or a specific image tag
+   - `alembic_command=upgrade head`
+
+Fallback shell path for dev on a Swarm manager:
+```bash
+docker run --rm \
+  --network data-dev-net \
+  --env-file .env.dev \
+  harbor.lannister-dev.ru/vpn-service/control-api:${IMAGE_TAG:-dev} \
+  alembic upgrade head
+```
+
+Fallback shell path for prod on a Swarm manager:
+```bash
+docker run --rm \
+  --network data-prod-net \
+  --env-file .env \
+  harbor.lannister-dev.ru/vpn-service/control-api:${IMAGE_TAG:-prod} \
+  alembic upgrade head
+```
+
+Check current revision manually:
+```bash
+docker run --rm \
+  --network data-dev-net \
+  --env-file .env.dev \
+  harbor.lannister-dev.ru/vpn-service/control-api:${IMAGE_TAG:-dev} \
+  alembic current
+```
+
+## 3. Create schema in dev and import old data
+
+Use this flow when there is an old PostgreSQL instance with current data that must be copied into the new dev DB.
+
+Principle:
+- schema is created by Alembic in the target DB
+- data is copied separately from the old DB
+- do not restore source schema on top of an Alembic-managed target
+
+1. Create target schema first:
+```bash
+docker run --rm \
+  --network data-dev-net \
+  --env-file .env.dev \
+  harbor.lannister-dev.ru/vpn-service/control-api:${IMAGE_TAG:-dev} \
+  alembic upgrade head
+```
+
+2. Dump data from the old PostgreSQL into a local file:
+```bash
+PGPASSWORD='<OLD_DB_PASSWORD>' pg_dump \
+  --host <OLD_DB_HOST> \
+  --port <OLD_DB_PORT> \
+  --username <OLD_DB_USER> \
+  --dbname <OLD_DB_NAME> \
+  --data-only \
+  --no-owner \
+  --no-privileges \
+  --format=custom \
+  --file /tmp/vpn-control-dev-data.dump
+```
+
+3. Restore data into the new dev PostgreSQL:
+```bash
+docker run --rm \
+  --network data-dev-net \
+  -v /tmp:/tmp \
+  -e PGPASSWORD='<DEV_DB_PASSWORD>' \
+  postgres:16-alpine \
+  pg_restore \
+  --host postgres-dev \
+  --port 5432 \
+  --username vpn_dev_user \
+  --dbname vpn_control_dev \
+  --data-only \
+  --no-owner \
+  --no-privileges \
+  /tmp/vpn-control-dev-data.dump
+```
+
+4. Verify that tables contain rows:
+```bash
+docker run --rm \
+  --network data-dev-net \
+  -e PGPASSWORD='<DEV_DB_PASSWORD>' \
+  postgres:16-alpine \
+  psql \
+  --host postgres-dev \
+  --port 5432 \
+  --username vpn_dev_user \
+  --dbname vpn_control_dev \
+  -c '\\dt' \
+  -c 'select count(*) from alembic_version;'
+```
+
+Notes:
+- replace `<OLD_DB_*>` with credentials of the old PostgreSQL
+- replace `<DEV_DB_PASSWORD>` with the password of `vpn_dev_user`
+- if the old DB schema is not compatible with current Alembic revisions, do not restore blindly; first compare table set and columns
+- if you need a full one-time copy including schema for forensic work, restore into a separate disposable DB, not into the Alembic-managed dev DB
+
+## 4. Bootstrap profiles and routes
 
 1. Publish artifact:
 ```bash
@@ -43,7 +159,7 @@ Notes:
 - Replace `3/7/21` with your target release matrix.
 - `409 Bootstrap matrix mismatch` means infra/artifact state drifted from planned launch matrix.
 
-## 3. Smoke checks
+## 5. Smoke checks
 
 1. Backend status:
 ```bash
@@ -73,14 +189,14 @@ curl -X POST "$API/api/v1/connect/telemetry" \
   -d '{"key_id":"<uuid>","route_id":"<uuid>","event":"connect_failure"}'
 ```
 
-## 4. Rollback
+## 6. Rollback
 
 1. Re-publish previous known-good artifact.
 2. Reload registry.
 3. Re-run bootstrap-routes for that artifact.
 4. Verify `/connect` returns stable routes.
 
-## 5. Mandatory checks before launch
+## 7. Mandatory checks before launch
 
 - `pytest -q`
 - `/api/readyz` returns `200` (DB + Redis live)

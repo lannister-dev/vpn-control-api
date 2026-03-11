@@ -80,7 +80,7 @@ Recommended GitHub branch protection for `dev`:
 - Require status checks to pass before merging: `tests`.
 - Restrict who can push to `dev` (disable direct push for contributors).
 
-## Dev Pipeline
+## Delivery
 
 - CI for `dev` branch and PRs into `dev`: `.github/workflows/dev-pr.yml`
 - CD for development environment: `.github/workflows/dev-deploy.yml`
@@ -88,6 +88,12 @@ Recommended GitHub branch protection for `dev`:
   - runs tests before deploy
   - builds and pushes image tags `<sha7>` and `:dev`
   - deploys Docker Swarm stack `control-api-dev` using `docker-compose.dev.yml`
+- Manual DB migrations for development: `.github/workflows/dev-migrate.yml`
+  - renders `.env.dev` from `CONTROL_API_ENV_DEV`
+  - runs `alembic` inside `data-dev-net` using selected image tag
+- Manual DB migrations for production: `.github/workflows/prod-migrate.yml`
+  - renders `.env` from `CONTROL_API_ENV_PROD`
+  - runs `alembic` inside `data-prod-net` using selected image tag
 
 Required GitHub secrets (environment `development`):
 - `HARBOR_URL`
@@ -98,6 +104,14 @@ Required GitHub secrets (environment `development`):
 
 Use `control-api.dev.env.example` as template for `CONTROL_API_ENV_DEV`.
 
+Required GitHub secrets (environment `production`):
+- `HARBOR_URL`
+- `HARBOR_PROJECT`
+- `HARBOR_USERNAME`
+- `HARBOR_PASSWORD`
+- `CONTROL_API_ENV_PROD` (multiline env content)
+
 Local dev deploy (Swarm):
 - prepare env file: `.env.dev`
 - deploy: `docker stack deploy --with-registry-auth --prune -c docker-compose.dev.yml control-api-dev`
+- DB migrations and data import commands: `docs/release-runbook.md`

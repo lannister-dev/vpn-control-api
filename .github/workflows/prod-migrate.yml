@@ -1,0 +1,83 @@
+name: Prod DB Migrate
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Control API image tag to use for migrations"
+        required: true
+        default: "prod"
+        type: string
+      alembic_command:
+        description: "Alembic command to run"
+        required: true
+        default: "upgrade head"
+        type: choice
+        options:
+          - upgrade head
+          - current
+          - history
+
+concurrency:
+  group: control-api-prod-migrate
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    runs-on: [self-hosted, prod]
+    environment:
+      name: production
+    env:
+      IMAGE_NAME: control-api
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to Harbor
+        env:
+          HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
+          HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          echo "$HARBOR_PASSWORD" | docker login ${{ secrets.HARBOR_URL }} \
+            -u "$HARBOR_USERNAME" \
+            --password-stdin
+
+      - name: Resolve image reference
+        run: |
+          set -Eeuo pipefail
+          echo "IMAGE_REF=${{ secrets.HARBOR_URL }}/${{ secrets.HARBOR_PROJECT }}/${IMAGE_NAME}:${{ inputs.image_tag }}" >> "$GITHUB_ENV"
+
+      - name: Render .env from secret
+        env:
+          CONTROL_API_ENV_PROD: ${{ secrets.CONTROL_API_ENV_PROD }}
+        run: |
+          set -Eeuo pipefail
+          test -n "${CONTROL_API_ENV_PROD}" || { echo "::error::Missing secret CONTROL_API_ENV_PROD"; exit 1; }
+          printf '%s\n' "${CONTROL_API_ENV_PROD}" > .env
+          chmod 600 .env
+
+      - name: Run Alembic
+        run: |
+          set -Eeuo pipefail
+          docker run --rm \
+            --network data-prod-net \
+            --env-file .env \
+            "${IMAGE_REF}" \
+            alembic ${{ inputs.alembic_command }}
+
+      - name: Migration summary
+        if: always()
+        run: |
+          {
+            echo "## Prod DB Migrate Summary"
+            echo "- Image ref: \`${IMAGE_REF}\`"
+            echo "- Alembic command: \`alembic ${{ inputs.alembic_command }}\`"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Cleanup temporary env
+        if: always()
+        run: rm -f .env
