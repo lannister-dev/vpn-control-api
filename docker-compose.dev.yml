@@ -62,7 +62,7 @@ services:
     networks:
       - monitoring
       - traefik_swarm
-      - data-dev-net
+      - data-dev
     env_file:
       - .env.dev
 
@@ -71,5 +71,6 @@ networks:
     external: true
   traefik_swarm:
     external: true
-  data-dev-net:
+  data-dev:
+    name: data-dev-net
     external: true
