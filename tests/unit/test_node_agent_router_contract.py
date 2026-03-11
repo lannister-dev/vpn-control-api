@@ -7,12 +7,16 @@ from fastapi import HTTPException
 
 from services.nodes.router import (
     get_placements_page,
+    report_placements_batch,
     sync_report,
 )
 from services.nodes.schemas import NodeRole, NodeSyncReportIn
 from services.placements.schemas import (
     PlacementAppliedState,
     PlacementAssignmentOut,
+    PlacementBatchReportIn,
+    PlacementBatchReportItemIn,
+    PlacementBatchReportOut,
     PlacementDesiredState,
     PlacementPageOut,
 )
@@ -109,3 +113,35 @@ async def test_sync_report_contract_skipped_status():
 
     assert out.status == "skipped"
     service.handle_sync_report.assert_awaited_once_with(node=node, payload=payload)
+
+
+@pytest.mark.asyncio
+async def test_report_batch_contract():
+    placement_id = uuid4()
+    payload = PlacementBatchReportIn(
+        items=[
+            PlacementBatchReportItemIn(
+                placement_id=placement_id,
+                op_version=7,
+                applied_state=PlacementAppliedState.applied,
+            )
+        ]
+    )
+    service = SimpleNamespace(
+        report_batch_for_backend=AsyncMock(
+            return_value=PlacementBatchReportOut(
+                items=[{"placement_id": placement_id, "status": "applied"}]
+            )
+        ),
+    )
+    node = SimpleNamespace(id=uuid4(), role=NodeRole.backend.value)
+
+    out = await report_placements_batch(
+        payload=payload,
+        node=node,
+        service=service,
+    )
+
+    assert out.items[0].placement_id == placement_id
+    assert out.items[0].status == "applied"
+    service.report_batch_for_backend.assert_awaited_once_with(node=node, payload=payload)

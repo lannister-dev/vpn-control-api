@@ -73,6 +73,25 @@ class PlacementReportOut(BaseModel):
     status: PlacementReportStatus
 
 
+class PlacementBatchReportItemIn(BaseModel):
+    placement_id: UUID
+    op_version: int = Field(ge=1)
+    applied_state: PlacementAppliedState
+
+
+class PlacementBatchReportIn(BaseModel):
+    items: list[PlacementBatchReportItemIn] = Field(default_factory=list)
+
+
+class PlacementBatchReportItemOut(BaseModel):
+    placement_id: UUID
+    status: PlacementReportStatus
+
+
+class PlacementBatchReportOut(BaseModel):
+    items: list[PlacementBatchReportItemOut]
+
+
 class PlacementAssignmentOut(BaseModel):
     id: UUID
     key_id: UUID
@@ -87,6 +106,7 @@ class PlacementAssignmentOut(BaseModel):
     transport: VpnTransport
     valid_until: datetime | None
     is_revoked: bool
+    updated_at: datetime | None = None
     backend_internal_wg_ip: str
     backend_xray_api_port: int
 

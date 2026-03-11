@@ -18,7 +18,13 @@ from services.nodes.schemas import (
     VpnNodeOut,
     VpnNodeUpdate,
 )
-from services.placements.schemas import PlacementPageOut, PlacementReportIn, PlacementReportOut
+from services.placements.schemas import (
+    PlacementBatchReportIn,
+    PlacementBatchReportOut,
+    PlacementPageOut,
+    PlacementReportIn,
+    PlacementReportOut,
+)
 from services.placements.service import PlacementAgentService, get_placement_agent_service
 from services.nodes.service import (
     NodeBootstrapConflictError,
@@ -157,6 +163,19 @@ async def report_placement(
         payload=payload,
     )
     return PlacementReportOut(status=result)
+
+
+@router.post(
+    "/placements/report-batch",
+    response_model=PlacementBatchReportOut,
+    summary="Report placement apply results in bulk (backend agent)",
+)
+async def report_placements_batch(
+        payload: PlacementBatchReportIn,
+        node: VpnNode = Depends(node_auth),
+        service: PlacementAgentService = Depends(get_placement_agent_service),
+):
+    return await service.report_batch_for_backend(node=node, payload=payload)
 
 
 @router.post(

@@ -1,3 +1,7 @@
+version: '3.8'
+
+# ======== health check, rollback =========
+
 x-healthcheck-common: &healthcheck-common
   test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/readyz').read()"]
   interval: 10s
@@ -23,6 +27,7 @@ x-deploy-common: &deploy-common
       cpus: "0.15"
       memory: 96M
 
+
 services:
   control-api:
     image: harbor.lannister-dev.ru/vpn-service/control-api:${IMAGE_TAG:-dev}
@@ -47,7 +52,6 @@ services:
         - "traefik.http.routers.vpn-control-api-dev.entrypoints=websecure"
         - "traefik.http.routers.vpn-control-api-dev.service=vpn-control-api-dev"
         - "traefik.http.services.vpn-control-api-dev.loadbalancer.server.port=8000"
-        #Prometheus
         - "prometheus-scrape=true"
         - "prometheus-app=control-api"
         - "prometheus-env=dev"
@@ -58,6 +62,7 @@ services:
     networks:
       - monitoring
       - traefik_swarm
+      - data-dev-net
     env_file:
       - .env.dev
 
@@ -65,4 +70,6 @@ networks:
   monitoring:
     external: true
   traefik_swarm:
+    external: true
+  data-dev-net:
     external: true

@@ -64,6 +64,7 @@ services:
     networks:
       - monitoring
       - traefik_swarm
+      - data-prod-net
     env_file:
       - .env
 

@@ -82,3 +82,17 @@ async def test_bulk_migrate_backend_handles_missing_or_negative_rowcount(async_s
         updated_at=datetime.now(timezone.utc),
     )
     assert out_negative == 0
+
+
+@pytest.mark.asyncio
+async def test_apply_backend_reports_batch_returns_empty_for_no_reports(async_session):
+    repo = UserPlacementRepository(async_session)
+
+    out = await repo.apply_backend_reports_batch(
+        reports=[],
+        updated_at=datetime.now(timezone.utc),
+        reporter_backend_id=uuid4(),
+    )
+
+    assert out == set()
+    async_session.execute.assert_not_awaited()
