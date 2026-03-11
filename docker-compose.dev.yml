@@ -58,6 +58,7 @@ services:
     networks:
       - monitoring
       - traefik_swarm
+      - data-dev-net
     env_file:
       - .env.dev
 
