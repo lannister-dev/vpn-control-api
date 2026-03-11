@@ -74,6 +74,7 @@ class SubscriptionsConfig:
 @dataclass
 class NodeAgentConfig:
     sync_report_debounce_sec: int = 10
+    auth_token_rotation_grace_sec: int = 300
     bootstrap_allow_create: bool = True
     heartbeat_unhealthy_drain_threshold: int = 2
     heartbeat_healthy_undrain_threshold: int = 3
@@ -136,6 +137,23 @@ class TrafficConfig:
 
 
 @dataclass
+class AdminAuthConfig:
+    enabled: bool = False
+    session_secret: str = ""
+    session_ttl_sec: int = 86400
+    session_cookie_secure: bool = True
+    telegram_login_enabled: bool = False
+    telegram_client_id: str = ""
+    telegram_client_secret: str = ""
+    telegram_redirect_uri: str = ""
+    telegram_authorize_url: str = "https://oauth.telegram.org/auth"
+    telegram_token_url: str = "https://oauth.telegram.org/token"
+    telegram_jwks_url: str = "https://oauth.telegram.org/.well-known/jwks.json"
+    telegram_issuer: str = "https://oauth.telegram.org"
+    telegram_allowed_ids: tuple[int, ...] = ()
+
+
+@dataclass
 class Settings:
     database: DbConfig
     redis: RedisConfig
@@ -150,6 +168,7 @@ class Settings:
     routes: RoutesConfig
     edge: EdgeConfig
     traffic: TrafficConfig
+    admin_auth: AdminAuthConfig
 
 
 @lru_cache
@@ -219,6 +238,10 @@ def get_settings() -> Settings:
 
     node_agent = NodeAgentConfig(
         sync_report_debounce_sec=env.int("NODE_SYNC_REPORT_DEBOUNCE_SEC", default=10),
+        auth_token_rotation_grace_sec=max(
+            0,
+            env.int("NODE_AUTH_TOKEN_ROTATION_GRACE_SEC", default=300),
+        ),
         bootstrap_allow_create=env.bool("NODE_BOOTSTRAP_ALLOW_CREATE", default=True),
         heartbeat_unhealthy_drain_threshold=max(
             1,
@@ -286,6 +309,26 @@ def get_settings() -> Settings:
         history_retention_days=max(1, env.int("TRAFFIC_HISTORY_RETENTION_DAYS", default=14)),
     )
 
+    _tg_allowed_raw = env.str("ADMIN_TELEGRAM_ALLOWED_IDS", default="")
+    _tg_allowed = tuple(
+        int(x.strip()) for x in _tg_allowed_raw.split(",") if x.strip().isdigit()
+    )
+    admin_auth = AdminAuthConfig(
+        enabled=env.bool("ADMIN_AUTH_ENABLED", default=False),
+        session_secret=env.str("ADMIN_SESSION_SECRET", default=""),
+        session_ttl_sec=env.int("ADMIN_SESSION_TTL_SEC", default=86400),
+        session_cookie_secure=env.bool("ADMIN_SESSION_COOKIE_SECURE", default=True),
+        telegram_login_enabled=env.bool("ADMIN_TELEGRAM_LOGIN_ENABLED", default=False),
+        telegram_client_id=env.str("ADMIN_TELEGRAM_CLIENT_ID", default=""),
+        telegram_client_secret=env.str("ADMIN_TELEGRAM_CLIENT_SECRET", default=""),
+        telegram_redirect_uri=env.str("ADMIN_TELEGRAM_REDIRECT_URI", default=""),
+        telegram_authorize_url=env.str("ADMIN_TELEGRAM_AUTHORIZE_URL", default="https://oauth.telegram.org/auth"),
+        telegram_token_url=env.str("ADMIN_TELEGRAM_TOKEN_URL", default="https://oauth.telegram.org/token"),
+        telegram_jwks_url=env.str("ADMIN_TELEGRAM_JWKS_URL", default="https://oauth.telegram.org/.well-known/jwks.json"),
+        telegram_issuer=env.str("ADMIN_TELEGRAM_ISSUER", default="https://oauth.telegram.org"),
+        telegram_allowed_ids=_tg_allowed,
+    )
+
     return Settings(
         database=database,
         redis=redis,
@@ -300,4 +343,5 @@ def get_settings() -> Settings:
         routes=routes,
         edge=edge,
         traffic=traffic,
+        admin_auth=admin_auth,
     )

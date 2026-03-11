@@ -56,7 +56,7 @@ services:
         # -------- Prometheus --------
         - "prometheus-scrape=true"
         - "prometheus-app=control-api"
-        - "prometheus-env=monitoring"
+        - "prometheus-env=prod"
         - "prometheus-metrics-port=8000"
         - "prometheus-metrics-path=/api/monitoring"
         - "prometheus-scrape-profile=important"

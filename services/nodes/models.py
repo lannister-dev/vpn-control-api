@@ -59,6 +59,15 @@ class NodeAgentIdentity(Base):
     node_id: Mapped[UUID] = mapped_column(ForeignKey("vpn_node.id"), nullable=False, index=True)
     agent_instance_id: Mapped[UUID] = mapped_column(nullable=False)
     auth_token_hash: Mapped[str] = mapped_column(String(length=64), nullable=False)
+    prev_auth_token_hash: Mapped[str | None] = mapped_column(String(length=64), nullable=True)
+    prev_auth_token_valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    full_resync_required: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default=text("false"),
+        nullable=False,
+    )
+    last_bootstrap_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     node: Mapped["VpnNode"] = relationship(back_populates="agent_identities")
 

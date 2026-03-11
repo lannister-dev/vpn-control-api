@@ -1,7 +1,7 @@
 import hashlib
 import logging
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import Depends
@@ -55,6 +55,10 @@ class VpnNodeService:
         )
         node_agent_settings = get_settings().node_agent
         self.sync_report_debounce_sec = max(0, int(node_agent_settings.sync_report_debounce_sec))
+        self.auth_token_rotation_grace_sec = max(
+            0,
+            int(node_agent_settings.auth_token_rotation_grace_sec),
+        )
         self.bootstrap_allow_create = bool(node_agent_settings.bootstrap_allow_create)
         self.heartbeat_unhealthy_drain_threshold = max(
             1, int(node_agent_settings.heartbeat_unhealthy_drain_threshold)
@@ -105,6 +109,9 @@ class VpnNodeService:
 
         raw_token = secrets.token_urlsafe(32)
         token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+        previous_token_valid_until = datetime.now(timezone.utc) + timedelta(
+            seconds=self.auth_token_rotation_grace_sec,
+        )
 
         if node is None:
             if not self.bootstrap_allow_create:
@@ -134,6 +141,8 @@ class VpnNodeService:
             node_id=node.id,
             agent_instance_id=agent_instance_id,
             token_hash=token_hash,
+            previous_token_valid_until=previous_token_valid_until,
+            full_resync_required=True,
         )
         NODE_BOOTSTRAP_TOTAL.labels(result="identity_issued").inc()
 
@@ -141,6 +150,7 @@ class VpnNodeService:
             node_id=str(node.id),
             node_auth_token=raw_token,
             agent_instance_id=str(agent_instance_id),
+            full_resync_required=True,
         )
 
     async def handle_heartbeat(
@@ -236,6 +246,9 @@ class VpnNodeService:
         details.sync = NodeSyncDetails(
             synced_count=payload.synced_count,
             reported_at=now,
+            inventory_hash=payload.inventory_hash,
+            inventory_count=payload.inventory_count,
+            full_resync_completed=payload.full_resync_completed,
         )
         details_data = details.model_dump(mode="json", exclude_none=True)
         if state is None:
@@ -251,6 +264,9 @@ class VpnNodeService:
             await self.node_agent_state_repository.upsert(
                 create_state.model_dump(exclude_none=True)
             )
+            await self.node_agent_identity_repository.clear_full_resync_required_for_node(
+                node_id=node.id,
+            )
             return True
         else:
             update_state = NodeAgentStateUpdate(
@@ -261,6 +277,9 @@ class VpnNodeService:
             await self.node_agent_state_repository.update_by_node_id(
                 node_id=node.id,
                 data=update_state.model_dump(exclude_none=True),
+            )
+            await self.node_agent_identity_repository.clear_full_resync_required_for_node(
+                node_id=node.id,
             )
             return True
 
@@ -287,8 +306,20 @@ class VpnNodeService:
 
         details_raw = state.details if isinstance(state.details, dict) else {}
         existing_details = NodeAgentDetails.model_validate(details_raw)
-        existing_synced_count = existing_details.sync.synced_count if existing_details.sync else None
+        existing_sync = existing_details.sync
+        existing_synced_count = existing_sync.synced_count if existing_sync else None
         if existing_synced_count != payload.synced_count:
+            return False
+        existing_inventory_hash = existing_sync.inventory_hash if existing_sync else None
+        if existing_inventory_hash != payload.inventory_hash:
+            return False
+        existing_inventory_count = existing_sync.inventory_count if existing_sync else None
+        if existing_inventory_count != payload.inventory_count:
+            return False
+        existing_full_resync_completed = (
+            existing_sync.full_resync_completed if existing_sync else None
+        )
+        if existing_full_resync_completed != payload.full_resync_completed:
             return False
         return True
 
