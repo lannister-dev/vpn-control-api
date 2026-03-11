@@ -6,11 +6,14 @@ from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.nodes.models import VpnNode
-from services.nodes.repository import NodeAgentStateRepository, VpnNodeRepository
+from services.nodes.repository import VpnNodeRepository
 from services.nodes.schemas import NodeRole
 from services.placements.model import UserPlacement
 from services.placements.repository import UserPlacementRepository
 from services.placements.schemas import (
+    PlacementBatchReportIn,
+    PlacementBatchReportItemOut,
+    PlacementBatchReportOut,
     PlacementMigrateBackendIn,
     PlacementMigrateBackendOut,
     PlacementAppliedState,
@@ -138,7 +141,6 @@ class UserPlacementService:
 class PlacementAgentService:
     def __init__(self, session: AsyncSession):
         self.placement_repository = UserPlacementRepository(session)
-        self.node_agent_state_repository = NodeAgentStateRepository(session)
 
     async def get_page_for_backend(
             self,
@@ -210,7 +212,6 @@ class PlacementAgentService:
             NODE_PLACEMENT_REPORT_TOTAL.labels(status="skipped_stale").inc()
             return "skipped_stale"
         if payload.applied_state == PlacementAppliedState.applied:
-            await self.node_agent_state_repository.touch_last_sync(node_id=node.id, at=now)
             NODE_PLACEMENT_REPORT_TOTAL.labels(status="applied").inc()
             return "applied"
         if payload.applied_state == PlacementAppliedState.error:
@@ -218,6 +219,83 @@ class PlacementAgentService:
             return "error"
         NODE_PLACEMENT_REPORT_TOTAL.labels(status="pending").inc()
         return "pending"
+
+    async def report_batch_for_backend(
+            self,
+            *,
+            node: VpnNode,
+            payload: PlacementBatchReportIn,
+    ) -> PlacementBatchReportOut:
+        if node.role != NodeRole.backend.value:
+            raise HTTPException(status_code=403, detail="Node role must be backend")
+        if not payload.items:
+            return PlacementBatchReportOut(items=[])
+
+        placement_ids = [item.placement_id for item in payload.items]
+        placements = await self.placement_repository.list_by_ids_for_backend(
+            placement_ids=placement_ids,
+            backend_node_id=node.id,
+        )
+        placement_by_id = {placement.id: placement for placement in placements}
+
+        items_out: list[PlacementBatchReportItemOut] = []
+        to_update: list[tuple[UUID, int, str, int]] = []
+        pending_ids: list[UUID] = []
+        pending_status_by_id: dict[UUID, str] = {}
+
+        for item in payload.items:
+            placement = placement_by_id.get(item.placement_id)
+            if placement is None or item.op_version != placement.op_version:
+                status = "skipped_stale"
+            elif (
+                    placement.applied_version == item.op_version
+                    and placement.applied_state == item.applied_state
+            ):
+                status = "skipped_idempotent"
+            else:
+                status = ""
+                pending_ids.append(item.placement_id)
+                pending_status_by_id[item.placement_id] = item.applied_state.value
+                to_update.append(
+                    (
+                        item.placement_id,
+                        item.op_version,
+                        item.applied_state.value,
+                        item.op_version,
+                    )
+                )
+
+            if status:
+                NODE_PLACEMENT_REPORT_TOTAL.labels(status=status).inc()
+                items_out.append(
+                    PlacementBatchReportItemOut(
+                        placement_id=item.placement_id,
+                        status=status,
+                    )
+                )
+
+        updated_ids = await self.placement_repository.apply_backend_reports_batch(
+            reports=to_update,
+            updated_at=datetime.now(timezone.utc),
+            reporter_backend_id=node.id,
+        )
+
+        for placement_id in pending_ids:
+            if placement_id in updated_ids:
+                status = pending_status_by_id[placement_id]
+            else:
+                status = "skipped_stale"
+            NODE_PLACEMENT_REPORT_TOTAL.labels(status=status).inc()
+            items_out.append(
+                PlacementBatchReportItemOut(
+                    placement_id=placement_id,
+                    status=status,
+                )
+            )
+
+        status_by_id = {item.placement_id: item for item in items_out}
+        ordered = [status_by_id[item.placement_id] for item in payload.items]
+        return PlacementBatchReportOut(items=ordered)
 
     def _build_items(
             self,
@@ -252,6 +330,7 @@ class PlacementAgentService:
                     transport=VpnTransport(key.transport),
                     valid_until=key.valid_until,
                     is_revoked=key.is_revoked,
+                    updated_at=placement.updated_at,
                     backend_internal_wg_ip=backend_node.internal_wg_ip,
                     backend_xray_api_port=backend_node.xray_api_port,
                 )

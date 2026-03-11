@@ -7,7 +7,12 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 
-from services.placements.schemas import PlacementAppliedState, PlacementReportIn
+from services.placements.schemas import (
+    PlacementAppliedState,
+    PlacementBatchReportIn,
+    PlacementBatchReportItemIn,
+    PlacementReportIn,
+)
 from services.placements.service import PlacementAgentService
 
 
@@ -141,7 +146,6 @@ async def test_report_skipped_stale(async_session):
         payload=PlacementReportIn(op_version=4, applied_state=PlacementAppliedState.applied),
     )
     assert result == "skipped_stale"
-    svc.node_agent_state_repository.touch_last_sync.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -169,7 +173,6 @@ async def test_report_updates_applied(async_session):
         updated_at=ANY,
         reporter_backend_id=node.id,
     )
-    svc.node_agent_state_repository.touch_last_sync.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -189,7 +192,6 @@ async def test_report_applied_skipped_when_race_lost(async_session):
         payload=PlacementReportIn(op_version=4, applied_state=PlacementAppliedState.applied),
     )
     assert result == "skipped_stale"
-    svc.node_agent_state_repository.touch_last_sync.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -214,4 +216,97 @@ async def test_report_skipped_idempotent(async_session):
     )
     assert result == "skipped_idempotent"
     svc.placement_repository.apply_backend_report.assert_not_awaited()
-    svc.node_agent_state_repository.touch_last_sync.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_report_batch_mixed_cases(async_session):
+    svc = PlacementAgentService(async_session)
+    svc.placement_repository = AsyncMock()
+
+    node = _node()
+    placement_applied = _placement(backend_node_id=node.id, op_version=7, applied_state="pending", applied_version=0)
+    placement_error = _placement(backend_node_id=node.id, op_version=8, applied_state="pending", applied_version=0)
+    placement_idempotent = _placement(
+        backend_node_id=node.id,
+        op_version=9,
+        applied_state=PlacementAppliedState.applied.value,
+        applied_version=9,
+    )
+    svc.placement_repository.list_by_ids_for_backend.return_value = [
+        placement_applied,
+        placement_error,
+        placement_idempotent,
+    ]
+    svc.placement_repository.apply_backend_reports_batch.return_value = {
+        placement_applied.id,
+        placement_error.id,
+    }
+
+    result = await svc.report_batch_for_backend(
+        node=node,
+        payload=PlacementBatchReportIn(
+            items=[
+                PlacementBatchReportItemIn(
+                    placement_id=placement_applied.id,
+                    op_version=7,
+                    applied_state=PlacementAppliedState.applied,
+                ),
+                PlacementBatchReportItemIn(
+                    placement_id=placement_error.id,
+                    op_version=8,
+                    applied_state=PlacementAppliedState.error,
+                ),
+                PlacementBatchReportItemIn(
+                    placement_id=placement_idempotent.id,
+                    op_version=9,
+                    applied_state=PlacementAppliedState.applied,
+                ),
+                PlacementBatchReportItemIn(
+                    placement_id=uuid4(),
+                    op_version=10,
+                    applied_state=PlacementAppliedState.applied,
+                ),
+            ]
+        ),
+    )
+
+    assert [item.status for item in result.items] == [
+        "applied",
+        "error",
+        "skipped_idempotent",
+        "skipped_stale",
+    ]
+    svc.placement_repository.apply_backend_reports_batch.assert_awaited_once_with(
+        reports=[
+            (placement_applied.id, 7, "applied", 7),
+            (placement_error.id, 8, "error", 8),
+        ],
+        updated_at=ANY,
+        reporter_backend_id=node.id,
+    )
+
+
+@pytest.mark.asyncio
+async def test_report_batch_marks_race_lost_updates_as_stale(async_session):
+    svc = PlacementAgentService(async_session)
+    svc.placement_repository = AsyncMock()
+
+    node = _node()
+    placement = _placement(backend_node_id=node.id, op_version=7, applied_state="pending", applied_version=0)
+    svc.placement_repository.list_by_ids_for_backend.return_value = [placement]
+    svc.placement_repository.apply_backend_reports_batch.return_value = set()
+
+    result = await svc.report_batch_for_backend(
+        node=node,
+        payload=PlacementBatchReportIn(
+            items=[
+                PlacementBatchReportItemIn(
+                    placement_id=placement.id,
+                    op_version=7,
+                    applied_state=PlacementAppliedState.applied,
+                )
+            ]
+        ),
+    )
+
+    assert [item.status for item in result.items] == ["skipped_stale"]
