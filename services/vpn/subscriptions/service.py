@@ -126,7 +126,10 @@ class SubscriptionService:
         try:
             profile = ProfileRegistry.get(data.profile_key).profile
         except ProfileRegistryError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
+            raise HTTPException(
+                status_code=422,
+                detail=self._describe_profile_registry_error(exc),
+            ) from exc
 
         self._infer_transport(profile.type)
 
@@ -550,6 +553,13 @@ class SubscriptionService:
             return VpnTransport.reality
         raise HTTPException(status_code=422, detail=f"Unsupported profile type: {profile_type}")
 
+    def _describe_profile_registry_error(self, exc: ProfileRegistryError) -> str:
+        available_keys = sorted(ProfileRegistry.all_keys())
+        detail = str(exc)
+        if not available_keys:
+            return detail
+        return f"{detail}. Available profile keys: {', '.join(available_keys)}"
+
     async def _ensure_backend_placements_for_key(
             self,
             *,
@@ -893,7 +903,7 @@ class SubscriptionService:
         try:
             profile = ProfileRegistry.get(subscription.profile_key).profile
         except ProfileRegistryError as exc:
-            raise SubscriptionBuild(str(exc)) from exc
+            raise SubscriptionBuild(self._describe_profile_registry_error(exc)) from exc
 
         transport = self._infer_transport(profile.type)
         valid_until = subscription.expires_at

@@ -110,7 +110,7 @@ class SubscriptionPublicAdapter:
             )
         if isinstance(exc, SubscriptionBuild):
             message = str(exc)
-            if message.startswith("No available "):
+            if self._is_service_unavailable_build_error(message):
                 return SubscriptionPublicErrorResponse(
                     metric_result="build_error",
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -126,6 +126,12 @@ class SubscriptionPublicAdapter:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to build subscription",
         )
+
+    @staticmethod
+    def _is_service_unavailable_build_error(message: str) -> bool:
+        if message.startswith("No available "):
+            return True
+        return message == "Backend placement sync pending"
 
     def _build_headers(
             self,

@@ -117,3 +117,21 @@ async def test_get_subscription_config_maps_build_unavailable_error():
         )
 
     assert exc.value.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_get_subscription_config_maps_sync_pending_error_to_503():
+    service = SimpleNamespace(
+        build_payload=AsyncMock(side_effect=SubscriptionBuild("Backend placement sync pending"))
+    )
+    request = _request_with_headers({})
+
+    with pytest.raises(HTTPException) as exc:
+        await get_subscription_config(
+            token="tok",
+            request=request,
+            service=service,
+            adapter=_adapter(),
+        )
+
+    assert exc.value.status_code == 503
