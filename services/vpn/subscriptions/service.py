@@ -610,18 +610,24 @@ class SubscriptionService:
             placements_by_backend[node_id] = created
 
         preferred_placement: UserPlacement | None = None
+        allowed_backend_ids: set[UUID] = set()
         for node in candidate_nodes:
             node_id = self._as_uuid(str(node.id))
-            preferred_placement = synced_by_backend.get(node_id)
-            if preferred_placement is not None:
+            placement = placements_by_backend.get(node_id)
+            if placement is None:
+                continue
+            allowed_backend_ids.add(node_id)
+            if preferred_placement is None:
+                preferred_placement = placement
+            if self._is_placement_synced(placement):
+                preferred_placement = placement
                 break
         if preferred_placement is None:
-            raise SubscriptionBuild("Backend placement sync pending")
+            raise SubscriptionBuild("No available backend nodes")
 
         preferred_backend_id = self._as_uuid(preferred_placement.backend_node_id)
-        allowed_backend_ids = set(synced_by_backend.keys())
         if not allowed_backend_ids:
-            raise SubscriptionBuild("Backend placement sync pending")
+            raise SubscriptionBuild("No available backend nodes")
         return preferred_backend_id, preferred_placement, allowed_backend_ids
 
     async def _select_backend(self, *, preferred_region: str | None) -> VpnNode:
