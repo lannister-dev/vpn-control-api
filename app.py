@@ -24,6 +24,7 @@ from services.nodes.reconciler import NodePlacementReconciler
 from services.nodes.router import router as node_router
 from services.placements.router import router as placements_router
 from services.probe.router import router as probe_router
+from services.probe.cleanup_reconciler import ProbeSignalCleanupReconciler
 from services.probe.reconciler import ProbeAutoDrainReconciler
 from services.routes.router import router as routes_router
 from services.routes.reconciler import RouteWarmupReconciler
@@ -50,11 +51,13 @@ async def lifespan(app: FastAPI):
         await bootstrap_profiles_registry(session)
 
     warmup_reconciler = RouteWarmupReconciler()
+    probe_cleanup_reconciler = ProbeSignalCleanupReconciler()
     probe_auto_drain_reconciler = ProbeAutoDrainReconciler()
     node_auto_heal_reconciler = NodePlacementReconciler()
     users_traffic_consumer = UserTrafficNatsConsumer(get_settings().nats)
     traffic_cleanup_reconciler = TrafficHistoryCleanupReconciler()
     await warmup_reconciler.start()
+    await probe_cleanup_reconciler.start()
     await probe_auto_drain_reconciler.start()
     await node_auto_heal_reconciler.start()
     await users_traffic_consumer.start()
@@ -66,6 +69,7 @@ async def lifespan(app: FastAPI):
         await users_traffic_consumer.stop()
         await node_auto_heal_reconciler.stop()
         await probe_auto_drain_reconciler.stop()
+        await probe_cleanup_reconciler.stop()
         await warmup_reconciler.stop()
     log.info("Application shutdown")
 

@@ -126,7 +126,10 @@ class SubscriptionService:
         try:
             profile = ProfileRegistry.get(data.profile_key).profile
         except ProfileRegistryError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
+            raise HTTPException(
+                status_code=422,
+                detail=self._describe_profile_registry_error(exc),
+            ) from exc
 
         self._infer_transport(profile.type)
 
@@ -550,6 +553,13 @@ class SubscriptionService:
             return VpnTransport.reality
         raise HTTPException(status_code=422, detail=f"Unsupported profile type: {profile_type}")
 
+    def _describe_profile_registry_error(self, exc: ProfileRegistryError) -> str:
+        available_keys = sorted(ProfileRegistry.all_keys())
+        detail = str(exc)
+        if not available_keys:
+            return detail
+        return f"{detail}. Available profile keys: {', '.join(available_keys)}"
+
     async def _ensure_backend_placements_for_key(
             self,
             *,
@@ -559,13 +569,19 @@ class SubscriptionService:
             key_transport: str | None,
     ) -> tuple[UUID, UserPlacement, set[UUID]]:
         desired_replicas = max(1, min(10, int(desired_replicas)))
-        placements = await self.placement_repository.list_by_key_id(
+        all_placements = await self.placement_repository.list_by_key_id(
             key_id=key_id,
             active_only=True,
             desired_state=PlacementDesiredState.active.value,
         )
         placements_by_backend: dict[UUID, UserPlacement] = {
-            placement.backend_node_id: placement for placement in placements
+            placement.backend_node_id: placement for placement in all_placements
+        }
+        synced_placements = [
+            placement for placement in all_placements if self._is_placement_synced(placement)
+        ]
+        synced_by_backend: dict[UUID, UserPlacement] = {
+            placement.backend_node_id: placement for placement in synced_placements
         }
 
         candidate_nodes = await self.routing_service.select_nodes(
@@ -594,18 +610,24 @@ class SubscriptionService:
             placements_by_backend[node_id] = created
 
         preferred_placement: UserPlacement | None = None
+        allowed_backend_ids: set[UUID] = set()
         for node in candidate_nodes:
             node_id = self._as_uuid(str(node.id))
-            preferred_placement = placements_by_backend.get(node_id)
-            if preferred_placement is not None:
+            placement = placements_by_backend.get(node_id)
+            if placement is None:
+                continue
+            allowed_backend_ids.add(node_id)
+            if preferred_placement is None:
+                preferred_placement = placement
+            if self._is_placement_synced(placement):
+                preferred_placement = placement
                 break
         if preferred_placement is None:
-            raise SubscriptionBuild("Failed to create placement")
+            raise SubscriptionBuild("No available backend nodes")
 
         preferred_backend_id = self._as_uuid(preferred_placement.backend_node_id)
-        allowed_backend_ids = set(placements_by_backend.keys())
         if not allowed_backend_ids:
-            raise SubscriptionBuild("No active placements available")
+            raise SubscriptionBuild("No available backend nodes")
         return preferred_backend_id, preferred_placement, allowed_backend_ids
 
     async def _select_backend(self, *, preferred_region: str | None) -> VpnNode:
@@ -627,6 +649,16 @@ class SubscriptionService:
         if node.role != NodeRole.backend.value:
             return False
         return bool((node.internal_wg_ip or "").strip())
+
+    @staticmethod
+    def _is_placement_synced(placement: UserPlacement) -> bool:
+        applied_state = getattr(placement, "applied_state", "applied")
+        if not isinstance(applied_state, str):
+            applied_state = "applied"
+        applied_version = getattr(placement, "applied_version", placement.op_version)
+        if not isinstance(applied_version, int):
+            applied_version = placement.op_version
+        return applied_state == "applied" and applied_version == placement.op_version
 
     def _build_route_uri(
             self,
@@ -877,7 +909,7 @@ class SubscriptionService:
         try:
             profile = ProfileRegistry.get(subscription.profile_key).profile
         except ProfileRegistryError as exc:
-            raise SubscriptionBuild(str(exc)) from exc
+            raise SubscriptionBuild(self._describe_profile_registry_error(exc)) from exc
 
         transport = self._infer_transport(profile.type)
         valid_until = subscription.expires_at

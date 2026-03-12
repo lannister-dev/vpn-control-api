@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -12,6 +12,22 @@ from services.placements.repository import UserPlacementRepository
 class _Result:
     def __init__(self, rowcount):
         self.rowcount = rowcount
+
+
+class _Scalars:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def all(self):
+        return self._rows
+
+
+class _ScalarResult:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def scalars(self):
+        return _Scalars(self._rows)
 
 
 @pytest.mark.asyncio
@@ -82,6 +98,53 @@ async def test_bulk_migrate_backend_handles_missing_or_negative_rowcount(async_s
         updated_at=datetime.now(timezone.utc),
     )
     assert out_negative == 0
+
+
+@pytest.mark.asyncio
+async def test_bulk_migrate_backend_reuses_inactive_target_row(async_session):
+    repo = UserPlacementRepository(async_session)
+
+    key_id = uuid4()
+    source = MagicMock()
+    source.id = uuid4()
+    source.key_id = key_id
+    source.desired_state = "active"
+    source.sticky_until = None
+
+    target = MagicMock()
+    target.id = uuid4()
+    target.key_id = key_id
+    target.is_active = False
+
+    async_session.execute = AsyncMock(
+        side_effect=[
+            _ScalarResult([source]),
+            _ScalarResult([target]),
+            _Result(1),
+            _Result(1),
+        ]
+    )
+
+    out = await repo.bulk_migrate_backend(
+        placement_ids=[source.id],
+        target_backend_id=uuid4(),
+        last_migration_reason="admin_manual",
+        updated_at=datetime.now(timezone.utc),
+    )
+
+    assert out == 1
+    assert async_session.execute.await_count == 4
+
+    merge_stmt = async_session.execute.await_args_list[2].args[0]
+    merge_params = merge_stmt.compile().params
+    assert "desired_state" in merge_params
+    assert "is_active" in merge_params
+    assert "backend_node_id" not in merge_params
+
+    retire_stmt = async_session.execute.await_args_list[3].args[0]
+    retire_params = retire_stmt.compile().params
+    assert retire_params["is_active"] is False
+    assert "backend_node_id" not in retire_params
 
 
 @pytest.mark.asyncio

@@ -7,6 +7,8 @@ from uuid import uuid4
 from datetime import datetime, timezone, timedelta
 from types import SimpleNamespace
 
+from fastapi import HTTPException
+
 from services.vpn.subscriptions import redis_key
 from services.vpn.subscriptions.service import SubscriptionService
 from services.vpn.subscriptions.exceptions import (
@@ -563,6 +565,34 @@ async def test_create_subscription_url_uses_base_url_as_is(service):
     service.vpn_key_repository.create.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+async def test_create_subscription_invalid_profile_lists_available_keys(service):
+    from shared.profiles.exceptions import ProfileRegistryError
+
+    user_id = uuid4()
+    service.user_repository.get_by_id = AsyncMock(return_value=MagicMock())
+
+    with patch("services.vpn.subscriptions.service.ProfileRegistry.get") as get_profile:
+        with patch(
+            "services.vpn.subscriptions.service.ProfileRegistry.all_keys",
+            return_value=["reality_tcp_dev_v1", "ws_tls_dev_v1"],
+        ):
+            get_profile.side_effect = ProfileRegistryError("Profile not found: ws_tls_v1")
+
+            with pytest.raises(HTTPException) as exc_info:
+                await service.create(
+                    SubscriptionCreateIn(
+                        user_id=user_id,
+                        profile_key="ws_tls_v1",
+                    )
+                )
+
+    assert exc_info.value.status_code == 422
+    assert exc_info.value.detail == (
+        "Profile not found: ws_tls_v1. Available profile keys: reality_tcp_dev_v1, ws_tls_dev_v1"
+    )
+
+
 def test_fit_routes_to_payload_limit_keeps_all_when_within_limit(service):
     routes = [
         ResolvedSubscriptionRoute(
@@ -647,3 +677,82 @@ def test_fit_routes_to_payload_limit_rejects_if_single_route_too_large(service):
 
     assert result == "rejected"
     assert selected == []
+
+
+@pytest.mark.asyncio
+async def test_subscription_returns_pending_placement_for_new_backend(service):
+    backend = MagicMock()
+    backend.id = uuid4()
+    backend.public_domain = "be.example.com"
+    backend.reality_ip = "203.0.113.20"
+    backend.role = "backend"
+    backend.region = "fi"
+    backend.is_active = True
+    backend.is_enabled = True
+    backend.is_draining = False
+
+    created = MagicMock(
+        id=uuid4(),
+        key_id=uuid4(),
+        backend_node_id=backend.id,
+        desired_state="active",
+        op_version=3,
+        applied_version=0,
+        applied_state="pending",
+    )
+
+    service.placement_repository = AsyncMock()
+    service.routing_service = AsyncMock()
+    service.placement_repository.list_by_key_id.return_value = []
+    service.placement_repository.upsert_set_pending = AsyncMock(return_value=created)
+    service.routing_service.select_nodes = AsyncMock(return_value=[backend])
+
+    preferred_backend_id, placement, allowed_backend_ids = await service._ensure_backend_placements_for_key(
+        key_id=uuid4(),
+        preferred_region="fi",
+        desired_replicas=1,
+        key_transport="reality",
+    )
+
+    assert preferred_backend_id == backend.id
+    assert placement is created
+    assert allowed_backend_ids == {backend.id}
+
+
+@pytest.mark.asyncio
+async def test_subscription_returns_unsynced_existing_placement(service):
+    backend = MagicMock()
+    backend.id = uuid4()
+    backend.public_domain = "be.example.com"
+    backend.reality_ip = "203.0.113.20"
+    backend.role = "backend"
+    backend.region = "fi"
+    backend.is_active = True
+    backend.is_enabled = True
+    backend.is_draining = False
+
+    pending = MagicMock(
+        id=uuid4(),
+        key_id=uuid4(),
+        backend_node_id=backend.id,
+        desired_state="active",
+        op_version=7,
+        applied_version=0,
+        applied_state="pending",
+    )
+
+    service.placement_repository = AsyncMock()
+    service.routing_service = AsyncMock()
+    service.placement_repository.list_by_key_id.return_value = [pending]
+    service.routing_service.select_nodes = AsyncMock(return_value=[backend])
+
+    preferred_backend_id, placement, allowed_backend_ids = await service._ensure_backend_placements_for_key(
+        key_id=uuid4(),
+        preferred_region="fi",
+        desired_replicas=1,
+        key_transport="reality",
+    )
+
+    assert preferred_backend_id == backend.id
+    assert placement is pending
+    assert allowed_backend_ids == {backend.id}

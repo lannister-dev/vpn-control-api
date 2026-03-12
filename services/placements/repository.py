@@ -96,7 +96,7 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
         self,
         *,
         backend_node_id: UUID,
-        cursor: tuple[int, UUID] | None,
+        cursor: tuple[datetime, UUID] | None,
         limit: int,
     ) -> list[tuple[UserPlacement, VpnKey, VpnNode]]:
         stmt = (
@@ -112,15 +112,15 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
         )
 
         if cursor is not None:
-            op, pid = cursor
+            updated_at, pid = cursor
             stmt = stmt.where(
                 or_(
-                    self.model.op_version > op,
-                    and_(self.model.op_version == op, self.model.id > pid),
+                    self.model.updated_at > updated_at,
+                    and_(self.model.updated_at == updated_at, self.model.id > pid),
                 )
             )
 
-        stmt = stmt.order_by(self.model.op_version.asc(), self.model.id.asc()).limit(limit)
+        stmt = stmt.order_by(self.model.updated_at.asc(), self.model.id.asc()).limit(limit)
         res = await self.session.execute(stmt)
         rows: list[tuple[UserPlacement, VpnKey, VpnNode]] = list(res.tuples().all())
         return rows
@@ -324,7 +324,6 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
             select(self.model).where(
                 self.model.key_id.in_(key_ids),
                 self.model.backend_node_id == target_backend_id,
-                self.model.is_active.is_(True),
             )
         )
         target_rows = list(target_result.scalars().all())

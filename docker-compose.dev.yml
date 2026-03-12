@@ -23,9 +23,6 @@ x-deploy-common: &deploy-common
     limits:
       cpus: "0.75"
       memory: 384M
-    reservations:
-      cpus: "0.15"
-      memory: 96M
 
 
 services:
@@ -52,6 +49,7 @@ services:
         - "traefik.http.routers.vpn-control-api-dev.entrypoints=websecure"
         - "traefik.http.routers.vpn-control-api-dev.service=vpn-control-api-dev"
         - "traefik.http.services.vpn-control-api-dev.loadbalancer.server.port=8000"
+        #Prometheus
         - "prometheus-scrape=true"
         - "prometheus-app=control-api"
         - "prometheus-env=dev"
