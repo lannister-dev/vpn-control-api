@@ -680,7 +680,7 @@ def test_fit_routes_to_payload_limit_rejects_if_single_route_too_large(service):
 
 
 @pytest.mark.asyncio
-async def test_subscription_placement_sync_pending_for_new_backend(service):
+async def test_subscription_returns_pending_placement_for_new_backend(service):
     backend = MagicMock()
     backend.id = uuid4()
     backend.public_domain = "be.example.com"
@@ -707,19 +707,20 @@ async def test_subscription_placement_sync_pending_for_new_backend(service):
     service.placement_repository.upsert_set_pending = AsyncMock(return_value=created)
     service.routing_service.select_nodes = AsyncMock(return_value=[backend])
 
-    with pytest.raises(SubscriptionBuild) as exc:
-        await service._ensure_backend_placements_for_key(
-            key_id=uuid4(),
-            preferred_region="fi",
-            desired_replicas=1,
-            key_transport="reality",
-        )
+    preferred_backend_id, placement, allowed_backend_ids = await service._ensure_backend_placements_for_key(
+        key_id=uuid4(),
+        preferred_region="fi",
+        desired_replicas=1,
+        key_transport="reality",
+    )
 
-    assert str(exc.value) == "Backend placement sync pending"
+    assert preferred_backend_id == backend.id
+    assert placement is created
+    assert allowed_backend_ids == {backend.id}
 
 
 @pytest.mark.asyncio
-async def test_subscription_placement_sync_pending_for_unsynced_existing(service):
+async def test_subscription_returns_unsynced_existing_placement(service):
     backend = MagicMock()
     backend.id = uuid4()
     backend.public_domain = "be.example.com"
@@ -745,12 +746,13 @@ async def test_subscription_placement_sync_pending_for_unsynced_existing(service
     service.placement_repository.list_by_key_id.return_value = [pending]
     service.routing_service.select_nodes = AsyncMock(return_value=[backend])
 
-    with pytest.raises(SubscriptionBuild) as exc:
-        await service._ensure_backend_placements_for_key(
-            key_id=uuid4(),
-            preferred_region="fi",
-            desired_replicas=1,
-            key_transport="reality",
-        )
+    preferred_backend_id, placement, allowed_backend_ids = await service._ensure_backend_placements_for_key(
+        key_id=uuid4(),
+        preferred_region="fi",
+        desired_replicas=1,
+        key_transport="reality",
+    )
 
-    assert str(exc.value) == "Backend placement sync pending"
+    assert preferred_backend_id == backend.id
+    assert placement is pending
+    assert allowed_backend_ids == {backend.id}
