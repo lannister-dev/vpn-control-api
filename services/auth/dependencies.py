@@ -102,20 +102,45 @@ async def _admin_auth_session(request) -> bool:
         return result is not None
 
 
+def _admin_auth_api_key(
+    credentials: HTTPAuthorizationCredentials | None,
+) -> bool:
+    if credentials is None:
+        return False
+
+    if credentials.scheme.lower() != "bearer":
+        return False
+
+    raw_token = credentials.credentials.strip()
+    if not raw_token:
+        return False
+
+    expected_hash = get_settings().admin.api_key_hash
+    if not expected_hash:
+        return False
+
+    provided_hash = AuthUtils.hash_admin_api_key(raw_token)
+    return secrets.compare_digest(provided_hash, expected_hash)
+
+
+admin_bearer = HTTPBearer(auto_error=False)
+
+
 async def admin_auth(
         request: Request,
+        credentials: HTTPAuthorizationCredentials | None = Security(admin_bearer),
 ) -> None:
     """
-    Validates admin access using admin session cookie only.
+    Validates admin access using admin session cookie or bearer admin API key.
     """
-    if await _admin_auth_session(request):
+    if await _admin_auth_session(request) or _admin_auth_api_key(credentials):
         AUTH_ATTEMPT_TOTAL.labels(type="admin", result="success").inc()
         return
 
     AUTH_ATTEMPT_TOTAL.labels(type="admin", result="failure").inc()
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid or expired admin session",
+        detail="Invalid admin credentials",
     )
 
 

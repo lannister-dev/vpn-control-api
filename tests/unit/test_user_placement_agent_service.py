@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from unittest.mock import ANY, AsyncMock, MagicMock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi import HTTPException
@@ -109,6 +109,32 @@ async def test_get_page_keeps_transport_from_key(async_session):
 
     assert len(out.items) == 1
     assert out.items[0].transport.value == "tcp"
+
+
+@pytest.mark.asyncio
+async def test_get_page_parses_updated_at_cursor(async_session):
+    svc = PlacementAgentService(async_session)
+    svc.placement_repository = AsyncMock()
+
+    node = _node()
+    placement = _placement(backend_node_id=node.id)
+    placement.updated_at = datetime(2026, 3, 12, 18, 1, 40, tzinfo=timezone.utc)
+    key = _key()
+    backend = _backend()
+    svc.placement_repository.list_for_backend_with_keys_page.return_value = [(placement, key, backend)]
+
+    out = await svc.get_page_for_backend(
+        node=node,
+        cursor="1741802500000:550e8400-e29b-41d4-a716-446655440000",
+        limit=10,
+    )
+
+    assert out.next_cursor == f"{int(placement.updated_at.timestamp() * 1000)}:{placement.id}"
+    svc.placement_repository.list_for_backend_with_keys_page.assert_awaited_once_with(
+        backend_node_id=node.id,
+        cursor=(datetime.fromtimestamp(1741802500, tz=timezone.utc), UUID("550e8400-e29b-41d4-a716-446655440000")),
+        limit=10,
+    )
 
 
 @pytest.mark.asyncio

@@ -88,11 +88,17 @@ async def test_connect_routeset_returns_routes(async_session):
     route_2 = _route(name="be2-reality-microsoft", weight=30)
     backend_2 = _backend_node()
     backend_2.id = route_2.node_id
+    placement_2 = MagicMock(
+        id=uuid4(),
+        op_version=6,
+        desired_state="active",
+        backend_node_id=backend_2.id,
+    )
     tp = _transport_profile()
 
     svc.user_repository.get_by_id = AsyncMock(return_value=MagicMock(id=user_id))
     svc.key_repository.get_latest_active_for_user = AsyncMock(return_value=key)
-    svc.placement_repository.list_by_key_id = AsyncMock(return_value=[placement])
+    svc.placement_repository.list_by_key_id = AsyncMock(return_value=[placement, placement_2])
     svc.routing_service.select_nodes = AsyncMock(return_value=[backend, backend_2])
     svc.node_repository.get_by_id = AsyncMock(return_value=backend)
     svc.route_repository.list_resolved_active = AsyncMock(
@@ -150,15 +156,54 @@ async def test_connect_routeset_creates_placement_when_missing(async_session):
     svc.route_repository.list_resolved_active = AsyncMock(return_value=[(route, backend, tp)])
     svc._build_route_uri = MagicMock(return_value="vless://route")
 
-    out = await svc.connect_routeset(
-        ConnectRouteSetIn(user_id=user_id, preferred_region="fi", max_routes=4)
-    )
+    with pytest.raises(HTTPException) as exc:
+        await svc.connect_routeset(
+            ConnectRouteSetIn(user_id=user_id, preferred_region="fi", max_routes=4)
+        )
 
-    assert out.placement_id == placement_new.id
-    assert out.config_version == 3
+    assert exc.value.status_code == 503
+    assert exc.value.detail == "Backend placement sync pending"
     svc.placement_repository.upsert_set_pending.assert_awaited_once()
     kwargs = svc.placement_repository.upsert_set_pending.await_args.kwargs
     assert kwargs["backend_node_id"] == backend.id
+    svc.route_repository.list_resolved_active.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_connect_routeset_ignores_unsynced_existing_placements(async_session):
+    svc = ConnectService(async_session, _redis())
+    svc.user_repository = AsyncMock()
+    svc.key_repository = AsyncMock()
+    svc.placement_repository = AsyncMock()
+    svc.node_repository = AsyncMock()
+    svc.route_repository = AsyncMock()
+    svc.routing_service = AsyncMock()
+
+    user_id = uuid4()
+    key = MagicMock(id=uuid4(), user_id=user_id, is_revoked=False, client_id=str(uuid4()))
+    backend = _backend_node()
+    placement = MagicMock(
+        id=uuid4(),
+        op_version=7,
+        applied_version=0,
+        applied_state="pending",
+        desired_state="active",
+        backend_node_id=backend.id,
+    )
+
+    svc.user_repository.get_by_id = AsyncMock(return_value=MagicMock(id=user_id))
+    svc.key_repository.get_latest_active_for_user = AsyncMock(return_value=key)
+    svc.placement_repository.list_by_key_id = AsyncMock(return_value=[placement])
+    svc.routing_service.select_nodes = AsyncMock(return_value=[backend])
+
+    with pytest.raises(HTTPException) as exc:
+        await svc.connect_routeset(
+            ConnectRouteSetIn(user_id=user_id, preferred_region="fi", max_routes=1)
+        )
+
+    assert exc.value.status_code == 503
+    assert exc.value.detail == "Backend placement sync pending"
+    svc.route_repository.list_resolved_active.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -190,11 +235,23 @@ async def test_connect_routeset_keeps_primary_and_fallback_mix(async_session):
     backend_f1.id = route_f1.node_id
     backend_f2 = _backend_node()
     backend_f2.id = route_f2.node_id
+    placement_f1 = MagicMock(
+        id=uuid4(),
+        op_version=8,
+        desired_state="active",
+        backend_node_id=backend_f1.id,
+    )
+    placement_f2 = MagicMock(
+        id=uuid4(),
+        op_version=7,
+        desired_state="active",
+        backend_node_id=backend_f2.id,
+    )
     tp = _transport_profile()
 
     svc.user_repository.get_by_id = AsyncMock(return_value=MagicMock(id=user_id))
     svc.key_repository.get_latest_active_for_user = AsyncMock(return_value=key)
-    svc.placement_repository.list_by_key_id = AsyncMock(return_value=[placement])
+    svc.placement_repository.list_by_key_id = AsyncMock(return_value=[placement, placement_f1, placement_f2])
     svc.routing_service.select_nodes = AsyncMock(
         return_value=[backend_primary, backend_f1, backend_f2]
     )
@@ -257,12 +314,24 @@ async def test_connect_routeset_includes_transport_insurance_when_available(asyn
     backend_f1.id = route_f1.node_id
     backend_f2 = _backend_node()
     backend_f2.id = route_f2.node_id
+    placement_f1 = MagicMock(
+        id=uuid4(),
+        op_version=9,
+        desired_state="active",
+        backend_node_id=backend_f1.id,
+    )
+    placement_f2 = MagicMock(
+        id=uuid4(),
+        op_version=8,
+        desired_state="active",
+        backend_node_id=backend_f2.id,
+    )
     reality_tp = _transport_profile(name="reality-main", network="tcp", security="reality")
     grpc_tp = _transport_profile(name="grpc-insurance", network="grpc", security="tls")
 
     svc.user_repository.get_by_id = AsyncMock(return_value=MagicMock(id=user_id))
     svc.key_repository.get_latest_active_for_user = AsyncMock(return_value=key)
-    svc.placement_repository.list_by_key_id = AsyncMock(return_value=[placement])
+    svc.placement_repository.list_by_key_id = AsyncMock(return_value=[placement, placement_f1, placement_f2])
     svc.routing_service.select_nodes = AsyncMock(
         return_value=[backend_primary, backend_f1, backend_f2]
     )
@@ -319,11 +388,23 @@ async def test_connect_routeset_prefers_fallback_backend_diversity(async_session
     backend_f1.id = route_f1.node_id
     backend_f2 = _backend_node()
     backend_f2.id = route_f3.node_id
+    placement_f1 = MagicMock(
+        id=uuid4(),
+        op_version=10,
+        desired_state="active",
+        backend_node_id=backend_f1.id,
+    )
+    placement_f2 = MagicMock(
+        id=uuid4(),
+        op_version=9,
+        desired_state="active",
+        backend_node_id=backend_f2.id,
+    )
     tp = _transport_profile(name="reality-main", network="tcp", security="reality")
 
     svc.user_repository.get_by_id = AsyncMock(return_value=MagicMock(id=user_id))
     svc.key_repository.get_latest_active_for_user = AsyncMock(return_value=key)
-    svc.placement_repository.list_by_key_id = AsyncMock(return_value=[placement])
+    svc.placement_repository.list_by_key_id = AsyncMock(return_value=[placement, placement_f1, placement_f2])
     svc.routing_service.select_nodes = AsyncMock(
         return_value=[backend_primary, backend_f1, backend_f2]
     )
