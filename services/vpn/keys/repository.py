@@ -103,7 +103,6 @@ class VpnKeyRepository(BaseRepository[VpnKey]):
         keys = list(result.scalars().all())
         return keys, total
 
-
 async def get_vpn_key_repository(
         session: AsyncSession = Depends(AsyncDatabase.get_session)
 ) -> VpnKeyRepository:
