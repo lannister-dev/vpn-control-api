@@ -7,6 +7,8 @@ from uuid import uuid4
 from datetime import datetime, timezone, timedelta
 from types import SimpleNamespace
 
+from fastapi import HTTPException
+
 from services.vpn.subscriptions import redis_key
 from services.vpn.subscriptions.service import SubscriptionService
 from services.vpn.subscriptions.exceptions import (
@@ -561,6 +563,34 @@ async def test_create_subscription_url_uses_base_url_as_is(service):
 
     assert out.subscription_url.startswith("https://api.example.com/custom-prefix/")
     service.vpn_key_repository.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_create_subscription_invalid_profile_lists_available_keys(service):
+    from shared.profiles.exceptions import ProfileRegistryError
+
+    user_id = uuid4()
+    service.user_repository.get_by_id = AsyncMock(return_value=MagicMock())
+
+    with patch("services.vpn.subscriptions.service.ProfileRegistry.get") as get_profile:
+        with patch(
+            "services.vpn.subscriptions.service.ProfileRegistry.all_keys",
+            return_value=["reality_tcp_dev_v1", "ws_tls_dev_v1"],
+        ):
+            get_profile.side_effect = ProfileRegistryError("Profile not found: ws_tls_v1")
+
+            with pytest.raises(HTTPException) as exc_info:
+                await service.create(
+                    SubscriptionCreateIn(
+                        user_id=user_id,
+                        profile_key="ws_tls_v1",
+                    )
+                )
+
+    assert exc_info.value.status_code == 422
+    assert exc_info.value.detail == (
+        "Profile not found: ws_tls_v1. Available profile keys: reality_tcp_dev_v1, ws_tls_dev_v1"
+    )
 
 
 def test_fit_routes_to_payload_limit_keeps_all_when_within_limit(service):

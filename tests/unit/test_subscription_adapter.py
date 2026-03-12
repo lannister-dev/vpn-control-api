@@ -66,3 +66,9 @@ def test_map_subscription_error_build_no_available_is_503():
     mapped = _adapter().map_error(SubscriptionBuild("No available routes"))
     assert mapped.metric_result == "build_error"
     assert mapped.status_code == 503
+
+
+def test_map_subscription_error_build_sync_pending_is_503():
+    mapped = _adapter().map_error(SubscriptionBuild("Backend placement sync pending"))
+    assert mapped.metric_result == "build_error"
+    assert mapped.status_code == 503

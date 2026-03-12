@@ -657,12 +657,14 @@
           <div class="stack">
             <div class="card">
               <div class="muted">Ручное создание подписки</div>
-              <form id="form-sub-create" class="stack">
+              <form id="form-sub-create" class="stack" autocomplete="off">
                 <input class="input mono" name="user_id" placeholder="ID пользователя (UUID)" required />
                 <div class="row-2">
-                  <input class="input" name="profile_key" value="ws_tls_v1" placeholder="profile_key (например: ws_tls_v1)" required />
+                  <input class="input" id="sub-profile-key" name="profile_key" list="sub-profile-keys" placeholder="profile_key" autocomplete="off" required />
                   <input class="input" name="preferred_region" placeholder="preferred_region (опционально)" />
                 </div>
+                <datalist id="sub-profile-keys"></datalist>
+                <div id="sub-profile-key-help" class="muted">Профили будут подгружены из активного artifact.</div>
                 <div class="row-2"><input class="input" name="expires_at" type="datetime-local" /><input class="input" name="max_devices" type="number" min="1" max="100" placeholder="max_devices (опционально)" /></div>
                 <div class="muted">Legacy-режим удален: подписка создается только в HWID/device-key модели.</div>
                 <button class="btn btn-primary" type="submit">Создать подписку</button>
@@ -886,6 +888,7 @@
         readinessList: $("readiness-list"), routeHealthList: $("route-health-list"), probeFailList: $("probe-fail-list"), nodeAlertList: $("node-alert-list"), selectedNodeCard: $("selected-node-card"), actionLog: $("action-log"),
         nodesHead: $("nodes-head"), nodesBody: $("nodes-body"), routesHead: $("routes-head"), routesBody: $("routes-body"), placementsBody: $("placements-body"), placementsMeta: $("placements-meta"),
         subsBody: $("subs-body"), subDevicesBody: $("sub-devices-body"), subCreateResult: $("sub-create-result"), subManageResult: $("sub-manage-result"),
+        subProfileKey: $("sub-profile-key"), subProfileKeys: $("sub-profile-keys"), subProfileKeyHelp: $("sub-profile-key-help"),
         nodesSearch: $("nodes-search"), nodesRole: $("nodes-role"), nodesHealth: $("nodes-health"), nodesState: $("nodes-state"), nodesClear: $("nodes-clear"), nodesReload: $("nodes-reload"),
         routesStatus: $("routes-status"), routesSearch: $("routes-search"), routesReload: $("routes-reload"),
         placementsNode: $("placements-node"), placementsKey: $("placements-key"), placementsDesired: $("placements-desired"), placementsApplied: $("placements-applied"), placementsReload: $("placements-reload"),
@@ -906,7 +909,7 @@
         panels: { overview: $("tab-overview"), nodes: $("tab-nodes"), routes: $("tab-routes"), placements: $("tab-placements"), subscriptions: $("tab-subscriptions"), traffic: $("tab-traffic"), "admin-users": $("tab-admin-users"), ops: $("tab-ops") },
       };
 
-      const state = { timer: null, selectedNode: null, status: null, readiness: null, routes: [], placements: [], probes: [], subscriptions: [], subscriptionDevices: [], logs: [], activeTab: "overview", loading: false, trafficKeys: [], trafficTotal: 0, trafficLimit: 50, trafficOffset: 0, trafficHistory: [], trafficHistoryTotal: 0, trafficHistoryLimit: 50, trafficHistoryOffset: 0, trafficHistoryKeyId: null, trafficHistoryKeyData: null, adminUsers: [], adminUsersTotal: 0 };
+      const state = { timer: null, selectedNode: null, status: null, readiness: null, routes: [], placements: [], probes: [], subscriptions: [], subscriptionDevices: [], logs: [], activeTab: "overview", loading: false, trafficKeys: [], trafficTotal: 0, trafficLimit: 50, trafficOffset: 0, trafficHistory: [], trafficHistoryTotal: 0, trafficHistoryLimit: 50, trafficHistoryOffset: 0, trafficHistoryKeyId: null, trafficHistoryKeyData: null, adminUsers: [], adminUsersTotal: 0, profileKeys: [] };
 
       const esc = (v) => String(v ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
       const fmtDate = (v) => { if (!v) return "-"; const d = new Date(v); return Number.isNaN(d.getTime()) ? "-" : d.toLocaleString(); };
@@ -1055,6 +1058,33 @@
           : `<div class="empty">Операций пока не было.</div>`;
       }
 
+      function renderProfileKeyOptions() {
+        const keys = Array.isArray(state.profileKeys) ? state.profileKeys : [];
+        if (refs.subProfileKeys) {
+          refs.subProfileKeys.innerHTML = keys.map((key) => `<option value="${esc(key)}"></option>`).join("");
+        }
+        if (refs.subProfileKeyHelp) {
+          refs.subProfileKeyHelp.textContent = keys.length
+            ? `Доступные profile_key: ${keys.join(", ")}`
+            : "Нет загруженных профилей в активном artifact.";
+        }
+        if (refs.subProfileKey && keys.length) {
+          const current = String(refs.subProfileKey.value || "").trim();
+          if (!current || !keys.includes(current)) refs.subProfileKey.value = keys[0];
+          refs.subProfileKey.placeholder = `profile_key (например: ${keys[0]})`;
+        }
+      }
+
+      async function loadActiveProfileKeys() {
+        const artifact = await req("/api/v1/artifacts/profiles/active");
+        const artifactPayload = artifact && typeof artifact === "object" ? artifact.artifact : null;
+        state.profileKeys = artifactPayload && typeof artifactPayload === "object"
+          ? Object.keys(artifactPayload).sort()
+          : [];
+        renderProfileKeyOptions();
+        return state.profileKeys;
+      }
+
       async function req(path, options) {
         const opt = options || {};
         const headers = { Accept: "application/json" };
@@ -1137,6 +1167,13 @@
           <div class="mono">token: ${esc(created.token)} <button class="btn-mini copy-value" data-copy="${esc(created.token)}">Копировать</button></div>
           <div class="mono">url: ${esc(created.subscription_url)} <button class="btn-mini copy-value" data-copy="${esc(created.subscription_url)}">Копировать</button></div>
           <div class="muted">active: ${created.is_active ? "yes" : "no"}, expires: ${fmtDate(created.expires_at)}</div>
+        `;
+      }
+
+      function renderSubscriptionCreateError(message) {
+        refs.subCreateResult.innerHTML = `
+          <div>${chip("bad", "Подписка не создана")}</div>
+          <div class="mono">${esc(message)}</div>
         `;
       }
 
@@ -1305,6 +1342,9 @@
         refs.crumbs.textContent = "Dashboard \u2022 " + (TAB_LABELS[tab] || tab);
         if (tab === "traffic" && state.trafficKeys.length === 0) {
           loadTrafficKeys().catch((e) => notify("\u041E\u0448\u0438\u0431\u043A\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0438 \u0442\u0440\u0430\u0444\u0438\u043A\u0430: " + e.message, true));
+        }
+        if (tab === "subscriptions" && state.profileKeys.length === 0) {
+          loadActiveProfileKeys().catch((e) => notify(`Ошибка загрузки profiles artifact: ${e.message}`, true));
         }
         if (tab === "admin-users" && state.adminUsers.length === 0) {
           loadAdminUsers().catch((e) => notify("Ошибка загрузки admin users: " + e.message, true));
@@ -1538,6 +1578,15 @@
           if (fullRefresh || tab === "placements") {
             fetches.push(req("/api/v1/placements?limit=500").then((p) => { state.placements = p; }));
           }
+          if (fullRefresh || tab === "subscriptions") {
+            fetches.push(
+              loadActiveProfileKeys()
+                .catch(() => {
+                  state.profileKeys = [];
+                  renderProfileKeyOptions();
+                })
+            );
+          }
           if (tab === "traffic" && state.trafficKeys.length > 0) {
             fetches.push(loadTrafficKeys().catch(() => {}));
           }
@@ -1551,6 +1600,7 @@
             const cur = status.nodes.find((n) => n.id === state.selectedNode.id);
             if (cur) state.selectedNode = cur;
           }
+          renderProfileKeyOptions();
           render();
         } finally {
           state.loading = false;
@@ -1579,7 +1629,7 @@
       refs.routesReload.addEventListener("click", () => refreshAll(true).catch((e) => notify(`Ошибка обновления: ${e.message}`, true)));
       refs.placementsReload.addEventListener("click", () => refreshAll(true).catch((e) => notify(`Ошибка обновления: ${e.message}`, true)));
 
-      refs.formSubCreate.addEventListener("submit", (e) => {
+      refs.formSubCreate.addEventListener("submit", async (e) => {
         e.preventDefault();
         const d = new FormData(refs.formSubCreate);
         const payload = {
@@ -1592,6 +1642,24 @@
         if (maxDevices) payload.max_devices = Number(maxDevices);
         const expiresAt = parseDateTimeLocal(d.get("expires_at"));
         if (expiresAt) payload.expires_at = expiresAt;
+        let knownProfileKeys = null;
+        try {
+          knownProfileKeys = await loadActiveProfileKeys();
+        } catch (_) {}
+        if (Array.isArray(knownProfileKeys)) {
+          if (knownProfileKeys.length === 0) {
+            const message = "В активном profiles artifact нет доступных profile_key.";
+            renderSubscriptionCreateError(message);
+            notify(message, true);
+            return;
+          }
+          if (!knownProfileKeys.includes(payload.profile_key)) {
+            const message = `Неизвестный profile_key: ${payload.profile_key}. Доступные profile_key: ${knownProfileKeys.join(", ")}`;
+            renderSubscriptionCreateError(message);
+            notify(message, true);
+            return;
+          }
+        }
         runAction("Create subscription", () => req("/api/v1/subscriptions", { method: "POST", body: payload }))
           .then((created) => {
             renderSubscriptionCreateResult(created);
