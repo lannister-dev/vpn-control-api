@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>VPN Control Plane - Пульт управления</title>
+  <title>Operations UI - DEV</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
@@ -290,6 +290,21 @@
     th { color: rgba(159, 179, 207, 0.84); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; }
     tbody tr:hover td { background: rgba(45, 212, 191, 0.06); }
     .badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 2px 8px; font-size: 11px; border: 1px solid transparent; white-space: nowrap; }
+    .env-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(245, 198, 107, 0.38);
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.16), rgba(13, 148, 136, 0.12));
+      color: #fde7b0;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      box-shadow: 0 10px 30px rgba(245, 158, 11, 0.12);
+    }
     .ok { color: #acfbe0; border-color: rgba(94, 233, 181, 0.44); background: rgba(94, 233, 181, 0.14); }
     .warn { color: #ffdfa0; border-color: rgba(245, 198, 107, 0.41); background: rgba(245, 198, 107, 0.14); }
     .bad { color: #ffbbb5; border-color: rgba(255, 127, 133, 0.43); background: rgba(255, 127, 133, 0.14); }
@@ -508,8 +523,8 @@
     <div class="layout">
     <aside class="sidebar">
       <section class="brand">
-        <h1><span id="ready-dot" class="dot"></span>VPN Control Plane</h1>
-        <div class="muted">Панель уровня NOC: управление узлами, маршрутами и плейсментами.</div>
+        <h1><span id="ready-dot" class="dot"></span>Operations UI</h1>
+        <div style="margin-top:10px;"><span class="env-pill">DEV Workspace</span></div>
       </section>
       <section id="auth-section" class="row">
         <div id="session-user-info" class="row" style="display:none;">
