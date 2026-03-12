@@ -97,6 +97,8 @@ class AlertsConfig:
 class ProbeConfig:
     target_port: int = 443
     retention_days: int = 30
+    cleanup_enabled: bool = True
+    cleanup_tick_sec: int = 3600
     auto_route_health_enabled: bool = True
     route_block_cooldown_hours: int = 6
     auto_drain_migrate_enabled: bool = False
@@ -268,6 +270,8 @@ def get_settings() -> Settings:
     probe = ProbeConfig(
         target_port=env.int("PROBE_TARGET_PORT", default=443),
         retention_days= env.int("PROBE_RETENTION_DAYS", default=30),
+        cleanup_enabled=env.bool("PROBE_CLEANUP_ENABLED", default=True),
+        cleanup_tick_sec=max(300, env.int("PROBE_CLEANUP_TICK_SEC", default=3600)),
         auto_route_health_enabled=env.bool("PROBE_AUTO_ROUTE_HEALTH_ENABLED", default=True),
         route_block_cooldown_hours=env.int("PROBE_ROUTE_BLOCK_COOLDOWN_HOURS", default=6),
         auto_drain_migrate_enabled=env.bool("PROBE_AUTO_DRAIN_MIGRATE_ENABLED", default=False),
