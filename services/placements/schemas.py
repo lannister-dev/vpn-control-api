@@ -117,8 +117,8 @@ class PlacementPageOut(BaseModel):
     items: list[PlacementAssignmentOut]
     next_cursor: str | None = Field(
         default=None,
-        description="Opaque cursor in format '<op_version>:<placement_id>' for stable pagination.",
-        examples=["12:f2132b71-b4aa-470d-9586-cb907050ca52"],
+        description="Opaque cursor in format '<updated_at_ms>:<placement_id>' for incremental sync pagination.",
+        examples=["1741803100238:f2132b71-b4aa-470d-9586-cb907050ca52"],
     )
 
 

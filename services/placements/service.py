@@ -151,11 +151,12 @@ class PlacementAgentService:
     ) -> PlacementPageOut:
         if node.role != NodeRole.backend.value:
             raise HTTPException(status_code=403, detail="Node role must be backend")
-        parsed: tuple[int, UUID] | None = None
+        parsed: tuple[datetime, UUID] | None = None
         if cursor:
             try:
-                op_s, pid_s = cursor.split(":", 1)
-                parsed = (int(op_s), UUID(pid_s))
+                updated_ms_s, pid_s = cursor.split(":", 1)
+                updated_at = datetime.fromtimestamp(int(updated_ms_s) / 1000, tz=timezone.utc)
+                parsed = (updated_at, UUID(pid_s))
             except Exception as exc:
                 raise ValueError(f"Invalid cursor format: {cursor!r}") from exc
 
@@ -168,7 +169,14 @@ class PlacementAgentService:
         next_cursor = None
         if items:
             last = items[-1]
-            next_cursor = f"{last.op_version}:{last.id}"
+            updated_at = last.updated_at
+            if updated_at is None:
+                raise RuntimeError("placement page item missing updated_at")
+            if updated_at.tzinfo is None:
+                updated_at = updated_at.replace(tzinfo=timezone.utc)
+            else:
+                updated_at = updated_at.astimezone(timezone.utc)
+            next_cursor = f"{int(updated_at.timestamp() * 1000)}:{last.id}"
         return PlacementPageOut(items=items, next_cursor=next_cursor)
 
     async def report_for_backend(
