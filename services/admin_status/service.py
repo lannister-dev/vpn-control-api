@@ -1,8 +1,9 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.config import get_settings
 from services.admin_status.schemas import (
     AdminNodeStatusOut,
     AdminReadinessCheckOut,
@@ -20,6 +21,8 @@ from shared.database.session import AsyncDatabase
 
 class AdminStatusService:
     def __init__(self, session: AsyncSession):
+        self.settings = get_settings()
+        self.node_state_stale_after_sec = max(30, int(self.settings.node_agent.stale_after_sec))
         self.node_repository = VpnNodeRepository(session)
         self.placement_repository = UserPlacementRepository(session)
         self.route_repository = RouteRepository(session)
@@ -28,6 +31,7 @@ class AdminStatusService:
     async def get_status(self) -> AdminStatusOut:
         node_rows = await self.node_repository.list_active_with_agent_state()
         placements_backend = await self.placement_repository.count_active_by_backend_node()
+        now = datetime.now(timezone.utc)
 
         nodes: list[AdminNodeStatusOut] = []
         nodes_enabled = 0
@@ -35,7 +39,9 @@ class AdminStatusService:
         nodes_healthy = 0
 
         for node, agent_state in node_rows:
-            healthy = bool(agent_state and agent_state.is_healthy)
+            healthy = self._is_recent_healthy(agent_state, now=now)
+            routing_reason = self._routing_reason(node=node, agent_state=agent_state, now=now)
+            routing_eligible = routing_reason is None
             if node.is_enabled:
                 nodes_enabled += 1
             if node.is_draining:
@@ -60,6 +66,8 @@ class AdminStatusService:
                     is_draining=node.is_draining,
                     capacity=node.capacity,
                     is_healthy=healthy,
+                    routing_eligible=routing_eligible,
+                    routing_reason=routing_reason,
                     last_seen_at=agent_state.last_seen_at if agent_state else None,
                     last_sync_at=agent_state.last_sync_at if agent_state else None,
                     placements_backend=placements_backend.get(node.id, 0),
@@ -82,17 +90,23 @@ class AdminStatusService:
     async def get_readiness(self) -> AdminReadinessOut:
         node_rows = await self.node_repository.list_active_with_agent_state()
         active_artifact = await self.profile_artifact_repository.get_active()
-        resolved_routes = await self.route_repository.count_resolved_active()
-        resolved_routes_by_region = await self.route_repository.count_resolved_active_by_region()
+        node_seen_after = self._node_seen_after(now=datetime.now(timezone.utc))
+        resolved_routes = await self.route_repository.count_resolved_active(
+            node_seen_after=node_seen_after,
+        )
+        resolved_routes_by_region = await self.route_repository.count_resolved_active_by_region(
+            node_seen_after=node_seen_after,
+        )
 
         healthy_backends = 0
         healthy_regions: set[str] = set()
+        now = datetime.now(timezone.utc)
         for node, agent_state in node_rows:
             if node.role != NodeRole.backend.value:
                 continue
             if not node.is_active or not node.is_enabled or node.is_draining:
                 continue
-            if bool(agent_state and agent_state.is_healthy):
+            if self._is_recent_healthy(agent_state, now=now):
                 healthy_backends += 1
                 healthy_regions.add(str(node.region))
 
@@ -133,6 +147,45 @@ class AdminStatusService:
             ready=all(item.ok for item in checks),
             checks=checks,
         )
+
+    def _node_seen_after(self, *, now: datetime) -> datetime:
+        return now - timedelta(seconds=self.node_state_stale_after_sec)
+
+    def _is_recent_healthy(self, agent_state, *, now: datetime) -> bool:
+        if agent_state is None or not bool(agent_state.is_healthy):
+            return False
+        last_seen_at = self._to_utc_or_none(agent_state.last_seen_at)
+        if last_seen_at is None:
+            return False
+        return last_seen_at >= self._node_seen_after(now=now)
+
+    def _routing_reason(self, *, node, agent_state, now: datetime) -> str | None:
+        if node.role != NodeRole.backend.value:
+            return "role_not_backend"
+        if not node.is_active:
+            return "node_inactive"
+        if not node.is_enabled:
+            return "node_disabled"
+        if node.is_draining:
+            return "node_draining"
+        if agent_state is None:
+            return "agent_state_missing"
+        if not bool(agent_state.is_healthy):
+            return "agent_unhealthy"
+        last_seen_at = self._to_utc_or_none(agent_state.last_seen_at)
+        if last_seen_at is None:
+            return "heartbeat_missing"
+        if last_seen_at < self._node_seen_after(now=now):
+            return "heartbeat_stale"
+        return None
+
+    @staticmethod
+    def _to_utc_or_none(value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
 
 
 def get_admin_status_service(

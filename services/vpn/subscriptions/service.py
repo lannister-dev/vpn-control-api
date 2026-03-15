@@ -409,10 +409,12 @@ class SubscriptionService:
                 desired_replicas=max_routes,
                 key_transport=key.transport,
             )
+            max_fetch = max(max_routes * 4, 12)
             route_rows = await self.route_repository.list_resolved_active(
                 preferred_node_id=selected_backend_id,
                 preferred_region=subscription.preferred_region,
-                limit=12,
+                limit=max_fetch,
+                node_seen_after=self._resolved_route_node_seen_after(),
             )
 
             resolved_routes: list[ResolvedSubscriptionRoute] = []
@@ -610,25 +612,25 @@ class SubscriptionService:
             placements_by_backend[node_id] = created
 
         preferred_placement: UserPlacement | None = None
-        allowed_backend_ids: set[UUID] = set()
         for node in candidate_nodes:
             node_id = self._as_uuid(str(node.id))
-            placement = placements_by_backend.get(node_id)
-            if placement is None:
-                continue
-            allowed_backend_ids.add(node_id)
-            if preferred_placement is None:
-                preferred_placement = placement
-            if self._is_placement_synced(placement):
-                preferred_placement = placement
+            preferred_placement = synced_by_backend.get(node_id)
+            if preferred_placement is not None:
                 break
         if preferred_placement is None:
-            raise SubscriptionBuild("No available backend nodes")
+            raise SubscriptionBuild("Backend placement sync pending")
 
         preferred_backend_id = self._as_uuid(preferred_placement.backend_node_id)
+        allowed_backend_ids: set[UUID] = set(synced_by_backend.keys())
         if not allowed_backend_ids:
-            raise SubscriptionBuild("No available backend nodes")
+            raise SubscriptionBuild("Backend placement sync pending")
         return preferred_backend_id, preferred_placement, allowed_backend_ids
+
+    def _resolved_route_node_seen_after(self) -> datetime:
+        node_agent_settings = getattr(self.settings, "node_agent", None)
+        stale_after_raw = getattr(node_agent_settings, "stale_after_sec", 90)
+        stale_after_sec = max(30, int(stale_after_raw))
+        return datetime.now(timezone.utc) - timedelta(seconds=stale_after_sec)
 
     async def _select_backend(self, *, preferred_region: str | None) -> VpnNode:
         candidates = await self.routing_service.select_nodes(

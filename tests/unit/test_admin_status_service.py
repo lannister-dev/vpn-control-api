@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -79,4 +79,33 @@ async def test_admin_status_aggregates(async_session):
     by_id = {item.id: item for item in out.nodes}
     assert by_id[backend.id].placements_backend == 3
     assert by_id[backend.id].reality_ip == "203.0.113.7"
+    assert by_id[backend.id].routing_eligible is True
+    assert by_id[backend.id].routing_reason is None
     assert by_id[gateway.id].reality_ip is None
+    assert by_id[gateway.id].routing_eligible is False
+    assert by_id[gateway.id].routing_reason == "role_not_backend"
+
+
+@pytest.mark.asyncio
+async def test_admin_status_marks_stale_backend_unhealthy(async_session):
+    svc = AdminStatusService(async_session)
+    svc.node_repository = AsyncMock()
+    svc.placement_repository = AsyncMock()
+
+    backend = _node(role="backend", enabled=True, draining=False)
+    stale_state = _state(healthy=True)
+    stale_state.last_seen_at = datetime.now(timezone.utc) - timedelta(minutes=10)
+
+    svc.node_repository.list_active_with_agent_state = AsyncMock(
+        return_value=[(backend, stale_state)]
+    )
+    svc.placement_repository.count_active_by_backend_node = AsyncMock(
+        return_value={backend.id: 1}
+    )
+
+    out = await svc.get_status()
+
+    assert out.totals.nodes_healthy == 0
+    assert out.nodes[0].is_healthy is False
+    assert out.nodes[0].routing_eligible is False
+    assert out.nodes[0].routing_reason == "heartbeat_stale"

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import ANY, AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -121,6 +121,7 @@ async def test_connect_routeset_returns_routes(async_session):
         preferred_node_id=backend.id,
         preferred_region="fi",
         limit=10,
+        node_seen_after=ANY,
     )
 
 
@@ -283,6 +284,7 @@ async def test_connect_routeset_keeps_primary_and_fallback_mix(async_session):
         preferred_node_id=backend_primary.id,
         preferred_region="fi",
         limit=16,
+        node_seen_after=ANY,
     )
 
 

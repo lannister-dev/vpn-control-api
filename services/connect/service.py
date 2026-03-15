@@ -85,6 +85,7 @@ class ConnectService:
             preferred_node_id=preferred_node_id,
             preferred_region=payload.preferred_region,
             limit=max_fetch,
+            node_seen_after=self._resolved_route_node_seen_after(),
         )
 
         resolved_routes: list[ResolvedRouteInternal] = []
@@ -233,6 +234,12 @@ class ConnectService:
         if not allowed_backend_ids:
             raise HTTPException(status_code=503, detail="Backend placement sync pending")
         return preferred_backend_id, preferred_placement, allowed_backend_ids
+
+    def _resolved_route_node_seen_after(self) -> datetime:
+        node_agent_settings = getattr(self.settings, "node_agent", None)
+        stale_after_raw = getattr(node_agent_settings, "stale_after_sec", 90)
+        stale_after_sec = max(30, int(stale_after_raw))
+        return datetime.now(timezone.utc) - timedelta(seconds=stale_after_sec)
 
     async def _list_active_placements_for_key(self, *, key_id: UUID) -> list[UserPlacement]:
         rows = await self.placement_repository.list_by_key_id(

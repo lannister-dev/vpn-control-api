@@ -75,6 +75,8 @@ class RouteOut(BaseModel):
     cooldown_until: datetime | None
     warmup_stage: int | None
     warmup_started_at: datetime | None
+    routing_eligible: bool = False
+    routing_reason: str | None = None
     is_active: bool
     created_at: datetime
     updated_at: datetime
