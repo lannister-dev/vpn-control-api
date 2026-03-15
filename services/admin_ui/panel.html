@@ -916,6 +916,30 @@
       const chip = (cls, txt) => `<span class="badge ${cls}">${esc(txt)}</span>`;
       const roleLabel = (r) => (r === "backend" ? "Бэкенд" : (r === "gateway" ? "Шлюз" : r));
       const routeStatusLabel = (s) => ({ healthy: "Стабильный", degraded: "Деградация", suspected: "Подозрение", blocked: "Заблокирован", warming_up: "Прогрев" }[s] || s);
+      const routingReasonLabel = (s) => ({
+        role_not_backend: "не backend",
+        node_inactive: "node inactive",
+        node_disabled: "disabled",
+        node_draining: "draining",
+        agent_state_missing: "нет agent state",
+        agent_unhealthy: "agent unhealthy",
+        heartbeat_missing: "нет heartbeat",
+        heartbeat_stale: "heartbeat stale",
+      }[s] || s || "");
+      const routeReasonLabel = (s) => ({
+        route_inactive: "route inactive",
+        route_zero_weight: "zero weight",
+        route_health_excluded: "health excluded",
+        transport_inactive: "transport inactive",
+        node_inactive: "node inactive",
+        node_disabled: "disabled",
+        node_draining: "draining",
+        node_role_invalid: "node role invalid",
+        agent_state_missing: "нет agent state",
+        agent_unhealthy: "agent unhealthy",
+        heartbeat_missing: "нет heartbeat",
+        heartbeat_stale: "heartbeat stale",
+      }[s] || s || "");
 
       /* --- Phase 2 helpers --- */
       function shortId(uuid, len) { return String(uuid || "").substring(0, len || 8); }
@@ -1508,7 +1532,8 @@
         refs.nodesBody.innerHTML = nodes.length
           ? nodes.map((n) => {
             const g = nodeGeo(n.region);
-            return `<tr><td><strong>${esc(n.name)}</strong><div>${uuidCell(n.id)}</div>${n.public_domain ? `<div class="mono muted" style="font-size:11px">${esc(n.public_domain)}</div>` : ""}${n.reality_ip ? `<div class="mono muted" style="font-size:11px">reality: ${esc(n.reality_ip)}</div>` : ""}</td><td>${esc(roleLabel(n.role))}</td><td><div class="geo"><span class="flag">${esc(g.flag)}</span>${esc(g.country)}</div><div class="mono muted">${esc(g.regionText)}</div></td><td>${n.is_healthy ? chip("ok", "Здоров") : chip("bad", "Нездоров")}</td><td>${n.is_draining ? chip("warn", "Draining") : (!n.is_enabled ? chip("bad", "Отключен") : chip("ok", "Активен"))}</td><td>${capacityBar(n.placements_backend, n.capacity)}</td><td><span title="${esc(fmtDate(n.last_seen_at))}">${relTime(n.last_seen_at)}</span></td><td><div class="actions"><button class="btn-mini node-action" data-action="drain" data-id="${esc(n.id)}">Drain</button><button class="btn-mini node-action" data-action="enable" data-id="${esc(n.id)}">Enable</button><button class="btn-mini node-select" data-id="${esc(n.id)}">Выбрать</button></div></td></tr>`;
+            const routingHint = n.routing_eligible ? `<div class="muted" style="font-size:11px">routing: eligible</div>` : (n.routing_reason ? `<div class="muted" style="font-size:11px">routing: ${esc(routingReasonLabel(n.routing_reason))}</div>` : "");
+            return `<tr><td><strong>${esc(n.name)}</strong><div>${uuidCell(n.id)}</div>${n.public_domain ? `<div class="mono muted" style="font-size:11px">${esc(n.public_domain)}</div>` : ""}${n.reality_ip ? `<div class="mono muted" style="font-size:11px">reality: ${esc(n.reality_ip)}</div>` : ""}</td><td>${esc(roleLabel(n.role))}</td><td><div class="geo"><span class="flag">${esc(g.flag)}</span>${esc(g.country)}</div><div class="mono muted">${esc(g.regionText)}</div></td><td>${n.is_healthy ? chip("ok", "Здоров") : chip("bad", "Нездоров")}</td><td>${n.is_draining ? chip("warn", "Draining") : (!n.is_enabled ? chip("bad", "Отключен") : chip("ok", "Активен"))}${routingHint}</td><td>${capacityBar(n.placements_backend, n.capacity)}</td><td><span title="${esc(fmtDate(n.last_seen_at))}">${relTime(n.last_seen_at)}</span></td><td><div class="actions"><button class="btn-mini node-action" data-action="drain" data-id="${esc(n.id)}">Drain</button><button class="btn-mini node-action" data-action="enable" data-id="${esc(n.id)}">Enable</button><button class="btn-mini node-select" data-id="${esc(n.id)}">Выбрать</button></div></td></tr>`;
           }).join("")
           : `<tr><td colspan="8" class="empty">Нет серверов по текущим фильтрам.</td></tr>`;
 
@@ -1525,7 +1550,8 @@
         refs.routesBody.innerHTML = routes.length
           ? routes.map((r) => {
             const nName = nodeNameById(r.node_id);
-            return `<tr><td><strong>${esc(r.name)}</strong><div>${uuidCell(r.id)}</div></td><td>${nName ? `<strong>${esc(nName)}</strong> ` : ""}${uuidCell(r.node_id)}</td><td>${r.health_status === "healthy" ? chip("ok", routeStatusLabel(r.health_status)) : (r.health_status === "blocked" ? chip("bad", routeStatusLabel(r.health_status)) : chip("warn", routeStatusLabel(r.health_status)))}</td><td class="mono">${esc(r.effective_weight)} / ${esc(r.base_weight)}</td><td class="mono">${esc(r.warmup_stage == null ? "-" : r.warmup_stage)}</td><td><div class="actions"><button class="btn-mini route-action" data-id="${esc(r.id)}" data-action="set_healthy">Healthy</button><button class="btn-mini route-action" data-id="${esc(r.id)}" data-action="set_degraded">Degrade</button><button class="btn-mini route-action" data-id="${esc(r.id)}" data-action="block">Block</button></div></td></tr>`;
+            const routeHint = r.routing_eligible ? `<div class="muted" style="font-size:11px">routing: eligible</div>` : (r.routing_reason ? `<div class="muted" style="font-size:11px">routing: ${esc(routeReasonLabel(r.routing_reason))}</div>` : "");
+            return `<tr><td><strong>${esc(r.name)}</strong><div>${uuidCell(r.id)}</div></td><td>${nName ? `<strong>${esc(nName)}</strong> ` : ""}${uuidCell(r.node_id)}</td><td>${r.health_status === "healthy" ? chip("ok", routeStatusLabel(r.health_status)) : (r.health_status === "blocked" ? chip("bad", routeStatusLabel(r.health_status)) : chip("warn", routeStatusLabel(r.health_status)))}${routeHint}</td><td class="mono">${esc(r.effective_weight)} / ${esc(r.base_weight)}</td><td class="mono">${esc(r.warmup_stage == null ? "-" : r.warmup_stage)}</td><td><div class="actions"><button class="btn-mini route-action" data-id="${esc(r.id)}" data-action="set_healthy">Healthy</button><button class="btn-mini route-action" data-id="${esc(r.id)}" data-action="set_degraded">Degrade</button><button class="btn-mini route-action" data-id="${esc(r.id)}" data-action="block">Block</button></div></td></tr>`;
           }).join("")
           : `<tr><td colspan="6" class="empty">Нет маршрутов по фильтрам.</td></tr>`;
 

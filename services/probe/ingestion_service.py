@@ -11,7 +11,8 @@ from services.alerts.service import AlertService, get_alert_service
 from services.config import get_settings
 from services.nodes.repository import VpnNodeRepository
 from services.routes.repository import RouteRepository
-from services.routes.schemas import RouteHealthStatus, RouteStateUpdate
+from services.routes.schemas import RouteStateUpdate
+from services.routes.state_machine import resolve_probe_block, resolve_probe_recover
 from services.probe.repository import ProbeSignalRepository
 from services.nodes.schemas import NodeRole
 from services.probe.schemas import (
@@ -208,15 +209,18 @@ class ProbeIngestionService:
         await self._block_routes_after_probe(routes=routes, checked_at=checked_at)
 
     async def _block_routes_after_probe(self, *, routes: list, checked_at: datetime) -> None:
-        cooldown_until = checked_at + timedelta(hours=self.route_block_cooldown_hours)
         for route in routes:
-            # Keep route in blocked mode while extending cooldown from latest failed probe.
+            next_state = resolve_probe_block(
+                route=route,
+                checked_at=checked_at,
+                cooldown_hours=self.route_block_cooldown_hours,
+            )
             updated_state = RouteStateUpdate(
-                health_status=RouteHealthStatus.blocked,
-                effective_weight=0,
-                cooldown_until=cooldown_until,
-                warmup_stage=None,
-                warmup_started_at=None,
+                health_status=next_state["health_status"],
+                effective_weight=next_state["effective_weight"],
+                cooldown_until=next_state["cooldown_until"],
+                warmup_stage=next_state["warmup_stage"],
+                warmup_started_at=next_state["warmup_started_at"],
                 updated_at=datetime.now(timezone.utc),
             )
             await self.route_repository.update_by_id(
@@ -226,21 +230,15 @@ class ProbeIngestionService:
 
     async def _recover_routes_after_probe(self, *, routes: list, checked_at: datetime) -> None:
         for route in routes:
-            if route.health_status != RouteHealthStatus.blocked.value:
+            next_state = resolve_probe_recover(route=route, checked_at=checked_at)
+            if next_state is None:
                 continue
-            cooldown_until = route.cooldown_until
-            if cooldown_until is not None:
-                cooldown_until = self._to_utc(cooldown_until)
-                if cooldown_until > checked_at:
-                    continue
-
-            warmup_weight = min(int(route.base_weight), 10)
             updated_state = RouteStateUpdate(
-                health_status=RouteHealthStatus.warming_up,
-                effective_weight=warmup_weight,
-                cooldown_until=None,
-                warmup_stage=0,
-                warmup_started_at=checked_at,
+                health_status=next_state["health_status"],
+                effective_weight=next_state["effective_weight"],
+                cooldown_until=next_state["cooldown_until"],
+                warmup_stage=next_state["warmup_stage"],
+                warmup_started_at=next_state["warmup_started_at"],
                 updated_at=datetime.now(timezone.utc),
             )
             await self.route_repository.update_by_id(

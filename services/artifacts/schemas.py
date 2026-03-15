@@ -109,6 +109,7 @@ class ArtifactRoutesBootstrapIn(BaseModel):
     default_ws_port: int = Field(default=443, ge=1, le=65535)
     profile_port_overrides: Dict[str, int] = Field(default_factory=dict)
     route_base_weight: int = Field(default=50, ge=0, le=100)
+    recover_unhealthy_routes: bool = True
     expected_backends_selected: int | None = Field(
         default=None,
         ge=1,

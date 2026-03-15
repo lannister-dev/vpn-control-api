@@ -253,3 +253,50 @@ async def test_advance_warmup_progress_and_finalize(async_session):
     assert out.advanced == 1
     assert out.finalized == 1
     assert svc.route_repository.update_by_id.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_list_routes_includes_routing_diagnostics(async_session):
+    svc = RouteService(async_session)
+    svc.route_repository = AsyncMock()
+
+    healthy_route = _route(status="healthy", base_weight=50, effective_weight=50)
+    blocked_route = _route(status="blocked", base_weight=50, effective_weight=0)
+
+    healthy_node = MagicMock(
+        id=healthy_route.node_id,
+        is_active=True,
+        is_enabled=True,
+        is_draining=False,
+        role="backend",
+    )
+    unhealthy_node = MagicMock(
+        id=blocked_route.node_id,
+        is_active=True,
+        is_enabled=True,
+        is_draining=False,
+        role="backend",
+    )
+    transport = MagicMock(is_active=True)
+    recent_state = MagicMock(
+        is_healthy=True,
+        last_seen_at=datetime.now(timezone.utc),
+    )
+    stale_state = MagicMock(
+        is_healthy=True,
+        last_seen_at=datetime.now(timezone.utc) - timedelta(minutes=10),
+    )
+    svc.route_repository.list_active_detailed = AsyncMock(
+        return_value=[
+            (healthy_route, healthy_node, transport, recent_state),
+            (blocked_route, unhealthy_node, transport, stale_state),
+        ]
+    )
+
+    out = await svc.list_routes(limit=10)
+
+    assert len(out) == 2
+    assert out[0].routing_eligible is True
+    assert out[0].routing_reason is None
+    assert out[1].routing_eligible is False
+    assert out[1].routing_reason == "route_zero_weight"

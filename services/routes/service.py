@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.config import get_settings
 from services.nodes.repository import VpnNodeRepository
 from services.nodes.schemas import NodeRole
 from services.routes.repository import RouteRepository, TransportProfileRepository
@@ -21,16 +22,23 @@ from services.routes.schemas import (
     TransportProfileCreateIn,
     TransportProfileOut,
 )
+from services.routes.state_machine import (
+    DEFAULT_WARMUP_STAGES,
+    RouteCooldownActiveError,
+    initial_warmup_weight,
+    resolve_route_health_action,
+    resolve_warmup_tick,
+    stage_weight,
+)
 from shared.database.session import AsyncDatabase
 
 
 class RouteService:
-    WARMUP_STAGES: list[tuple[int, int]] = [
-        (10, 30),
-        (25, 60),
-    ]
+    WARMUP_STAGES: list[tuple[int, int]] = list(DEFAULT_WARMUP_STAGES)
 
     def __init__(self, session: AsyncSession):
+        self.settings = get_settings()
+        self.node_state_stale_after_sec = max(30, int(self.settings.node_agent.stale_after_sec))
         self.session = session
         self.node_repository = VpnNodeRepository(session)
         self.transport_repository = TransportProfileRepository(session)
@@ -155,7 +163,7 @@ class RouteService:
         elif payload.health_status == RouteHealthStatus.warming_up:
             warmup_stage = 0
             warmup_started_at = now
-            resolved_effective_weight = self._stage_weight(payload.base_weight, 0)
+            resolved_effective_weight = initial_warmup_weight(base_weight=payload.base_weight)
 
         create_payload = RouteCreateData(
             name=payload.name,
@@ -180,10 +188,10 @@ class RouteService:
             )
             if not updated:
                 raise HTTPException(status_code=500, detail="Failed to create route")
-            return RouteOut.model_validate(updated)
+            return self._route_out_from_route(updated)
 
         created = await self.route_repository.create(create_payload.model_dump())
-        return RouteOut.model_validate(created)
+        return self._route_out_from_route(created)
 
     async def list_routes(
             self,
@@ -191,8 +199,18 @@ class RouteService:
             node_id: UUID | None = None,
             limit: int = 200,
     ) -> list[RouteOut]:
-        rows = await self.route_repository.list_active(node_id=node_id, limit=limit)
-        return [RouteOut.model_validate(row) for row in rows]
+        rows = await self.route_repository.list_active_detailed(node_id=node_id, limit=limit)
+        now = datetime.now(timezone.utc)
+        return [
+            self._build_route_out(
+                route=route,
+                node=node,
+                transport_profile=transport_profile,
+                agent_state=agent_state,
+                now=now,
+            )
+            for route, node, transport_profile, agent_state in rows
+        ]
 
     async def update_route_health(
             self,
@@ -204,59 +222,31 @@ class RouteService:
             raise HTTPException(status_code=404, detail="Route not found")
 
         now = datetime.now(timezone.utc)
-        status = route.health_status
-        effective_weight = route.effective_weight
-        cooldown_until = route.cooldown_until
-        warmup_stage = route.warmup_stage
-        warmup_started_at = route.warmup_started_at
-
-        if payload.action == RouteHealthAction.block:
-            status = RouteHealthStatus.blocked.value
-            effective_weight = 0
-            cooldown_until = now + timedelta(hours=payload.cooldown_hours)
-            warmup_stage = None
-            warmup_started_at = None
-        elif payload.action == RouteHealthAction.recover:
-            if cooldown_until is not None and cooldown_until > now:
-                raise HTTPException(status_code=409, detail="Route is still in cooldown")
-            status = RouteHealthStatus.warming_up.value
-            warmup_stage = 0
-            warmup_started_at = now
-            effective_weight = self._stage_weight(route.base_weight, 0)
-            cooldown_until = None
-        elif payload.action == RouteHealthAction.set_healthy:
-            status = RouteHealthStatus.healthy.value
-            effective_weight = route.base_weight
-            cooldown_until = None
-            warmup_stage = None
-            warmup_started_at = None
-        elif payload.action == RouteHealthAction.set_degraded:
-            status = RouteHealthStatus.degraded.value
-            effective_weight = max(1, min(route.base_weight, route.base_weight // 2))
-            cooldown_until = None
-            warmup_stage = None
-            warmup_started_at = None
-        elif payload.action == RouteHealthAction.set_suspected:
-            status = RouteHealthStatus.suspected.value
-            effective_weight = max(1, min(route.base_weight, route.base_weight // 3))
-            cooldown_until = None
-            warmup_stage = None
-            warmup_started_at = None
+        try:
+            next_state = resolve_route_health_action(
+                route=route,
+                action=payload.action,
+                now=now,
+                cooldown_hours=payload.cooldown_hours,
+                warmup_stages=tuple(self.WARMUP_STAGES),
+            )
+        except RouteCooldownActiveError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
         updated = await self.route_repository.update_by_id(
             item_id=route.id,
             data=RouteStateUpdate(
-                health_status=RouteHealthStatus(status),
-                effective_weight=effective_weight,
-                cooldown_until=cooldown_until,
-                warmup_stage=warmup_stage,
-                warmup_started_at=warmup_started_at,
+                health_status=next_state["health_status"],
+                effective_weight=next_state["effective_weight"],
+                cooldown_until=next_state["cooldown_until"],
+                warmup_stage=next_state["warmup_stage"],
+                warmup_started_at=next_state["warmup_started_at"],
                 updated_at=now,
             ).model_dump(),
         )
         if not updated:
             raise HTTPException(status_code=500, detail="Failed to update route health")
-        return RouteOut.model_validate(updated)
+        return self._route_out_from_route(updated)
 
     async def advance_warmup(self) -> RouteWarmupTickOut:
         now = datetime.now(timezone.utc)
@@ -267,75 +257,30 @@ class RouteService:
 
         for route in routes:
             processed += 1
-            stage = route.warmup_stage
-            started = route.warmup_started_at
-            if stage is None or started is None:
-                updated = await self.route_repository.update_by_id(
-                    item_id=route.id,
-                    data=RouteStateUpdate(
-                        health_status=RouteHealthStatus.healthy,
-                        effective_weight=route.base_weight,
-                        cooldown_until=None,
-                        warmup_stage=None,
-                        warmup_started_at=None,
-                        updated_at=now,
-                    ).model_dump(),
-                )
-                if updated:
-                    finalized += 1
-                continue
-
-            if stage >= len(self.WARMUP_STAGES):
-                updated = await self.route_repository.update_by_id(
-                    item_id=route.id,
-                    data=RouteStateUpdate(
-                        health_status=RouteHealthStatus.healthy,
-                        effective_weight=route.base_weight,
-                        cooldown_until=None,
-                        warmup_stage=None,
-                        warmup_started_at=None,
-                        updated_at=now,
-                    ).model_dump(),
-                )
-                if updated:
-                    finalized += 1
-                continue
-
-            _, hold_minutes = self.WARMUP_STAGES[stage]
-            elapsed = (now - started).total_seconds() / 60
-            if elapsed < hold_minutes:
-                continue
-
-            next_stage = stage + 1
-            if next_stage >= len(self.WARMUP_STAGES):
-                updated = await self.route_repository.update_by_id(
-                    item_id=route.id,
-                    data=RouteStateUpdate(
-                        health_status=RouteHealthStatus.healthy,
-                        effective_weight=route.base_weight,
-                        cooldown_until=None,
-                        warmup_stage=None,
-                        warmup_started_at=None,
-                        updated_at=now,
-                    ).model_dump(),
-                )
-                if updated:
-                    finalized += 1
+            next_state, tick_result = resolve_warmup_tick(
+                route=route,
+                now=now,
+                warmup_stages=tuple(self.WARMUP_STAGES),
+            )
+            if next_state is None or tick_result is None:
                 continue
 
             updated = await self.route_repository.update_by_id(
                 item_id=route.id,
                 data=RouteStateUpdate(
-                    health_status=RouteHealthStatus.warming_up,
-                    effective_weight=self._stage_weight(route.base_weight, next_stage),
-                    cooldown_until=None,
-                    warmup_stage=next_stage,
-                    warmup_started_at=now,
+                    health_status=next_state["health_status"],
+                    effective_weight=next_state["effective_weight"],
+                    cooldown_until=next_state["cooldown_until"],
+                    warmup_stage=next_state["warmup_stage"],
+                    warmup_started_at=next_state["warmup_started_at"],
                     updated_at=now,
                 ).model_dump(),
             )
             if updated:
-                advanced += 1
+                if tick_result == "advanced":
+                    advanced += 1
+                elif tick_result == "finalized":
+                    finalized += 1
 
         return RouteWarmupTickOut(
             processed=processed,
@@ -344,12 +289,110 @@ class RouteService:
         )
 
     def _stage_weight(self, base_weight: int, stage: int) -> int:
-        if base_weight <= 0:
-            return 0
-        if stage >= len(self.WARMUP_STAGES):
-            return base_weight
-        stage_weight, _ = self.WARMUP_STAGES[stage]
-        return min(base_weight, stage_weight)
+        return stage_weight(
+            base_weight=base_weight,
+            stage=stage,
+            warmup_stages=tuple(self.WARMUP_STAGES),
+        )
+
+    def _build_route_out(
+            self,
+            *,
+            route,
+            node,
+            transport_profile,
+            agent_state,
+            now: datetime,
+    ) -> RouteOut:
+        routing_reason = self._route_routing_reason(
+            route=route,
+            node=node,
+            transport_profile=transport_profile,
+            agent_state=agent_state,
+            now=now,
+        )
+        return RouteOut.model_validate(
+            {
+                **self._route_out_payload(route),
+                "routing_eligible": routing_reason is None,
+                "routing_reason": routing_reason,
+            }
+        )
+
+    def _route_out_from_route(self, route) -> RouteOut:
+        return RouteOut.model_validate(self._route_out_payload(route))
+
+    @staticmethod
+    def _route_out_payload(route) -> dict:
+        return {
+            "id": route.id,
+            "name": route.name,
+            "node_id": route.node_id,
+            "transport_profile_id": route.transport_profile_id,
+            "health_status": route.health_status,
+            "base_weight": route.base_weight,
+            "effective_weight": route.effective_weight,
+            "cooldown_until": route.cooldown_until,
+            "warmup_stage": route.warmup_stage,
+            "warmup_started_at": route.warmup_started_at,
+            "routing_eligible": False,
+            "routing_reason": None,
+            "is_active": route.is_active,
+            "created_at": route.created_at,
+            "updated_at": route.updated_at,
+        }
+
+    def _route_routing_reason(
+            self,
+            *,
+            route,
+            node,
+            transport_profile,
+            agent_state,
+            now: datetime,
+    ) -> str | None:
+        if not bool(route.is_active):
+            return "route_inactive"
+        if int(route.effective_weight) <= 0:
+            return "route_zero_weight"
+        if str(route.health_status) not in {
+            RouteHealthStatus.healthy.value,
+            RouteHealthStatus.warming_up.value,
+            RouteHealthStatus.degraded.value,
+            RouteHealthStatus.suspected.value,
+        }:
+            return "route_health_excluded"
+        if not bool(transport_profile.is_active):
+            return "transport_inactive"
+        if not bool(node.is_active):
+            return "node_inactive"
+        if not bool(node.is_enabled):
+            return "node_disabled"
+        if bool(node.is_draining):
+            return "node_draining"
+        if str(node.role) != NodeRole.backend.value:
+            return "node_role_invalid"
+        if agent_state is None:
+            return "agent_state_missing"
+        if not bool(agent_state.is_healthy):
+            return "agent_unhealthy"
+        last_seen_at = self._to_utc_or_none(agent_state.last_seen_at)
+        if last_seen_at is None:
+            return "heartbeat_missing"
+        if last_seen_at < self._node_seen_after(now=now):
+            return "heartbeat_stale"
+        return None
+
+    def _node_seen_after(self, *, now: datetime) -> datetime:
+        return now - timedelta(seconds=self.node_state_stale_after_sec)
+
+    @staticmethod
+    def _to_utc_or_none(value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
 
 
 def get_route_service(
