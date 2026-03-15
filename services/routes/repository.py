@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import Depends
@@ -48,6 +49,27 @@ class RouteRepository(BaseRepository[Route]):
         res = await self.session.execute(stmt)
         return list(res.scalars().all())
 
+    async def list_active_detailed(
+            self,
+            *,
+            node_id: UUID | None = None,
+            limit: int | None = None,
+    ) -> list[tuple[Route, VpnNode, TransportProfile, NodeAgentState | None]]:
+        stmt = (
+            select(Route, VpnNode, TransportProfile, NodeAgentState)
+            .join(VpnNode, VpnNode.id == Route.node_id)
+            .join(TransportProfile, TransportProfile.id == Route.transport_profile_id)
+            .outerjoin(NodeAgentState, NodeAgentState.node_id == VpnNode.id)
+            .where(Route.is_active.is_(True))
+            .order_by(Route.effective_weight.desc(), Route.name.asc())
+        )
+        if node_id is not None:
+            stmt = stmt.where(Route.node_id == node_id)
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        res = await self.session.execute(stmt)
+        return list(res.tuples().all())
+
     async def list_by_names(self, names: list[str]) -> list[Route]:
         if not names:
             return []
@@ -73,12 +95,15 @@ class RouteRepository(BaseRepository[Route]):
             preferred_node_id: UUID | None,
             preferred_region: str | None,
             limit: int,
+            node_seen_after: datetime | None = None,
     ) -> list[tuple[Route, VpnNode, TransportProfile]]:
         status_order = (
             case(
                 (Route.health_status == "healthy", 0),
                 (Route.health_status == "warming_up", 1),
-                else_=2,
+                (Route.health_status == "degraded", 2),
+                (Route.health_status == "suspected", 3),
+                else_=4,
             )
         )
         stmt = (
@@ -89,7 +114,7 @@ class RouteRepository(BaseRepository[Route]):
             .where(
                 Route.is_active.is_(True),
                 Route.effective_weight > 0,
-                Route.health_status.in_(("healthy", "warming_up")),
+                Route.health_status.in_(("healthy", "warming_up", "degraded", "suspected")),
                 TransportProfile.is_active.is_(True),
                 VpnNode.is_active.is_(True),
                 VpnNode.is_enabled.is_(True),
@@ -98,6 +123,8 @@ class RouteRepository(BaseRepository[Route]):
                 NodeAgentState.is_healthy.is_(True),
             )
         )
+        if node_seen_after is not None:
+            stmt = stmt.where(NodeAgentState.last_seen_at >= node_seen_after)
         if preferred_node_id is not None:
             stmt = stmt.order_by(
                 (Route.node_id == preferred_node_id).desc(),
@@ -119,7 +146,7 @@ class RouteRepository(BaseRepository[Route]):
         res = await self.session.execute(stmt)
         return list(res.tuples().all())
 
-    async def count_resolved_active(self) -> int:
+    async def count_resolved_active(self, *, node_seen_after: datetime | None = None) -> int:
         stmt = (
             select(func.count(Route.id))
             .select_from(Route)
@@ -129,7 +156,7 @@ class RouteRepository(BaseRepository[Route]):
             .where(
                 Route.is_active.is_(True),
                 Route.effective_weight > 0,
-                Route.health_status.in_(("healthy", "warming_up")),
+                Route.health_status.in_(("healthy", "warming_up", "degraded", "suspected")),
                 TransportProfile.is_active.is_(True),
                 VpnNode.is_active.is_(True),
                 VpnNode.is_enabled.is_(True),
@@ -138,10 +165,16 @@ class RouteRepository(BaseRepository[Route]):
                 NodeAgentState.is_healthy.is_(True),
             )
         )
+        if node_seen_after is not None:
+            stmt = stmt.where(NodeAgentState.last_seen_at >= node_seen_after)
         res = await self.session.execute(stmt)
         return int(res.scalar_one() or 0)
 
-    async def count_resolved_active_by_region(self) -> dict[str, int]:
+    async def count_resolved_active_by_region(
+            self,
+            *,
+            node_seen_after: datetime | None = None,
+    ) -> dict[str, int]:
         stmt = (
             select(VpnNode.region, func.count(Route.id))
             .select_from(Route)
@@ -151,7 +184,7 @@ class RouteRepository(BaseRepository[Route]):
             .where(
                 Route.is_active.is_(True),
                 Route.effective_weight > 0,
-                Route.health_status.in_(("healthy", "warming_up")),
+                Route.health_status.in_(("healthy", "warming_up", "degraded", "suspected")),
                 TransportProfile.is_active.is_(True),
                 VpnNode.is_active.is_(True),
                 VpnNode.is_enabled.is_(True),
@@ -161,6 +194,8 @@ class RouteRepository(BaseRepository[Route]):
             )
             .group_by(VpnNode.region)
         )
+        if node_seen_after is not None:
+            stmt = stmt.where(NodeAgentState.last_seen_at >= node_seen_after)
         res = await self.session.execute(stmt)
         rows = res.all()
         return {str(region): int(total) for region, total in rows}

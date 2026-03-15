@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 from uuid import uuid4
 from datetime import datetime, timezone, timedelta
 from types import SimpleNamespace
@@ -435,6 +435,39 @@ async def test_build_payload_releases_lock_when_build_fails(service):
     assert str(first_delete_call.args[0]).startswith(lock_prefix)
 
 
+@pytest.mark.asyncio
+async def test_build_payload_fetches_route_buffer_scaled_to_max_routes(service):
+    preferred_backend_id = uuid4()
+    vpn_key_id = uuid4()
+    service.settings.subscriptions.response_cache_ttl_sec = 0
+    service.settings.subscriptions.smart_route_max_count = 6
+    service._enforce_rate_limit = AsyncMock()
+    service._resolve_client_for_request = AsyncMock(return_value=("cid", vpn_key_id))
+    service._ensure_backend_placements_for_key = AsyncMock(
+        return_value=(preferred_backend_id, MagicMock(op_version=7), {uuid4()})
+    )
+    service._build_route_uri = MagicMock(return_value=None)
+    service.subscription_repository.get_by_any_token_hash.return_value = _make_sub(
+        profile_key="reality_tcp_v1",
+        preferred_region="fr",
+    )
+    service.vpn_key_repository = AsyncMock()
+    service.vpn_key_repository.get_by_id.return_value = MagicMock(transport="reality")
+    service.route_repository = AsyncMock()
+    service.route_repository.list_resolved_active = AsyncMock(return_value=[])
+
+    with pytest.raises(SubscriptionBuild) as exc:
+        await service.build_payload(raw_token="tok")
+
+    assert str(exc.value) == "No available routes"
+    service.route_repository.list_resolved_active.assert_awaited_once_with(
+        preferred_node_id=preferred_backend_id,
+        preferred_region="fr",
+        limit=24,
+        node_seen_after=ANY,
+    )
+
+
 def test_route_selector_limits_size_and_keeps_fallback_diversity(service):
     preferred_backend = uuid4()
     fallback_backend_1 = uuid4()
@@ -680,7 +713,7 @@ def test_fit_routes_to_payload_limit_rejects_if_single_route_too_large(service):
 
 
 @pytest.mark.asyncio
-async def test_subscription_returns_pending_placement_for_new_backend(service):
+async def test_subscription_rejects_pending_placement_for_new_backend(service):
     backend = MagicMock()
     backend.id = uuid4()
     backend.public_domain = "be.example.com"
@@ -707,6 +740,44 @@ async def test_subscription_returns_pending_placement_for_new_backend(service):
     service.placement_repository.upsert_set_pending = AsyncMock(return_value=created)
     service.routing_service.select_nodes = AsyncMock(return_value=[backend])
 
+    with pytest.raises(SubscriptionBuild) as exc:
+        await service._ensure_backend_placements_for_key(
+            key_id=uuid4(),
+            preferred_region="fi",
+            desired_replicas=1,
+            key_transport="reality",
+        )
+
+    assert str(exc.value) == "Backend placement sync pending"
+
+
+@pytest.mark.asyncio
+async def test_subscription_returns_synced_existing_placement(service):
+    backend = MagicMock()
+    backend.id = uuid4()
+    backend.public_domain = "be.example.com"
+    backend.reality_ip = "203.0.113.20"
+    backend.role = "backend"
+    backend.region = "fi"
+    backend.is_active = True
+    backend.is_enabled = True
+    backend.is_draining = False
+
+    applied = MagicMock(
+        id=uuid4(),
+        key_id=uuid4(),
+        backend_node_id=backend.id,
+        desired_state="active",
+        op_version=7,
+        applied_version=7,
+        applied_state="applied",
+    )
+
+    service.placement_repository = AsyncMock()
+    service.routing_service = AsyncMock()
+    service.placement_repository.list_by_key_id.return_value = [applied]
+    service.routing_service.select_nodes = AsyncMock(return_value=[backend])
+
     preferred_backend_id, placement, allowed_backend_ids = await service._ensure_backend_placements_for_key(
         key_id=uuid4(),
         preferred_region="fi",
@@ -715,12 +786,12 @@ async def test_subscription_returns_pending_placement_for_new_backend(service):
     )
 
     assert preferred_backend_id == backend.id
-    assert placement is created
+    assert placement is applied
     assert allowed_backend_ids == {backend.id}
 
 
 @pytest.mark.asyncio
-async def test_subscription_returns_unsynced_existing_placement(service):
+async def test_subscription_rejects_unsynced_existing_placement(service):
     backend = MagicMock()
     backend.id = uuid4()
     backend.public_domain = "be.example.com"
@@ -746,13 +817,12 @@ async def test_subscription_returns_unsynced_existing_placement(service):
     service.placement_repository.list_by_key_id.return_value = [pending]
     service.routing_service.select_nodes = AsyncMock(return_value=[backend])
 
-    preferred_backend_id, placement, allowed_backend_ids = await service._ensure_backend_placements_for_key(
-        key_id=uuid4(),
-        preferred_region="fi",
-        desired_replicas=1,
-        key_transport="reality",
-    )
+    with pytest.raises(SubscriptionBuild) as exc:
+        await service._ensure_backend_placements_for_key(
+            key_id=uuid4(),
+            preferred_region="fi",
+            desired_replicas=1,
+            key_transport="reality",
+        )
 
-    assert preferred_backend_id == backend.id
-    assert placement is pending
-    assert allowed_backend_ids == {backend.id}
+    assert str(exc.value) == "Backend placement sync pending"

@@ -39,15 +39,29 @@ def _transport_profile(*, name: str, is_active: bool, port: int):
     return profile
 
 
-def _route(*, name: str, node_id, transport_profile_id, is_active: bool):
+def _route(
+        *,
+        name: str,
+        node_id,
+        transport_profile_id,
+        is_active: bool,
+        health_status: str = "healthy",
+        effective_weight: int = 50,
+        cooldown_until=None,
+        warmup_stage=None,
+        warmup_started_at=None,
+):
     route = MagicMock()
     route.id = uuid4()
     route.name = name
     route.node_id = node_id
     route.transport_profile_id = transport_profile_id
     route.base_weight = 50
-    route.effective_weight = 50
-    route.health_status = "healthy"
+    route.effective_weight = effective_weight
+    route.health_status = health_status
+    route.cooldown_until = cooldown_until
+    route.warmup_stage = warmup_stage
+    route.warmup_started_at = warmup_started_at
     route.is_active = is_active
     return route
 
@@ -160,6 +174,58 @@ async def test_bootstrap_updates_inactive_transport_and_route(async_session):
     assert out.routes_reactivated == 1
     service.transport_repository.update_by_id.assert_awaited_once()
     service.route_repository.update_by_id.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_recovers_unhealthy_route_into_warmup(async_session):
+    service = ProfileArtifactService(async_session)
+    service.repository = AsyncMock()
+    service.node_repository = AsyncMock()
+    service.transport_repository = AsyncMock()
+    service.route_repository = AsyncMock()
+
+    artifact = {"reality-google": _artifact_profile_reality()}
+    service.repository.get_active.return_value = MagicMock(
+        version=12,
+        artifact=artifact,
+    )
+
+    backend = _backend_node(name="be-main")
+    service.node_repository.list_public.return_value = [backend]
+
+    transport_name = "reality-google"
+    existing_transport = _transport_profile(name=transport_name, is_active=True, port=443)
+    service.transport_repository.list_by_names.return_value = [existing_transport]
+    service.transport_repository.update_by_id = AsyncMock(return_value=existing_transport)
+
+    route_name = "auto-be-main-reality-google"
+    existing_route = _route(
+        name=route_name,
+        node_id=backend.id,
+        transport_profile_id=existing_transport.id,
+        is_active=True,
+        health_status="blocked",
+        effective_weight=0,
+    )
+    service.route_repository.list_by_names.return_value = [existing_route]
+    service.route_repository.update_by_id = AsyncMock(return_value=existing_route)
+
+    out = await service.bootstrap_routes_from_active_artifact(
+        ArtifactRoutesBootstrapIn(
+            dry_run=False,
+            include_ws_tls=False,
+            recover_unhealthy_routes=True,
+        )
+    )
+
+    assert out.routes_updated == 1
+    args = service.route_repository.update_by_id.await_args.args
+    data = args[1]
+    assert data["health_status"] == "warming_up"
+    assert data["effective_weight"] == 10
+    assert data["cooldown_until"] is None
+    assert data["warmup_stage"] == 0
+    assert data["warmup_started_at"] is not None
 
 
 @pytest.mark.asyncio

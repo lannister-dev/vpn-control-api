@@ -17,6 +17,8 @@ class AdminNodeStatusOut(BaseModel):
     is_draining: bool
     capacity: int
     is_healthy: bool
+    routing_eligible: bool = False
+    routing_reason: str | None = None
     last_seen_at: datetime | None
     last_sync_at: datetime | None
     placements_backend: int

@@ -1,6 +1,7 @@
 from __future__ import annotations
 import hashlib
 import json
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import Depends, HTTPException
@@ -24,6 +25,7 @@ from services.routes.schemas import (
     RouteReactivationUpdate,
     ProfileReactivationUpdate,
 )
+from services.routes.state_machine import resolve_bootstrap_recovery
 from shared.database.session import AsyncDatabase
 from shared.profiles.artifact_mapper import ArtifactProfileMapper
 
@@ -195,6 +197,7 @@ class ProfileArtifactService:
                     backend_id=backend.id,
                     transport_profile_id=transport_id,
                     route_base_weight=payload.route_base_weight,
+                    recover_unhealthy_routes=payload.recover_unhealthy_routes,
                 )
                 if route_update is None:
                     continue
@@ -262,6 +265,7 @@ class ProfileArtifactService:
             backend_id: UUID,
             transport_profile_id: UUID | None,
             route_base_weight: int,
+            recover_unhealthy_routes: bool,
     ) -> RouteReactivationUpdate | None:
         target_transport_id = transport_profile_id or existing.transport_profile_id
         structural_change = (
@@ -290,6 +294,23 @@ class ProfileArtifactService:
             cooldown_until = None
             warmup_stage = None
             warmup_started_at = None
+        elif recover_unhealthy_routes and (
+                current_status in {
+                    RouteHealthStatus.blocked,
+                    RouteHealthStatus.degraded,
+                    RouteHealthStatus.suspected,
+                }
+                or effective_weight <= 0
+        ):
+            bootstrap_state = resolve_bootstrap_recovery(
+                route_base_weight=route_base_weight,
+                now=datetime.now(timezone.utc),
+            )
+            current_status = bootstrap_state["health_status"]
+            effective_weight = bootstrap_state["effective_weight"]
+            cooldown_until = bootstrap_state["cooldown_until"]
+            warmup_stage = bootstrap_state["warmup_stage"]
+            warmup_started_at = bootstrap_state["warmup_started_at"]
 
         desired = RouteReactivationUpdate(
             name=existing.name,
