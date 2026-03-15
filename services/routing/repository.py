@@ -18,7 +18,6 @@ class RoutingRepository:
         self,
         preferred_region: str | None = None,
         exclude_node_ids: list[UUID] | None = None,
-        role: str | None = None,
     ) -> list[tuple[VpnNode, NodeAgentState | None, int]]:
         """
         Returns available nodes with their agent state and active placement count.
@@ -56,9 +55,6 @@ class RoutingRepository:
                 active_count_expr < VpnNode.capacity,
             )
         )
-        if role:
-            stmt = stmt.where(VpnNode.role == role)
-
         if exclude_node_ids:
             stmt = stmt.where(VpnNode.id.notin_(exclude_node_ids))
 

@@ -7,7 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.nodes.models import VpnNode
 from services.nodes.repository import VpnNodeRepository
-from services.nodes.schemas import NodeRole
 from services.placements.model import UserPlacement
 from services.placements.repository import UserPlacementRepository
 from services.placements.schemas import (
@@ -49,8 +48,6 @@ class UserPlacementService:
         backend = await self.node_repository.get_by_id(payload.backend_node_id)
         if not backend:
             raise HTTPException(status_code=404, detail="Backend node not found")
-        if backend.role != NodeRole.backend.value:
-            raise HTTPException(status_code=409, detail="Node role must be backend")
 
         placement = await self.placement_repository.upsert_set_pending(
             key_id=payload.key_id,
@@ -72,31 +69,26 @@ class UserPlacementService:
 
         source = await self.node_repository.get_by_id(payload.source_backend_id)
         if not source:
-            raise HTTPException(status_code=404, detail="Source backend node not found")
-        if source.role != NodeRole.backend.value:
-            raise HTTPException(status_code=409, detail="Source node role must be backend")
+            raise HTTPException(status_code=404, detail="Source node not found")
 
         target: VpnNode | None = None
         if payload.target_backend_id is not None:
             target = await self.node_repository.get_by_id(payload.target_backend_id)
             if not target:
-                raise HTTPException(status_code=404, detail="Target backend node not found")
+                raise HTTPException(status_code=404, detail="Target node not found")
         else:
             candidates = await self.routing_service.select_nodes(
                 preferred_region=source.region,
                 exclude_node_ids=[source.id],
-                role=NodeRole.backend.value,
             )
             if not candidates:
-                raise HTTPException(status_code=503, detail="No eligible target backend node available")
+                raise HTTPException(status_code=503, detail="No eligible target node available")
             target = candidates[0]
 
         if target is None:
-            raise HTTPException(status_code=503, detail="No eligible target backend node available")
-        if target.role != NodeRole.backend.value:
-            raise HTTPException(status_code=409, detail="Target node role must be backend")
+            raise HTTPException(status_code=503, detail="No eligible target node available")
         if not target.is_active or not target.is_enabled or target.is_draining:
-            raise HTTPException(status_code=409, detail="Target backend node is not eligible")
+            raise HTTPException(status_code=409, detail="Target node is not eligible")
 
         placements = await self.placement_repository.list_active(backend_node_id=payload.source_backend_id)
         active_placements = [p for p in placements if p.desired_state == PlacementDesiredState.active.value]
@@ -149,8 +141,6 @@ class PlacementAgentService:
             cursor: str | None,
             limit: int,
     ) -> PlacementPageOut:
-        if node.role != NodeRole.backend.value:
-            raise HTTPException(status_code=403, detail="Node role must be backend")
         parsed: tuple[datetime, UUID] | None = None
         if cursor:
             try:
@@ -186,8 +176,6 @@ class PlacementAgentService:
             placement_id: UUID,
             payload: PlacementReportIn,
     ) -> PlacementReportStatus:
-        if node.role != NodeRole.backend.value:
-            raise HTTPException(status_code=403, detail="Node role must be backend")
         placement = await self.placement_repository.get_by_id(placement_id)
         if not placement:
             raise HTTPException(status_code=404, detail="Placement not found")
@@ -234,8 +222,6 @@ class PlacementAgentService:
             node: VpnNode,
             payload: PlacementBatchReportIn,
     ) -> PlacementBatchReportOut:
-        if node.role != NodeRole.backend.value:
-            raise HTTPException(status_code=403, detail="Node role must be backend")
         if not payload.items:
             return PlacementBatchReportOut(items=[])
 

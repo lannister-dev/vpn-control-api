@@ -14,7 +14,6 @@ from services.routes.repository import RouteRepository
 from services.routes.schemas import RouteStateUpdate
 from services.routes.state_machine import resolve_probe_block, resolve_probe_recover
 from services.probe.repository import ProbeSignalRepository
-from services.nodes.schemas import NodeRole
 from services.probe.schemas import (
     ProbeReportIn,
     ProbeReportOut,
@@ -105,12 +104,10 @@ class ProbeIngestionService:
     async def list_targets(
             self,
             *,
-            role: NodeRole | None = NodeRole.backend,
             include_draining: bool = False,
             include_disabled: bool = False,
     ) -> list[ProbeTargetOut]:
-        role_value = role.value if role is not None else None
-        rows = await self.node_repository.list_public(role=role_value)
+        rows = await self.node_repository.list_public()
 
         targets: list[ProbeTargetOut] = []
         for node in rows:
@@ -123,13 +120,10 @@ class ProbeIngestionService:
             if not host:
                 continue
 
-            node_role = node.role
-
             targets.append(
                 ProbeTargetOut(
                     node_id=node.id,
                     node_name=node.name,
-                    role=node_role,
                     region=node.region,
                     host=host,
                     port=self.target_port,
@@ -194,8 +188,6 @@ class ProbeIngestionService:
 
     async def _apply_route_health_policy(self, *, node, signal) -> None:
         if not self.auto_route_health_enabled:
-            return
-        if node.role != NodeRole.backend.value:
             return
 
         routes = await self.route_repository.list_active(node_id=node.id, limit=2000)

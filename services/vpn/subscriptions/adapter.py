@@ -131,7 +131,7 @@ class SubscriptionPublicAdapter:
     def _is_service_unavailable_build_error(message: str) -> bool:
         if message.startswith("No available "):
             return True
-        return message == "Backend placement sync pending"
+        return message in {"Node placement sync pending", "Backend placement sync pending"}
 
     def _build_headers(
             self,

@@ -17,7 +17,7 @@ router = APIRouter(prefix="/placements", tags=["Placements"])
     response_model=UserPlacementOut,
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(admin_auth)],
-    summary="Create or update placement (key -> backend node)",
+    summary="Create or update placement (key -> node)",
 )
 async def upsert_placement(
         payload: UserPlacementUpsertIn,

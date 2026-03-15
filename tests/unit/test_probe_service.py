@@ -117,7 +117,7 @@ async def test_list_targets_filters_nodes(async_session):
     assert out[0].node_id == backend_ok.id
     assert out[0].host == "be-fi.example.com"
     assert out[0].port == 443
-    svc.node_repository.list_public.assert_awaited_once_with(role="backend")
+    svc.node_repository.list_public.assert_awaited_once_with()
 
 
 @pytest.mark.asyncio
@@ -517,8 +517,8 @@ async def test_auto_drain_and_migrate_backends_dry_run(async_session):
     backend_ok = _node(role="backend")
     backend_draining = _node(role="backend")
     backend_draining.is_draining = True
-    gateway = _node(role="gateway")
-    svc.node_repository.list.return_value = [backend_fail, backend_ok, backend_draining, gateway]
+    extra_node = _node(role="gateway")
+    svc.node_repository.list.return_value = [backend_fail, backend_ok, backend_draining, extra_node]
 
     fail_latest = _probe(is_reachable=False, checked_at=datetime.now(timezone.utc))
     ok_latest = _probe(is_reachable=True, checked_at=datetime.now(timezone.utc))
@@ -546,7 +546,7 @@ async def test_auto_drain_and_migrate_backends_dry_run(async_session):
     assert any(i.action == "would_migrate" and i.source_backend_id == backend_fail.id for i in out.items)
     assert any(i.action == "skipped" and i.source_backend_id == backend_ok.id for i in out.items)
     assert any(i.action == "skipped" and i.source_backend_id == backend_draining.id for i in out.items)
-    assert any(i.action == "skipped" and i.source_backend_id == gateway.id for i in out.items)
+    assert any(i.action == "skipped" and i.source_backend_id == extra_node.id for i in out.items)
 
 
 @pytest.mark.asyncio

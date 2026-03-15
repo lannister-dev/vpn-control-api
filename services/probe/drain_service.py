@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.nodes.models import VpnNode
 from services.nodes.repository import VpnNodeRepository
-from services.nodes.schemas import NodeRole, VpnNodeUpdate
+from services.nodes.schemas import VpnNodeUpdate
 from services.placements.service import UserPlacementService, get_user_placement_service
 from services.placements.schemas import PlacementMigrateBackendIn
 from services.probe.repository import ProbeSignalRepository
@@ -48,10 +48,7 @@ class ProbeDrainService:
         try:
             source_node = await self.node_repository.get_by_id(payload.source_backend_id)
             if not source_node:
-                raise HTTPException(status_code=404, detail="Source backend node not found")
-
-            if source_node.role != NodeRole.backend.value:
-                raise HTTPException(status_code=409, detail="Source node role must be backend")
+                raise HTTPException(status_code=404, detail="Source node not found")
 
             latest = await self._validate_probe_failure_for_node(
                 node_id=payload.source_backend_id,
@@ -120,20 +117,6 @@ class ProbeDrainService:
 
             node_id = node.id
 
-            if node.role != NodeRole.backend.value:
-                logger_probe.info(
-                    "auto_drain_skipped_non_backend",
-                    node_id=str(node_id),
-                    role=node.role,
-                )
-                items.append(
-                    ProbeAutoDrainMigrateItemOut(
-                        source_backend_id=node_id,
-                        action="skipped",
-                        detail="Node role is not backend",
-                    )
-                )
-                continue
             if not node.is_active or not node.is_enabled:
                 logger_probe.info(
                     "auto_drain_skipped_inactive",

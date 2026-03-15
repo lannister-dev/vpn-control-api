@@ -17,6 +17,16 @@ class VpnKeyRepository(BaseRepository[VpnKey]):
     def __init__(self, session: AsyncSession):
         super().__init__(VpnKey, session)
 
+    async def list_by_ids(self, *, key_ids: list[UUID]) -> list[VpnKey]:
+        normalized = list(dict.fromkeys(key_ids))
+        if not normalized:
+            return []
+
+        result = await self.session.execute(
+            select(self.model).where(self.model.id.in_(normalized))
+        )
+        return list(result.scalars().all())
+
     async def get_latest_active_for_user(
             self,
             *,

@@ -3,7 +3,6 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, status
 
 from services.auth.dependencies import admin_auth, probe_auth
-from services.nodes.schemas import NodeRole
 from services.probe.drain_service import ProbeDrainService, get_probe_drain_service
 from services.probe.ingestion_service import ProbeIngestionService, get_probe_ingestion_service
 from services.probe.schemas import (
@@ -39,16 +38,14 @@ async def report_probe(
     response_model=list[ProbeTargetOut],
     status_code=status.HTTP_200_OK,
     dependencies=[Depends(probe_auth)],
-    summary="List probe targets (defaults to backend role)",
+    summary="List probe targets",
 )
 async def list_probe_targets(
-        role: NodeRole | None = Query(default=NodeRole.backend),
         include_draining: bool = Query(default=False),
         include_disabled: bool = Query(default=False),
         service: ProbeIngestionService = Depends(get_probe_ingestion_service),
 ):
     return await service.list_targets(
-        role=role,
         include_draining=include_draining,
         include_disabled=include_disabled,
     )

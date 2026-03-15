@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.nodes.models import NodeAgentState, VpnNode
 from services.nodes.repository import NodeAgentStateRepository, VpnNodeRepository
-from services.nodes.schemas import NodeRole
 from services.placements.repository import UserPlacementRepository
 from services.placements.schemas import PlacementDesiredState
 from services.routing.service import RoutingService
@@ -151,8 +150,6 @@ class NodePlacementAutoHealService:
         rows = await self.node_repository.list_active_with_agent_state()
         undrained = 0
         for node, state in rows:
-            if node.role != NodeRole.backend.value:
-                continue
             if not node.is_active or not node.is_enabled or not node.is_draining:
                 continue
             if desired_active_counts.get(node.id, 0) > 0:
@@ -177,7 +174,6 @@ class NodePlacementAutoHealService:
         candidates = await self.routing_service.select_nodes(
             preferred_region=preferred_region,
             exclude_node_ids=[source_node_id],
-            role=NodeRole.backend.value,
         )
         return candidates[0] if candidates else None
 
@@ -212,8 +208,6 @@ class NodePlacementAutoHealService:
     ) -> str | None:
         if node is None:
             return "missing_node"
-        if node.role != NodeRole.backend.value:
-            return "wrong_role"
         if not node.is_active:
             return "node_inactive"
         if not node.is_enabled:

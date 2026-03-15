@@ -7,6 +7,7 @@ from uuid import uuid4
 import pytest
 
 from services.vpn.subscriptions.exceptions import SubscriptionHwidRequired, SubscriptionDeviceLimitReached
+from services.vpn.subscriptions.schemas import ResolvedDeviceBundle, ResolvedDeviceKey
 from services.vpn.subscriptions.service import SubscriptionService
 
 
@@ -25,6 +26,7 @@ def service(async_session, redis_client, monkeypatch):
     svc.redis.client.expire = AsyncMock(return_value=True)
     svc.subscription_repository = AsyncMock()
     svc.device_repository = AsyncMock()
+    svc.device_key_repository = AsyncMock()
     svc.vpn_key_repository = AsyncMock()
     svc.routing_service = AsyncMock()
     svc.placement_repository = AsyncMock()
@@ -82,8 +84,20 @@ async def test_existing_hwid_path_skips_subscription_lock(service):
     key.is_revoked = False
 
     service.subscription_repository.get_by_any_token_hash.return_value = sub
-    service.device_repository.get_active_by_sub_and_hwid_hash.return_value = device
-    service.vpn_key_repository.get_by_id.return_value = key
+    service._resolve_device_bundle_for_request = AsyncMock(
+        return_value=ResolvedDeviceBundle(
+            device=device,
+            keys=(
+                ResolvedDeviceKey(
+                    vpn_key_id=key.id,
+                    client_id=key.client_id,
+                    transport="reality",
+                    is_primary=True,
+                    key=key,
+                ),
+            ),
+        )
+    )
     service._enforce_rate_limit = AsyncMock()
     placement = MagicMock()
     placement.op_version = 4
@@ -114,5 +128,3 @@ async def test_existing_hwid_path_skips_subscription_lock(service):
     await service.build_payload(raw_token="tok", hwid="device1", user_agent="ua")
 
     service.session.execute.assert_not_awaited()
-
-

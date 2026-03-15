@@ -15,7 +15,6 @@ from services.admin_status.schemas import (
     AdminStatusOut,
     AdminStatusTotalsOut,
 )
-from services.nodes.schemas import NodeRole
 
 
 @pytest.mark.asyncio
@@ -33,7 +32,6 @@ async def test_admin_status_router_contract():
             AdminNodeStatusOut(
                 id=uuid4(),
                 name="be-1",
-                role=NodeRole.backend,
                 region="fi",
                 public_domain="be-1.example.com",
                 is_enabled=True,
@@ -66,9 +64,9 @@ async def test_admin_readiness_router_contract():
                 detail="active artifact found",
             ),
             AdminReadinessCheckOut(
-                name="healthy_backend_nodes",
+                name="healthy_nodes",
                 ok=True,
-                detail="healthy backends: 1",
+                detail="healthy nodes: 1",
             ),
             AdminReadinessCheckOut(
                 name="resolvable_active_routes",

@@ -10,7 +10,7 @@ from services.nodes.router import (
     report_placements_batch,
     sync_report,
 )
-from services.nodes.schemas import NodeRole, NodeSyncReportIn
+from services.nodes.schemas import NodeSyncReportIn
 from services.placements.schemas import (
     PlacementAppliedState,
     PlacementAssignmentOut,
@@ -45,7 +45,7 @@ async def test_backend_placements_for_node_contract():
     service = SimpleNamespace(
         get_page_for_backend=AsyncMock(return_value=PlacementPageOut(items=[item], next_cursor="7:cursor")),
     )
-    node = SimpleNamespace(id=uuid4(), role=NodeRole.backend.value)
+    node = SimpleNamespace(id=uuid4())
 
     page = await get_placements_page(
         node=node,
@@ -70,7 +70,7 @@ async def test_router_maps_cursor_value_error_to_422():
 
     with pytest.raises(HTTPException) as placement_exc:
         await get_placements_page(
-            node=SimpleNamespace(id=uuid4(), role=NodeRole.backend.value),
+            node=SimpleNamespace(id=uuid4()),
             cursor="bad",
             limit=200,
             service=placement_service,
@@ -84,7 +84,7 @@ async def test_sync_report_contract():
     service = SimpleNamespace(
         handle_sync_report=AsyncMock(return_value=True),
     )
-    node = SimpleNamespace(id=uuid4(), role=NodeRole.backend.value)
+    node = SimpleNamespace(id=uuid4())
     payload = NodeSyncReportIn(synced_count=12, config_version=8)
 
     out = await sync_report(
@@ -102,7 +102,7 @@ async def test_sync_report_contract_skipped_status():
     service = SimpleNamespace(
         handle_sync_report=AsyncMock(return_value=False),
     )
-    node = SimpleNamespace(id=uuid4(), role=NodeRole.backend.value)
+    node = SimpleNamespace(id=uuid4())
     payload = NodeSyncReportIn(synced_count=12, config_version=8)
 
     out = await sync_report(
@@ -134,7 +134,7 @@ async def test_report_batch_contract():
             )
         ),
     )
-    node = SimpleNamespace(id=uuid4(), role=NodeRole.backend.value)
+    node = SimpleNamespace(id=uuid4())
 
     out = await report_placements_batch(
         payload=payload,

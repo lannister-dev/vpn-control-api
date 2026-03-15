@@ -44,9 +44,40 @@ class SubscriptionDevice(Base):
     user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     subscription: Mapped["Subscription"] = relationship(back_populates="devices")
+    device_keys: Mapped[list["SubscriptionDeviceKey"]] = relationship(
+        back_populates="device",
+        cascade="all, delete-orphan",
+    )
 
     __table_args__ = (
         UniqueConstraint("subscription_id", "hwid_hash", name="uq_subscription_device_hwid"),
         Index("ix_subscription_device_subscription_id", "subscription_id"),
         Index("ix_subscription_device_vpn_key_id", "vpn_key_id"),
+    )
+
+
+class SubscriptionDeviceKey(Base):
+    __tablename__ = "subscription_device_key"
+
+    subscription_device_id: Mapped[UUID] = mapped_column(ForeignKey("subscription_device.id"), nullable=False)
+    vpn_key_id: Mapped[UUID] = mapped_column(ForeignKey("vpn_key.id"), nullable=False)
+    transport: Mapped[str] = mapped_column(String(16), nullable=False)
+    is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    device: Mapped["SubscriptionDevice"] = relationship(back_populates="device_keys")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "subscription_device_id",
+            "vpn_key_id",
+            name="uq_subscription_device_key_device_key",
+        ),
+        UniqueConstraint(
+            "subscription_device_id",
+            "transport",
+            name="uq_subscription_device_key_device_transport",
+        ),
+        Index("ix_subscription_device_key_device_id", "subscription_device_id"),
+        Index("ix_subscription_device_key_vpn_key_id", "vpn_key_id"),
+        Index("ix_subscription_device_key_transport", "transport"),
     )

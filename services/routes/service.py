@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.config import get_settings
 from services.nodes.repository import VpnNodeRepository
-from services.nodes.schemas import NodeRole
 from services.routes.repository import RouteRepository, TransportProfileRepository
 from services.routes.schemas import (
     RouteCreateData,
@@ -134,8 +133,6 @@ class RouteService:
         node = await self.node_repository.get_by_id(payload.node_id)
         if not node:
             raise HTTPException(status_code=404, detail="Node not found")
-        if node.role != NodeRole.backend.value:
-            raise HTTPException(status_code=409, detail="Route node role must be backend")
 
         tp = await self.transport_repository.get_by_id(payload.transport_profile_id)
         if not tp or not tp.is_active:
@@ -370,8 +367,6 @@ class RouteService:
             return "node_disabled"
         if bool(node.is_draining):
             return "node_draining"
-        if str(node.role) != NodeRole.backend.value:
-            return "node_role_invalid"
         if agent_state is None:
             return "agent_state_missing"
         if not bool(agent_state.is_healthy):

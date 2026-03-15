@@ -10,13 +10,10 @@ from services.nodes.schemas import (
     AdminNodeUpdateIn,
     NodeAgentInitialOut,
     NodeHeartbeatIn,
-    NodeRole,
-    NodeRoleUpdateIn,
     NodeSyncReportIn,
     NodeSyncReportOut,
     NodeSyncReportStatus,
     VpnNodeOut,
-    VpnNodeUpdate,
 )
 from services.placements.schemas import (
     PlacementBatchReportIn,
@@ -212,26 +209,6 @@ async def enable_node(
         node_id, {"is_draining": False, "is_enabled": True}
     )
     return {"status": "enabled"}
-
-
-@router.post(
-    "/nodes/{node_id}/role",
-    summary="Set node role",
-    dependencies=[Depends(admin_auth)],
-)
-async def set_node_role(
-        node_id: UUID,
-        payload: NodeRoleUpdateIn,
-        service: VpnNodeService = Depends(get_vpn_node_service),
-):
-    node = await service.vpn_node_repository.get_by_id(node_id)
-    if not node:
-        raise HTTPException(status_code=404, detail="Node not found")
-    await service.vpn_node_repository.update_by_id(
-        node_id,
-        VpnNodeUpdate(role=NodeRole(payload.role.value)).model_dump(exclude_unset=True),
-    )
-    return {"status": "role_updated", "role": payload.role.value}
 
 
 @router.patch(
