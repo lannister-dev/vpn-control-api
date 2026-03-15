@@ -17,10 +17,9 @@ from services.routes.schemas import (
 from services.routes.service import RouteService
 
 
-def _node(*, role="backend"):
+def _node():
     n = MagicMock()
     n.id = uuid4()
-    n.role = role
     return n
 
 
@@ -50,14 +49,19 @@ def _route(*, status="healthy", base_weight=50, effective_weight=50, cooldown_un
 
 
 @pytest.mark.asyncio
-async def test_create_route_rejects_non_backend_node(async_session):
+async def test_create_route_accepts_node_without_role_constraint(async_session):
     svc = RouteService(async_session)
     svc.node_repository = AsyncMock()
     svc.transport_repository = AsyncMock()
     svc.route_repository = AsyncMock()
 
-    node = _node(role="gateway")
+    node = _node()
     svc.node_repository.get_by_id = AsyncMock(return_value=node)
+    svc.transport_repository.get_by_id = AsyncMock(return_value=_transport_profile())
+    svc.route_repository.get_one_by = AsyncMock(return_value=None)
+    created = _route()
+    created.node_id = node.id
+    svc.route_repository.create = AsyncMock(return_value=created)
 
     payload = RouteCreateIn(
         name="be1-reality-google",
@@ -67,9 +71,9 @@ async def test_create_route_rejects_non_backend_node(async_session):
         health_status=RouteHealthStatus.healthy,
     )
 
-    with pytest.raises(HTTPException) as exc:
-        await svc.create_route(payload)
-    assert exc.value.status_code == 409
+    out = await svc.create_route(payload)
+
+    assert out.node_id == node.id
 
 
 @pytest.mark.asyncio
@@ -268,14 +272,12 @@ async def test_list_routes_includes_routing_diagnostics(async_session):
         is_active=True,
         is_enabled=True,
         is_draining=False,
-        role="backend",
     )
     unhealthy_node = MagicMock(
         id=blocked_route.node_id,
         is_active=True,
         is_enabled=True,
         is_draining=False,
-        role="backend",
     )
     transport = MagicMock(is_active=True)
     recent_state = MagicMock(

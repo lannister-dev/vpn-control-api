@@ -163,7 +163,7 @@ async def test_connect_routeset_creates_placement_when_missing(async_session):
         )
 
     assert exc.value.status_code == 503
-    assert exc.value.detail == "Backend placement sync pending"
+    assert exc.value.detail == "Node placement sync pending"
     svc.placement_repository.upsert_set_pending.assert_awaited_once()
     kwargs = svc.placement_repository.upsert_set_pending.await_args.kwargs
     assert kwargs["backend_node_id"] == backend.id
@@ -203,7 +203,7 @@ async def test_connect_routeset_ignores_unsynced_existing_placements(async_sessi
         )
 
     assert exc.value.status_code == 503
-    assert exc.value.detail == "Backend placement sync pending"
+    assert exc.value.detail == "Node placement sync pending"
     svc.route_repository.list_resolved_active.assert_not_awaited()
 
 

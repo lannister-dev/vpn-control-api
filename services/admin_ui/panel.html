@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Operations UI - DEV</title>
+  <title>Control Panel - DEV</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
@@ -79,6 +79,13 @@
       font-size: 24px;
       font-weight: 800;
       letter-spacing: 0.02em;
+    }
+    .brand-subtitle {
+      margin-top: 6px;
+      color: rgba(159, 179, 207, 0.88);
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
     }
     .dot {
       display: inline-block;
@@ -342,6 +349,30 @@
     .log-item { border: 1px solid var(--line); border-radius: 9px; background: rgba(15, 23, 42, 0.36); padding: 7px 8px; font-size: 12px; }
     .log-item.error { color: #ffc3bd; }
     .empty { color: var(--muted); font-size: 12px; padding: 7px 0; }
+    .bundle-list { display: grid; gap: 6px; min-width: 200px; }
+    .bundle-item {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 10px;
+      padding: 6px 8px;
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .bundle-item .mono { font-size: 11px; }
+    .bundle-summary { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+    .result-grid { display: grid; gap: 8px; }
+    .result-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      padding-bottom: 6px;
+    }
+    .result-row:last-child { border-bottom: none; padding-bottom: 0; }
+    .result-row .mono { text-align: right; }
 
     /* Toast stack */
     .toast-container {
@@ -523,8 +554,9 @@
     <div class="layout">
     <aside class="sidebar">
       <section class="brand">
-        <h1><span id="ready-dot" class="dot"></span>Operations UI</h1>
-        <div style="margin-top:10px;"><span class="env-pill">DEV Workspace</span></div>
+        <h1><span id="ready-dot" class="dot"></span>Control Panel</h1>
+        <div class="brand-subtitle">VPN Control</div>
+        <div style="margin-top:10px;"><span class="env-pill">DEV</span></div>
       </section>
       <section id="auth-section" class="row">
         <div id="session-user-info" class="row" style="display:none;">
@@ -545,17 +577,17 @@
         </section>
         <section class="nav-group">
           <div class="nav-group-title">Management</div>
-          <button data-tab="nodes"><span class="nav-icon">N</span><span>Nodes</span></button>
+          <button data-tab="nodes"><span class="nav-icon">N</span><span>Servers</span></button>
           <button data-tab="routes"><span class="nav-icon">R</span><span>Routes</span></button>
           <button data-tab="placements"><span class="nav-icon">P</span><span>Placements</span></button>
           <button data-tab="subscriptions"><span class="nav-icon">S</span><span>Subscriptions</span></button>
           <button data-tab="traffic"><span class="nav-icon">T</span><span>Traffic</span></button>
-          <button data-tab="admin-users"><span class="nav-icon">U</span><span>Admin Users</span></button>
+          <button data-tab="admin-users"><span class="nav-icon">U</span><span>Admins</span></button>
           <button disabled><span class="nav-icon">A</span><span>API Tokens</span></button>
         </section>
         <section class="nav-group">
           <div class="nav-group-title">Utilities</div>
-          <button data-tab="ops"><span class="nav-icon">O</span><span>Operations</span></button>
+          <button data-tab="ops"><span class="nav-icon">O</span><span>Ops</span></button>
           <button disabled><span class="nav-icon">S</span><span>Subscription Page</span></button>
         </section>
       </nav>
@@ -578,9 +610,9 @@
           <div>
             <div id="hero-title" class="hero-title">Home</div>
             <div id="crumbs" class="crumbs">Dashboard &bull; Home</div>
-            <div id="hero-status" class="muted">Введите токен и загрузите данные.</div>
+            <div id="hero-status" class="muted">Выберите раздел и обновите данные.</div>
           </div>
-          <div class="mono muted">API /api/v1</div>
+          <div class="mono muted">Control API /api/v1</div>
         </div>
         <div class="kpis">
           <div class="kpi"><div class="kpi-name">Серверы</div><div id="kpi-nodes" class="kpi-value">-</div></div>
@@ -615,13 +647,12 @@
         <div class="panel-body">
           <div class="filters">
             <input id="nodes-search" class="input" placeholder="Поиск: имя, UUID, домен, reality IP, регион" />
-            <select id="nodes-role" class="select"><option value="">Любая роль</option><option value="backend">Бэкенд</option><option value="gateway">Шлюз</option></select>
             <select id="nodes-health" class="select"><option value="">Любое здоровье</option><option value="healthy">Здоров</option><option value="unhealthy">Нездоров</option></select>
             <select id="nodes-state" class="select"><option value="">Любое состояние</option><option value="active">Активен</option><option value="draining">Draining</option><option value="disabled">Отключен</option></select>
             <button id="nodes-clear" class="btn btn-ghost">Сброс</button>
           </div>
           <table>
-            <thead id="nodes-head"><tr><th>Сервер</th><th>Роль</th><th>Гео</th><th>Здоровье</th><th>Состояние</th><th>Нагрузка</th><th>Heartbeat</th><th>Действия</th></tr></thead>
+            <thead id="nodes-head"><tr><th>Сервер</th><th>Гео</th><th>Здоровье</th><th>Состояние</th><th>Нагрузка</th><th>Heartbeat</th><th>Действия</th></tr></thead>
             <tbody id="nodes-body"></tbody>
           </table>
         </div>
@@ -631,18 +662,18 @@
         <div class="panel-head"><div class="panel-title">Маршруты</div><div class="actions"><select id="routes-status" class="select"><option value="">Любой статус</option><option value="healthy">healthy</option><option value="degraded">degraded</option><option value="suspected">suspected</option><option value="blocked">blocked</option><option value="warming_up">warming_up</option></select><input id="routes-search" class="input mono" placeholder="Поиск UUID/имени" /><button id="routes-reload" class="btn btn-ghost">Перезагрузить</button></div></div>
         <div class="panel-body">
           <table>
-            <thead id="routes-head"><tr><th>Маршрут</th><th>Backend</th><th>Статус</th><th>Вес</th><th>Прогрев</th><th>Действия</th></tr></thead>
+            <thead id="routes-head"><tr><th>Маршрут</th><th>Нода</th><th>Статус</th><th>Вес</th><th>Прогрев</th><th>Действия</th></tr></thead>
             <tbody id="routes-body"></tbody>
           </table>
         </div>
       </section>
 
       <section id="tab-placements" class="panel">
-        <div class="panel-head"><div class="panel-title">Плейсменты</div><div class="actions"><input id="placements-node" class="input mono" placeholder="Фильтр backend UUID" /><input id="placements-key" class="input mono" placeholder="Фильтр key UUID" /><select id="placements-desired" class="select"><option value="">Любой desired</option><option value="active">active</option><option value="inactive">inactive</option></select><select id="placements-applied" class="select"><option value="">Любой applied</option><option value="applied">applied</option><option value="pending">pending</option><option value="error">error</option></select><button id="placements-reload" class="btn btn-ghost">Перезагрузить</button></div></div>
+        <div class="panel-head"><div class="panel-title">Плейсменты</div><div class="actions"><input id="placements-node" class="input mono" placeholder="Фильтр node UUID" /><input id="placements-key" class="input mono" placeholder="Фильтр key UUID" /><select id="placements-desired" class="select"><option value="">Любой desired</option><option value="active">active</option><option value="inactive">inactive</option></select><select id="placements-applied" class="select"><option value="">Любой applied</option><option value="applied">applied</option><option value="pending">pending</option><option value="error">error</option></select><button id="placements-reload" class="btn btn-ghost">Перезагрузить</button></div></div>
         <div class="panel-body">
           <div id="placements-meta" class="card muted">Данные еще не загружены.</div>
           <table>
-            <thead><tr><th>ID плейсмента</th><th>ID ключа</th><th>ID backend-ноды</th><th>Версия</th><th>Желаемое</th><th>Применение</th><th>Причина</th><th>Обновлено</th></tr></thead>
+            <thead><tr><th>ID плейсмента</th><th>ID ключа</th><th>ID ноды</th><th>Версия</th><th>Желаемое</th><th>Применение</th><th>Причина</th><th>Обновлено</th></tr></thead>
             <tbody id="placements-body"></tbody>
           </table>
         </div>
@@ -650,13 +681,13 @@
 
       <section id="tab-subscriptions" class="panel">
         <div class="panel-head">
-          <div class="panel-title">Подписки</div>
-          <div class="muted">Ручное создание, просмотр и административные действия</div>
+          <div class="panel-title">Подписки и устройства</div>
+          <div class="muted">Один token, bundle ключей по transport и управление HWID-устройствами</div>
         </div>
         <div class="panel-body two-col">
           <div class="stack">
             <div class="card">
-              <div class="muted">Ручное создание подписки</div>
+              <div class="muted">Создание подписки</div>
               <form id="form-sub-create" class="stack" autocomplete="off">
                 <input class="input mono" name="user_id" placeholder="ID пользователя (UUID)" required />
                 <div class="row-2">
@@ -666,7 +697,7 @@
                 <datalist id="sub-profile-keys"></datalist>
                 <div id="sub-profile-key-help" class="muted">Профили будут подгружены из активного artifact.</div>
                 <div class="row-2"><input class="input" name="expires_at" type="datetime-local" /><input class="input" name="max_devices" type="number" min="1" max="100" placeholder="max_devices (опционально)" /></div>
-                <div class="muted">Legacy-режим удален: подписка создается только в HWID/device-key модели.</div>
+                <div class="muted">На первом запросе по HWID устройство получит bundle ключей. Базовый набор сейчас: Reality + WS.</div>
                 <button class="btn btn-primary" type="submit">Создать подписку</button>
               </form>
               <div id="sub-create-result" class="stack empty">После создания здесь появится токен и URL.</div>
@@ -684,27 +715,27 @@
           </div>
           <div class="stack">
             <div class="card">
-              <div class="muted">Операции с подпиской по ID</div>
+              <div class="muted">Управление подпиской</div>
               <form id="form-sub-manage" class="stack">
                 <input class="input mono" name="subscription_id" placeholder="ID подписки (UUID)" required />
                 <div class="row-2">
-                  <button class="btn btn-info" type="button" id="sub-load">Загрузить</button>
-                  <button class="btn btn-warn" type="button" id="sub-rotate">Rotate token</button>
+                  <button class="btn btn-info" type="button" id="sub-load">Открыть</button>
+                  <button class="btn btn-warn" type="button" id="sub-rotate">Обновить token</button>
                 </div>
                 <div class="row-2">
                   <button class="btn btn-primary" type="button" id="sub-activate">Активировать</button>
                   <button class="btn btn-danger" type="button" id="sub-deactivate">Деактивировать</button>
                 </div>
-                <button class="btn btn-ghost" type="button" id="sub-devices-load">Загрузить устройства</button>
+                <button class="btn btn-ghost" type="button" id="sub-devices-load">Показать устройства</button>
               </form>
               <div id="sub-manage-result" class="stack empty">Результаты операций будут показаны здесь.</div>
             </div>
             <div class="card">
-              <div class="muted">Отвязка устройства</div>
+              <div class="muted">Отключение устройства</div>
               <form id="form-sub-revoke-device" class="stack">
                 <input class="input mono" name="subscription_id" placeholder="ID подписки (UUID)" required />
                 <input class="input mono" name="device_id" placeholder="ID устройства (UUID)" required />
-                <button class="btn btn-danger" type="submit">Revoke device</button>
+                <button class="btn btn-danger" type="submit">Отключить устройство</button>
               </form>
             </div>
           </div>
@@ -717,9 +748,9 @@
               </table>
             </div>
             <div class="card">
-              <div class="muted">Устройства подписки</div>
+              <div class="muted">Устройства и transport bundle</div>
               <table>
-                <thead><tr><th>ID устройства</th><th>ID key</th><th>Активность</th><th>Последний seen</th><th>User-Agent</th></tr></thead>
+                <thead><tr><th>ID устройства</th><th>Bundle</th><th>Активность</th><th>Последний seen</th><th>User-Agent</th></tr></thead>
                 <tbody id="sub-devices-body"></tbody>
               </table>
             </div>
@@ -854,12 +885,12 @@
         <div class="panel-head"><div class="panel-title">Операции</div><div class="muted">Управление миграциями, route health и probe-политиками</div></div>
         <div class="panel-body two-col">
           <div class="stack">
-	            <div class="card ops-card ops-info"><div class="muted">Миграция плейсментов между backend-нодами</div><form id="form-migrate" class="stack"><input class="input mono" name="source_backend_id" placeholder="ID исходной backend-ноды (UUID)" required /><input class="input mono" name="target_backend_id" placeholder="ID целевой backend-ноды (опционально)" /><input class="input" name="last_migration_reason" value="admin_manual" placeholder="Причина миграции" /><button class="btn btn-primary" type="submit">Запустить миграцию</button></form></div>
-	            <div class="card ops-card ops-danger"><div class="muted">Авто drain+migrate по probe-сигналам</div><form id="form-probe-auto" class="stack"><div class="row-2"><input class="input" name="source" placeholder="Источник probe (опционально)" /><input class="input mono" name="target_backend_id" placeholder="ID целевой backend-ноды (опционально)" /></div><div class="row-2"><input class="input" name="max_nodes" type="number" min="1" max="200" value="20" /><label class="muted"><input type="checkbox" name="dry_run" checked /> Только проверка (dry run)</label></div><input class="input" name="last_migration_reason" value="probe_auto_failure" placeholder="Причина миграции" /><button class="btn btn-danger" type="submit">Применить probe-политику</button></form></div>
+	            <div class="card ops-card ops-info"><div class="muted">Миграция плейсментов между нодами</div><form id="form-migrate" class="stack"><input class="input mono" name="source_backend_id" placeholder="ID исходной ноды (UUID)" required /><input class="input mono" name="target_backend_id" placeholder="ID целевой ноды (опционально)" /><input class="input" name="last_migration_reason" value="admin_manual" placeholder="Причина миграции" /><button class="btn btn-primary" type="submit">Запустить миграцию</button></form></div>
+	            <div class="card ops-card ops-danger"><div class="muted">Авто drain+migrate по probe-сигналам</div><form id="form-probe-auto" class="stack"><div class="row-2"><input class="input" name="source" placeholder="Источник probe (опционально)" /><input class="input mono" name="target_backend_id" placeholder="ID целевой ноды (опционально)" /></div><div class="row-2"><input class="input" name="max_nodes" type="number" min="1" max="200" value="20" /><label class="muted"><input type="checkbox" name="dry_run" checked /> Только проверка (dry run)</label></div><input class="input" name="last_migration_reason" value="probe_auto_failure" placeholder="Причина миграции" /><button class="btn btn-danger" type="submit">Применить probe-политику</button></form></div>
           </div>
           <div class="stack">
 	            <div class="card ops-card ops-warn"><div class="muted">Изменение состояния маршрута</div><form id="form-route-health" class="stack"><input class="input mono" name="route_id" placeholder="ID маршрута (UUID)" required /><select class="select" name="action"><option value="set_healthy">set_healthy</option><option value="set_degraded">set_degraded</option><option value="set_suspected">set_suspected</option><option value="block">block</option><option value="recover">recover</option></select><input class="input" name="cooldown_hours" type="number" min="1" max="72" value="6" placeholder="Cooldown (часы)" /><button class="btn btn-warn" type="submit">Обновить route health</button></form></div>
-	            <div class="card ops-card ops-danger"><div class="muted">Ручной drain+migrate одной backend-ноды</div><form id="form-probe-manual" class="stack"><input class="input mono" name="source_backend_id" placeholder="ID исходной backend-ноды (UUID)" required /><input class="input mono" name="target_backend_id" placeholder="ID целевой backend-ноды (опционально)" /><input class="input" name="source" placeholder="Источник probe (опционально)" /><button class="btn btn-danger" type="submit">Drain и migrate</button></form></div>
+	            <div class="card ops-card ops-danger"><div class="muted">Ручной drain+migrate одной ноды</div><form id="form-probe-manual" class="stack"><input class="input mono" name="source_backend_id" placeholder="ID исходной ноды (UUID)" required /><input class="input mono" name="target_backend_id" placeholder="ID целевой ноды (опционально)" /><input class="input" name="source" placeholder="Источник probe (опционально)" /><button class="btn btn-danger" type="submit">Drain и migrate</button></form></div>
             <div class="row-2"><button id="btn-warmup" class="btn btn-info">Сдвинуть warmup tick</button><button id="btn-cleanup-probe" class="btn btn-ghost">Очистить старые probe-сигналы</button></div>
           </div>
         </div>
@@ -874,7 +905,7 @@
     (function () {
       const REFRESH_MS = 15000;
       const TABLE_LIMIT = 500;
-      const TAB_LABELS = { overview: "Home", nodes: "Серверы", routes: "Маршруты", placements: "Плейсменты", subscriptions: "Подписки", traffic: "Трафик", "admin-users": "Admin Users", ops: "Операции" };
+      const TAB_LABELS = { overview: "Home", nodes: "Серверы", routes: "Маршруты", placements: "Плейсменты", subscriptions: "Подписки", traffic: "Трафик", "admin-users": "Админы", ops: "Ops" };
       let sessionAuth = false;
       let csrfToken = null;
 
@@ -889,7 +920,7 @@
         nodesHead: $("nodes-head"), nodesBody: $("nodes-body"), routesHead: $("routes-head"), routesBody: $("routes-body"), placementsBody: $("placements-body"), placementsMeta: $("placements-meta"),
         subsBody: $("subs-body"), subDevicesBody: $("sub-devices-body"), subCreateResult: $("sub-create-result"), subManageResult: $("sub-manage-result"),
         subProfileKey: $("sub-profile-key"), subProfileKeys: $("sub-profile-keys"), subProfileKeyHelp: $("sub-profile-key-help"),
-        nodesSearch: $("nodes-search"), nodesRole: $("nodes-role"), nodesHealth: $("nodes-health"), nodesState: $("nodes-state"), nodesClear: $("nodes-clear"), nodesReload: $("nodes-reload"),
+        nodesSearch: $("nodes-search"), nodesHealth: $("nodes-health"), nodesState: $("nodes-state"), nodesClear: $("nodes-clear"), nodesReload: $("nodes-reload"),
         routesStatus: $("routes-status"), routesSearch: $("routes-search"), routesReload: $("routes-reload"),
         placementsNode: $("placements-node"), placementsKey: $("placements-key"), placementsDesired: $("placements-desired"), placementsApplied: $("placements-applied"), placementsReload: $("placements-reload"),
         formSubCreate: $("form-sub-create"), formSubListUser: $("form-sub-list-user"), formSubManage: $("form-sub-manage"), formSubRevokeDevice: $("form-sub-revoke-device"),
@@ -914,10 +945,8 @@
       const esc = (v) => String(v ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
       const fmtDate = (v) => { if (!v) return "-"; const d = new Date(v); return Number.isNaN(d.getTime()) ? "-" : d.toLocaleString(); };
       const chip = (cls, txt) => `<span class="badge ${cls}">${esc(txt)}</span>`;
-      const roleLabel = (r) => (r === "backend" ? "Бэкенд" : (r === "gateway" ? "Шлюз" : r));
       const routeStatusLabel = (s) => ({ healthy: "Стабильный", degraded: "Деградация", suspected: "Подозрение", blocked: "Заблокирован", warming_up: "Прогрев" }[s] || s);
       const routingReasonLabel = (s) => ({
-        role_not_backend: "не backend",
         node_inactive: "node inactive",
         node_disabled: "disabled",
         node_draining: "draining",
@@ -934,7 +963,6 @@
         node_inactive: "node inactive",
         node_disabled: "disabled",
         node_draining: "draining",
-        node_role_invalid: "node role invalid",
         agent_state_missing: "нет agent state",
         agent_unhealthy: "agent unhealthy",
         heartbeat_missing: "нет heartbeat",
@@ -970,6 +998,18 @@
         const pct = Math.min(100, Math.round((used / total) * 100));
         const cls = pct < 60 ? "low" : pct < 85 ? "mid" : "high";
         return `<div><span class="mono" style="font-size:11px">${used}/${total}</span><div class="capacity-bar"><div class="capacity-fill ${cls}" style="width:${pct}%"></div></div></div>`;
+      }
+      function transportLabel(transport) {
+        return ({ reality: "Reality", ws: "WS", xhttp: "XHTTP", tcp: "TCP" }[String(transport || "").toLowerCase()]) || String(transport || "-").toUpperCase();
+      }
+      function renderTransportBundle(device) {
+        const keys = Array.isArray(device && device.transport_keys) ? device.transport_keys : [];
+        if (!keys.length) {
+          return `<div class="empty">Bundle не загружен</div>`;
+        }
+        const summary = keys.map((k) => chip(k.is_primary ? "info" : "ok", `${transportLabel(k.transport)}${k.is_primary ? " primary" : ""}`)).join("");
+        const items = keys.map((k) => `<div class="bundle-item"><span>${chip(k.is_primary ? "info" : "ok", transportLabel(k.transport))}</span><span class="mono">${uuidCell(k.vpn_key_id)}</span></div>`).join("");
+        return `<div class="bundle-summary">${summary}</div><div class="bundle-list">${items}</div>`;
       }
 
       /* --- Sorting --- */
@@ -1174,7 +1214,7 @@
         refs.placementsMeta.innerHTML = `
           ${chip("info", `placements: ${total}`)}
           ${chip("info", `keys: ${keysTotal}`)}
-          ${chip(replicated > 0 ? "warn" : "ok", `keys >1 backend: ${replicated}`)}
+          ${chip(replicated > 0 ? "warn" : "ok", `keys >1 node: ${replicated}`)}
           ${chip("info", `avg replicas/key: ${avgReplicas}`)}
           ${chip("info", `max replicas/key: ${maxReplicas}`)}
         `;
@@ -1187,10 +1227,14 @@
         }
         refs.subCreateResult.innerHTML = `
           <div>${chip("ok", "Подписка создана")}</div>
-          <div class="mono">subscription_id: ${uuidCell(created.id)}</div>
-          <div class="mono">token: ${esc(created.token)} <button class="btn-mini copy-value" data-copy="${esc(created.token)}">Копировать</button></div>
-          <div class="mono">url: ${esc(created.subscription_url)} <button class="btn-mini copy-value" data-copy="${esc(created.subscription_url)}">Копировать</button></div>
-          <div class="muted">active: ${created.is_active ? "yes" : "no"}, expires: ${fmtDate(created.expires_at)}</div>
+          <div class="result-grid">
+            <div class="result-row"><span class="muted">subscription_id</span><span class="mono">${uuidCell(created.id)}</span></div>
+            <div class="result-row"><span class="muted">token</span><span class="mono">${esc(created.token)} <button class="btn-mini copy-value" data-copy="${esc(created.token)}">Копировать</button></span></div>
+            <div class="result-row"><span class="muted">url</span><span class="mono">${esc(created.subscription_url)} <button class="btn-mini copy-value" data-copy="${esc(created.subscription_url)}">Копировать</button></span></div>
+            <div class="result-row"><span class="muted">status</span><span>${created.is_active ? chip("ok", "active") : chip("bad", "inactive")}</span></div>
+            <div class="result-row"><span class="muted">expires</span><span class="mono">${fmtDate(created.expires_at)}</span></div>
+          </div>
+          <div class="muted">Первое устройство получит transport bundle автоматически при первом HWID-запросе.</div>
         `;
       }
 
@@ -1206,7 +1250,20 @@
           refs.subManageResult.innerHTML = `<div class="empty">Результаты операций будут показаны здесь.</div>`;
           return;
         }
-        refs.subManageResult.innerHTML = `<div>${chip(statusCls || "info", "Результат")}</div><div class="mono">${esc(JSON.stringify(payload))}</div>`;
+        const rows = [];
+        if (payload.id) rows.push(`<div class="result-row"><span class="muted">subscription_id</span><span class="mono">${uuidCell(payload.id)}</span></div>`);
+        if (payload.user_id) rows.push(`<div class="result-row"><span class="muted">user_id</span><span class="mono">${uuidCell(payload.user_id)}</span></div>`);
+        if (payload.profile_key !== undefined) rows.push(`<div class="result-row"><span class="muted">profile</span><span class="mono">${esc(payload.profile_key || "-")}</span></div>`);
+        if (payload.preferred_region !== undefined) rows.push(`<div class="result-row"><span class="muted">preferred_region</span><span class="mono">${esc(payload.preferred_region || "-")}</span></div>`);
+        if (payload.max_devices !== undefined) rows.push(`<div class="result-row"><span class="muted">max_devices</span><span class="mono">${esc(payload.max_devices == null ? "-" : payload.max_devices)}</span></div>`);
+        if (payload.loaded_devices !== undefined) rows.push(`<div class="result-row"><span class="muted">devices</span><span class="mono">${esc(payload.loaded_devices)}</span></div>`);
+        if (payload.restored_keys !== undefined) rows.push(`<div class="result-row"><span class="muted">restored_keys</span><span class="mono">${esc(payload.restored_keys)}</span></div>`);
+        if (payload.revoked_keys !== undefined) rows.push(`<div class="result-row"><span class="muted">revoked_keys</span><span class="mono">${esc(payload.revoked_keys)}</span></div>`);
+        if (payload.status !== undefined) rows.push(`<div class="result-row"><span class="muted">status</span><span>${payload.status === "active" ? chip("ok", "active") : chip("warn", esc(payload.status))}</span></div>`);
+        if (payload.token) rows.push(`<div class="result-row"><span class="muted">new token</span><span class="mono">${esc(payload.token)} <button class="btn-mini copy-value" data-copy="${esc(payload.token)}">Копировать</button></span></div>`);
+        if (payload.expires_at !== undefined) rows.push(`<div class="result-row"><span class="muted">expires</span><span class="mono">${fmtDate(payload.expires_at)}</span></div>`);
+        const fallback = rows.length ? "" : `<div class="mono">${esc(JSON.stringify(payload))}</div>`;
+        refs.subManageResult.innerHTML = `<div>${chip(statusCls || "info", "Результат")}</div><div class="result-grid">${rows.join("")}</div>${fallback}`;
       }
 
       /* --- Admin Users --- */
@@ -1378,11 +1435,9 @@
       function filteredNodes() {
         if (!state.status || !state.status.nodes) return [];
         const q = refs.nodesSearch.value.trim().toLowerCase();
-        const role = refs.nodesRole.value;
         const health = refs.nodesHealth.value;
         const st = refs.nodesState.value;
         return state.status.nodes.filter((n) => {
-          if (role && n.role !== role) return false;
           if (health === "healthy" && !n.is_healthy) return false;
           if (health === "unhealthy" && n.is_healthy) return false;
           if (st === "draining" && !n.is_draining) return false;
@@ -1440,7 +1495,7 @@
         let html = `<div class="stack">`;
         /* Identity */
         html += `<div><div style="font-weight:700;font-size:16px">${esc(n.name)}</div>`;
-        html += `<div style="margin:4px 0">${chip("info", roleLabel(n.role))} ${chip("info", g.short)}</div>`;
+        html += `<div style="margin:4px 0">${chip("info", g.short)}</div>`;
         html += `<div>${uuidCell(n.id)}</div>`;
         if (n.public_domain) html += `<div class="mono muted" style="font-size:11px">domain: ${esc(n.public_domain)}</div>`;
         if (n.reality_ip) html += `<div class="mono muted" style="font-size:11px">reality: ${esc(n.reality_ip)}</div>`;
@@ -1472,12 +1527,8 @@
         html += `<label class="muted" style="font-size:.85em">Capacity<input id="edit-capacity" class="input" type="number" min="1" max="10000" value="${n.capacity || ""}" style="margin-top:2px"></label>`;
         html += `<div class="actions" style="margin-top:4px"><button class="btn-mini" data-selected="save-config">Сохранить</button></div>`;
         html += `</div></details>`;
-        /* Role change */
-        html += `<div class="actions"><select id="selected-role" class="select" style="width:auto"><option value="backend">Бэкенд</option><option value="gateway">Шлюз</option></select><button class="btn-mini" data-selected="role">Изменить роль</button></div>`;
         html += `</div>`;
         refs.selectedNodeCard.innerHTML = html;
-        const roleEl = document.getElementById("selected-role");
-        if (roleEl) roleEl.value = n.role;
       }
 
       /* --- Main render --- */
@@ -1511,7 +1562,7 @@
         refs.nodeAlertList.innerHTML = alertNodes.length
           ? alertNodes.map((n) => {
             const g = nodeGeo(n.region);
-            return `<div class="card"><div><strong>${esc(n.name)}</strong> ${chip("info", roleLabel(n.role))}</div><div class="geo"><span class="flag">${esc(g.flag)}</span>${esc(g.country)}</div><div>${uuidCell(n.id)}</div><div>${n.is_healthy ? "" : chip("bad", "Нездоров")} ${n.is_draining ? chip("warn", "Draining") : ""} ${!n.is_enabled ? chip("bad", "Отключен") : ""}</div></div>`;
+            return `<div class="card"><div><strong>${esc(n.name)}</strong></div><div class="geo"><span class="flag">${esc(g.flag)}</span>${esc(g.country)}</div><div>${uuidCell(n.id)}</div><div>${n.is_healthy ? "" : chip("bad", "Нездоров")} ${n.is_draining ? chip("warn", "Draining") : ""} ${!n.is_enabled ? chip("bad", "Отключен") : ""}</div></div>`;
           }).join("")
           : `<div class="empty">Проблемных серверов не обнаружено.</div>`;
 
@@ -1520,22 +1571,21 @@
         /* --- Nodes table (Phase 2.6: 8 columns + sorting) --- */
         const nodeComparators = {
           name: (a, b) => (a.name || "").localeCompare(b.name || ""),
-          role: (a, b) => (a.role || "").localeCompare(b.role || ""),
           region: (a, b) => { const ga = nodeGeo(a.region); const gb = nodeGeo(b.region); return ga.country.localeCompare(gb.country); },
           health: (a, b) => (a.is_healthy === b.is_healthy ? 0 : a.is_healthy ? -1 : 1),
           load: (a, b) => ((a.capacity ? a.placements_backend / a.capacity : 0) - (b.capacity ? b.placements_backend / b.capacity : 0)),
           heartbeat: (a, b) => (new Date(a.last_seen_at || 0).getTime() - new Date(b.last_seen_at || 0).getTime()),
         };
-        refs.nodesHead.innerHTML = `<tr>${sortTh("nodes", "name", "Сервер")}${sortTh("nodes", "role", "Роль")}${sortTh("nodes", "region", "Гео")}${sortTh("nodes", "health", "Здоровье")}<th>Состояние</th>${sortTh("nodes", "load", "Нагрузка")}${sortTh("nodes", "heartbeat", "Heartbeat")}<th>Действия</th></tr>`;
+        refs.nodesHead.innerHTML = `<tr>${sortTh("nodes", "name", "Сервер")}${sortTh("nodes", "region", "Гео")}${sortTh("nodes", "health", "Здоровье")}<th>Состояние</th>${sortTh("nodes", "load", "Нагрузка")}${sortTh("nodes", "heartbeat", "Heartbeat")}<th>Действия</th></tr>`;
 
         const nodes = sortedBy(filteredNodes(), "nodes", nodeComparators);
         refs.nodesBody.innerHTML = nodes.length
           ? nodes.map((n) => {
             const g = nodeGeo(n.region);
             const routingHint = n.routing_eligible ? `<div class="muted" style="font-size:11px">routing: eligible</div>` : (n.routing_reason ? `<div class="muted" style="font-size:11px">routing: ${esc(routingReasonLabel(n.routing_reason))}</div>` : "");
-            return `<tr><td><strong>${esc(n.name)}</strong><div>${uuidCell(n.id)}</div>${n.public_domain ? `<div class="mono muted" style="font-size:11px">${esc(n.public_domain)}</div>` : ""}${n.reality_ip ? `<div class="mono muted" style="font-size:11px">reality: ${esc(n.reality_ip)}</div>` : ""}</td><td>${esc(roleLabel(n.role))}</td><td><div class="geo"><span class="flag">${esc(g.flag)}</span>${esc(g.country)}</div><div class="mono muted">${esc(g.regionText)}</div></td><td>${n.is_healthy ? chip("ok", "Здоров") : chip("bad", "Нездоров")}</td><td>${n.is_draining ? chip("warn", "Draining") : (!n.is_enabled ? chip("bad", "Отключен") : chip("ok", "Активен"))}${routingHint}</td><td>${capacityBar(n.placements_backend, n.capacity)}</td><td><span title="${esc(fmtDate(n.last_seen_at))}">${relTime(n.last_seen_at)}</span></td><td><div class="actions"><button class="btn-mini node-action" data-action="drain" data-id="${esc(n.id)}">Drain</button><button class="btn-mini node-action" data-action="enable" data-id="${esc(n.id)}">Enable</button><button class="btn-mini node-select" data-id="${esc(n.id)}">Выбрать</button></div></td></tr>`;
+            return `<tr><td><strong>${esc(n.name)}</strong><div>${uuidCell(n.id)}</div>${n.public_domain ? `<div class="mono muted" style="font-size:11px">${esc(n.public_domain)}</div>` : ""}${n.reality_ip ? `<div class="mono muted" style="font-size:11px">reality: ${esc(n.reality_ip)}</div>` : ""}</td><td><div class="geo"><span class="flag">${esc(g.flag)}</span>${esc(g.country)}</div><div class="mono muted">${esc(g.regionText)}</div></td><td>${n.is_healthy ? chip("ok", "Здоров") : chip("bad", "Нездоров")}</td><td>${n.is_draining ? chip("warn", "Draining") : (!n.is_enabled ? chip("bad", "Отключен") : chip("ok", "Активен"))}${routingHint}</td><td>${capacityBar(n.placements_backend, n.capacity)}</td><td><span title="${esc(fmtDate(n.last_seen_at))}">${relTime(n.last_seen_at)}</span></td><td><div class="actions"><button class="btn-mini node-action" data-action="drain" data-id="${esc(n.id)}">Drain</button><button class="btn-mini node-action" data-action="enable" data-id="${esc(n.id)}">Enable</button><button class="btn-mini node-select" data-id="${esc(n.id)}">Выбрать</button></div></td></tr>`;
           }).join("")
-          : `<tr><td colspan="8" class="empty">Нет серверов по текущим фильтрам.</td></tr>`;
+          : `<tr><td colspan="7" class="empty">Нет серверов по текущим фильтрам.</td></tr>`;
 
         /* --- Routes table (Phase 2.2: node name) --- */
         const routeComparators = {
@@ -1544,7 +1594,7 @@
           status: (a, b) => (a.health_status || "").localeCompare(b.health_status || ""),
           weight: (a, b) => ((a.effective_weight || 0) - (b.effective_weight || 0)),
         };
-        refs.routesHead.innerHTML = `<tr>${sortTh("routes", "name", "Маршрут")}${sortTh("routes", "backend", "Backend")}${sortTh("routes", "status", "Статус")}${sortTh("routes", "weight", "Вес")}<th>Прогрев</th><th>Действия</th></tr>`;
+        refs.routesHead.innerHTML = `<tr>${sortTh("routes", "name", "Маршрут")}${sortTh("routes", "backend", "Нода")}${sortTh("routes", "status", "Статус")}${sortTh("routes", "weight", "Вес")}<th>Прогрев</th><th>Действия</th></tr>`;
 
         const routes = sortedBy(filteredRoutes(), "routes", routeComparators);
         refs.routesBody.innerHTML = routes.length
@@ -1573,7 +1623,7 @@
 
         /* --- Devices table (Phase 2.1: truncated UUID) --- */
         refs.subDevicesBody.innerHTML = state.subscriptionDevices.length
-          ? state.subscriptionDevices.map((d) => `<tr><td>${uuidCell(d.id)}</td><td>${uuidCell(d.vpn_key_id)}</td><td>${d.is_active ? chip("ok", "active") : chip("warn", "inactive")}</td><td>${fmtDate(d.last_seen_at)}</td><td>${esc(d.user_agent || "-")}</td></tr>`).join("")
+          ? state.subscriptionDevices.map((d) => `<tr><td>${uuidCell(d.id)}<div class="mono muted" style="font-size:11px">${esc((d.vpn_key_ids || []).length)} keys</div></td><td>${renderTransportBundle(d)}</td><td>${d.is_active ? chip("ok", "active") : chip("warn", "inactive")}</td><td>${fmtDate(d.last_seen_at)}</td><td>${esc(d.user_agent || "-")}</td></tr>`).join("")
           : `<tr><td colspan="5" class="empty">Устройства не загружены.</td></tr>`;
       }
 
@@ -1646,11 +1696,11 @@
       refs.live.addEventListener("change", updateTimer);
       refs.refreshInterval.addEventListener("change", updateTimer);
 
-      [refs.nodesSearch, refs.nodesRole, refs.nodesHealth, refs.nodesState, refs.routesStatus, refs.routesSearch, refs.placementsNode, refs.placementsKey, refs.placementsDesired, refs.placementsApplied].forEach((el) => {
+      [refs.nodesSearch, refs.nodesHealth, refs.nodesState, refs.routesStatus, refs.routesSearch, refs.placementsNode, refs.placementsKey, refs.placementsDesired, refs.placementsApplied].forEach((el) => {
         el.addEventListener("input", render);
         el.addEventListener("change", render);
       });
-      refs.nodesClear.addEventListener("click", () => { refs.nodesSearch.value = ""; refs.nodesRole.value = ""; refs.nodesHealth.value = ""; refs.nodesState.value = ""; render(); });
+      refs.nodesClear.addEventListener("click", () => { refs.nodesSearch.value = ""; refs.nodesHealth.value = ""; refs.nodesState.value = ""; render(); });
       refs.nodesReload.addEventListener("click", () => refreshAll(true).catch((e) => notify(`Ошибка обновления: ${e.message}`, true)));
       refs.routesReload.addEventListener("click", () => refreshAll(true).catch((e) => notify(`Ошибка обновления: ${e.message}`, true)));
       refs.placementsReload.addEventListener("click", () => refreshAll(true).catch((e) => notify(`Ошибка обновления: ${e.message}`, true)));
@@ -1854,11 +1904,6 @@
           if (capacity !== undefined && capacity !== "" && Number(capacity) !== state.selectedNode.capacity) body.capacity = Number(capacity);
           if (!Object.keys(body).length) { notify("Нет изменений", false); return; }
           runAction(`Update node config ${id}`, () => req(`/api/v1/agent/nodes/${encodeURIComponent(id)}`, { method: "PATCH", body })).then(() => refreshAll()).catch(() => {});
-          return;
-        }
-        if (act === "role") {
-          const role = (document.getElementById("selected-role") || { value: "backend" }).value;
-          runAction(`Set role ${id} -> ${role}`, () => req(`/api/v1/agent/nodes/${encodeURIComponent(id)}/role`, { method: "POST", body: { role } })).then(() => refreshAll()).catch(() => {});
           return;
         }
         /* drain / enable */

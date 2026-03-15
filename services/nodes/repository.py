@@ -46,11 +46,8 @@ class VpnNodeRepository(BaseRepository[VpnNode]):
     async def list_public(
             self,
             preferred_region: str | None = None,
-            role: str | None = None,
     ) -> list[VpnNode]:
         stmt = select(self.model).where(self.model.is_active.is_(True))
-        if role:
-            stmt = stmt.where(self.model.role == role)
         if preferred_region:
             stmt = stmt.where(self.model.region == preferred_region)
         result = await self.session.execute(stmt)

@@ -19,7 +19,6 @@ from services.connect.schemas import (
 )
 from services.nodes.models import VpnNode
 from services.nodes.repository import VpnNodeRepository
-from services.nodes.schemas import NodeRole
 from services.placements.model import UserPlacement
 from services.placements.repository import UserPlacementRepository
 from services.placements.schemas import PlacementDesiredState
@@ -182,7 +181,6 @@ class ConnectService:
         try:
             candidate_nodes = await self.routing_service.select_nodes(
                 preferred_region=preferred_region,
-                role=NodeRole.backend.value,
             )
         except Exception:
             logger_connect.exception(
@@ -227,12 +225,12 @@ class ConnectService:
         if preferred_placement is None and synced_placements:
             preferred_placement = synced_placements[0]
         if preferred_placement is None:
-            raise HTTPException(status_code=503, detail="Backend placement sync pending")
+            raise HTTPException(status_code=503, detail="Node placement sync pending")
 
         preferred_backend_id = self._as_uuid(preferred_placement.backend_node_id)
         allowed_backend_ids = set(synced_by_backend.keys())
         if not allowed_backend_ids:
-            raise HTTPException(status_code=503, detail="Backend placement sync pending")
+            raise HTTPException(status_code=503, detail="Node placement sync pending")
         return preferred_backend_id, preferred_placement, allowed_backend_ids
 
     def _resolved_route_node_seen_after(self) -> datetime:
@@ -294,7 +292,6 @@ class ConnectService:
     ) -> VpnNode:
         candidates = await self.routing_service.select_nodes(
             preferred_region=preferred_region,
-            role=NodeRole.backend.value,
         )
         for candidate in candidates:
             if self._node_has_required_public_host(
@@ -302,18 +299,7 @@ class ConnectService:
                 key_transport=key_transport,
             ):
                 return candidate
-        raise HTTPException(status_code=503, detail="No eligible backend node available")
-
-    def _is_backend_eligible(self, node: VpnNode) -> bool:
-        if not node.is_active:
-            return False
-        if not node.is_enabled:
-            return False
-        if node.is_draining:
-            return False
-        if node.role != NodeRole.backend.value:
-            return False
-        return bool((node.internal_wg_ip or "").strip())
+        raise HTTPException(status_code=503, detail="No eligible node available")
 
     @staticmethod
     def _is_placement_synced(placement: UserPlacement) -> bool:

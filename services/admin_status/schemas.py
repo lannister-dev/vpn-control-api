@@ -3,13 +3,10 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from services.nodes.schemas import NodeRole
-
 
 class AdminNodeStatusOut(BaseModel):
     id: UUID
     name: str
-    role: NodeRole
     region: str
     public_domain: str
     reality_ip: str | None = None

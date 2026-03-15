@@ -84,6 +84,13 @@ class SubscriptionDeviceCreate(BaseModel):
     user_agent: str | None
 
 
+class SubscriptionDeviceKeyCreate(BaseModel):
+    subscription_device_id: UUID
+    vpn_key_id: UUID
+    transport: str = Field(min_length=1, max_length=16)
+    is_primary: bool = False
+
+
 class SubscriptionDeviceInternalUpdate(BaseModel):
     is_active: bool | None = None
     last_seen_at: datetime | None = None
@@ -91,10 +98,25 @@ class SubscriptionDeviceInternalUpdate(BaseModel):
     updated_at: datetime | None = None
 
 
+class SubscriptionDeviceKeyOut(BaseModel):
+    id: UUID
+    subscription_device_id: UUID
+    vpn_key_id: UUID
+    transport: str
+    is_primary: bool
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class SubscriptionDeviceOut(BaseModel):
     id: UUID
     subscription_id: UUID
     vpn_key_id: UUID
+    vpn_key_ids: list[UUID] = Field(default_factory=list)
+    transport_keys: list[SubscriptionDeviceKeyOut] = Field(default_factory=list)
     hwid_hash: str
     last_seen_at: datetime | None
     user_agent: str | None
@@ -105,15 +127,49 @@ class SubscriptionDeviceOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ResolvedDeviceKey(BaseModel):
+    vpn_key_id: UUID
+    transport: str
+    client_id: str
+    is_primary: bool
+    key: Any
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+
+class ResolvedDeviceBundle(BaseModel):
+    device: Any
+    keys: tuple[ResolvedDeviceKey, ...]
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+
 class ResolvedSubscriptionRoute(BaseModel):
     route_id: UUID
     backend_node_id: UUID
+    vpn_key_id: UUID | None = None
+    vpn_transport: str = ""
+    client_id: str = ""
     transport_security: str
     transport_network: str
+    country_code: str | None = None
+    country_name: str | None = None
+    display_name: str | None = None
+    preferred_backend: bool = False
+    selection_rank: int = 0
     uri: str
     route: Any
     node: Any
     transport_profile: Any
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+
+class TransportBuildResult(BaseModel):
+    key: ResolvedDeviceKey
+    routes: tuple[ResolvedSubscriptionRoute, ...]
+    placement_signature: str | None
+    diagnostic_reason: str | None
 
     model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
 

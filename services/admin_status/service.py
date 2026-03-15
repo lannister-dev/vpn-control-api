@@ -13,7 +13,6 @@ from services.admin_status.schemas import (
 )
 from services.artifacts.repository import ProfileArtifactRepository
 from services.nodes.repository import VpnNodeRepository
-from services.nodes.schemas import NodeRole
 from services.placements.repository import UserPlacementRepository
 from services.routes.repository import RouteRepository
 from shared.database.session import AsyncDatabase
@@ -49,8 +48,6 @@ class AdminStatusService:
             if healthy:
                 nodes_healthy += 1
 
-            role_raw = node.role
-            role = NodeRole(role_raw) if role_raw in (NodeRole.backend.value, NodeRole.gateway.value) else NodeRole.backend
             reality_ip_raw = getattr(node, "reality_ip", None)
             reality_ip = reality_ip_raw if isinstance(reality_ip_raw, str) else None
 
@@ -58,7 +55,6 @@ class AdminStatusService:
                 AdminNodeStatusOut(
                     id=node.id,
                     name=node.name,
-                    role=role,
                     region=node.region,
                     public_domain=node.public_domain,
                     reality_ip=reality_ip,
@@ -98,16 +94,14 @@ class AdminStatusService:
             node_seen_after=node_seen_after,
         )
 
-        healthy_backends = 0
+        healthy_nodes = 0
         healthy_regions: set[str] = set()
         now = datetime.now(timezone.utc)
         for node, agent_state in node_rows:
-            if node.role != NodeRole.backend.value:
-                continue
             if not node.is_active or not node.is_enabled or node.is_draining:
                 continue
             if self._is_recent_healthy(agent_state, now=now):
-                healthy_backends += 1
+                healthy_nodes += 1
                 healthy_regions.add(str(node.region))
 
         route_regions = {str(region) for region in resolved_routes_by_region.keys()}
@@ -116,7 +110,7 @@ class AdminStatusService:
         if region_coverage_ok:
             region_detail = f"regions covered: {', '.join(sorted(healthy_regions))}"
         elif not healthy_regions:
-            region_detail = "no healthy backend regions"
+            region_detail = "no healthy node regions"
         else:
             region_detail = f"missing route coverage for regions: {', '.join(missing_regions)}"
 
@@ -127,9 +121,9 @@ class AdminStatusService:
                 detail="active artifact found" if active_artifact is not None else "no active artifact",
             ),
             AdminReadinessCheckOut(
-                name="healthy_backend_nodes",
-                ok=healthy_backends > 0,
-                detail=f"healthy backends: {healthy_backends}",
+                name="healthy_nodes",
+                ok=healthy_nodes > 0,
+                detail=f"healthy nodes: {healthy_nodes}",
             ),
             AdminReadinessCheckOut(
                 name="resolvable_active_routes",
@@ -160,8 +154,6 @@ class AdminStatusService:
         return last_seen_at >= self._node_seen_after(now=now)
 
     def _routing_reason(self, *, node, agent_state, now: datetime) -> str | None:
-        if node.role != NodeRole.backend.value:
-            return "role_not_backend"
         if not node.is_active:
             return "node_inactive"
         if not node.is_enabled:

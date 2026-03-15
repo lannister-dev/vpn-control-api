@@ -62,7 +62,6 @@ class ProbeSignalInternalCreate(BaseModel):
 class ProbeTargetOut(BaseModel):
     node_id: UUID
     node_name: str
-    role: str
     region: str
     host: str
     port: int

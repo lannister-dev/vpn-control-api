@@ -8,14 +8,13 @@ import pytest
 from fastapi import HTTPException
 
 from services.nodes.router import update_node_by_id, update_node_by_key
-from services.nodes.schemas import AdminNodeUpdateIn, NodeRole
+from services.nodes.schemas import AdminNodeUpdateIn
 
 
 def _make_node(**overrides):
     defaults = dict(
         id=uuid4(),
         name="be1",
-        role=NodeRole.backend.value,
         region="de",
         public_domain="be1.example.com",
         reality_ip=None,

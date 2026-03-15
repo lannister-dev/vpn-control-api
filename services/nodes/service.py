@@ -24,7 +24,6 @@ from services.nodes.schemas import (
     NodeSyncDetails,
     NodeSyncReportIn,
     VpnNodeCreate,
-    NodeRole,
 )
 from shared.database.session import AsyncDatabase
 from shared.monitoring.metrics import (
@@ -122,7 +121,6 @@ class VpnNodeService:
                 )
             create_schema = VpnNodeCreate(
                 name=f"node-{source_ip.replace('.', '-')}",
-                role=NodeRole.backend,
                 region="unknown",
                 public_domain="",
                 internal_wg_ip=source_ip,

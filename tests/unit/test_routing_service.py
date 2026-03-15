@@ -47,7 +47,6 @@ async def test_select_nodes_filters_and_scores(async_session):
     svc.repository.list_available_nodes.assert_awaited_once_with(
         preferred_region="fi",
         exclude_node_ids=None,
-        role=None,
     )
 
 

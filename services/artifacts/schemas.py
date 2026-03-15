@@ -101,7 +101,7 @@ class ErrorResponse(BaseModel):
 class ArtifactRoutesBootstrapIn(BaseModel):
     backend_node_ids: list[UUID] | None = Field(
         default=None,
-        description="Optional explicit list of backend node ids to bootstrap.",
+        description="Optional explicit list of node ids to bootstrap.",
     )
     include_reality_tcp: bool = True
     include_ws_tls: bool = False
@@ -113,7 +113,7 @@ class ArtifactRoutesBootstrapIn(BaseModel):
     expected_backends_selected: int | None = Field(
         default=None,
         ge=1,
-        description="Optional assertion for number of eligible backend nodes selected.",
+        description="Optional assertion for number of eligible nodes selected.",
     )
     expected_profiles_selected: int | None = Field(
         default=None,
