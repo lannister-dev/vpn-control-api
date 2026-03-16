@@ -40,7 +40,7 @@ from services.placements.transport import NodeAgentPlacementTransport
 from services.placements.schemas import PlacementAppliedState, PlacementApplyResultIn
 from services.placements.service import PlacementApplyService
 from shared.database.session import AsyncDatabase, WriteAwareAsyncSession
-from shared.nats.nats import NatsClient
+from shared.nats.client import NatsClient
 from shared.utils.logger import StructuredLogger
 
 
