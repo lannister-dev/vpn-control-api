@@ -4,7 +4,11 @@ from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.vpn.subscriptions.exceptions import SubscriptionNotFound
-from services.vpn.subscriptions.model import Subscription, SubscriptionDevice
+from services.vpn.subscriptions.model import (
+    Subscription,
+    SubscriptionDevice,
+    SubscriptionDeviceKey,
+)
 from shared.database.base_repository import BaseRepository
 
 
@@ -118,7 +122,24 @@ class SubscriptionDeviceRepository(BaseRepository[SubscriptionDevice]):
         if active_only:
             stmt = stmt.where(self.model.is_active.is_(True))
         res = await self.session.execute(stmt)
-        return [row[0] for row in res.all()]
+        key_ids = [row[0] for row in res.all() if row[0] is not None]
+
+        bundle_stmt = (
+            select(SubscriptionDeviceKey.vpn_key_id)
+            .join(
+                self.model,
+                SubscriptionDeviceKey.subscription_device_id == self.model.id,
+            )
+            .where(self.model.subscription_id == subscription_id)
+        )
+        if active_only:
+            bundle_stmt = bundle_stmt.where(
+                self.model.is_active.is_(True),
+                SubscriptionDeviceKey.is_active.is_(True),
+            )
+        bundle_res = await self.session.execute(bundle_stmt)
+        key_ids.extend(row[0] for row in bundle_res.all() if row[0] is not None)
+        return list(dict.fromkeys(key_ids))
 
     async def touch(
             self,
@@ -132,3 +153,46 @@ class SubscriptionDeviceRepository(BaseRepository[SubscriptionDevice]):
             .where(self.model.id == device_id)
             .values(last_seen_at=last_seen_at, user_agent=user_agent)
         )
+
+
+class SubscriptionDeviceKeyRepository(BaseRepository[SubscriptionDeviceKey]):
+    def __init__(self, session: AsyncSession):
+        super().__init__(SubscriptionDeviceKey, session)
+
+    async def list_by_device(
+            self,
+            subscription_device_id: UUID,
+            *,
+            active_only: bool = False,
+    ) -> list[SubscriptionDeviceKey]:
+        stmt = select(self.model).where(
+            self.model.subscription_device_id == subscription_device_id,
+        )
+        if active_only:
+            stmt = stmt.where(self.model.is_active.is_(True))
+        stmt = stmt.order_by(self.model.is_primary.desc(), self.model.created_at.asc())
+        res = await self.session.execute(stmt)
+        return list(res.scalars().all())
+
+    async def list_by_device_ids(
+            self,
+            subscription_device_ids: list[UUID],
+            *,
+            active_only: bool = False,
+    ) -> list[SubscriptionDeviceKey]:
+        normalized = list(dict.fromkeys(subscription_device_ids))
+        if not normalized:
+            return []
+
+        stmt = select(self.model).where(
+            self.model.subscription_device_id.in_(normalized),
+        )
+        if active_only:
+            stmt = stmt.where(self.model.is_active.is_(True))
+        stmt = stmt.order_by(
+            self.model.subscription_device_id.asc(),
+            self.model.is_primary.desc(),
+            self.model.created_at.asc(),
+        )
+        res = await self.session.execute(stmt)
+        return list(res.scalars().all())

@@ -119,7 +119,6 @@ class RouteRepository(BaseRepository[Route]):
                 VpnNode.is_active.is_(True),
                 VpnNode.is_enabled.is_(True),
                 VpnNode.is_draining.is_(False),
-                VpnNode.role == "backend",
                 NodeAgentState.is_healthy.is_(True),
             )
         )
@@ -161,7 +160,6 @@ class RouteRepository(BaseRepository[Route]):
                 VpnNode.is_active.is_(True),
                 VpnNode.is_enabled.is_(True),
                 VpnNode.is_draining.is_(False),
-                VpnNode.role == "backend",
                 NodeAgentState.is_healthy.is_(True),
             )
         )
@@ -189,7 +187,6 @@ class RouteRepository(BaseRepository[Route]):
                 VpnNode.is_active.is_(True),
                 VpnNode.is_enabled.is_(True),
                 VpnNode.is_draining.is_(False),
-                VpnNode.role == "backend",
                 NodeAgentState.is_healthy.is_(True),
             )
             .group_by(VpnNode.region)

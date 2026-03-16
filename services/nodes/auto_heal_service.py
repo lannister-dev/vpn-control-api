@@ -8,10 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.nodes.models import NodeAgentState, VpnNode
 from services.nodes.repository import NodeAgentStateRepository, VpnNodeRepository
-from services.nodes.schemas import NodeRole
 from services.placements.repository import UserPlacementRepository
 from services.placements.schemas import PlacementDesiredState
 from services.routing.service import RoutingService
+from services.placements.transport import NodeAgentPlacementTransport
 from shared.monitoring.metrics import (
     NODE_STATE_FRESHNESS_SECONDS,
     PLACEMENT_ACTIVE_BY_BACKEND,
@@ -43,6 +43,7 @@ class NodePlacementAutoHealService:
         self.node_repository = VpnNodeRepository(session)
         self.node_agent_state_repository = NodeAgentStateRepository(session)
         self.placement_repository = UserPlacementRepository(session)
+        self.node_agent_transport = NodeAgentPlacementTransport(session)
         self.routing_service = RoutingService(session)
         self.stale_after_sec = max(30, int(stale_after_sec))
         self.max_nodes = min(500, max(1, int(max_nodes)))
@@ -151,8 +152,6 @@ class NodePlacementAutoHealService:
         rows = await self.node_repository.list_active_with_agent_state()
         undrained = 0
         for node, state in rows:
-            if node.role != NodeRole.backend.value:
-                continue
             if not node.is_active or not node.is_enabled or not node.is_draining:
                 continue
             if desired_active_counts.get(node.id, 0) > 0:
@@ -177,7 +176,6 @@ class NodePlacementAutoHealService:
         candidates = await self.routing_service.select_nodes(
             preferred_region=preferred_region,
             exclude_node_ids=[source_node_id],
-            role=NodeRole.backend.value,
         )
         return candidates[0] if candidates else None
 
@@ -196,12 +194,15 @@ class NodePlacementAutoHealService:
         ]
         if not active_ids:
             return 0
-        return await self.placement_repository.bulk_migrate_backend(
+        migrated = await self.placement_repository.bulk_migrate_backend(
             placement_ids=active_ids,
             target_backend_id=target_backend_id,
             last_migration_reason="node_auto_heal",
             updated_at=updated_at,
         )
+        if migrated > 0:
+            await self.node_agent_transport.enqueue_for_placement_ids(active_ids)
+        return migrated
 
     def _unavailability_reason(
         self,
@@ -212,8 +213,6 @@ class NodePlacementAutoHealService:
     ) -> str | None:
         if node is None:
             return "missing_node"
-        if node.role != NodeRole.backend.value:
-            return "wrong_role"
         if not node.is_active:
             return "node_inactive"
         if not node.is_enabled:

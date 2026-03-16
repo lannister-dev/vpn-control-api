@@ -64,6 +64,7 @@ async def test_run_once_drains_and_migrates_stale_source(async_session):
     service.node_repository = AsyncMock()
     service.node_agent_state_repository = AsyncMock()
     service.placement_repository = AsyncMock()
+    service.node_agent_transport = AsyncMock()
     service.routing_service = AsyncMock()
 
     service.node_repository.list_active_with_agent_state = AsyncMock(
@@ -103,6 +104,7 @@ async def test_run_once_skips_when_source_is_healthy(async_session):
     service.node_repository = AsyncMock()
     service.node_agent_state_repository = AsyncMock()
     service.placement_repository = AsyncMock()
+    service.node_agent_transport = AsyncMock()
     service.routing_service = AsyncMock()
 
     service.node_repository.list_active_with_agent_state = AsyncMock(return_value=[(source, source_state)])
@@ -134,6 +136,7 @@ async def test_run_once_handles_missing_source_node_and_migrates(async_session):
     service.node_repository = AsyncMock()
     service.node_agent_state_repository = AsyncMock()
     service.placement_repository = AsyncMock()
+    service.node_agent_transport = AsyncMock()
     service.routing_service = AsyncMock()
 
     service.node_repository.list_active_with_agent_state = AsyncMock(return_value=[(target, target_state)])

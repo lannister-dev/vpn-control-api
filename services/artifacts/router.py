@@ -142,7 +142,7 @@ async def reload_profiles_registry(
     summary="Bootstrap transport profiles and routes from active profiles artifact",
     description=(
         "Builds/updates transport profiles from active profiles artifact and "
-        "creates/updates deterministic auto-routes for selected backend nodes."
+        "creates/updates deterministic auto-routes for selected nodes."
     ),
     responses={
         404: {
@@ -151,7 +151,7 @@ async def reload_profiles_registry(
         },
         409: {
             "model": ErrorResponse,
-            "description": "No eligible backend nodes",
+            "description": "No eligible nodes",
         },
         422: {
             "model": ErrorResponse,

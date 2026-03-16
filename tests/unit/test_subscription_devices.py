@@ -31,11 +31,26 @@ def _device(subscription_id):
     return d
 
 
+def _device_key_binding(device_id, vpn_key_id, transport, *, is_primary=False):
+    binding = MagicMock()
+    binding.id = uuid4()
+    binding.subscription_device_id = device_id
+    binding.vpn_key_id = vpn_key_id
+    binding.transport = transport
+    binding.is_primary = is_primary
+    binding.is_active = True
+    binding.created_at = datetime.now(timezone.utc)
+    binding.updated_at = datetime.now(timezone.utc)
+    return binding
+
+
 @pytest.mark.asyncio
 async def test_list_devices_not_found(async_session, redis_client):
     svc = SubscriptionService(async_session, redis_client)
     svc.subscription_repository = AsyncMock()
     svc.device_repository = AsyncMock()
+    svc.device_key_repository = AsyncMock()
+    svc.device_key_repository.list_by_device_ids = AsyncMock(return_value=[])
 
     svc.subscription_repository.get_by_id.return_value = None
 
@@ -51,6 +66,12 @@ async def test_list_devices_success(async_session, redis_client):
     svc = SubscriptionService(async_session, redis_client)
     svc.subscription_repository = AsyncMock()
     svc.device_repository = AsyncMock()
+    svc.device_key_repository = AsyncMock()
+    svc.vpn_key_repository = AsyncMock()
+    svc.device_key_repository.list_by_device_ids = AsyncMock(return_value=[
+        _device_key_binding(dev.id, dev.vpn_key_id, "reality", is_primary=True),
+    ])
+    svc.vpn_key_repository.list_by_ids = AsyncMock(return_value=[])
 
     svc.subscription_repository.get_by_id.return_value = sub
     svc.device_repository.list_by_subscription.return_value = [dev]
@@ -59,6 +80,7 @@ async def test_list_devices_success(async_session, redis_client):
 
     assert len(out) == 1
     assert out[0].id == dev.id
+    assert out[0].transport_keys[0].transport == "reality"
     svc.device_repository.list_by_subscription.assert_awaited_once_with(sub.id, active_only=True)
 
 
@@ -69,8 +91,12 @@ async def test_revoke_device_not_found(async_session, redis_client):
     svc = SubscriptionService(async_session, redis_client)
     svc.subscription_repository = AsyncMock()
     svc.device_repository = AsyncMock()
+    svc.device_key_repository = AsyncMock()
     svc.vpn_key_repository = AsyncMock()
     svc.placement_repository = AsyncMock()
+    svc.node_agent_transport = AsyncMock()
+    svc.device_key_repository.list_by_device_ids = AsyncMock(return_value=[])
+    svc.vpn_key_repository.list_by_ids = AsyncMock(return_value=[])
 
     svc.subscription_repository.get_by_id.return_value = sub
     svc.device_repository.get_by_id_for_subscription.return_value = None
@@ -87,17 +113,23 @@ async def test_revoke_device_success(async_session, redis_client):
 
     key = MagicMock()
     key.id = dev.vpn_key_id
+    key.transport = "reality"
     key.is_revoked = False
 
     svc = SubscriptionService(async_session, redis_client)
     svc.subscription_repository = AsyncMock()
     svc.device_repository = AsyncMock()
+    svc.device_key_repository = AsyncMock()
     svc.vpn_key_repository = AsyncMock()
     svc.placement_repository = AsyncMock()
+    svc.node_agent_transport = AsyncMock()
+    svc.device_key_repository.list_by_device_ids = AsyncMock(return_value=[
+        _device_key_binding(dev.id, dev.vpn_key_id, "reality", is_primary=True),
+    ])
 
     svc.subscription_repository.get_by_id.return_value = sub
     svc.device_repository.get_by_id_for_subscription.return_value = dev
-    svc.vpn_key_repository.get_by_id.return_value = key
+    svc.vpn_key_repository.list_by_ids = AsyncMock(return_value=[key])
 
     changed = await svc.revoke_device(sub.id, dev.id)
 
@@ -105,6 +137,7 @@ async def test_revoke_device_success(async_session, redis_client):
     assert key.is_revoked is True
     svc.device_repository.update_by_id.assert_awaited_once()
     svc.placement_repository.set_desired_state_for_key.assert_awaited_once()
+    svc.node_agent_transport.enqueue_for_key_state.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -115,20 +148,27 @@ async def test_revoke_device_idempotent(async_session, redis_client):
 
     key = MagicMock()
     key.id = dev.vpn_key_id
+    key.transport = "reality"
     key.is_revoked = True
 
     svc = SubscriptionService(async_session, redis_client)
     svc.subscription_repository = AsyncMock()
     svc.device_repository = AsyncMock()
+    svc.device_key_repository = AsyncMock()
     svc.vpn_key_repository = AsyncMock()
     svc.placement_repository = AsyncMock()
+    svc.node_agent_transport = AsyncMock()
+    svc.device_key_repository.list_by_device_ids = AsyncMock(return_value=[
+        _device_key_binding(dev.id, dev.vpn_key_id, "reality", is_primary=True),
+    ])
 
     svc.subscription_repository.get_by_id.return_value = sub
     svc.device_repository.get_by_id_for_subscription.return_value = dev
-    svc.vpn_key_repository.get_by_id.return_value = key
+    svc.vpn_key_repository.list_by_ids = AsyncMock(return_value=[key])
 
     changed = await svc.revoke_device(sub.id, dev.id)
 
     assert changed is False
     svc.device_repository.update_by_id.assert_not_awaited()
     svc.placement_repository.set_desired_state_for_key.assert_awaited_once()
+    svc.node_agent_transport.enqueue_for_key_state.assert_awaited_once()

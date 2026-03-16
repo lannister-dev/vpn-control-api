@@ -10,6 +10,11 @@ from types import SimpleNamespace
 from fastapi import HTTPException
 
 from services.vpn.subscriptions import redis_key
+from services.vpn.subscriptions.schemas import (
+    ResolvedDeviceBundle,
+    ResolvedDeviceKey,
+    TransportBuildResult,
+)
 from services.vpn.subscriptions.service import SubscriptionService
 from services.vpn.subscriptions.exceptions import (
     SubscriptionInactive,
@@ -28,6 +33,14 @@ from shared.profiles.types import ProfileType
 def service(async_session, redis_client):
     svc = SubscriptionService(async_session, redis_client)
     svc.subscription_repository = AsyncMock()
+    svc.device_repository = AsyncMock()
+    svc.device_key_repository = AsyncMock()
+    svc.vpn_key_repository = AsyncMock()
+    svc.device_key_repository.list_by_device_ids = AsyncMock(return_value=[])
+    svc.vpn_key_repository.list_by_ids = AsyncMock(return_value=[])
+    svc.routing_service = AsyncMock()
+    svc.placement_repository = AsyncMock()
+    svc.route_repository = AsyncMock()
     svc.node_repository = AsyncMock()
     svc.user_repository = AsyncMock()
     return svc
@@ -80,6 +93,28 @@ def _make_transport_profile(*, network="tcp", security="reality", port=443):
     tp.port = port
     tp.updated_at = datetime(2024, 1, 1, tzinfo=timezone.utc)
     return tp
+
+
+def _make_bundle(*transports: str):
+    device = MagicMock()
+    device.id = uuid4()
+    device.vpn_key_id = uuid4()
+    keys = []
+    for idx, transport in enumerate(transports):
+        key = MagicMock()
+        key.id = uuid4()
+        key.transport = transport
+        key.client_id = f"client-{transport}"
+        keys.append(
+            ResolvedDeviceKey(
+                vpn_key_id=key.id,
+                transport=transport,
+                client_id=key.client_id,
+                is_primary=idx == 0,
+                key=key,
+            )
+        )
+    return ResolvedDeviceBundle(device=device, keys=tuple(keys))
 
 
 def _make_subscription_row(*, user_id=None, is_active=True):
@@ -260,6 +295,22 @@ class TestCalcEtag:
         e2 = service._calc_etag(sub, ["route-b|30", "route-a|40"], client_id="cid")
         assert e1 != e2
 
+    def test_bundle_client_signature_changes_etag_when_transport_changes(self, service):
+        sub = _make_sub()
+        e1 = service._calc_etag(
+            sub,
+            ["reality-route|40", "ws-route|30"],
+            client_id="reality:cid-a,ws:cid-b",
+            placement_op_version="reality:7,ws:9",
+        )
+        e2 = service._calc_etag(
+            sub,
+            ["reality-route|40", "ws-route|31"],
+            client_id="reality:cid-a,ws:cid-b",
+            placement_op_version="reality:7,ws:9",
+        )
+        assert e1 != e2
+
 
 def test_route_transport_compatibility(service):
     assert service._is_route_compatible_with_key_transport(
@@ -438,34 +489,259 @@ async def test_build_payload_releases_lock_when_build_fails(service):
 @pytest.mark.asyncio
 async def test_build_payload_fetches_route_buffer_scaled_to_max_routes(service):
     preferred_backend_id = uuid4()
-    vpn_key_id = uuid4()
     service.settings.subscriptions.response_cache_ttl_sec = 0
     service.settings.subscriptions.smart_route_max_count = 6
     service._enforce_rate_limit = AsyncMock()
-    service._resolve_client_for_request = AsyncMock(return_value=("cid", vpn_key_id))
+    service._resolve_device_bundle_for_request = AsyncMock(return_value=_make_bundle("reality"))
     service._ensure_backend_placements_for_key = AsyncMock(
-        return_value=(preferred_backend_id, MagicMock(op_version=7), {uuid4()})
+        return_value=(preferred_backend_id, MagicMock(op_version=7), {preferred_backend_id})
     )
     service._build_route_uri = MagicMock(return_value=None)
     service.subscription_repository.get_by_any_token_hash.return_value = _make_sub(
         profile_key="reality_tcp_v1",
         preferred_region="fr",
     )
-    service.vpn_key_repository = AsyncMock()
-    service.vpn_key_repository.get_by_id.return_value = MagicMock(transport="reality")
     service.route_repository = AsyncMock()
     service.route_repository.list_resolved_active = AsyncMock(return_value=[])
 
     with pytest.raises(SubscriptionBuild) as exc:
         await service.build_payload(raw_token="tok")
 
-    assert str(exc.value) == "No available routes"
+    assert str(exc.value).startswith("No available routes")
     service.route_repository.list_resolved_active.assert_awaited_once_with(
         preferred_node_id=preferred_backend_id,
         preferred_region="fr",
         limit=24,
         node_seen_after=ANY,
     )
+
+
+@pytest.mark.asyncio
+async def test_build_payload_merges_multiple_transports(service):
+    service.settings.subscriptions.response_cache_ttl_sec = 0
+    service._enforce_rate_limit = AsyncMock()
+    sub = _make_sub(profile_key="ws_tls_v1", preferred_region="fr")
+    service.subscription_repository.get_by_any_token_hash.return_value = sub
+    service._resolve_device_bundle_for_request = AsyncMock(
+        return_value=_make_bundle("reality", "ws")
+    )
+
+    france_node = _make_node(public_domain="fr.example.com", reality_ip="198.51.100.10", region="fr")
+    france_node.id = uuid4()
+    finland_node = _make_node(public_domain="fi.example.com", reality_ip="198.51.100.20", region="fi")
+    finland_node.id = uuid4()
+    route = MagicMock()
+    route.id = uuid4()
+    route.health_status = "healthy"
+    route.effective_weight = 100
+    tp_reality = _make_transport_profile(network="tcp", security="reality")
+    tp_ws = _make_transport_profile(network="ws", security="tls")
+
+    async def _build_transport(*, subscription, key, max_routes):
+        if key.transport == "reality":
+            return TransportBuildResult(
+                key=key,
+                routes=(
+                    ResolvedSubscriptionRoute(
+                        route_id=uuid4(),
+                        backend_node_id=france_node.id,
+                        vpn_key_id=key.vpn_key_id,
+                        vpn_transport=key.transport,
+                        client_id=key.client_id,
+                        transport_security="reality",
+                        transport_network="tcp",
+                        country_code="FR",
+                        country_name="France",
+                        display_name="France Reality",
+                        preferred_backend=True,
+                        selection_rank=0,
+                        uri="vless://fr-reality#France%20Reality",
+                        route=route,
+                        node=france_node,
+                        transport_profile=tp_reality,
+                    ),
+                ),
+                placement_signature="reality:7",
+                diagnostic_reason=None,
+            )
+        return TransportBuildResult(
+            key=key,
+            routes=(
+                ResolvedSubscriptionRoute(
+                    route_id=uuid4(),
+                    backend_node_id=france_node.id,
+                    vpn_key_id=key.vpn_key_id,
+                    vpn_transport=key.transport,
+                    client_id=key.client_id,
+                    transport_security="tls",
+                    transport_network="ws",
+                    country_code="FR",
+                    country_name="France",
+                    display_name="France WS",
+                    preferred_backend=True,
+                    selection_rank=0,
+                    uri="vless://fr-ws#France%20WS",
+                    route=route,
+                    node=france_node,
+                    transport_profile=tp_ws,
+                ),
+                ResolvedSubscriptionRoute(
+                    route_id=uuid4(),
+                    backend_node_id=finland_node.id,
+                    vpn_key_id=key.vpn_key_id,
+                    vpn_transport=key.transport,
+                    client_id=key.client_id,
+                    transport_security="tls",
+                    transport_network="ws",
+                    country_code="FI",
+                    country_name="Finland",
+                    display_name="Finland WS",
+                    preferred_backend=False,
+                    selection_rank=1,
+                    uri="vless://fi-ws#Finland%20WS",
+                    route=route,
+                    node=finland_node,
+                    transport_profile=tp_ws,
+                ),
+            ),
+            placement_signature="ws:9",
+            diagnostic_reason=None,
+        )
+
+    service._build_transport_routes = AsyncMock(side_effect=_build_transport)
+
+    payload, etag, not_modified = await service.build_payload(raw_token="tok", hwid="hwid-1")
+
+    assert payload.splitlines() == [
+        "vless://fr-reality#France%20Reality",
+        "vless://fr-ws#France%20WS",
+        "vless://fi-ws#Finland%20WS",
+    ]
+    assert etag
+    assert not not_modified
+
+
+@pytest.mark.asyncio
+async def test_build_payload_keeps_available_transport_when_second_pending(service):
+    service.settings.subscriptions.response_cache_ttl_sec = 0
+    service._enforce_rate_limit = AsyncMock()
+    service.subscription_repository.get_by_any_token_hash.return_value = _make_sub(
+        profile_key="ws_tls_v1",
+        preferred_region="fr",
+    )
+    service._resolve_device_bundle_for_request = AsyncMock(
+        return_value=_make_bundle("reality", "ws")
+    )
+
+    route = MagicMock()
+    route.id = uuid4()
+    route.health_status = "healthy"
+    route.effective_weight = 100
+    node = _make_node(public_domain="fr.example.com", reality_ip="198.51.100.10", region="fr")
+    node.id = uuid4()
+    tp = _make_transport_profile(network="tcp", security="reality")
+
+    async def _build_transport(*, subscription, key, max_routes):
+        if key.transport == "ws":
+            return TransportBuildResult(
+                key=key,
+                routes=(),
+                placement_signature=None,
+                diagnostic_reason="transport_pending",
+            )
+        return TransportBuildResult(
+            key=key,
+            routes=(
+                ResolvedSubscriptionRoute(
+                    route_id=uuid4(),
+                    backend_node_id=node.id,
+                    vpn_key_id=key.vpn_key_id,
+                    vpn_transport=key.transport,
+                    client_id=key.client_id,
+                    transport_security="reality",
+                    transport_network="tcp",
+                    country_code="FR",
+                    country_name="France",
+                    display_name="France Reality",
+                    preferred_backend=True,
+                    selection_rank=0,
+                    uri="vless://fr-reality#France%20Reality",
+                    route=route,
+                    node=node,
+                    transport_profile=tp,
+                ),
+            ),
+            placement_signature="reality:4",
+            diagnostic_reason=None,
+        )
+
+    service._build_transport_routes = AsyncMock(side_effect=_build_transport)
+
+    payload, _, _ = await service.build_payload(raw_token="tok", hwid="hwid-1")
+
+    assert payload == "vless://fr-reality#France%20Reality"
+
+
+@pytest.mark.asyncio
+async def test_load_device_bundle_supports_legacy_single_vpn_key_id(service):
+    device = MagicMock()
+    device.id = uuid4()
+    device.vpn_key_id = uuid4()
+    service.device_key_repository.list_by_device_ids.return_value = []
+    service.vpn_key_repository.list_by_ids.return_value = [MagicMock(
+        id=device.vpn_key_id,
+        transport="reality",
+        client_id="legacy-client",
+    )]
+
+    bundle = await service._load_device_bundle(device)
+
+    assert len(bundle.keys) == 1
+    assert bundle.keys[0].transport == "reality"
+    assert bundle.keys[0].client_id == "legacy-client"
+
+
+def test_merge_transport_routes_deduplicates_backend_transport_pairs(service):
+    route = MagicMock()
+    route.id = uuid4()
+    route.effective_weight = 50
+    node = _make_node(public_domain="fr.example.com", reality_ip="198.51.100.10", region="fr")
+    node.id = uuid4()
+    tp = _make_transport_profile(network="tcp", security="reality")
+    key = _make_bundle("reality").keys[0]
+    duplicated = ResolvedSubscriptionRoute(
+        route_id=uuid4(),
+        backend_node_id=node.id,
+        vpn_key_id=key.vpn_key_id,
+        vpn_transport="reality",
+        client_id=key.client_id,
+        transport_security="reality",
+        transport_network="tcp",
+        country_code="FR",
+        country_name="France",
+        display_name="France Reality",
+        preferred_backend=True,
+        selection_rank=0,
+        uri="vless://fr-reality#France%20Reality",
+        route=route,
+        node=node,
+        transport_profile=tp,
+    )
+    duplicate_same_backend_transport = duplicated.model_copy(update={"route_id": uuid4()})
+
+    merged = service._merge_transport_routes(
+        subscription=_make_sub(preferred_region="fr"),
+        transport_results=[
+            TransportBuildResult(
+                key=key,
+                routes=(duplicated, duplicate_same_backend_transport),
+                placement_signature="reality:1",
+                diagnostic_reason=None,
+            )
+        ],
+    )
+
+    assert merged == [duplicated]
 
 
 def test_route_selector_limits_size_and_keeps_fallback_diversity(service):
@@ -735,6 +1011,7 @@ async def test_subscription_rejects_pending_placement_for_new_backend(service):
     )
 
     service.placement_repository = AsyncMock()
+    service.node_agent_transport = AsyncMock()
     service.routing_service = AsyncMock()
     service.placement_repository.list_by_key_id.return_value = []
     service.placement_repository.upsert_set_pending = AsyncMock(return_value=created)
@@ -748,7 +1025,8 @@ async def test_subscription_rejects_pending_placement_for_new_backend(service):
             key_transport="reality",
         )
 
-    assert str(exc.value) == "Backend placement sync pending"
+    assert str(exc.value) == "Node placement sync pending"
+    service.node_agent_transport.enqueue_for_placement_ids.assert_awaited_once_with([created.id])
 
 
 @pytest.mark.asyncio
@@ -825,4 +1103,4 @@ async def test_subscription_rejects_unsynced_existing_placement(service):
             key_transport="reality",
         )
 
-    assert str(exc.value) == "Backend placement sync pending"
+    assert str(exc.value) == "Node placement sync pending"

@@ -17,7 +17,6 @@ from services.artifacts.schemas import (
 )
 from services.artifacts.repository import ProfileArtifactRepository
 from services.nodes.repository import VpnNodeRepository
-from services.nodes.schemas import NodeRole
 from services.routes.repository import RouteRepository, TransportProfileRepository
 from services.routes.schemas import (
     RouteCreateData,
@@ -89,7 +88,7 @@ class ProfileArtifactService:
         if not backends:
             raise HTTPException(
                 status_code=409,
-                detail="No eligible backend nodes for routes bootstrap",
+                detail="No eligible nodes for routes bootstrap",
             )
         routes_total = len(desired_profiles) * len(backends)
         self._validate_matrix_expectations(
@@ -353,13 +352,13 @@ class ProfileArtifactService:
                 )
             ordered = [by_id[node_id] for node_id in backend_node_ids]
         else:
-            ordered = list(await self.node_repository.list_public(role=NodeRole.backend.value))
+            ordered = list(await self.node_repository.list_public())
             ordered.sort(key=lambda row: row.name)
 
         return [
             row
             for row in ordered
-            if row.is_active and row.is_enabled and not row.is_draining and row.role == NodeRole.backend.value
+            if row.is_active and row.is_enabled and not row.is_draining
         ]
 
     def _build_route_names(self, *, backends: list, transport_names: list[str]) -> list[str]:

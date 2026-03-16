@@ -1,19 +1,13 @@
 from datetime import datetime
-from typing import Optional
 from enum import Enum
+from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field, ConfigDict
 
 
-class NodeRole(str, Enum):
-    backend = "backend"
-    gateway = "gateway"
-
-
 class VpnNodeCreate(BaseModel):
     name: str
-    role: NodeRole = NodeRole.backend
     region: str
     public_domain: str
     reality_ip: str | None = None
@@ -29,7 +23,6 @@ class VpnNodeCreate(BaseModel):
 
 class VpnNodeUpdate(BaseModel):
     name: str | None = None
-    role: NodeRole | None = None
     region: str | None = None
     public_domain: str | None = None
     reality_ip: str | None = None
@@ -57,7 +50,6 @@ class AdminNodeUpdateIn(BaseModel):
 class VpnNodeOut(BaseModel):
     id: UUID
     name: str
-    role: NodeRole
     region: str
     public_domain: str
     reality_ip: str | None = None
@@ -70,11 +62,6 @@ class VpnNodeOut(BaseModel):
     capacity: int
 
     model_config = ConfigDict(from_attributes=True)
-
-
-class NodeRoleUpdateIn(BaseModel):
-    role: NodeRole
-
 
 class HeartbeatStats(BaseModel):
     poll_count: int

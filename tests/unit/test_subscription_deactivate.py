@@ -22,6 +22,8 @@ async def test_deactivate_not_found(async_session, redis_client):
     svc.device_repository = AsyncMock()
     svc.vpn_key_repository = AsyncMock()
     svc.placement_repository = AsyncMock()
+    svc.node_agent_transport = AsyncMock()
+    svc.vpn_key_repository.list_by_ids = AsyncMock(return_value=[])
 
     svc.subscription_repository.get_by_id.return_value = None
 
@@ -39,25 +41,22 @@ async def test_deactivate_revokes_device_keys(async_session, redis_client):
     svc.device_repository = AsyncMock()
     svc.vpn_key_repository = AsyncMock()
     svc.placement_repository = AsyncMock()
+    svc.node_agent_transport = AsyncMock()
 
     svc.subscription_repository.get_by_id.return_value = sub
     svc.device_repository.list_key_ids_for_subscription.return_value = [device_key_id]
 
     device_key = MagicMock()
+    device_key.id = device_key_id
     device_key.is_revoked = True
-
-    async def _get_key_side_effect(key_id):
-        if key_id == device_key_id:
-            return device_key
-        return None
-
-    svc.vpn_key_repository.get_by_id.side_effect = _get_key_side_effect
+    svc.vpn_key_repository.list_by_ids = AsyncMock(return_value=[device_key])
 
     processed = await svc.deactivate(sub.id)
 
     assert processed == 1
     assert device_key.is_revoked is True
     assert svc.placement_repository.set_desired_state_for_key.await_count == 1
+    assert svc.node_agent_transport.enqueue_for_key_state.await_count == 1
     svc.subscription_repository.update_by_id.assert_awaited_once()
 
 
@@ -71,22 +70,19 @@ async def test_activate_restores_keys_and_placements(async_session, redis_client
     svc.device_repository = AsyncMock()
     svc.vpn_key_repository = AsyncMock()
     svc.placement_repository = AsyncMock()
+    svc.node_agent_transport = AsyncMock()
 
     svc.subscription_repository.get_by_id.return_value = sub
     svc.device_repository.list_key_ids_for_subscription.return_value = [device_key_id]
 
     device_key = MagicMock()
+    device_key.id = device_key_id
     device_key.is_revoked = False
-
-    async def _get_key_side_effect(key_id):
-        if key_id == device_key_id:
-            return device_key
-        return None
-
-    svc.vpn_key_repository.get_by_id.side_effect = _get_key_side_effect
+    svc.vpn_key_repository.list_by_ids = AsyncMock(return_value=[device_key])
 
     restored = await svc.activate(sub.id)
 
     assert restored == 0
     assert device_key.is_revoked is False
     assert svc.placement_repository.set_desired_state_for_key.await_count == 1
+    assert svc.node_agent_transport.enqueue_for_key_state.await_count == 1

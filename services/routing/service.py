@@ -21,7 +21,6 @@ class RoutingService:
         self,
         preferred_region: str | None = None,
         exclude_node_ids: list[UUID] | None = None,
-        role: str | None = None,
     ) -> list[VpnNode]:
         """
         Returns sorted list of available nodes.
@@ -37,7 +36,6 @@ class RoutingService:
         rows = await self.repository.list_available_nodes(
             preferred_region=preferred_region,
             exclude_node_ids=exclude_node_ids,
-            role=role,
         )
         scored: list[tuple[float, VpnNode]] = []
         now = datetime.now(timezone.utc)

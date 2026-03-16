@@ -16,7 +16,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from services.config import get_settings
 from services.nodes.models import VpnNode
 from services.nodes.repository import VpnNodeRepository
-from services.nodes.schemas import NodeRole
 from services.placements.model import UserPlacement
 from services.placements.repository import UserPlacementRepository
 from services.placements.schemas import PlacementDesiredState
@@ -31,11 +30,13 @@ from services.vpn.keys.schemas import (
     VpnTransport,
 )
 from services.vpn.subscriptions.constants import (
+    DEFAULT_SUBSCRIPTION_TRANSPORT_BUNDLE,
     PAYLOAD_BUILD_LOCK_TTL_SEC,
     PAYLOAD_BUILD_WAIT_ATTEMPTS,
     PAYLOAD_BUILD_WAIT_DELAY_SEC,
     RATE_LIMIT_REQUESTS,
     RATE_LIMIT_WINDOW_SEC,
+    TRANSPORT_PRIORITY,
 )
 from services.vpn.subscriptions.exceptions import (
     SubscriptionBuild,
@@ -47,13 +48,21 @@ from services.vpn.subscriptions.exceptions import (
     SubscriptionRateLimited,
     SubscriptionTokenExpired,
 )
-from services.vpn.subscriptions.model import Subscription
+from services.vpn.subscriptions.model import Subscription, SubscriptionDevice
 from services.vpn.subscriptions import redis_key
-from services.vpn.subscriptions.repository import SubscriptionDeviceRepository, SubscriptionRepository
+from services.vpn.subscriptions.repository import (
+    SubscriptionDeviceKeyRepository,
+    SubscriptionDeviceRepository,
+    SubscriptionRepository,
+)
 from services.vpn.subscriptions.schemas import (
+    ResolvedDeviceBundle,
+    ResolvedDeviceKey,
     SubscriptionCreateIn,
     SubscriptionCreatedOut,
     SubscriptionDeviceCreate,
+    SubscriptionDeviceKeyCreate,
+    SubscriptionDeviceKeyOut,
     SubscriptionDeviceInternalUpdate,
     SubscriptionDeviceOut,
     SubscriptionInternalCreate,
@@ -62,9 +71,11 @@ from services.vpn.subscriptions.schemas import (
     ResolvedSubscriptionRoute,
     SubscriptionOut,
     SubscriptionRotateOut,
+    TransportBuildResult,
 )
 from services.vpn.subscriptions.utils import SubscriptionUtils
 from shared.database.session import AsyncDatabase
+from services.placements.transport import NodeAgentPlacementTransport
 from shared.monitoring.metrics import (
     SUBSCRIPTION_BUILD_DURATION,
     SUBSCRIPTION_CACHE_TOTAL,
@@ -85,8 +96,11 @@ from shared.profiles.schemas import (
 from shared.profiles.transport import VlessUri
 from shared.profiles.types import ProfileType
 from shared.redis.client import RedisClient, get_redis_client
-from shared.utils.node_display import format_node_display_name
-
+from shared.utils.node_display import (
+    COUNTRY_CODE_TO_NAME,
+    country_code_from_region,
+    format_node_display_name,
+)
 
 class SubscriptionService:
     def __init__(self, session: AsyncSession, redis: RedisClient):
@@ -95,9 +109,11 @@ class SubscriptionService:
         self.redis = redis
         self.subscription_repository = SubscriptionRepository(session)
         self.device_repository = SubscriptionDeviceRepository(session)
+        self.device_key_repository = SubscriptionDeviceKeyRepository(session)
         self.node_repository = VpnNodeRepository(session)
         self.routing_service = RoutingService(session)
         self.placement_repository = UserPlacementRepository(session)
+        self.node_agent_transport = NodeAgentPlacementTransport(session)
         self.route_repository = RouteRepository(session)
         self.user_repository = UserRepository(session)
         self.vpn_key_repository = VpnKeyRepository(session)
@@ -235,9 +251,10 @@ class SubscriptionService:
         key_ids: set[UUID] = set(
             await self.device_repository.list_key_ids_for_subscription(subscription.id)
         )
+        key_by_id = await self._load_vpn_keys_by_ids(key_ids)
         processed = 0
         for key_id in key_ids:
-            key = await self.vpn_key_repository.get_by_id(key_id)
+            key = key_by_id.get(key_id)
             if not key:
                 continue
 
@@ -267,9 +284,10 @@ class SubscriptionService:
         key_ids: set[UUID] = set(
             await self.device_repository.list_key_ids_for_subscription(subscription.id)
         )
+        key_by_id = await self._load_vpn_keys_by_ids(key_ids)
         restored = 0
         for key_id in key_ids:
-            key = await self.vpn_key_repository.get_by_id(key_id)
+            key = key_by_id.get(key_id)
             if not key:
                 continue
 
@@ -298,7 +316,26 @@ class SubscriptionService:
             subscription_id,
             active_only=active_only,
         )
-        return [SubscriptionDeviceOut.model_validate(d) for d in devices]
+        outputs_by_device = await self._list_device_key_outputs_for_devices(devices)
+        out: list[SubscriptionDeviceOut] = []
+        for device in devices:
+            bundle_keys = outputs_by_device.get(device.id, [])
+            out.append(
+                SubscriptionDeviceOut(
+                    id=device.id,
+                    subscription_id=device.subscription_id,
+                    vpn_key_id=device.vpn_key_id,
+                    vpn_key_ids=[item.vpn_key_id for item in bundle_keys],
+                    transport_keys=bundle_keys,
+                    hwid_hash=device.hwid_hash,
+                    last_seen_at=device.last_seen_at,
+                    user_agent=device.user_agent,
+                    is_active=device.is_active,
+                    created_at=device.created_at,
+                    updated_at=device.updated_at,
+                )
+            )
+        return out
 
     async def revoke_device(self, subscription_id: UUID, device_id: UUID) -> bool:
         """
@@ -328,20 +365,18 @@ class SubscriptionService:
                 ).model_dump(exclude_none=True),
             )
 
-        key = await self.vpn_key_repository.get_by_id(device.vpn_key_id)
-        if not key:
-            return False
-
         changed = False
-        if not key.is_revoked:
-            key.is_revoked = True
-            changed = True
-
-        await self._set_placement_desired_state(
-            key_id=key.id,
-            desired_state=PlacementDesiredState.inactive,
-            reason="subscription_device_revoke",
-        )
+        bundle = await self._load_device_bundle(device)
+        for resolved_key in bundle.keys:
+            key = resolved_key.key
+            if not key.is_revoked:
+                key.is_revoked = True
+                changed = True
+            await self._set_placement_desired_state(
+                key_id=key.id,
+                desired_state=PlacementDesiredState.inactive,
+                reason="subscription_device_revoke",
+            )
         await self._invalidate_payload_cache_by_token_hash(subscription.token_hash)
         return changed
 
@@ -389,76 +424,36 @@ class SubscriptionService:
             self._validate_subscription(subscription, token_hash)
 
             now = datetime.now(timezone.utc)
-            client_id, vpn_key_id = await self._resolve_client_for_request(
+            bundle = await self._resolve_device_bundle_for_request(
                 subscription=subscription,
                 hwid=hwid,
                 user_agent=user_agent,
                 now=now,
             )
 
-            if vpn_key_id is None:
-                raise SubscriptionBuild("No available key")
-            key = await self.vpn_key_repository.get_by_id(vpn_key_id)
-            if not key:
-                raise SubscriptionBuild("Device key not found")
-
             max_routes = max(1, min(10, int(self.settings.subscriptions.smart_route_max_count)))
-            selected_backend_id, placement, allowed_backend_ids = await self._ensure_backend_placements_for_key(
-                key_id=vpn_key_id,
-                preferred_region=subscription.preferred_region,
-                desired_replicas=max_routes,
-                key_transport=key.transport,
-            )
-            max_fetch = max(max_routes * 4, 12)
-            route_rows = await self.route_repository.list_resolved_active(
-                preferred_node_id=selected_backend_id,
-                preferred_region=subscription.preferred_region,
-                limit=max_fetch,
-                node_seen_after=self._resolved_route_node_seen_after(),
-            )
-
-            resolved_routes: list[ResolvedSubscriptionRoute] = []
-            seen_uris: set[str] = set()
-            for route, node, transport_profile in route_rows:
-                backend_node_id = self._as_uuid(node.id)
-                if backend_node_id not in allowed_backend_ids:
-                    continue
-                uri = self._build_route_uri(
-                    client_id=client_id,
-                    node=node,
-                    transport_profile=transport_profile,
+            transport_results: list[TransportBuildResult] = []
+            transport_diagnostics: dict[str, str] = {}
+            for key in bundle.keys:
+                result = await self._build_transport_routes(
+                    subscription=subscription,
+                    key=key,
+                    max_routes=max_routes,
                 )
-                if uri is None or uri in seen_uris:
-                    continue
-                seen_uris.add(uri)
-                transport_security = transport_profile.security
-                transport_network = transport_profile.network
-                if not self._is_route_compatible_with_key_transport(
-                    key_transport=key.transport,
-                    transport_security=transport_security,
-                    transport_network=transport_network,
-                ):
-                    continue
-                resolved_routes.append(
-                    ResolvedSubscriptionRoute(
-                        route_id=self._as_uuid(route.id),
-                        backend_node_id=backend_node_id,
-                        transport_security=transport_security,
-                        transport_network=transport_network,
-                        uri=uri,
-                        route=route,
-                        node=node,
-                        transport_profile=transport_profile,
-                    )
-                )
+                if result.routes:
+                    transport_results.append(result)
+                elif result.diagnostic_reason:
+                    transport_diagnostics[key.transport] = result.diagnostic_reason
 
-            selected_routes = self.route_selector.select(
-                routes=resolved_routes,
-                preferred_backend_id=selected_backend_id,
-                max_routes=max_routes,
+            if not transport_results:
+                raise SubscriptionBuild(self._build_no_routes_message(transport_diagnostics))
+
+            selected_routes = self._merge_transport_routes(
+                subscription=subscription,
+                transport_results=transport_results,
             )
             if not selected_routes:
-                raise SubscriptionBuild("No available routes")
+                raise SubscriptionBuild(self._build_no_routes_message(transport_diagnostics))
 
             max_payload_bytes = max(512, int(self.settings.subscriptions.response_max_payload_bytes))
             selected_routes, guardrail_result = self._fit_routes_to_payload_limit(
@@ -489,8 +484,8 @@ class SubscriptionService:
             etag = self._calc_etag(
                 subscription,
                 route_signatures,
-                client_id=client_id,
-                placement_op_version=placement.op_version,
+                client_id=self._bundle_client_signature(bundle),
+                placement_op_version=self._bundle_placement_signature(transport_results),
             )
             if cache_ttl > 0:
                 write_ok = await self._write_payload_cache(
@@ -533,7 +528,7 @@ class SubscriptionService:
             route_signatures: Iterable[str],
             *,
             client_id: str,
-            placement_op_version: int | None = None,
+            placement_op_version: int | str | None = None,
     ) -> str:
         sub_updated_at = sub.updated_at
         updated_at = sub_updated_at.isoformat() if sub_updated_at else ""
@@ -547,6 +542,242 @@ class SubscriptionService:
             ",".join(route_signatures),
         ])
         return hashlib.sha256(base.encode()).hexdigest()
+
+    def _bundle_client_signature(self, bundle: ResolvedDeviceBundle) -> str:
+        return ",".join(
+            f"{key.transport}:{key.client_id}"
+            for key in sorted(bundle.keys, key=lambda item: self._transport_priority(item.transport))
+        )
+
+    def _bundle_placement_signature(self, results: Iterable[TransportBuildResult]) -> str:
+        signatures = [
+            result.placement_signature
+            for result in results
+            if result.placement_signature
+        ]
+        return ",".join(signatures)
+
+    def _build_no_routes_message(self, diagnostics: dict[str, str]) -> str:
+        if not diagnostics:
+            return "No available routes"
+        details = ", ".join(
+            f"{transport}={diagnostics[transport]}"
+            for transport in sorted(diagnostics, key=self._transport_priority)
+        )
+        return f"No available routes [{details}]"
+
+    async def _build_transport_routes(
+            self,
+            *,
+            subscription,
+            key: ResolvedDeviceKey,
+            max_routes: int,
+    ) -> TransportBuildResult:
+        try:
+            selected_backend_id, placement, allowed_backend_ids = await self._ensure_backend_placements_for_key(
+                key_id=key.vpn_key_id,
+                preferred_region=subscription.preferred_region,
+                desired_replicas=max_routes,
+                key_transport=key.transport,
+            )
+        except SubscriptionBuild as exc:
+            return TransportBuildResult(
+                key=key,
+                routes=(),
+                placement_signature=None,
+                diagnostic_reason=self._map_transport_build_reason(str(exc)),
+            )
+
+        max_fetch = max(max_routes * 4, 12)
+        route_rows = await self.route_repository.list_resolved_active(
+            preferred_node_id=selected_backend_id,
+            preferred_region=subscription.preferred_region,
+            limit=max_fetch,
+            node_seen_after=self._resolved_route_node_seen_after(),
+        )
+
+        resolved_routes: list[ResolvedSubscriptionRoute] = []
+        seen_uris: set[str] = set()
+        seen_logical_keys: set[tuple[str | None, UUID, str]] = set()
+        for route, node, transport_profile in route_rows:
+            backend_node_id = self._as_uuid(node.id)
+            if backend_node_id not in allowed_backend_ids:
+                continue
+
+            transport_security = transport_profile.security
+            transport_network = transport_profile.network
+            if not self._is_route_compatible_with_key_transport(
+                key_transport=key.transport,
+                transport_security=transport_security,
+                transport_network=transport_network,
+            ):
+                continue
+
+            country_code, country_name = self._country_info_for_region(node.region)
+            logical_key = (country_code or node.region, backend_node_id, key.transport)
+            if logical_key in seen_logical_keys:
+                continue
+
+            uri = self._build_route_uri(
+                client_id=key.client_id,
+                node=node,
+                transport_profile=transport_profile,
+                remark_override=self._format_subscription_route_name(
+                    node=node,
+                    transport=key.transport,
+                ),
+            )
+            if uri is None or uri in seen_uris:
+                continue
+
+            seen_uris.add(uri)
+            seen_logical_keys.add(logical_key)
+            resolved_routes.append(
+                ResolvedSubscriptionRoute(
+                    route_id=self._as_uuid(route.id),
+                    backend_node_id=backend_node_id,
+                    vpn_key_id=key.vpn_key_id,
+                    vpn_transport=key.transport,
+                    client_id=key.client_id,
+                    transport_security=transport_security,
+                    transport_network=transport_network,
+                    country_code=country_code,
+                    country_name=country_name,
+                    display_name=self._format_subscription_route_name(node=node, transport=key.transport),
+                    preferred_backend=backend_node_id == selected_backend_id,
+                    selection_rank=len(resolved_routes),
+                    uri=uri,
+                    route=route,
+                    node=node,
+                    transport_profile=transport_profile,
+                )
+            )
+
+        selected_routes = self.route_selector.select(
+            routes=resolved_routes,
+            preferred_backend_id=selected_backend_id,
+            max_routes=max_routes,
+        )
+        if not selected_routes:
+            return TransportBuildResult(
+                key=key,
+                routes=(),
+                placement_signature=f"{key.transport}:pending=no-routes",
+                diagnostic_reason="transport_no_routes",
+            )
+
+        return TransportBuildResult(
+            key=key,
+            routes=tuple(selected_routes),
+            placement_signature=f"{key.transport}:{placement.op_version}",
+            diagnostic_reason=None,
+        )
+
+    def _merge_transport_routes(
+            self,
+            *,
+            subscription,
+            transport_results: list[TransportBuildResult],
+    ) -> list[ResolvedSubscriptionRoute]:
+        merged: list[ResolvedSubscriptionRoute] = []
+        seen_uris: set[str] = set()
+        seen_logical_keys: set[tuple[str | None, UUID, str]] = set()
+        for result in transport_results:
+            for route in result.routes:
+                logical_key = (
+                    route.country_code or route.node.region,
+                    route.backend_node_id,
+                    route.vpn_transport,
+                )
+                if route.uri in seen_uris or logical_key in seen_logical_keys:
+                    continue
+                seen_uris.add(route.uri)
+                seen_logical_keys.add(logical_key)
+                merged.append(route)
+
+        return sorted(
+            merged,
+            key=lambda item: self._presentation_sort_key(
+                route=item,
+                preferred_region=subscription.preferred_region,
+            ),
+        )
+
+    def _presentation_sort_key(
+            self,
+            *,
+            route: ResolvedSubscriptionRoute,
+            preferred_region: str | None,
+    ) -> tuple[object, ...]:
+        region = (route.node.region or "").strip().lower()
+        preferred_region_norm = (preferred_region or "").strip().lower()
+        country_name = route.country_name or (route.country_code or "Unknown")
+        weight = getattr(route.route, "effective_weight", 0)
+        return (
+            0 if preferred_region_norm and region == preferred_region_norm else 1,
+            country_name,
+            self._transport_priority(route.vpn_transport),
+            0 if route.preferred_backend else 1,
+            -int(weight or 0),
+            route.selection_rank,
+            route.uri,
+        )
+
+    @staticmethod
+    def _map_transport_build_reason(message: str) -> str:
+        if message in {"Node placement sync pending", "Backend placement sync pending"}:
+            return "transport_pending"
+        if message == "No available nodes":
+            return "transport_backend_unhealthy"
+        if message.startswith("No available "):
+            return "transport_no_routes"
+        return "transport_unavailable"
+
+    def _country_info_for_region(self, region: str | None) -> tuple[str | None, str | None]:
+        country_code = country_code_from_region(region)
+        if not country_code:
+            return None, None
+        return country_code, COUNTRY_CODE_TO_NAME.get(country_code, country_code)
+
+    def _format_subscription_route_name(self, *, node: VpnNode, transport: str) -> str:
+        base = format_node_display_name(node_name=str(node.name), region=node.region)
+        return f"{base} {self._transport_label(transport)}"
+
+    @staticmethod
+    def _transport_label(transport: str) -> str:
+        if transport == VpnTransport.reality.value:
+            return "Reality"
+        if transport == VpnTransport.ws.value:
+            return "WS"
+        if transport == VpnTransport.xhttp.value:
+            return "XHTTP"
+        return transport.upper()
+
+    @staticmethod
+    def _transport_priority(transport: str) -> int:
+        return TRANSPORT_PRIORITY.get(transport, 99)
+
+    def _subscription_bundle_transports(self, subscription) -> tuple[VpnTransport, ...]:
+        preferred = self._infer_transport_from_profile_key(subscription.profile_key)
+        ordered: list[VpnTransport] = []
+        if preferred is not None:
+            ordered.append(preferred)
+        for transport in DEFAULT_SUBSCRIPTION_TRANSPORT_BUNDLE:
+            if transport not in ordered:
+                ordered.append(transport)
+        return tuple(ordered)
+
+    def _infer_transport_from_profile_key(self, profile_key: str | None) -> VpnTransport | None:
+        if not profile_key:
+            return None
+        try:
+            profile = ProfileRegistry.get(profile_key).profile
+        except ProfileRegistryError:
+            return None
+        try:
+            return self._infer_transport(profile.type)
+        except HTTPException:
+            return None
 
     def _infer_transport(self, profile_type: ProfileType) -> VpnTransport:
         if profile_type == ProfileType.ws_tls:
@@ -588,14 +819,13 @@ class SubscriptionService:
 
         candidate_nodes = await self.routing_service.select_nodes(
             preferred_region=preferred_region,
-            role=NodeRole.backend.value,
         )
         candidate_nodes = [
             node for node in candidate_nodes
             if self._node_has_required_public_host(node=node, key_transport=key_transport)
         ]
         if not candidate_nodes:
-            raise SubscriptionBuild("No available backend nodes")
+            raise SubscriptionBuild("No available nodes")
 
         target_nodes = candidate_nodes[:desired_replicas]
         for node in target_nodes:
@@ -609,6 +839,7 @@ class SubscriptionService:
                 sticky_until=None,
                 last_migration_reason="subscription_replica",
             )
+            await self.node_agent_transport.enqueue_for_placement_ids([created.id])
             placements_by_backend[node_id] = created
 
         preferred_placement: UserPlacement | None = None
@@ -618,12 +849,12 @@ class SubscriptionService:
             if preferred_placement is not None:
                 break
         if preferred_placement is None:
-            raise SubscriptionBuild("Backend placement sync pending")
+            raise SubscriptionBuild("Node placement sync pending")
 
         preferred_backend_id = self._as_uuid(preferred_placement.backend_node_id)
         allowed_backend_ids: set[UUID] = set(synced_by_backend.keys())
         if not allowed_backend_ids:
-            raise SubscriptionBuild("Backend placement sync pending")
+            raise SubscriptionBuild("Node placement sync pending")
         return preferred_backend_id, preferred_placement, allowed_backend_ids
 
     def _resolved_route_node_seen_after(self) -> datetime:
@@ -631,26 +862,6 @@ class SubscriptionService:
         stale_after_raw = getattr(node_agent_settings, "stale_after_sec", 90)
         stale_after_sec = max(30, int(stale_after_raw))
         return datetime.now(timezone.utc) - timedelta(seconds=stale_after_sec)
-
-    async def _select_backend(self, *, preferred_region: str | None) -> VpnNode:
-        candidates = await self.routing_service.select_nodes(
-            preferred_region=preferred_region,
-            role=NodeRole.backend.value,
-        )
-        if not candidates:
-            raise SubscriptionBuild("No available backend nodes")
-        return candidates[0]
-
-    def _is_backend_eligible(self, node: VpnNode) -> bool:
-        if not node.is_active:
-            return False
-        if not node.is_enabled:
-            return False
-        if node.is_draining:
-            return False
-        if node.role != NodeRole.backend.value:
-            return False
-        return bool((node.internal_wg_ip or "").strip())
 
     @staticmethod
     def _is_placement_synced(placement: UserPlacement) -> bool:
@@ -668,6 +879,7 @@ class SubscriptionService:
             client_id: str,
             node: VpnNode,
             transport_profile,
+            remark_override: str | None = None,
     ) -> str | None:
         domain = self._resolve_route_host_for_transport(
             node=node,
@@ -675,7 +887,7 @@ class SubscriptionService:
         )
         if not domain:
             return None
-        node_display_name = format_node_display_name(
+        node_display_name = remark_override or format_node_display_name(
             node_name=str(node.name),
             region=node.region,
         )
@@ -774,8 +986,16 @@ class SubscriptionService:
     def _route_signature(self, *, route, node, transport_profile) -> str:
         route_updated = route.updated_at
         transport_updated = transport_profile.updated_at
-        route_updated_at = route_updated.isoformat() if route_updated else ""
-        transport_updated_at = transport_updated.isoformat() if transport_updated else ""
+        route_updated_at = (
+            route_updated.isoformat()
+            if isinstance(route_updated, datetime)
+            else ""
+        )
+        transport_updated_at = (
+            transport_updated.isoformat()
+            if isinstance(transport_updated, datetime)
+            else ""
+        )
         return "|".join([
             str(route.id),
             str(route.health_status),
@@ -844,6 +1064,10 @@ class SubscriptionService:
             last_migration_reason=reason,
             updated_at=datetime.now(timezone.utc),
         )
+        await self.node_agent_transport.enqueue_for_key_state(
+            key_id=key_id,
+            desired_state=desired_state.value,
+        )
 
     def _hash_hwid(self, hwid: str) -> str:
         normalized = hwid.strip()
@@ -851,20 +1075,14 @@ class SubscriptionService:
             raise SubscriptionHwidRequired()
         return hashlib.sha256(normalized.encode()).hexdigest()
 
-    async def _resolve_client_for_request(
+    async def _resolve_device_bundle_for_request(
             self,
             *,
             subscription,
             hwid: str | None,
             user_agent: str | None,
             now: datetime,
-    ) -> tuple[str, UUID | None]:
-        """
-        Returns (client_id, vpn_key_id).
-
-        Legacy mode is removed: request HWID is mandatory.
-        client_id is always bound to device-specific VpnKey.
-        """
+    ) -> ResolvedDeviceBundle:
         if not hwid:
             raise SubscriptionHwidRequired()
 
@@ -879,13 +1097,13 @@ class SubscriptionService:
                 last_seen_at=now,
                 user_agent=user_agent,
             )
-            key = await self.vpn_key_repository.get_by_id(device.vpn_key_id)
-            if not key:
-                raise SubscriptionBuild("Device key not found")
-            return key.client_id, key.id
+            return await self._ensure_device_key_bundle(
+                subscription=subscription,
+                device=device,
+                now=now,
+            )
 
         await self._lock_subscription_for_device_allocation(subscription.id)
-        # Re-check after lock: another request may have already provisioned this HWID.
         device = await self.device_repository.get_active_by_sub_and_hwid_hash(
             subscription_id=subscription.id,
             hwid_hash=hwid_hash,
@@ -896,28 +1114,140 @@ class SubscriptionService:
                 last_seen_at=now,
                 user_agent=user_agent,
             )
-            key = await self.vpn_key_repository.get_by_id(device.vpn_key_id)
-            if not key:
-                raise SubscriptionBuild("Device key not found")
-            return key.client_id, key.id
+            return await self._ensure_device_key_bundle(
+                subscription=subscription,
+                device=device,
+                now=now,
+            )
 
         max_devices = subscription.max_devices or self.settings.subscriptions.max_devices_default
         current = await self.device_repository.count_active_for_subscription(subscription.id)
         if current >= max_devices:
             raise SubscriptionDeviceLimitReached()
 
-        if not subscription.profile_key:
-            raise SubscriptionBuild("profile_key is required")
-        try:
-            profile = ProfileRegistry.get(subscription.profile_key).profile
-        except ProfileRegistryError as exc:
-            raise SubscriptionBuild(self._describe_profile_registry_error(exc)) from exc
-
-        transport = self._infer_transport(profile.type)
         valid_until = subscription.expires_at
         if valid_until is None:
             valid_until = now + timedelta(days=365)
+        bundle_transports = self._subscription_bundle_transports(subscription)
+        if not bundle_transports:
+            raise SubscriptionBuild("No available key")
 
+        primary_transport = bundle_transports[0]
+        primary_key = await self._create_vpn_key_for_transport(
+            subscription=subscription,
+            transport=primary_transport,
+            valid_until=valid_until,
+        )
+
+        try:
+            device = await self.device_repository.create(
+                SubscriptionDeviceCreate(
+                    subscription_id=subscription.id,
+                    hwid_hash=hwid_hash,
+                    vpn_key_id=primary_key.id,
+                    last_seen_at=now,
+                    user_agent=user_agent,
+                ).model_dump()
+            )
+        except IntegrityError:
+            device = await self.device_repository.get_active_by_sub_and_hwid_hash(
+                subscription_id=subscription.id,
+                hwid_hash=hwid_hash,
+            )
+            if not device:
+                raise
+            return await self._ensure_device_key_bundle(
+                subscription=subscription,
+                device=device,
+                now=now,
+            )
+
+        await self.device_key_repository.create(
+            SubscriptionDeviceKeyCreate(
+                subscription_device_id=device.id,
+                vpn_key_id=primary_key.id,
+                transport=primary_transport.value,
+                is_primary=True,
+            ).model_dump()
+        )
+
+        return await self._ensure_device_key_bundle(
+            subscription=subscription,
+            device=device,
+            now=now,
+        )
+
+    async def _ensure_device_key_bundle(
+            self,
+            *,
+            subscription,
+            device: SubscriptionDevice,
+            now: datetime,
+    ) -> ResolvedDeviceBundle:
+        required_transports = self._subscription_bundle_transports(subscription)
+        bundle = await self._load_device_bundle(device)
+        existing = {item.transport for item in bundle.keys}
+        if all(transport.value in existing for transport in required_transports):
+            return bundle
+
+        await self._lock_subscription_for_device_allocation(subscription.id)
+        bundle = await self._load_device_bundle(device)
+        existing = {item.transport for item in bundle.keys}
+        valid_until = subscription.expires_at or (now + timedelta(days=365))
+
+        if device.vpn_key_id:
+            legacy_key = await self.vpn_key_repository.get_by_id(device.vpn_key_id)
+            if legacy_key and legacy_key.transport not in existing:
+                try:
+                    await self.device_key_repository.create(
+                        SubscriptionDeviceKeyCreate(
+                            subscription_device_id=device.id,
+                            vpn_key_id=legacy_key.id,
+                            transport=legacy_key.transport,
+                            is_primary=True,
+                        ).model_dump()
+                    )
+                except IntegrityError:
+                    pass
+                bundle = await self._load_device_bundle(device)
+                existing = {item.transport for item in bundle.keys}
+
+        for idx, transport in enumerate(required_transports):
+            if transport.value in existing:
+                continue
+            vpn_key = await self._create_vpn_key_for_transport(
+                subscription=subscription,
+                transport=transport,
+                valid_until=valid_until,
+            )
+            try:
+                await self.device_key_repository.create(
+                    SubscriptionDeviceKeyCreate(
+                        subscription_device_id=device.id,
+                        vpn_key_id=vpn_key.id,
+                        transport=transport.value,
+                        is_primary=idx == 0 and not bundle.keys,
+                    ).model_dump()
+                )
+            except IntegrityError:
+                pass
+
+        return await self._load_device_bundle(device)
+
+    async def _load_device_bundle(self, device: SubscriptionDevice) -> ResolvedDeviceBundle:
+        bundles = await self._load_device_bundles([device], binding_active_only=True)
+        bundle = bundles.get(device.id)
+        if bundle is not None:
+            return bundle
+        return ResolvedDeviceBundle(device=device, keys=())
+
+    async def _create_vpn_key_for_transport(
+            self,
+            *,
+            subscription,
+            transport: VpnTransport,
+            valid_until: datetime,
+    ):
         key_internal = VpnKeyInternalCreate(
             user_id=subscription.user_id,
             protocol=VpnProtocol.vless,
@@ -927,32 +1257,144 @@ class SubscriptionService:
             traffic_limit_mb=1000,
             is_revoked=False,
         )
-        vpn_key = await self.vpn_key_repository.create(key_internal.model_dump())
+        return await self.vpn_key_repository.create(key_internal.model_dump())
 
-        try:
-            await self.device_repository.create(
-                SubscriptionDeviceCreate(
-                    subscription_id=subscription.id,
-                    hwid_hash=hwid_hash,
-                    vpn_key_id=vpn_key.id,
-                    last_seen_at=now,
-                    user_agent=user_agent,
-                ).model_dump()
-            )
-        except IntegrityError:
-            # Race: device mapping was created by another concurrent request.
-            device = await self.device_repository.get_active_by_sub_and_hwid_hash(
-                subscription_id=subscription.id,
-                hwid_hash=hwid_hash,
-            )
-            if not device:
-                raise
-            key = await self.vpn_key_repository.get_by_id(device.vpn_key_id)
-            if not key:
-                raise SubscriptionBuild("Device key not found")
-            return key.client_id, key.id
+    async def _load_device_bundles(
+            self,
+            devices: list[SubscriptionDevice],
+            *,
+            binding_active_only: bool,
+    ) -> dict[UUID, ResolvedDeviceBundle]:
+        if not devices:
+            return {}
 
-        return vpn_key.client_id, vpn_key.id
+        bindings_by_device, key_by_id = await self._collect_device_key_material(
+            devices,
+            binding_active_only=binding_active_only,
+        )
+        bundles: dict[UUID, ResolvedDeviceBundle] = {}
+        for device in devices:
+            resolved: list[ResolvedDeviceKey] = []
+            seen_transports: set[str] = set()
+            for binding in bindings_by_device.get(device.id, []):
+                key = key_by_id.get(binding.vpn_key_id)
+                if not key:
+                    continue
+                transport = str(binding.transport or getattr(key, "transport", ""))
+                if not transport or transport in seen_transports:
+                    continue
+                resolved.append(
+                    ResolvedDeviceKey(
+                        vpn_key_id=key.id,
+                        transport=transport,
+                        client_id=str(key.client_id),
+                        is_primary=bool(binding.is_primary),
+                        key=key,
+                    )
+                )
+                seen_transports.add(transport)
+
+            if device.vpn_key_id:
+                legacy_key = key_by_id.get(device.vpn_key_id)
+                legacy_transport = str(getattr(legacy_key, "transport", "")) if legacy_key else ""
+                if legacy_key and legacy_transport and legacy_transport not in seen_transports:
+                    resolved.append(
+                        ResolvedDeviceKey(
+                            vpn_key_id=legacy_key.id,
+                            transport=legacy_transport,
+                            client_id=str(legacy_key.client_id),
+                            is_primary=True,
+                            key=legacy_key,
+                        )
+                    )
+
+            resolved.sort(
+                key=lambda item: (
+                    0 if item.is_primary else 1,
+                    self._transport_priority(item.transport),
+                    str(item.vpn_key_id),
+                )
+            )
+            bundles[device.id] = ResolvedDeviceBundle(device=device, keys=tuple(resolved))
+        return bundles
+
+    async def _list_device_key_outputs_for_devices(
+            self,
+            devices: list[SubscriptionDevice],
+    ) -> dict[UUID, list[SubscriptionDeviceKeyOut]]:
+        if not devices:
+            return {}
+
+        bindings_by_device, key_by_id = await self._collect_device_key_material(
+            devices,
+            binding_active_only=False,
+        )
+        outputs_by_device: dict[UUID, list[SubscriptionDeviceKeyOut]] = {}
+        for device in devices:
+            outputs: list[SubscriptionDeviceKeyOut] = []
+            seen_key_ids: set[UUID] = set()
+            for binding in bindings_by_device.get(device.id, []):
+                outputs.append(SubscriptionDeviceKeyOut.model_validate(binding))
+                seen_key_ids.add(binding.vpn_key_id)
+
+            if device.vpn_key_id and device.vpn_key_id not in seen_key_ids:
+                legacy_key = key_by_id.get(device.vpn_key_id)
+                if legacy_key:
+                    outputs.append(
+                        SubscriptionDeviceKeyOut(
+                            id=device.id,
+                            subscription_device_id=device.id,
+                            vpn_key_id=legacy_key.id,
+                            transport=str(legacy_key.transport),
+                            is_primary=True,
+                            is_active=device.is_active,
+                            created_at=device.created_at,
+                            updated_at=device.updated_at,
+                        )
+                    )
+
+            outputs.sort(
+                key=lambda item: (
+                    0 if item.is_primary else 1,
+                    self._transport_priority(item.transport),
+                    str(item.vpn_key_id),
+                )
+            )
+            outputs_by_device[device.id] = outputs
+        return outputs_by_device
+
+    async def _collect_device_key_material(
+            self,
+            devices: list[SubscriptionDevice],
+            *,
+            binding_active_only: bool,
+    ) -> tuple[dict[UUID, list[object]], dict[UUID, object]]:
+        device_ids = [device.id for device in devices]
+        bindings = await self.device_key_repository.list_by_device_ids(
+            device_ids,
+            active_only=binding_active_only,
+        )
+        bindings_by_device: dict[UUID, list[object]] = {}
+        key_ids: list[UUID] = []
+        for binding in bindings:
+            bindings_by_device.setdefault(binding.subscription_device_id, []).append(binding)
+            key_ids.append(binding.vpn_key_id)
+
+        key_ids.extend(
+            device.vpn_key_id
+            for device in devices
+            if device.vpn_key_id is not None
+        )
+        key_by_id = await self._load_vpn_keys_by_ids(key_ids)
+        return bindings_by_device, key_by_id
+
+    async def _load_vpn_keys_by_ids(self, key_ids: Iterable[UUID]) -> dict[UUID, object]:
+        normalized = list(dict.fromkeys(key_ids))
+        if not normalized:
+            return {}
+
+        keys = await self.vpn_key_repository.list_by_ids(key_ids=normalized)
+        return {key.id: key for key in keys}
 
     async def _lock_subscription_for_device_allocation(self, subscription_id: UUID) -> None:
         await self.session.execute(

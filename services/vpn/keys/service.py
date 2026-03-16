@@ -13,6 +13,7 @@ from services.vpn.keys.schemas import (
     VpnKeyCreate, VpnKeyInternalCreate,
 )
 from shared.database.session import AsyncDatabase
+from services.placements.transport import NodeAgentPlacementTransport
 from shared.monitoring.metrics import VPN_KEY_OPERATION_TOTAL
 
 
@@ -22,6 +23,7 @@ class VpnKeyService:
         self.key_repository = VpnKeyRepository(session)
         self.placement_repository = UserPlacementRepository(session)
         self.user_repository = UserRepository(session)
+        self.node_agent_transport = NodeAgentPlacementTransport(session)
 
     async def create_key(self, payload: VpnKeyCreate):
         user = await self.user_repository.get_by_id(payload.user_id)
@@ -67,6 +69,10 @@ class VpnKeyService:
             desired_state=PlacementDesiredState.inactive.value,
             last_migration_reason="key_revoke",
             updated_at=datetime.now(timezone.utc),
+        )
+        await self.node_agent_transport.enqueue_for_key_state(
+            key_id=key_id,
+            desired_state=PlacementDesiredState.inactive.value,
         )
 
 
