@@ -22,6 +22,7 @@ from services.connect.router import router as connect_router
 from services.config import get_settings
 from services.nodes.reconciler import NodePlacementReconciler
 from services.nodes.router import router as node_router
+from services.nodes.agent.runtime import NodeAgentRuntime
 from services.placements.router import router as placements_router
 from services.probe.router import router as probe_router
 from services.probe.cleanup_reconciler import ProbeSignalCleanupReconciler
@@ -54,12 +55,14 @@ async def lifespan(app: FastAPI):
     probe_cleanup_reconciler = ProbeSignalCleanupReconciler()
     probe_auto_drain_reconciler = ProbeAutoDrainReconciler()
     node_auto_heal_reconciler = NodePlacementReconciler()
+    node_agent_runtime = NodeAgentRuntime(get_settings().nats)
     users_traffic_consumer = UserTrafficNatsConsumer(get_settings().nats)
     traffic_cleanup_reconciler = TrafficHistoryCleanupReconciler()
     await warmup_reconciler.start()
     await probe_cleanup_reconciler.start()
     await probe_auto_drain_reconciler.start()
     await node_auto_heal_reconciler.start()
+    await node_agent_runtime.start()
     await users_traffic_consumer.start()
     await traffic_cleanup_reconciler.start()
     try:
@@ -67,6 +70,7 @@ async def lifespan(app: FastAPI):
     finally:
         await traffic_cleanup_reconciler.stop()
         await users_traffic_consumer.stop()
+        await node_agent_runtime.stop()
         await node_auto_heal_reconciler.stop()
         await probe_auto_drain_reconciler.stop()
         await probe_cleanup_reconciler.stop()

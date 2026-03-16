@@ -4,7 +4,6 @@ from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
-from services.vpn.keys.schemas import VpnProtocol, VpnTransport
 
 
 class PlacementDesiredState(str, Enum):
@@ -55,71 +54,18 @@ class UserPlacementOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class PlacementReportIn(BaseModel):
+class PlacementApplyResultIn(BaseModel):
     op_version: int = Field(ge=1)
     applied_state: PlacementAppliedState
 
 
-PlacementReportStatus = Literal[
+PlacementApplyStatus = Literal[
     "applied",
     "pending",
     "error",
     "skipped_stale",
     "skipped_idempotent",
 ]
-
-
-class PlacementReportOut(BaseModel):
-    status: PlacementReportStatus
-
-
-class PlacementBatchReportItemIn(BaseModel):
-    placement_id: UUID
-    op_version: int = Field(ge=1)
-    applied_state: PlacementAppliedState
-
-
-class PlacementBatchReportIn(BaseModel):
-    items: list[PlacementBatchReportItemIn] = Field(default_factory=list)
-
-
-class PlacementBatchReportItemOut(BaseModel):
-    placement_id: UUID
-    status: PlacementReportStatus
-
-
-class PlacementBatchReportOut(BaseModel):
-    items: list[PlacementBatchReportItemOut]
-
-
-class PlacementAssignmentOut(BaseModel):
-    id: UUID
-    key_id: UUID
-    op_version: int
-    desired_state: PlacementDesiredState
-    applied_state: PlacementAppliedState
-    applied_version: int
-    backend_node_id: UUID
-
-    protocol: VpnProtocol
-    client_id: str
-    transport: VpnTransport
-    valid_until: datetime | None
-    is_revoked: bool
-    updated_at: datetime | None = None
-    backend_internal_wg_ip: str
-    backend_xray_api_port: int
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class PlacementPageOut(BaseModel):
-    items: list[PlacementAssignmentOut]
-    next_cursor: str | None = Field(
-        default=None,
-        description="Opaque cursor in format '<updated_at_ms>:<placement_id>' for incremental sync pagination.",
-        examples=["1741803100238:f2132b71-b4aa-470d-9586-cb907050ca52"],
-    )
 
 
 class PlacementUpdate(BaseModel):

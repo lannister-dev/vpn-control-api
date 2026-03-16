@@ -75,6 +75,7 @@ from services.vpn.subscriptions.schemas import (
 )
 from services.vpn.subscriptions.utils import SubscriptionUtils
 from shared.database.session import AsyncDatabase
+from services.placements.transport import NodeAgentPlacementTransport
 from shared.monitoring.metrics import (
     SUBSCRIPTION_BUILD_DURATION,
     SUBSCRIPTION_CACHE_TOTAL,
@@ -112,6 +113,7 @@ class SubscriptionService:
         self.node_repository = VpnNodeRepository(session)
         self.routing_service = RoutingService(session)
         self.placement_repository = UserPlacementRepository(session)
+        self.node_agent_transport = NodeAgentPlacementTransport(session)
         self.route_repository = RouteRepository(session)
         self.user_repository = UserRepository(session)
         self.vpn_key_repository = VpnKeyRepository(session)
@@ -837,6 +839,7 @@ class SubscriptionService:
                 sticky_until=None,
                 last_migration_reason="subscription_replica",
             )
+            await self.node_agent_transport.enqueue_for_placement_ids([created.id])
             placements_by_backend[node_id] = created
 
         preferred_placement: UserPlacement | None = None
@@ -1060,6 +1063,10 @@ class SubscriptionService:
             desired_state=desired_state.value,
             last_migration_reason=reason,
             updated_at=datetime.now(timezone.utc),
+        )
+        await self.node_agent_transport.enqueue_for_key_state(
+            key_id=key_id,
+            desired_state=desired_state.value,
         )
 
     def _hash_hwid(self, hwid: str) -> str:

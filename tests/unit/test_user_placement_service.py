@@ -17,6 +17,7 @@ async def test_upsert_placement_key_not_found(async_session):
     svc.key_repository = AsyncMock()
     svc.node_repository = AsyncMock()
     svc.placement_repository = AsyncMock()
+    svc.node_agent_transport = AsyncMock()
 
     svc.key_repository.get_by_id.return_value = None
 
@@ -36,6 +37,7 @@ async def test_upsert_placement_backend_not_found(async_session):
     svc.key_repository = AsyncMock()
     svc.node_repository = AsyncMock()
     svc.placement_repository = AsyncMock()
+    svc.node_agent_transport = AsyncMock()
 
     svc.key_repository.get_by_id.return_value = MagicMock()
     svc.node_repository.get_by_id.return_value = None
@@ -56,6 +58,7 @@ async def test_upsert_placement_success(async_session):
     svc.key_repository = AsyncMock()
     svc.node_repository = AsyncMock()
     svc.placement_repository = AsyncMock()
+    svc.node_agent_transport = AsyncMock()
 
     key = MagicMock()
     key.id = uuid4()
@@ -89,3 +92,4 @@ async def test_upsert_placement_success(async_session):
     )
     assert out.key_id == key.id
     assert out.backend_node_id == backend.id
+    svc.node_agent_transport.enqueue_for_placement_ids.assert_awaited_once_with([placement.id])

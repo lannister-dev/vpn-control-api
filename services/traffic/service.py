@@ -21,6 +21,7 @@ from services.traffic.schemas import (
 )
 from services.vpn.keys.repository import VpnKeyRepository
 from shared.database.session import AsyncDatabase
+from services.placements.transport import NodeAgentPlacementTransport
 from shared.monitoring.metrics import VPN_KEY_OPERATION_TOTAL
 from services.traffic.constants import _MIGRATION_REASON, _MIB
 from shared.utils.logger import StructuredLogger
@@ -34,6 +35,7 @@ class UserTrafficService:
         self.key_repository = VpnKeyRepository(session)
         self.placement_repository = UserPlacementRepository(session)
         self.traffic_usage_repository = TrafficUsageRepository(session)
+        self.node_agent_transport = NodeAgentPlacementTransport(session)
 
     async def ingest_users_traffic(self, raw_payload: bytes) -> dict[str, int]:
         try:
@@ -115,6 +117,10 @@ class UserTrafficService:
                 desired_state=PlacementDesiredState.inactive.value,
                 last_migration_reason=_MIGRATION_REASON,
                 updated_at=now,
+            )
+            await self.node_agent_transport.enqueue_for_key_state(
+                key_id=key.id,
+                desired_state=PlacementDesiredState.inactive.value,
             )
             VPN_KEY_OPERATION_TOTAL.labels(operation="auto_revoked_traffic_limit").inc()
             revoked += 1

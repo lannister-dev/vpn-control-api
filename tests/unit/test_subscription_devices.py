@@ -94,6 +94,7 @@ async def test_revoke_device_not_found(async_session, redis_client):
     svc.device_key_repository = AsyncMock()
     svc.vpn_key_repository = AsyncMock()
     svc.placement_repository = AsyncMock()
+    svc.node_agent_transport = AsyncMock()
     svc.device_key_repository.list_by_device_ids = AsyncMock(return_value=[])
     svc.vpn_key_repository.list_by_ids = AsyncMock(return_value=[])
 
@@ -121,6 +122,7 @@ async def test_revoke_device_success(async_session, redis_client):
     svc.device_key_repository = AsyncMock()
     svc.vpn_key_repository = AsyncMock()
     svc.placement_repository = AsyncMock()
+    svc.node_agent_transport = AsyncMock()
     svc.device_key_repository.list_by_device_ids = AsyncMock(return_value=[
         _device_key_binding(dev.id, dev.vpn_key_id, "reality", is_primary=True),
     ])
@@ -135,6 +137,7 @@ async def test_revoke_device_success(async_session, redis_client):
     assert key.is_revoked is True
     svc.device_repository.update_by_id.assert_awaited_once()
     svc.placement_repository.set_desired_state_for_key.assert_awaited_once()
+    svc.node_agent_transport.enqueue_for_key_state.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -154,6 +157,7 @@ async def test_revoke_device_idempotent(async_session, redis_client):
     svc.device_key_repository = AsyncMock()
     svc.vpn_key_repository = AsyncMock()
     svc.placement_repository = AsyncMock()
+    svc.node_agent_transport = AsyncMock()
     svc.device_key_repository.list_by_device_ids = AsyncMock(return_value=[
         _device_key_binding(dev.id, dev.vpn_key_id, "reality", is_primary=True),
     ])
@@ -167,3 +171,4 @@ async def test_revoke_device_idempotent(async_session, redis_client):
     assert changed is False
     svc.device_repository.update_by_id.assert_not_awaited()
     svc.placement_repository.set_desired_state_for_key.assert_awaited_once()
+    svc.node_agent_transport.enqueue_for_key_state.assert_awaited_once()
