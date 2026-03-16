@@ -104,9 +104,15 @@ class NatsClient:
     ):
         config = StreamConfig(name=name, subjects=subjects)
         try:
-            return await self.jetstream().stream_info(name)
+            info = await self.jetstream().stream_info(name)
         except Exception:
             return await self.jetstream().add_stream(config=config)
+        current_subjects = set(info.config.subjects or [])
+        desired_subjects = current_subjects | set(subjects)
+        if desired_subjects == current_subjects:
+            return info
+        info.config.subjects = sorted(desired_subjects)
+        return await self.jetstream().update_stream(config=info.config)
 
     async def pull_subscribe(
         self,
