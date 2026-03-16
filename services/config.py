@@ -33,6 +33,20 @@ class NatsConfig:
     users_traffic_queue: str = "vpn-control-api-users-traffic"
     reconnect_time_wait: int = 2
     max_reconnect_attempts: int = -1
+    js_command_stream: str = "agent_placement_commands"
+    js_result_stream: str = "agent_placement_results"
+    js_control_stream: str = "agent_control_events"
+    js_command_subject_prefix: str = "agent.placements"
+    js_result_subject_prefix: str = "agent.placement_results"
+    js_snapshot_subject_prefix: str = "agent.snapshots"
+    js_heartbeat_subject_prefix: str = "agent.heartbeats"
+    js_sync_report_subject_prefix: str = "agent.sync_reports"
+    js_consumer_prefix: str = "vpn-control-api"
+    js_ack_wait_s: float = 30.0
+    js_max_deliver: int = 30
+    js_fetch_timeout_s: float = 1.0
+    js_outbox_batch_size: int = 200
+    js_outbox_poll_interval_s: float = 1.0
 
 
 @dataclass
@@ -204,6 +218,20 @@ def get_settings() -> Settings:
         users_traffic_queue=env.str("NATS_USERS_TRAFFIC_QUEUE", default="vpn-control-api-users-traffic"),
         reconnect_time_wait=env.int("NATS_RECONNECT_TIME_WAIT", default=2),
         max_reconnect_attempts=env.int("NATS_RECONNECT_ATTEMPTS", default=-1),
+        js_command_stream=env.str("NATS_JS_COMMAND_STREAM", default="agent_placement_commands"),
+        js_result_stream=env.str("NATS_JS_RESULT_STREAM", default="agent_placement_results"),
+        js_control_stream=env.str("NATS_JS_CONTROL_STREAM", default="agent_control_events"),
+        js_command_subject_prefix=env.str("NATS_JS_COMMAND_SUBJECT_PREFIX", default="agent.placements"),
+        js_result_subject_prefix=env.str("NATS_JS_RESULT_SUBJECT_PREFIX", default="agent.placement_results"),
+        js_snapshot_subject_prefix=env.str("NATS_JS_SNAPSHOT_SUBJECT_PREFIX", default="agent.snapshots"),
+        js_heartbeat_subject_prefix=env.str("NATS_JS_HEARTBEAT_SUBJECT_PREFIX", default="agent.heartbeats"),
+        js_sync_report_subject_prefix=env.str("NATS_JS_SYNC_REPORT_SUBJECT_PREFIX", default="agent.sync_reports"),
+        js_consumer_prefix=env.str("NATS_JS_CONSUMER_PREFIX", default="vpn-control-api"),
+        js_ack_wait_s=env.float("NATS_JS_ACK_WAIT_S", default=30.0),
+        js_max_deliver=env.int("NATS_JS_MAX_DELIVER", default=30),
+        js_fetch_timeout_s=env.float("NATS_JS_FETCH_TIMEOUT_S", default=1.0),
+        js_outbox_batch_size=max(1, env.int("NATS_JS_OUTBOX_BATCH_SIZE", default=200)),
+        js_outbox_poll_interval_s=max(0.1, env.float("NATS_JS_OUTBOX_POLL_INTERVAL_S", default=1.0)),
     )
 
     admin = AdminConfig(

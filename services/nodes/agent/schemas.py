@@ -1,0 +1,202 @@
+from __future__ import annotations
+
+from datetime import datetime
+from enum import Enum
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class TransportDesiredState(str, Enum):
+    active = "active"
+    inactive = "inactive"
+
+
+class TransportAppliedState(str, Enum):
+    pending = "pending"
+    applied = "applied"
+    error = "error"
+
+
+class TransportReportStatus(str, Enum):
+    applied = "applied"
+    pending = "pending"
+    error = "error"
+    skipped_stale = "skipped_stale"
+    skipped_idempotent = "skipped_idempotent"
+
+
+class TransportProtocol(str, Enum):
+    vless = "vless"
+
+
+class TransportVpnTransport(str, Enum):
+    ws = "ws"
+    xhttp = "xhttp"
+    tcp = "tcp"
+    reality = "reality"
+
+
+class SnapshotRequestReason(str, Enum):
+    startup = "startup"
+    xray_restart = "xray_restart"
+    redelivery_gap = "redelivery_gap"
+    operator_forced = "operator_forced"
+
+
+class AgentEnvelope(BaseModel):
+    schema_version: int = Field(default=1, ge=1)
+    node_id: str
+    emitted_at: datetime
+    snapshot_id: str | None = None
+    epoch: int | None = Field(default=None, ge=0)
+
+
+class PlacementCommandEvent(AgentEnvelope):
+    event_id: str
+    placement_id: str
+    key_id: str
+    op_version: int = Field(ge=1)
+    desired_state: TransportDesiredState
+    backend_node_id: str
+    protocol: TransportProtocol = Field(default=TransportProtocol.vless)
+    transport: TransportVpnTransport = Field(default=TransportVpnTransport.ws)
+    client_id: str
+    is_revoked: bool = False
+    snapshot_complete: bool = False
+    valid_until: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class PlacementApplyResultEvent(AgentEnvelope):
+    event_id: str
+    placement_id: str
+    op_version: int = Field(ge=1)
+    applied_state: TransportAppliedState
+    report_status: TransportReportStatus | None = None
+    retryable: bool = False
+    error: str | None = None
+    inventory_hash: str | None = None
+    inventory_count: int | None = Field(default=None, ge=0)
+
+
+class PlacementApplyAckEvent(AgentEnvelope):
+    event_id: str
+    placement_id: str
+    op_version: int = Field(ge=1)
+    status: TransportReportStatus
+    error: str | None = None
+
+
+class SnapshotRequestEvent(BaseModel):
+    schema_version: int = Field(default=1, ge=1)
+    node_id: str
+    requested_at: datetime
+    reason: SnapshotRequestReason
+    known_snapshot_id: str | None = None
+    last_command_stream_seq: int | None = Field(default=None, ge=0)
+    last_seen_xray_uptime: int | None = Field(default=None, ge=0)
+
+
+class SnapshotChunkEvent(AgentEnvelope):
+    chunk_index: int = Field(ge=0)
+    is_last_chunk: bool = False
+    items: list[PlacementCommandEvent] = Field(default_factory=list)
+
+
+class HeartbeatEvent(BaseModel):
+    schema_version: int = Field(default=1, ge=1)
+    event_id: str
+    node_id: str
+    emitted_at: datetime
+    agent_version: str
+    is_healthy: bool
+    ready: bool
+    last_error: str | None = None
+    poll_count: int = Field(ge=0)
+    applied: int = Field(ge=0)
+    failed: int = Field(ge=0)
+
+
+class SyncReportEvent(BaseModel):
+    schema_version: int = Field(default=1, ge=1)
+    event_id: str
+    node_id: str
+    emitted_at: datetime
+    synced_count: int = Field(ge=0)
+    config_version: int | None = Field(default=None, ge=0)
+    inventory_hash: str | None = None
+    inventory_count: int | None = Field(default=None, ge=0)
+    full_resync_completed: bool = False
+
+
+class SyncReportAckStatus(str, Enum):
+    accepted = "accepted"
+    skipped = "skipped"
+
+
+class SyncReportAckEvent(BaseModel):
+    schema_version: int = Field(default=1, ge=1)
+    event_id: str
+    node_id: str
+    emitted_at: datetime
+    status: SyncReportAckStatus
+    error: str | None = None
+
+
+class AgentSubjects:
+    def __init__(
+        self,
+        *,
+        command_prefix: str,
+        result_prefix: str,
+        snapshot_prefix: str,
+        heartbeat_prefix: str,
+        sync_report_prefix: str,
+    ) -> None:
+        self._command_prefix = command_prefix.rstrip(".")
+        self._result_prefix = result_prefix.rstrip(".")
+        self._snapshot_prefix = snapshot_prefix.rstrip(".")
+        self._heartbeat_prefix = heartbeat_prefix.rstrip(".")
+        self._sync_report_prefix = sync_report_prefix.rstrip(".")
+
+    def placement_command(self, node_id: str) -> str:
+        return f"{self._command_prefix}.{node_id}.commands"
+
+    def placement_result(self, node_id: str) -> str:
+        return f"{self._result_prefix}.{node_id}.results"
+
+    def placement_result_ack(self, node_id: str) -> str:
+        return f"{self._result_prefix}.{node_id}.acks"
+
+    def snapshot_request(self, node_id: str) -> str:
+        return f"{self._snapshot_prefix}.{node_id}.request"
+
+    def snapshot_chunk(self, node_id: str) -> str:
+        return f"{self._snapshot_prefix}.{node_id}.chunks"
+
+    def heartbeat(self, node_id: str) -> str:
+        return f"{self._heartbeat_prefix}.{node_id}.events"
+
+    def sync_report(self, node_id: str) -> str:
+        return f"{self._sync_report_prefix}.{node_id}.events"
+
+    def sync_report_ack(self, node_id: str) -> str:
+        return f"{self._sync_report_prefix}.{node_id}.acks"
+
+
+class PlacementCommandPayload(BaseModel):
+    placement_id: UUID
+    key_id: UUID
+    node_id: UUID
+    backend_node_id: UUID
+    op_version: int = Field(ge=1)
+    desired_state: TransportDesiredState
+    protocol: TransportProtocol
+    transport: TransportVpnTransport
+    client_id: str
+    is_revoked: bool = False
+    valid_until: datetime | None = None
+    updated_at: datetime | None = None
+
+    model_config = ConfigDict(from_attributes=True)

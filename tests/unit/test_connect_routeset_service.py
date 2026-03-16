@@ -70,6 +70,7 @@ async def test_connect_routeset_returns_routes(async_session):
     svc.user_repository = AsyncMock()
     svc.key_repository = AsyncMock()
     svc.placement_repository = AsyncMock()
+    svc.node_agent_transport = AsyncMock()
     svc.node_repository = AsyncMock()
     svc.route_repository = AsyncMock()
     svc.routing_service = AsyncMock()
@@ -131,6 +132,7 @@ async def test_connect_routeset_creates_placement_when_missing(async_session):
     svc.user_repository = AsyncMock()
     svc.key_repository = AsyncMock()
     svc.placement_repository = AsyncMock()
+    svc.node_agent_transport = AsyncMock()
     svc.node_repository = AsyncMock()
     svc.route_repository = AsyncMock()
     svc.routing_service = AsyncMock()
@@ -165,6 +167,7 @@ async def test_connect_routeset_creates_placement_when_missing(async_session):
     assert exc.value.status_code == 503
     assert exc.value.detail == "Node placement sync pending"
     svc.placement_repository.upsert_set_pending.assert_awaited_once()
+    svc.node_agent_transport.enqueue_for_placement_ids.assert_awaited_once_with([placement_new.id])
     kwargs = svc.placement_repository.upsert_set_pending.await_args.kwargs
     assert kwargs["backend_node_id"] == backend.id
     svc.route_repository.list_resolved_active.assert_not_awaited()

@@ -17,6 +17,7 @@ def service(async_session):
     svc.key_repository = AsyncMock()
     svc.user_repository = AsyncMock()
     svc.placement_repository = AsyncMock()
+    svc.node_agent_transport = AsyncMock()
     return svc
 
 
@@ -69,6 +70,7 @@ class TestRevokeKey:
         service.key_repository.get_by_id.return_value = key
         await service.revoke_key(uuid4())
         service.placement_repository.set_desired_state_for_key.assert_not_awaited()
+        service.node_agent_transport.enqueue_for_key_state.assert_not_awaited()
 
     async def test_success_with_placement(self, service):
         key = MagicMock(is_revoked=False)
@@ -77,6 +79,10 @@ class TestRevokeKey:
         await service.revoke_key(key_id)
         assert key.is_revoked is True
         service.placement_repository.set_desired_state_for_key.assert_awaited_once()
+        service.node_agent_transport.enqueue_for_key_state.assert_awaited_once_with(
+            key_id=key_id,
+            desired_state="inactive",
+        )
 
     async def test_success_without_placement(self, service):
         key = MagicMock(is_revoked=False)
@@ -85,3 +91,7 @@ class TestRevokeKey:
         await service.revoke_key(key_id)
         assert key.is_revoked is True
         service.placement_repository.set_desired_state_for_key.assert_awaited_once()
+        service.node_agent_transport.enqueue_for_key_state.assert_awaited_once_with(
+            key_id=key_id,
+            desired_state="inactive",
+        )
