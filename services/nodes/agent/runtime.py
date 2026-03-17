@@ -476,7 +476,16 @@ class NodeAgentRuntime:
             if node is None:
                 await session.rollback()
                 logger_transport.warning("sync_report_unknown_node", node_id=str(node_id))
-                return True
+                return await self._publish_sync_report_ack(
+                    node_id=event.node_id,
+                    ack_event=SyncReportAckEvent(
+                        event_id=event.event_id,
+                        node_id=event.node_id,
+                        emitted_at=datetime.now(timezone.utc),
+                        status=SyncReportAckStatus.skipped,
+                        error="unknown_node",
+                    ),
+                )
 
             event_log_repo = NodeTransportEventLogRepository(session)
             is_new = await event_log_repo.record_if_new(
