@@ -209,6 +209,44 @@ async def test_handle_sync_report_publishes_skipped_ack_after_debounce(monkeypat
     assert publish_kwargs["payload"]["status"] == "skipped"
 
 
+@pytest.mark.asyncio
+async def test_handle_sync_report_unknown_node_publishes_error_ack(monkeypatch):
+    runtime = _runtime()
+    node_id = uuid4()
+    event = SyncReportEvent(
+        event_id="sync-report:unknown",
+        node_id=str(node_id),
+        emitted_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        synced_count=1,
+        config_version=1,
+        inventory_hash="sha256:test",
+        inventory_count=1,
+        full_resync_completed=False,
+    )
+    session = _session(has_pending_writes=False)
+    node_repo = SimpleNamespace(get_by_id=AsyncMock(return_value=None))
+
+    monkeypatch.setattr(
+        "services.nodes.agent.runtime.AsyncDatabase.get_session_maker",
+        lambda: _session_maker(session),
+    )
+    monkeypatch.setattr(
+        "services.nodes.agent.runtime.VpnNodeRepository",
+        lambda _: node_repo,
+    )
+
+    should_ack = await runtime._handle_sync_report_message(
+        _message(event.model_dump(mode="json"), subject="agent.sync_reports.node.events")
+    )
+
+    assert should_ack is True
+    session.rollback.assert_awaited_once()
+    publish_kwargs = runtime._nats.publish_jetstream.await_args.kwargs
+    assert publish_kwargs["subject"] == f"agent.sync_reports.{node_id}.acks"
+    assert publish_kwargs["payload"]["status"] == "skipped"
+    assert publish_kwargs["payload"]["error"] == "unknown_node"
+
+
 def test_heartbeat_event_id_passthrough():
     event = HeartbeatEvent(
         event_id="heartbeat:node-1:7",
