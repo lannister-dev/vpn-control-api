@@ -439,10 +439,6 @@ class NodeAgentRuntime:
                 payload=event.model_dump(mode="json"),
                 processed_at=event.emitted_at,
             )
-            if not is_new:
-                await session.rollback()
-                return True
-
             service = VpnNodeService(session)
             await service.handle_heartbeat(
                 node=node,
