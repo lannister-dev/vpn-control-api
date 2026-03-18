@@ -27,6 +27,10 @@ class NatsClient:
         self._js = None
         self._connected = False
 
+    @property
+    def is_connected(self) -> bool:
+        return self._connected and self._nc is not None and not self._nc.is_closed
+
     async def connect(self) -> None:
         if nats is None:
             raise RuntimeError(
