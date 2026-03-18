@@ -439,10 +439,6 @@ class NodeAgentRuntime:
                 payload=event.model_dump(mode="json"),
                 processed_at=event.emitted_at,
             )
-            if not is_new:
-                await session.rollback()
-                return True
-
             service = VpnNodeService(session)
             await service.handle_heartbeat(
                 node=node,
@@ -476,7 +472,16 @@ class NodeAgentRuntime:
             if node is None:
                 await session.rollback()
                 logger_transport.warning("sync_report_unknown_node", node_id=str(node_id))
-                return True
+                return await self._publish_sync_report_ack(
+                    node_id=event.node_id,
+                    ack_event=SyncReportAckEvent(
+                        event_id=event.event_id,
+                        node_id=event.node_id,
+                        emitted_at=datetime.now(timezone.utc),
+                        status=SyncReportAckStatus.skipped,
+                        error="unknown_node",
+                    ),
+                )
 
             event_log_repo = NodeTransportEventLogRepository(session)
             is_new = await event_log_repo.record_if_new(
@@ -488,7 +493,11 @@ class NodeAgentRuntime:
                 processed_at=event.emitted_at,
             )
             if not is_new:
-                await session.rollback()
+                await NodeTransportStateRepository(session).touch_sync_report(
+                    node_id=node_id,
+                    at=event.emitted_at,
+                )
+                await self._finish_session(session)
                 return await self._publish_sync_report_ack(
                     node_id=event.node_id,
                     ack_event=SyncReportAckEvent(
@@ -589,7 +598,7 @@ class NodeAgentRuntime:
         await self._nats.publish_jetstream(
             subject=self._subjects.sync_report_ack(node_id),
             payload=ack_event.model_dump(mode="json"),
-            msg_id=f"sync-report-ack:{ack_event.event_id}",
+            msg_id=f"sync-report-ack:{ack_event.event_id}:{ack_event.emitted_at.isoformat()}",
         )
         return True
 
