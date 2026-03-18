@@ -497,7 +497,11 @@ class NodeAgentRuntime:
                 processed_at=event.emitted_at,
             )
             if not is_new:
-                await session.rollback()
+                await NodeTransportStateRepository(session).touch_sync_report(
+                    node_id=node_id,
+                    at=event.emitted_at,
+                )
+                await self._finish_session(session)
                 return await self._publish_sync_report_ack(
                     node_id=event.node_id,
                     ack_event=SyncReportAckEvent(

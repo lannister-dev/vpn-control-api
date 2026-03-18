@@ -211,6 +211,55 @@ async def test_handle_sync_report_publishes_skipped_ack_after_debounce(monkeypat
 
 
 @pytest.mark.asyncio
+async def test_handle_sync_report_duplicate_touches_state_and_publishes_ack(monkeypatch):
+    runtime = _runtime()
+    node_id = uuid4()
+    event = SyncReportEvent(
+        event_id="sync-report:duplicate",
+        node_id=str(node_id),
+        emitted_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        synced_count=4,
+        config_version=9,
+        inventory_hash="sha256:test",
+        inventory_count=4,
+        full_resync_completed=True,
+    )
+    session = _session(has_pending_writes=True)
+    event_log_repo = SimpleNamespace(record_if_new=AsyncMock(return_value=False))
+    state_repo = SimpleNamespace(touch_sync_report=AsyncMock())
+    node_repo = SimpleNamespace(get_by_id=AsyncMock(return_value=SimpleNamespace(id=node_id)))
+
+    monkeypatch.setattr(
+        "services.nodes.agent.runtime.AsyncDatabase.get_session_maker",
+        lambda: _session_maker(session),
+    )
+    monkeypatch.setattr(
+        "services.nodes.agent.runtime.NodeTransportEventLogRepository",
+        lambda _: event_log_repo,
+    )
+    monkeypatch.setattr(
+        "services.nodes.agent.runtime.NodeTransportStateRepository",
+        lambda _: state_repo,
+    )
+    monkeypatch.setattr(
+        "services.nodes.agent.runtime.VpnNodeRepository",
+        lambda _: node_repo,
+    )
+
+    should_ack = await runtime._handle_sync_report_message(
+        _message(event.model_dump(mode="json"), subject="agent.sync_reports.node.events")
+    )
+
+    assert should_ack is True
+    state_repo.touch_sync_report.assert_awaited_once_with(node_id=node_id, at=event.emitted_at)
+    session.commit.assert_awaited_once()
+    publish_kwargs = runtime._nats.publish_jetstream.await_args.kwargs
+    assert publish_kwargs["subject"] == f"agent.sync_reports.{node_id}.acks"
+    assert publish_kwargs["msg_id"].startswith(f"sync-report-ack:{event.event_id}:")
+    assert publish_kwargs["payload"]["status"] == "accepted"
+
+
+@pytest.mark.asyncio
 async def test_handle_sync_report_unknown_node_publishes_error_ack(monkeypatch):
     runtime = _runtime()
     node_id = uuid4()
