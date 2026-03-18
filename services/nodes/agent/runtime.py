@@ -598,7 +598,7 @@ class NodeAgentRuntime:
         await self._nats.publish_jetstream(
             subject=self._subjects.sync_report_ack(node_id),
             payload=ack_event.model_dump(mode="json"),
-            msg_id=f"sync-report-ack:{ack_event.event_id}",
+            msg_id=f"sync-report-ack:{ack_event.event_id}:{ack_event.emitted_at.isoformat()}",
         )
         return True
 
