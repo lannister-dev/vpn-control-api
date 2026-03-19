@@ -347,6 +347,73 @@
     }
     .log { display: grid; gap: 6px; max-height: 280px; overflow: auto; }
     .log-item { border: 1px solid var(--line); border-radius: 9px; background: rgba(15, 23, 42, 0.36); padding: 7px 8px; font-size: 12px; }
+    /* ── Transport tab ───────────────────────────────── */
+    .t-kpi-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 18px; }
+    .t-kpi-card { border: 1px solid var(--line); border-radius: 14px; background: rgba(15, 23, 42, 0.46); padding: 14px; text-align: center; box-shadow: inset 0 1px 0 rgba(255,255,255,0.06); transition: all 160ms ease; position: relative; overflow: hidden; }
+    .t-kpi-card:hover { transform: translateY(-2px); border-color: rgba(45,212,191,0.35); box-shadow: var(--teal-ring); }
+    .t-kpi-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 6px; }
+    .t-kpi-value { font-family: "JetBrains Mono", monospace; font-size: 20px; font-weight: 600; }
+    .t-kpi-sub { font-size: 10px; color: var(--muted); margin-top: 4px; }
+    .t-status-pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; letter-spacing: 0.03em; }
+    .t-status-pill.online { background: rgba(94,233,181,0.12); color: var(--ok); border: 1px solid rgba(94,233,181,0.2); }
+    .t-status-pill.offline { background: rgba(255,127,133,0.12); color: var(--bad); border: 1px solid rgba(255,127,133,0.2); }
+    .t-pulse { display: inline-block; width: 7px; height: 7px; border-radius: 50%; animation: t-pulse-anim 2s ease-in-out infinite; }
+    .t-pulse.on { background: var(--ok); box-shadow: 0 0 6px rgba(94,233,181,0.5); }
+    .t-pulse.off { background: var(--bad); box-shadow: 0 0 6px rgba(255,127,133,0.5); animation: none; }
+    @keyframes t-pulse-anim { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.85); } }
+    .t-tabs { display: flex; gap: 2px; margin-bottom: 14px; background: rgba(15,23,42,0.5); border-radius: 10px; padding: 3px; border: 1px solid var(--line); width: fit-content; }
+    .t-tab-btn { border: none; border-radius: 8px; background: transparent; color: var(--muted); padding: 7px 16px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 140ms ease; font-family: inherit; }
+    .t-tab-btn.active { background: rgba(45,212,191,0.12); color: var(--ok); }
+    .t-tab-btn:hover:not(.active) { color: var(--text); background: rgba(255,255,255,0.04); }
+    .t-verdict { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; }
+    .t-verdict.ok { background: rgba(94,233,181,0.1); color: var(--ok); }
+    .t-verdict.lag { background: rgba(245,198,107,0.1); color: var(--warn); }
+    .t-verdict.silent { background: rgba(255,165,0,0.1); color: #ffb347; }
+    .t-verdict.dead { background: rgba(255,127,133,0.1); color: var(--bad); }
+    .t-verdict-dot { width: 6px; height: 6px; border-radius: 50%; }
+    .t-verdict.ok .t-verdict-dot { background: var(--ok); }
+    .t-verdict.lag .t-verdict-dot { background: var(--warn); }
+    .t-verdict.silent .t-verdict-dot { background: #ffb347; }
+    .t-verdict.dead .t-verdict-dot { background: var(--bad); }
+    .t-node-row { cursor: pointer; transition: background 100ms ease; }
+    .t-node-row:hover { background: rgba(45,212,191,0.04); }
+    .t-node-row.selected { background: rgba(45,212,191,0.07); }
+    .t-detail-card { border: 1px solid rgba(45,212,191,0.2); border-radius: 14px; background: rgba(15,23,42,0.6); padding: 16px; margin-top: 14px; animation: fade-up 200ms ease; }
+    .t-detail-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+    .t-detail-title { font-size: 15px; font-weight: 700; }
+    .t-snapshot-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; padding: 10px; border-radius: 10px; background: rgba(15,23,42,0.4); border: 1px solid var(--line); }
+    .t-snap-item { text-align: center; }
+    .t-snap-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .t-snap-value { font-family: "JetBrains Mono", monospace; font-size: 12px; margin-top: 2px; }
+    .t-event-card { border: 1px solid var(--line); border-radius: 8px; background: rgba(15,23,42,0.36); padding: 8px 10px; transition: all 100ms ease; }
+    .t-event-card:hover { border-color: rgba(45,212,191,0.3); }
+    .t-event-type { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+    .t-event-type.heartbeat { background: rgba(94,233,181,0.12); color: var(--ok); }
+    .t-event-type.sync_report { background: rgba(103,217,246,0.12); color: var(--info); }
+    .t-event-type.snapshot_request { background: rgba(151,117,250,0.12); color: #9775fa; }
+    .t-event-type.placement_result { background: rgba(245,198,107,0.12); color: var(--warn); }
+    .t-outbox-status { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; }
+    .t-outbox-status.failed { background: rgba(255,127,133,0.15); color: var(--bad); }
+    .t-outbox-status.pending { background: rgba(245,198,107,0.15); color: var(--warn); }
+    .t-outbox-status.publishing { background: rgba(103,217,246,0.15); color: var(--info); }
+    .t-outbox-status.published { background: rgba(94,233,181,0.1); color: var(--ok); }
+    .t-lag-bar { display: flex; align-items: center; gap: 6px; }
+    .t-lag-indicator { width: 32px; height: 4px; border-radius: 2px; }
+    .t-lag-indicator.ok { background: var(--ok); }
+    .t-lag-indicator.lag { background: var(--warn); }
+    .t-lag-indicator.silent { background: #ffb347; }
+    .t-lag-indicator.dead { background: var(--bad); }
+    .t-payload-modal .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); z-index: 9999; display: flex; align-items: center; justify-content: center; animation: fade-up 160ms ease; }
+    .t-payload-modal .modal-box { background: var(--panel-glass); border: 1px solid var(--line-strong); border-radius: 16px; max-width: 680px; width: 90%; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,0.4); }
+    .t-payload-modal .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+    .t-payload-modal .modal-header h3 { margin: 0; font-size: 13px; font-weight: 700; }
+    .t-payload-modal pre { flex: 1; overflow: auto; margin: 0; padding: 14px 16px; font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-all; }
+    .t-payload-modal .modal-footer { display: flex; gap: 6px; padding: 10px 16px; border-top: 1px solid var(--line); justify-content: flex-end; }
+    .t-outbox-badge { display: inline-flex; align-items: center; gap: 4px; font-family: "JetBrains Mono", monospace; font-size: 12px; }
+    .t-outbox-count { padding: 1px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+    .t-outbox-count.clean { background: rgba(94,233,181,0.08); color: var(--ok); }
+    .t-outbox-count.warn { background: rgba(245,198,107,0.12); color: var(--warn); }
+    .t-outbox-count.fail { background: rgba(255,127,133,0.12); color: var(--bad); }
     .log-item.error { color: #ffc3bd; }
     .empty { color: var(--muted); font-size: 12px; padding: 7px 0; }
     .bundle-list { display: grid; gap: 6px; min-width: 200px; }
@@ -662,47 +729,76 @@
       </section>
 
       <section id="tab-transport" class="panel">
-        <div class="panel-head"><div class="panel-title">NATS Transport</div><button id="transport-reload" class="btn btn-ghost">Reload</button></div>
+        <div class="panel-head">
+          <div class="panel-title">Очередь сообщений</div>
+          <div class="actions">
+            <span id="t-nats-pill" class="t-status-pill offline"><span class="t-pulse off"></span> Не подключен</span>
+            <button id="transport-reload" class="btn btn-ghost">Обновить</button>
+          </div>
+        </div>
         <div class="panel-body">
           <!-- KPI strip -->
-          <div id="transport-kpi" class="kpi-strip" style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px"></div>
+          <div id="transport-kpi" class="t-kpi-grid"></div>
 
           <!-- Sub-tabs -->
-          <div style="display:flex;gap:6px;margin-bottom:12px">
-            <button class="btn btn-ghost transport-sub active" data-tsub="nodes">Nodes</button>
-            <button class="btn btn-ghost transport-sub" data-tsub="outbox">Outbox</button>
-            <button class="btn btn-ghost transport-sub" data-tsub="events">Event Log</button>
+          <div class="t-tabs">
+            <button class="t-tab-btn transport-sub active" data-tsub="nodes">Серверы</button>
+            <button class="t-tab-btn transport-sub" data-tsub="outbox">Очередь команд</button>
+            <button class="t-tab-btn transport-sub" data-tsub="events">Журнал событий</button>
           </div>
 
           <!-- Nodes sub-tab -->
           <div id="tsub-nodes" class="transport-section">
             <table>
-              <thead><tr><th>Node</th><th>Region</th><th>Epoch</th><th>Last HB</th><th>Last Cmd</th><th>Last Result</th><th>Last Sync</th><th>Outbox</th><th>Lag</th><th>Status</th></tr></thead>
+              <thead><tr>
+                <th>Сервер</th><th>Регион</th><th>Эпоха</th>
+                <th title="Последний heartbeat от агента">Heartbeat</th>
+                <th title="Последняя отправленная команда">Команда</th>
+                <th title="Последний результат применения">Результат</th>
+                <th title="Последний sync-отчёт инвентаря">Синхр.</th>
+                <th title="Команды в очереди / ошибки">Очередь</th>
+                <th title="Задержка связи с агентом">Задержка</th>
+                <th>Связь</th>
+              </tr></thead>
               <tbody id="transport-nodes-body"></tbody>
             </table>
           </div>
 
-          <!-- Node detail modal -->
-          <div id="transport-node-detail" style="display:none" class="card" style="margin-top:12px">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-              <strong id="tnd-title"></strong>
-              <div style="display:flex;gap:6px">
-                <button id="tnd-snapshot" class="btn-mini">Force Snapshot</button>
-                <button id="tnd-close" class="btn-mini">Close</button>
-              </div>
-            </div>
-            <div id="tnd-snapshot-info" class="muted" style="margin-bottom:8px"></div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-              <div>
-                <div class="muted" style="margin-bottom:4px">Recent Events <select id="tnd-event-filter" class="select" style="display:inline;width:auto;margin-left:4px"><option value="">All</option><option value="heartbeat">heartbeat</option><option value="sync_report">sync_report</option><option value="snapshot_request">snapshot</option><option value="placement_result">result</option></select></div>
-                <div id="tnd-events" class="stack" style="max-height:400px;overflow-y:auto"></div>
-              </div>
-              <div>
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-                  <span class="muted">Outbox Queue</span>
-                  <button id="tnd-retry-all" class="btn-mini" style="display:none">Retry All Failed</button>
+          <!-- Node detail panel -->
+          <div id="transport-node-detail" style="display:none">
+            <div class="t-detail-card">
+              <div class="t-detail-header">
+                <div>
+                  <div class="t-detail-title" id="tnd-title"></div>
+                  <div class="muted" id="tnd-subtitle" style="margin-top:2px"></div>
                 </div>
-                <div id="tnd-outbox" class="stack" style="max-height:400px;overflow-y:auto"></div>
+                <div style="display:flex;gap:6px;align-items:center">
+                  <button id="tnd-snapshot" class="btn-mini btn-info" title="Принудительно сгенерировать snapshot текущего состояния">Snapshot</button>
+                  <button id="tnd-close" class="btn-mini">Закрыть</button>
+                </div>
+              </div>
+              <div id="tnd-snapshot-bar" class="t-snapshot-bar"></div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+                <div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                    <span class="muted" style="font-weight:600;text-transform:uppercase;letter-spacing:0.06em;font-size:10px">Последние события</span>
+                    <select id="tnd-event-filter" class="select" style="width:auto;padding:4px 8px;font-size:11px;border-radius:6px">
+                      <option value="">Все типы</option>
+                      <option value="heartbeat">Heartbeat</option>
+                      <option value="sync_report">Sync Report</option>
+                      <option value="snapshot_request">Snapshot</option>
+                      <option value="placement_result">Результат</option>
+                    </select>
+                  </div>
+                  <div id="tnd-events" class="stack" style="max-height:400px;overflow-y:auto"></div>
+                </div>
+                <div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                    <span class="muted" style="font-weight:600;text-transform:uppercase;letter-spacing:0.06em;font-size:10px">Очередь команд</span>
+                    <button id="tnd-retry-all" class="btn-mini btn-warn" style="display:none">Перезапустить все</button>
+                  </div>
+                  <div id="tnd-outbox" class="stack" style="max-height:400px;overflow-y:auto"></div>
+                </div>
               </div>
             </div>
           </div>
@@ -710,12 +806,12 @@
           <!-- Outbox sub-tab -->
           <div id="tsub-outbox" class="transport-section" style="display:none">
             <div class="filters" style="margin-bottom:10px">
-              <select id="outbox-node-filter" class="select"><option value="">Any node</option></select>
-              <select id="outbox-status-filter" class="select"><option value="">Any status</option><option value="pending">pending</option><option value="failed">failed</option><option value="publishing">publishing</option><option value="published">published</option></select>
-              <button id="outbox-retry-all-btn" class="btn-mini">Retry All Failed</button>
+              <select id="outbox-node-filter" class="select"><option value="">Все серверы</option></select>
+              <select id="outbox-status-filter" class="select"><option value="">Любой статус</option><option value="pending">В очереди</option><option value="failed">Ошибка</option><option value="publishing">Отправляется</option><option value="published">Доставлено</option></select>
+              <button id="outbox-retry-all-btn" class="btn-mini btn-warn">Перезапустить ошибки</button>
             </div>
             <table>
-              <thead><tr><th>Node</th><th>Type</th><th>Message ID</th><th>Status</th><th>Attempts</th><th>Error</th><th>Created</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Сервер</th><th>Тип</th><th>ID сообщения</th><th>Статус</th><th>Попытки</th><th>Ошибка</th><th>Создано</th><th>Действия</th></tr></thead>
               <tbody id="outbox-body"></tbody>
             </table>
             <div id="outbox-pagination" class="muted" style="margin-top:8px"></div>
@@ -724,19 +820,19 @@
           <!-- Events sub-tab -->
           <div id="tsub-events" class="transport-section" style="display:none">
             <div class="filters" style="margin-bottom:10px">
-              <select id="events-node-filter" class="select"><option value="">Any node</option></select>
-              <select id="events-type-filter" class="select"><option value="">Any type</option><option value="heartbeat">heartbeat</option><option value="sync_report">sync_report</option><option value="snapshot_request">snapshot</option><option value="placement_result">result</option></select>
-              <input id="events-search" class="input" placeholder="Search event_id" style="max-width:200px" />
+              <select id="events-node-filter" class="select"><option value="">Все серверы</option></select>
+              <select id="events-type-filter" class="select"><option value="">Все типы</option><option value="heartbeat">Heartbeat</option><option value="sync_report">Sync Report</option><option value="snapshot_request">Snapshot</option><option value="placement_result">Результат</option></select>
+              <input id="events-search" class="input" placeholder="Поиск по event ID..." style="max-width:200px" />
             </div>
             <table>
-              <thead><tr><th>Node</th><th>Type</th><th>Event ID</th><th>Processed</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Сервер</th><th>Тип</th><th>Event ID</th><th>Обработано</th><th></th></tr></thead>
               <tbody id="events-body"></tbody>
             </table>
             <div id="events-pagination" class="muted" style="margin-top:8px"></div>
           </div>
 
           <!-- Payload modal -->
-          <div id="payload-modal" style="display:none"></div>
+          <div id="payload-modal" class="t-payload-modal" style="display:none"></div>
         </div>
       </section>
 
@@ -1806,7 +1902,12 @@
       }
 
       /* --- Transport tab --- */
-      const verdictCls = (v) => ({ ok: "ok", lag: "warn", silent: "warn", dead: "bad" }[v] || "bad");
+      const verdictLabel = (v) => ({ ok: "Норма", lag: "Задержка", silent: "Молчит", dead: "Нет связи" }[v] || "Нет связи");
+      const eventTypeLabel = (t) => ({ heartbeat: "Heartbeat", sync_report: "Sync Report", snapshot_request: "Snapshot", placement_result: "Результат", placement_command: "Команда" }[t] || t);
+      const outboxStatusLabel = (s) => ({ pending: "В очереди", failed: "Ошибка", publishing: "Отправка", published: "Доставлено" }[s] || s);
+      const snapshotReasonLabel = (r) => ({ full_resync: "Полная пересинхронизация", redelivery_gap: "Разрыв доставки", admin_requested: "Запрос оператора", initial: "Первичная синхронизация" }[r] || r || "-");
+      const fmtLag = (s) => { if (s == null) return "-"; if (s < 60) return Math.round(s) + " сек"; if (s < 3600) return Math.round(s / 60) + " мин"; return Math.round(s / 3600) + " ч"; };
+      const fmtUptime = (s) => { if (s == null) return "-"; const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); return h > 0 ? `${h}ч ${m}м` : `${m}м`; };
 
       async function loadTransportData() {
         const [overview, nodesList] = await Promise.all([
@@ -1827,41 +1928,56 @@
         const ev = o.events || {};
         const tasks = o.consumer_tasks || [];
         const running = tasks.filter((t) => t.running).length;
+        const failedTasks = tasks.filter((t) => !t.running && t.error);
+
+        /* NATS connection pill in header */
+        const pill = $("t-nats-pill");
+        if (pill) {
+          pill.className = `t-status-pill ${o.nats_connected ? "online" : "offline"}`;
+          pill.innerHTML = `<span class="t-pulse ${o.nats_connected ? "on" : "off"}"></span> ${o.nats_connected ? "Подключен" : "Не подключен"}`;
+        }
+
+        /* KPI cards */
+        const queueCount = ob.pending + ob.publishing;
         const kpi = $("transport-kpi");
         kpi.innerHTML = [
-          `<div class="card" style="text-align:center"><div class="muted">NATS</div><div><span class="dot ${o.nats_connected ? "ok" : "bad"}" style="width:8px;height:8px"></span> ${o.nats_connected ? "Online" : "Offline"}</div></div>`,
-          `<div class="card" style="text-align:center"><div class="muted">Outbox</div><div class="mono">${ob.pending + ob.publishing} queue</div></div>`,
-          `<div class="card" style="text-align:center"><div class="muted">Failed</div><div class="mono" style="color:${ob.failed > 0 ? "var(--bad)" : "var(--ok)"}">${ob.failed} stuck</div></div>`,
-          `<div class="card" style="text-align:center"><div class="muted">Events 24h</div><div class="mono">${ev.total_24h || 0}</div></div>`,
-          `<div class="card" style="text-align:center"><div class="muted">Consumers</div><div class="mono">${running}/${tasks.length} live</div></div>`,
+          `<div class="t-kpi-card"><div class="t-kpi-label">В очереди</div><div class="t-kpi-value">${queueCount}</div><div class="t-kpi-sub">${queueCount === 0 ? "Очередь пуста" : "ожидают отправки"}</div></div>`,
+          `<div class="t-kpi-card"><div class="t-kpi-label">Ошибки доставки</div><div class="t-kpi-value" style="color:${ob.failed > 0 ? "var(--bad)" : "var(--ok)"}">${ob.failed}</div><div class="t-kpi-sub">${ob.failed > 0 ? "требуют внимания" : "ошибок нет"}</div></div>`,
+          `<div class="t-kpi-card"><div class="t-kpi-label">Обработано за 24ч</div><div class="t-kpi-value">${ev.total_24h || 0}</div><div class="t-kpi-sub">${Object.entries(ev.by_type || {}).map(([k, v]) => `${eventTypeLabel(k)}: ${v}`).join(", ") || "нет данных"}</div></div>`,
+          `<div class="t-kpi-card"><div class="t-kpi-label">Доставлено за 24ч</div><div class="t-kpi-value">${ob.published_24h || 0}</div><div class="t-kpi-sub">команд агентам</div></div>`,
+          `<div class="t-kpi-card"><div class="t-kpi-label">Обработчики</div><div class="t-kpi-value">${running}<span style="font-size:13px;color:var(--muted)"> / ${tasks.length}</span></div><div class="t-kpi-sub">${failedTasks.length > 0 ? `<span style="color:var(--bad)">${failedTasks.length} упал</span>` : "все работают"}${o.uptime_s ? ` &middot; uptime ${fmtUptime(o.uptime_s)}` : ""}</div></div>`,
         ].join("");
       }
 
       function renderTransportNodes() {
         const body = $("transport-nodes-body");
         const nodes = state.transportNodes;
-        if (!nodes.length) { body.innerHTML = `<tr><td colspan="10" class="empty">No transport nodes.</td></tr>`; return; }
+        if (!nodes.length) { body.innerHTML = `<tr><td colspan="10" class="empty">Серверы не найдены. NATS транспорт может быть отключен.</td></tr>`; return; }
         body.innerHTML = nodes.map((n) => {
-          const lagStr = n.communication_lag_s != null ? Math.round(n.communication_lag_s) + "s" : "-";
-          const outboxStr = (n.outbox_pending || 0) + (n.outbox_failed > 0 ? ` <span style="color:var(--bad)">+${n.outbox_failed} fail</span>` : "");
-          return `<tr class="transport-node-row" data-nid="${esc(n.node_id)}" style="cursor:pointer">`
+          const v = n.health_verdict;
+          const pending = n.outbox_pending || 0;
+          const failed = n.outbox_failed || 0;
+          const outboxCls = failed > 0 ? "fail" : (pending > 0 ? "warn" : "clean");
+          const outboxLabel = failed > 0 ? `${pending} + ${failed} ош.` : (pending > 0 ? String(pending) : "0");
+          const selected = state.transportNodeDetail && state.transportNodeDetail.node_id === n.node_id;
+          return `<tr class="t-node-row${selected ? " selected" : ""}" data-nid="${esc(n.node_id)}">`
             + `<td><strong>${esc(n.name)}</strong><div>${uuidCell(n.node_id)}</div></td>`
             + `<td>${esc(n.region)}</td>`
             + `<td class="mono">${n.current_epoch}</td>`
-            + `<td>${relTime(n.last_heartbeat_received_at)}</td>`
-            + `<td>${relTime(n.last_command_published_at)}</td>`
-            + `<td>${relTime(n.last_result_received_at)}</td>`
-            + `<td>${relTime(n.last_sync_report_received_at)}</td>`
-            + `<td class="mono">${outboxStr || "0"}</td>`
-            + `<td class="mono">${lagStr}</td>`
-            + `<td>${chip(verdictCls(n.health_verdict), n.health_verdict)}</td>`
+            + `<td title="${esc(fmtDate(n.last_heartbeat_received_at))}">${relTime(n.last_heartbeat_received_at)}</td>`
+            + `<td title="${esc(fmtDate(n.last_command_published_at))}">${relTime(n.last_command_published_at)}</td>`
+            + `<td title="${esc(fmtDate(n.last_result_received_at))}">${relTime(n.last_result_received_at)}</td>`
+            + `<td title="${esc(fmtDate(n.last_sync_report_received_at))}">${relTime(n.last_sync_report_received_at)}</td>`
+            + `<td><span class="t-outbox-count ${outboxCls}">${outboxLabel}</span></td>`
+            + `<td><div class="t-lag-bar"><span class="t-lag-indicator ${v}"></span><span class="mono" style="font-size:11px">${fmtLag(n.communication_lag_s)}</span></div></td>`
+            + `<td><span class="t-verdict ${v}"><span class="t-verdict-dot"></span>${verdictLabel(v)}</span></td>`
             + `</tr>`;
         }).join("");
       }
 
       function populateTransportNodeFilters() {
         const nodes = state.transportNodes;
-        const opts = `<option value="">Any node</option>` + nodes.map((n) => `<option value="${esc(n.node_id)}">${esc(n.name)}</option>`).join("");
+        const opts = `<option value="">Все серверы</option>` + nodes.map((n) => `<option value="${esc(n.node_id)}">${esc(n.name)}</option>`).join("");
         const of1 = $("outbox-node-filter"); if (of1) of1.innerHTML = opts;
         const ef1 = $("events-node-filter"); if (ef1) ef1.innerHTML = opts;
       }
@@ -1870,6 +1986,7 @@
         const detail = await req(`/api/v1/admin/transport/nodes/${nodeId}`);
         state.transportNodeDetail = detail;
         renderTransportNodeDetail();
+        renderTransportNodes();
       }
 
       function renderTransportNodeDetail() {
@@ -1877,24 +1994,32 @@
         const panel = $("transport-node-detail");
         if (!d) { panel.style.display = "none"; return; }
         panel.style.display = "block";
-        $("tnd-title").textContent = `${d.name} (epoch ${d.current_epoch})`;
-        $("tnd-snapshot-info").innerHTML = d.last_snapshot_id
-          ? `Snapshot: <span class="mono">${esc(d.last_snapshot_id)}</span> | reason: ${esc(d.last_snapshot_reason || "-")} | requested: ${relTime(d.last_snapshot_requested_at)} | generated: ${relTime(d.last_snapshot_generated_at)}`
-          : "No snapshot yet";
+
+        $("tnd-title").textContent = d.name;
+        $("tnd-subtitle").textContent = `Эпоха ${d.current_epoch} \u00B7 ${verdictLabel(d.health_verdict)}`;
+
+        $("tnd-snapshot-bar").innerHTML = [
+          { label: "Snapshot ID", value: d.last_snapshot_id ? `<span title="${esc(d.last_snapshot_id)}">${esc(d.last_snapshot_id.length > 20 ? d.last_snapshot_id.slice(0, 20) + "\u2026" : d.last_snapshot_id)}</span>` : "-" },
+          { label: "Причина", value: snapshotReasonLabel(d.last_snapshot_reason) },
+          { label: "Запрошен", value: relTime(d.last_snapshot_requested_at) },
+          { label: "Сгенерирован", value: relTime(d.last_snapshot_generated_at) },
+        ].map((item) => `<div class="t-snap-item"><div class="t-snap-label">${item.label}</div><div class="t-snap-value">${item.value}</div></div>`).join("");
 
         const typeFilter = ($("tnd-event-filter") || {}).value || "";
         const events = (d.recent_events || []).filter((e) => !typeFilter || e.event_type === typeFilter).slice(0, 20);
         $("tnd-events").innerHTML = events.length
-          ? events.map((e) => `<div class="card" style="padding:6px 8px"><div>${chip("info", e.event_type)} <span class="mono muted" style="font-size:11px" title="${esc(e.event_id)}">${esc(e.event_id.length > 40 ? e.event_id.slice(0, 40) + "..." : e.event_id)}</span></div><div class="muted" style="font-size:11px">${relTime(e.processed_at)}</div><button class="btn-mini show-payload" data-payload='${esc(JSON.stringify(e.payload))}'>Payload</button></div>`).join("")
-          : `<div class="empty">No events.</div>`;
+          ? events.map((e) => {
+            const typeCls = e.event_type.replace(/[^a-z_]/g, "");
+            return `<div class="t-event-card"><div style="display:flex;justify-content:space-between;align-items:center"><span class="t-event-type ${typeCls}">${esc(eventTypeLabel(e.event_type))}</span><span class="muted" style="font-size:10px" title="${esc(fmtDate(e.processed_at))}">${relTime(e.processed_at)}</span></div><div class="mono muted" style="font-size:10px;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(e.event_id)}">${esc(e.event_id)}</div><button class="btn-mini show-payload" style="margin-top:4px;font-size:10px" data-payload='${esc(JSON.stringify(e.payload))}'>Просмотр</button></div>`;
+          }).join("")
+          : `<div class="empty">Событий не найдено.</div>`;
 
         const outbox = d.outbox_items || [];
         const hasFailed = outbox.some((o) => o.status === "failed");
-        const retryAllBtn = $("tnd-retry-all");
-        retryAllBtn.style.display = hasFailed ? "inline-block" : "none";
+        $("tnd-retry-all").style.display = hasFailed ? "inline-block" : "none";
         $("tnd-outbox").innerHTML = outbox.length
-          ? outbox.map((o) => `<div class="card" style="padding:6px 8px"><div>${chip(o.status === "failed" ? "bad" : "warn", o.status)} <span class="mono" style="font-size:11px">${esc(o.message_id.length > 35 ? o.message_id.slice(0, 35) + "..." : o.message_id)}</span></div><div class="mono muted" style="font-size:11px">attempts: ${o.attempts}${o.last_error ? " | " + esc(o.last_error.slice(0, 80)) : ""}</div>${o.status === "failed" ? `<button class="btn-mini outbox-retry" data-oid="${esc(o.id)}">Retry</button>` : ""}</div>`).join("")
-          : `<div class="empty">Outbox clear.</div>`;
+          ? outbox.map((o) => `<div class="t-event-card"><div style="display:flex;justify-content:space-between;align-items:center"><span class="t-outbox-status ${o.status}">${esc(outboxStatusLabel(o.status))}</span><span class="mono muted" style="font-size:10px">попытка ${o.attempts}</span></div><div class="mono muted" style="font-size:10px;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(o.message_id)}">${esc(o.message_id)}</div>${o.last_error ? `<div class="muted" style="font-size:10px;margin-top:2px;color:var(--bad)">${esc(o.last_error.slice(0, 100))}</div>` : ""}${o.status === "failed" ? `<button class="btn-mini outbox-retry" style="margin-top:4px;font-size:10px" data-oid="${esc(o.id)}">Перезапустить</button>` : ""}</div>`).join("")
+          : `<div class="empty">Очередь пуста.</div>`;
       }
 
       async function loadOutboxPage() {
@@ -1913,9 +2038,11 @@
         const body = $("outbox-body");
         const items = state.outboxItems;
         body.innerHTML = items.length
-          ? items.map((o) => `<tr><td>${esc(o.node_name || "")}<div>${uuidCell(o.node_id)}</div></td><td>${esc(o.event_type)}</td><td class="mono" style="font-size:11px" title="${esc(o.message_id)}">${esc(o.message_id.length > 30 ? o.message_id.slice(0, 30) + "..." : o.message_id)}</td><td>${chip(o.status === "failed" ? "bad" : (o.status === "published" ? "ok" : "warn"), o.status)}</td><td class="mono">${o.attempts}</td><td class="muted" style="font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis">${esc(o.last_error || "-")}</td><td>${relTime(o.created_at)}</td><td>${o.status === "failed" ? `<button class="btn-mini outbox-retry" data-oid="${esc(o.id)}">Retry</button>` : "-"}</td></tr>`).join("")
-          : `<tr><td colspan="8" class="empty">No outbox items.</td></tr>`;
-        $("outbox-pagination").innerHTML = `Showing ${items.length} of ${state.outboxTotal}` + (state.outboxTotal > 50 ? ` | <a href="#" class="outbox-page-next">Next</a>` : "");
+          ? items.map((o) => `<tr><td>${esc(o.node_name || "?")}<div>${uuidCell(o.node_id)}</div></td><td>${esc(eventTypeLabel(o.event_type))}</td><td class="mono" style="font-size:11px" title="${esc(o.message_id)}">${esc(o.message_id.length > 30 ? o.message_id.slice(0, 30) + "\u2026" : o.message_id)}</td><td><span class="t-outbox-status ${o.status}">${esc(outboxStatusLabel(o.status))}</span></td><td class="mono">${o.attempts}</td><td class="muted" style="font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis" title="${esc(o.last_error || "")}">${esc(o.last_error ? o.last_error.slice(0, 60) : "-")}</td><td title="${esc(fmtDate(o.created_at))}">${relTime(o.created_at)}</td><td>${o.status === "failed" ? `<button class="btn-mini outbox-retry" data-oid="${esc(o.id)}">Повтор</button>` : "-"}</td></tr>`).join("")
+          : `<tr><td colspan="8" class="empty">Очередь пуста.</td></tr>`;
+        const pages = Math.ceil(state.outboxTotal / 50);
+        const curPage = Math.floor(state.outboxOffset / 50) + 1;
+        $("outbox-pagination").innerHTML = state.outboxTotal > 0 ? `${state.outboxTotal} записей \u00B7 стр. ${curPage}/${pages}` + (state.outboxTotal > state.outboxOffset + 50 ? ` \u00B7 <a href="#" class="outbox-page-next">Далее &rarr;</a>` : "") : "";
       }
 
       async function loadEventsPage() {
@@ -1936,9 +2063,14 @@
         const body = $("events-body");
         const items = state.eventsItems;
         body.innerHTML = items.length
-          ? items.map((e) => `<tr><td>${esc(e.node_name || "")}<div>${uuidCell(e.node_id)}</div></td><td>${chip("info", e.event_type)}</td><td class="mono" style="font-size:11px" title="${esc(e.event_id)}">${esc(e.event_id.length > 40 ? e.event_id.slice(0, 40) + "..." : e.event_id)}</td><td>${relTime(e.processed_at)}</td><td><button class="btn-mini show-payload" data-payload='${esc(JSON.stringify(e.payload))}'>Payload</button></td></tr>`).join("")
-          : `<tr><td colspan="5" class="empty">No events.</td></tr>`;
-        $("events-pagination").innerHTML = `Showing ${items.length} of ${state.eventsTotal}` + (state.eventsTotal > 50 ? ` | <a href="#" class="events-page-next">Next</a>` : "");
+          ? items.map((e) => {
+            const typeCls = e.event_type.replace(/[^a-z_]/g, "");
+            return `<tr><td>${esc(e.node_name || "?")}<div>${uuidCell(e.node_id)}</div></td><td><span class="t-event-type ${typeCls}">${esc(eventTypeLabel(e.event_type))}</span></td><td class="mono" style="font-size:11px" title="${esc(e.event_id)}">${esc(e.event_id.length > 45 ? e.event_id.slice(0, 45) + "\u2026" : e.event_id)}</td><td title="${esc(fmtDate(e.processed_at))}">${relTime(e.processed_at)}</td><td><button class="btn-mini show-payload" data-payload='${esc(JSON.stringify(e.payload))}'>Просмотр</button></td></tr>`;
+          }).join("")
+          : `<tr><td colspan="5" class="empty">Событий не найдено.</td></tr>`;
+        const pages = Math.ceil(state.eventsTotal / 50);
+        const curPage = Math.floor(state.eventsOffset / 50) + 1;
+        $("events-pagination").innerHTML = state.eventsTotal > 0 ? `${state.eventsTotal} записей \u00B7 стр. ${curPage}/${pages}` + (state.eventsTotal > state.eventsOffset + 50 ? ` \u00B7 <a href="#" class="events-page-next">Далее &rarr;</a>` : "") : "";
       }
 
       function showPayloadModal(payloadJson) {
@@ -1946,9 +2078,9 @@
         let pretty;
         try { pretty = JSON.stringify(JSON.parse(payloadJson), null, 2); } catch { pretty = payloadJson; }
         modal.style.display = "block";
-        modal.innerHTML = `<div class="modal-overlay"><div class="modal-box" style="max-width:640px"><div class="modal-title">Payload</div><pre class="mono" style="background:var(--panel);padding:12px;border-radius:8px;overflow:auto;max-height:500px;font-size:12px;white-space:pre-wrap">${esc(pretty)}</pre><div class="modal-actions"><button class="btn btn-ghost payload-copy">Copy</button><button class="btn btn-ghost payload-close">Close</button></div></div></div>`;
-        modal.querySelector(".payload-close").addEventListener("click", () => { modal.style.display = "none"; modal.innerHTML = ""; });
-        modal.querySelector(".payload-copy").addEventListener("click", () => { navigator.clipboard.writeText(pretty).then(() => notify("Copied")); });
+        modal.innerHTML = `<div class="modal-overlay"><div class="modal-box"><div class="modal-header"><h3>Содержимое события</h3><button class="btn-mini payload-close" style="font-size:14px">&times;</button></div><pre class="mono">${esc(pretty)}</pre><div class="modal-footer"><button class="btn btn-ghost payload-copy">Копировать</button><button class="btn btn-ghost payload-close">Закрыть</button></div></div></div>`;
+        modal.querySelectorAll(".payload-close").forEach((b) => b.addEventListener("click", () => { modal.style.display = "none"; modal.innerHTML = ""; }));
+        modal.querySelector(".payload-copy").addEventListener("click", () => { navigator.clipboard.writeText(pretty).then(() => notify("Скопировано")); });
       }
 
       function switchTransportSub(sub) {
@@ -1957,8 +2089,8 @@
         document.querySelectorAll(".transport-section").forEach((s) => s.style.display = "none");
         const target = $(`tsub-${sub}`);
         if (target) target.style.display = "block";
-        if (sub === "outbox" && state.outboxItems.length === 0) loadOutboxPage().catch((e) => notify("Outbox error: " + e.message, true));
-        if (sub === "events" && state.eventsItems.length === 0) loadEventsPage().catch((e) => notify("Events error: " + e.message, true));
+        if (sub === "outbox" && state.outboxItems.length === 0) loadOutboxPage().catch((e) => notify("Ошибка загрузки очереди: " + e.message, true));
+        if (sub === "events" && state.eventsItems.length === 0) loadEventsPage().catch((e) => notify("Ошибка загрузки журнала: " + e.message, true));
       }
 
       /* --- Event listeners --- */
@@ -1981,7 +2113,7 @@
       document.querySelectorAll(".transport-sub").forEach((b) => b.addEventListener("click", () => switchTransportSub(b.dataset.tsub)));
 
       document.addEventListener("click", (e) => {
-        const row = e.target.closest(".transport-node-row");
+        const row = e.target.closest(".t-node-row");
         if (row) { loadTransportNodeDetail(row.dataset.nid).catch((er) => notify("Detail error: " + er.message, true)); return; }
 
         const payloadBtn = e.target.closest(".show-payload");
