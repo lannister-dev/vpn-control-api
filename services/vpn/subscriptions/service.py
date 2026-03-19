@@ -817,30 +817,34 @@ class SubscriptionService:
             placement.backend_node_id: placement for placement in synced_placements
         }
 
-        candidate_nodes = await self.routing_service.select_nodes(
-            preferred_region=preferred_region,
-        )
+        try:
+            candidate_nodes = await self.routing_service.select_nodes(
+                preferred_region=preferred_region,
+            )
+        except Exception:
+            candidate_nodes = []
         candidate_nodes = [
             node for node in candidate_nodes
             if self._node_has_required_public_host(node=node, key_transport=key_transport)
         ]
-        if not candidate_nodes:
+        if not candidate_nodes and not synced_placements:
             raise SubscriptionBuild("No available nodes")
 
-        target_nodes = candidate_nodes[:desired_replicas]
-        for node in target_nodes:
-            node_id = self._as_uuid(str(node.id))
-            if node_id in placements_by_backend:
-                continue
-            created = await self.placement_repository.upsert_set_pending(
-                key_id=key_id,
-                backend_node_id=node_id,
-                desired_state=PlacementDesiredState.active.value,
-                sticky_until=None,
-                last_migration_reason="subscription_replica",
-            )
-            await self.node_agent_transport.enqueue_for_placement_ids([created.id])
-            placements_by_backend[node_id] = created
+        if candidate_nodes:
+            target_nodes = candidate_nodes[:desired_replicas]
+            for node in target_nodes:
+                node_id = self._as_uuid(str(node.id))
+                if node_id in placements_by_backend:
+                    continue
+                created = await self.placement_repository.upsert_set_pending(
+                    key_id=key_id,
+                    backend_node_id=node_id,
+                    desired_state=PlacementDesiredState.active.value,
+                    sticky_until=None,
+                    last_migration_reason="subscription_replica",
+                )
+                await self.node_agent_transport.enqueue_for_placement_ids([created.id])
+                placements_by_backend[node_id] = created
 
         preferred_placement: UserPlacement | None = None
         for node in candidate_nodes:
@@ -848,20 +852,23 @@ class SubscriptionService:
             preferred_placement = synced_by_backend.get(node_id)
             if preferred_placement is not None:
                 break
+        if preferred_placement is None and synced_placements:
+            preferred_placement = synced_placements[0]
         if preferred_placement is None:
             raise SubscriptionBuild("Node placement sync pending")
 
         preferred_backend_id = self._as_uuid(preferred_placement.backend_node_id)
         allowed_backend_ids: set[UUID] = set(synced_by_backend.keys())
         if not allowed_backend_ids:
-            raise SubscriptionBuild("Node placement sync pending")
+            raise SubscriptionBuild("Backend placement sync pending")
         return preferred_backend_id, preferred_placement, allowed_backend_ids
 
-    def _resolved_route_node_seen_after(self) -> datetime:
+    def _stale_after_sec(self) -> int:
         node_agent_settings = getattr(self.settings, "node_agent", None)
-        stale_after_raw = getattr(node_agent_settings, "stale_after_sec", 90)
-        stale_after_sec = max(30, int(stale_after_raw))
-        return datetime.now(timezone.utc) - timedelta(seconds=stale_after_sec)
+        return max(30, int(getattr(node_agent_settings, "stale_after_sec", 90)))
+
+    def _resolved_route_node_seen_after(self) -> datetime:
+        return datetime.now(timezone.utc) - timedelta(seconds=self._stale_after_sec() * 3)
 
     @staticmethod
     def _is_placement_synced(placement: UserPlacement) -> bool:
