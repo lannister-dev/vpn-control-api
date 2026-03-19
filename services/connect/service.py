@@ -29,6 +29,7 @@ from services.users.repository import UserRepository
 from services.vpn.keys.repository import VpnKeyRepository
 from services.vpn.keys.schemas import VpnKeyInternalCreate, VpnProtocol, VpnTransport
 from shared.database.session import AsyncDatabase
+from services.placements.transport import NodeAgentPlacementTransport
 from shared.profiles.builder import VlessUriBuilder
 from shared.profiles.schemas import (
     NodePublic,
@@ -55,6 +56,7 @@ class ConnectService:
         self.key_repository = VpnKeyRepository(session)
         self.node_repository = VpnNodeRepository(session)
         self.placement_repository = UserPlacementRepository(session)
+        self.node_agent_transport = NodeAgentPlacementTransport(session)
         self.route_repository = RouteRepository(session)
         self.routing_service = RoutingService(session)
         self.route_selector = RouteSelector[ResolvedRouteInternal](
@@ -214,6 +216,7 @@ class ConnectService:
                     sticky_until=None,
                     last_migration_reason="connect_replica",
                 )
+                await self.node_agent_transport.enqueue_for_placement_ids([created.id])
                 placements_by_backend[node_id] = created
 
         preferred_placement: UserPlacement | None = None

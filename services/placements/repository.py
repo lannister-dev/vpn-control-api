@@ -2,11 +2,10 @@ from datetime import datetime
 from uuid import UUID
 
 from fastapi import Depends
-from sqlalchemy import and_, case, func, or_, select, update as sa_update
+from sqlalchemy import and_, func, or_, select, update as sa_update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.nodes.models import VpnNode
 from services.placements.model import UserPlacement
 from services.vpn.keys.models import VpnKey
 from shared.database.base_repository import BaseRepository
@@ -92,38 +91,38 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
         res = await self.session.execute(stmt)
         return {row[0]: int(row[1]) for row in res.all()}
 
-    async def list_for_backend_with_keys_page(
+    async def list_transport_rows_by_placement_ids(
+        self,
+        *,
+        placement_ids: list[UUID],
+    ) -> list[tuple[UserPlacement, VpnKey]]:
+        if not placement_ids:
+            return []
+        stmt = (
+            select(self.model, VpnKey)
+            .join(VpnKey, VpnKey.id == self.model.key_id)
+            .where(self.model.id.in_(placement_ids))
+            .where(self.model.is_active.is_(True))
+            .where(VpnKey.is_active.is_(True))
+        )
+        result = await self.session.execute(stmt)
+        return list(result.tuples().all())
+
+    async def list_transport_rows_for_backend(
         self,
         *,
         backend_node_id: UUID,
-        cursor: tuple[datetime, UUID] | None,
-        limit: int,
-    ) -> list[tuple[UserPlacement, VpnKey, VpnNode]]:
+    ) -> list[tuple[UserPlacement, VpnKey]]:
         stmt = (
-            select(self.model, VpnKey, VpnNode)
+            select(self.model, VpnKey)
             .join(VpnKey, VpnKey.id == self.model.key_id)
-            .join(VpnNode, VpnNode.id == self.model.backend_node_id)
-            .where(
-                self.model.is_active.is_(True),
-                self.model.backend_node_id == backend_node_id,
-                VpnKey.is_active.is_(True),
-                VpnNode.is_active.is_(True),
-            )
+            .where(self.model.backend_node_id == backend_node_id)
+            .where(self.model.is_active.is_(True))
+            .where(VpnKey.is_active.is_(True))
+            .order_by(self.model.updated_at.asc(), self.model.id.asc())
         )
-
-        if cursor is not None:
-            updated_at, pid = cursor
-            stmt = stmt.where(
-                or_(
-                    self.model.updated_at > updated_at,
-                    and_(self.model.updated_at == updated_at, self.model.id > pid),
-                )
-            )
-
-        stmt = stmt.order_by(self.model.updated_at.asc(), self.model.id.asc()).limit(limit)
-        res = await self.session.execute(stmt)
-        rows: list[tuple[UserPlacement, VpnKey, VpnNode]] = list(res.tuples().all())
-        return rows
+        result = await self.session.execute(stmt)
+        return list(result.tuples().all())
 
     async def upsert_set_pending(
         self,
@@ -233,64 +232,6 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
         updated_ids = list(result.scalars().all())
         return len(updated_ids)
 
-    async def list_by_ids_for_backend(
-        self,
-        *,
-        placement_ids: list[UUID],
-        backend_node_id: UUID,
-    ) -> list[UserPlacement]:
-        if not placement_ids:
-            return []
-        stmt = (
-            select(self.model)
-            .where(self.model.id.in_(placement_ids))
-            .where(self.model.backend_node_id == backend_node_id)
-        )
-        result = await self.session.execute(stmt)
-        return list(result.scalars().all())
-
-    async def apply_backend_reports_batch(
-        self,
-        *,
-        reports: list[tuple[UUID, int, str, int]],
-        updated_at: datetime,
-        reporter_backend_id: UUID,
-    ) -> set[UUID]:
-        if not reports:
-            return set()
-
-        match_conditions = [
-            and_(self.model.id == placement_id, self.model.op_version == expected_op_version)
-            for placement_id, expected_op_version, _applied_state, _applied_version in reports
-        ]
-        applied_state_case = case(
-            *[
-                (self.model.id == placement_id, applied_state)
-                for placement_id, _expected_op_version, applied_state, _applied_version in reports
-            ],
-            else_=self.model.applied_state,
-        )
-        applied_version_case = case(
-            *[
-                (self.model.id == placement_id, applied_version)
-                for placement_id, _expected_op_version, _applied_state, applied_version in reports
-            ],
-            else_=self.model.applied_version,
-        )
-
-        result = await self.session.execute(
-            sa_update(self.model)
-            .where(self.model.backend_node_id == reporter_backend_id)
-            .where(or_(*match_conditions))
-            .values(
-                applied_state=applied_state_case,
-                applied_version=applied_version_case,
-                updated_at=updated_at,
-            )
-            .returning(self.model.id)
-        )
-        return set(result.scalars().all())
-
     async def bulk_migrate_backend(
         self,
         *,
@@ -377,6 +318,42 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
             )
             migrated += 1
         return migrated
+
+    async def list_active_ids_for_key(
+        self,
+        *,
+        key_id: UUID,
+        desired_state: str,
+        backend_node_ids: list[UUID] | None,
+    ) -> list[UUID]:
+        stmt = (
+            select(self.model.id)
+            .where(self.model.key_id == key_id)
+            .where(self.model.is_active.is_(True))
+            .where(self.model.desired_state == desired_state)
+        )
+        if backend_node_ids is not None:
+            stmt = stmt.where(self.model.backend_node_id.in_(backend_node_ids))
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def list_active_ids_for_keys(
+        self,
+        *,
+        key_ids: list[UUID],
+        backend_node_id: UUID | None = None,
+    ) -> list[UUID]:
+        if not key_ids:
+            return []
+        stmt = (
+            select(self.model.id)
+            .where(self.model.key_id.in_(key_ids))
+            .where(self.model.is_active.is_(True))
+        )
+        if backend_node_id is not None:
+            stmt = stmt.where(self.model.backend_node_id == backend_node_id)
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
 
 
 def get_user_placement_repository(

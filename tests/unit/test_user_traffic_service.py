@@ -34,6 +34,7 @@ def service(async_session):
     svc.key_repository = AsyncMock()
     svc.placement_repository = AsyncMock()
     svc.traffic_usage_repository = AsyncMock()
+    svc.node_agent_transport = AsyncMock()
     return svc
 
 
@@ -83,6 +84,7 @@ class TestUserTrafficService:
         assert out == {"processed": 1, "revoked": 1}
         assert key.is_revoked is True
         service.placement_repository.set_desired_state_for_key.assert_awaited_once()
+        service.node_agent_transport.enqueue_for_key_state.assert_awaited_once()
 
     async def test_ingest_ignores_unknown_keys(self, service):
         service.key_repository.list_by_client_ids.return_value = []

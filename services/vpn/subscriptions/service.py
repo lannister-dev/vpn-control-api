@@ -75,6 +75,7 @@ from services.vpn.subscriptions.schemas import (
 )
 from services.vpn.subscriptions.utils import SubscriptionUtils
 from shared.database.session import AsyncDatabase
+from services.placements.transport import NodeAgentPlacementTransport
 from shared.monitoring.metrics import (
     SUBSCRIPTION_BUILD_DURATION,
     SUBSCRIPTION_CACHE_TOTAL,
@@ -118,6 +119,7 @@ class SubscriptionService:
         self.node_repository = VpnNodeRepository(session)
         self.routing_service = RoutingService(session)
         self.placement_repository = UserPlacementRepository(session)
+        self.node_agent_transport = NodeAgentPlacementTransport(session)
         self.route_repository = RouteRepository(session)
         self.user_repository = UserRepository(session)
         self.vpn_key_repository = VpnKeyRepository(session)
@@ -894,7 +896,7 @@ class SubscriptionService:
             allowed_backend_ids = {preferred_backend_id}
         return preferred_backend_id, preferred_placement, allowed_backend_ids
 
-    def _resolved_route_node_seen_after(self) -> datetime:
+    def _stale_after_sec(self) -> int:
         node_agent_settings = getattr(self.settings, "node_agent", None)
         stale_after_raw = getattr(node_agent_settings, "stale_after_sec", 90)
         stale_after_sec = max(30, int(stale_after_raw)) * 3
@@ -1100,6 +1102,10 @@ class SubscriptionService:
             desired_state=desired_state.value,
             last_migration_reason=reason,
             updated_at=datetime.now(timezone.utc),
+        )
+        await self.node_agent_transport.enqueue_for_key_state(
+            key_id=key_id,
+            desired_state=desired_state.value,
         )
 
     def _hash_hwid(self, hwid: str) -> str:

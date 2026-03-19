@@ -11,6 +11,7 @@ def _has_route(*, path: str, method: str) -> bool:
 
 def test_node_compat_routes_registered():
     assert _has_route(path="/api/v1/agent/initial", method="POST")
-    assert _has_route(path="/api/v1/agent/heartbeat", method="POST")
-    assert _has_route(path="/api/v1/agent/sync-report", method="POST")
-    assert _has_route(path="/api/v1/agent/placements/page", method="GET")
+    assert not _has_route(path="/api/v1/agent/heartbeat", method="POST")
+    assert not _has_route(path="/api/v1/agent/sync-report", method="POST")
+    assert not _has_route(path="/api/v1/agent/placements/page", method="GET")
+    assert not _has_route(path="/api/v1/agent/placements/report-batch", method="POST")

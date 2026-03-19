@@ -30,6 +30,29 @@ class _ScalarResult:
         return _Scalars(self._rows)
 
 
+class _TupleResult:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def tuples(self):
+        return _Scalars(self._rows)
+
+
+@pytest.mark.asyncio
+async def test_list_active_ids_for_keys_returns_filtered_ids(async_session):
+    repo = UserPlacementRepository(async_session)
+    placement_ids = [uuid4(), uuid4()]
+    async_session.execute = AsyncMock(return_value=_ScalarResult(placement_ids))
+
+    out = await repo.list_active_ids_for_keys(
+        key_ids=[uuid4(), uuid4()],
+        backend_node_id=uuid4(),
+    )
+
+    assert out == placement_ids
+    async_session.execute.assert_awaited_once()
+
+
 @pytest.mark.asyncio
 async def test_bulk_migrate_backend_returns_zero_for_empty_ids(async_session):
     repo = UserPlacementRepository(async_session)
@@ -145,17 +168,3 @@ async def test_bulk_migrate_backend_reuses_inactive_target_row(async_session):
     retire_params = retire_stmt.compile().params
     assert retire_params["is_active"] is False
     assert "backend_node_id" not in retire_params
-
-
-@pytest.mark.asyncio
-async def test_apply_backend_reports_batch_returns_empty_for_no_reports(async_session):
-    repo = UserPlacementRepository(async_session)
-
-    out = await repo.apply_backend_reports_batch(
-        reports=[],
-        updated_at=datetime.now(timezone.utc),
-        reporter_backend_id=uuid4(),
-    )
-
-    assert out == set()
-    async_session.execute.assert_not_awaited()

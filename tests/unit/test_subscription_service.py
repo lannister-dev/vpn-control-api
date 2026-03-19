@@ -1011,6 +1011,7 @@ async def test_subscription_rejects_pending_placement_for_new_backend(service):
     )
 
     service.placement_repository = AsyncMock()
+    service.node_agent_transport = AsyncMock()
     service.routing_service = AsyncMock()
     service.placement_repository.list_by_key_id.return_value = []
     service.placement_repository.upsert_set_pending = AsyncMock(return_value=created)
@@ -1025,6 +1026,7 @@ async def test_subscription_rejects_pending_placement_for_new_backend(service):
         )
 
     assert str(exc.value) == "Node placement sync pending"
+    service.node_agent_transport.enqueue_for_placement_ids.assert_awaited_once_with([created.id])
 
 
 @pytest.mark.asyncio

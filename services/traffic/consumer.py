@@ -5,7 +5,7 @@ import logging
 from services.config import NatsConfig
 from services.traffic.service import UserTrafficService
 from shared.database.session import AsyncDatabase
-from shared.integrations.nats_client import NatsClient
+from shared.nats.client import NatsClient
 from shared.utils.logger import StructuredLogger
 
 
