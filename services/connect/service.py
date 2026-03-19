@@ -236,7 +236,7 @@ class ConnectService:
     def _resolved_route_node_seen_after(self) -> datetime:
         node_agent_settings = getattr(self.settings, "node_agent", None)
         stale_after_raw = getattr(node_agent_settings, "stale_after_sec", 90)
-        stale_after_sec = max(30, int(stale_after_raw))
+        stale_after_sec = max(30, int(stale_after_raw)) * 3
         return datetime.now(timezone.utc) - timedelta(seconds=stale_after_sec)
 
     async def _list_active_placements_for_key(self, *, key_id: UUID) -> list[UserPlacement]:
