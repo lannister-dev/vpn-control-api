@@ -11,6 +11,7 @@ from shared.redis.client import redis_client
 from shared.utils.logger import StructuredLogger
 
 from services.admin_transport.router import router as admin_transport_router
+from services.admin_transport.cleanup_reconciler import AdminTransportCleanupReconciler
 from services.auth.docs import DocsBasicAuthMiddleware
 from services.auth.router import router as auth_router
 from services.admin_ops.router import router as admin_ops_router
@@ -62,6 +63,7 @@ async def lifespan(app: FastAPI):
     node_agent_runtime = NodeAgentRuntime(get_settings().nats)
     users_traffic_consumer = UserTrafficNatsConsumer(get_settings().nats)
     traffic_cleanup_reconciler = TrafficHistoryCleanupReconciler()
+    transport_cleanup_reconciler = AdminTransportCleanupReconciler()
     traffic_reset_reconciler = TrafficResetReconciler()
     await warmup_reconciler.start()
     await probe_cleanup_reconciler.start()
@@ -71,11 +73,13 @@ async def lifespan(app: FastAPI):
     app.state.node_agent_runtime = node_agent_runtime
     await users_traffic_consumer.start()
     await traffic_cleanup_reconciler.start()
+    await transport_cleanup_reconciler.start()
     await traffic_reset_reconciler.start()
     try:
         yield
     finally:
         await traffic_reset_reconciler.stop()
+        await transport_cleanup_reconciler.stop()
         await traffic_cleanup_reconciler.stop()
         await users_traffic_consumer.stop()
         await node_agent_runtime.stop()

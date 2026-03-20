@@ -11,6 +11,7 @@ from services.admin_transport.schemas import (
     OutboxListOut,
     OutboxRetryAllOut,
     OutboxRetryOut,
+    TransportCleanupOut,
     TransportNodeDetailOut,
     TransportNodeListOut,
     TransportOverviewOut,
@@ -139,6 +140,18 @@ async def transport_events(
         limit=limit,
         offset=offset,
     )
+
+
+@router.post(
+    "/cleanup",
+    response_model=TransportCleanupOut,
+    status_code=status.HTTP_200_OK,
+    summary="Delete old transport event log and published outbox rows",
+)
+async def transport_cleanup(
+    service: AdminTransportService = Depends(get_admin_transport_service),
+) -> TransportCleanupOut:
+    return await service.cleanup_old_data()
 
 
 @router.post(
