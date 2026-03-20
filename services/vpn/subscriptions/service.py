@@ -421,12 +421,6 @@ class SubscriptionService:
         t0 = time.perf_counter()
 
         token_hash = SubscriptionUtils.hash(raw_token)
-        logger_sub.info(
-            "build_payload_start",
-            token_hash=token_hash[:12],
-            hwid=hwid[:12] if hwid else None,
-            user_agent=user_agent,
-        )
         cache_ttl = max(0, int(self.settings.subscriptions.response_cache_ttl_sec))
         cache_key = redis_key.payload_cache(token_hash=token_hash, hwid=hwid)
         lock_key = redis_key.payload_build_lock(token_hash=token_hash, hwid=hwid)
@@ -455,17 +449,8 @@ class SubscriptionService:
         try:
             subscription = await self.subscription_repository.get_by_any_token_hash(token_hash)
             if not subscription:
-                logger_sub.warning("build_payload_sub_not_found", token_hash=token_hash[:12])
                 raise SubscriptionNotFound("subscription")
 
-            logger_sub.info(
-                "build_payload_sub_found",
-                sub_id=str(subscription.id),
-                is_active=subscription.is_active,
-                expires_at=str(subscription.expires_at),
-                preferred_region=subscription.preferred_region,
-                profile_key=subscription.profile_key,
-            )
             self._validate_subscription(subscription, token_hash)
 
             now = datetime.now(timezone.utc)
@@ -475,27 +460,11 @@ class SubscriptionService:
                 user_agent=user_agent,
                 now=now,
             )
-            logger_sub.info(
-                "build_payload_bundle_resolved",
-                sub_id=str(subscription.id),
-                device_id=str(bundle.device.id),
-                keys_count=len(bundle.keys),
-                keys=[
-                    {"key_id": str(k.vpn_key_id), "transport": k.transport, "client_id": k.client_id[:8]}
-                    for k in bundle.keys
-                ],
-            )
 
             max_routes = max(1, min(10, int(self.settings.subscriptions.smart_route_max_count)))
             transport_results: list[TransportBuildResult] = []
             transport_diagnostics: dict[str, str] = {}
             for key in bundle.keys:
-                logger_sub.info(
-                    "build_payload_building_transport",
-                    sub_id=str(subscription.id),
-                    key_id=str(key.vpn_key_id),
-                    transport=key.transport,
-                )
                 result = await self._build_transport_routes(
                     subscription=subscription,
                     key=key,
@@ -503,28 +472,11 @@ class SubscriptionService:
                 )
                 if result.routes:
                     transport_results.append(result)
-                    logger_sub.info(
-                        "build_payload_transport_ok",
-                        transport=key.transport,
-                        routes_count=len(result.routes),
-                    )
                 elif result.diagnostic_reason:
                     transport_diagnostics[key.transport] = result.diagnostic_reason
-                    logger_sub.warning(
-                        "build_payload_transport_failed",
-                        transport=key.transport,
-                        diagnostic=result.diagnostic_reason,
-                    )
 
             if not transport_results:
-                msg = self._build_no_routes_message(transport_diagnostics)
-                logger_sub.error(
-                    "build_payload_no_routes",
-                    sub_id=str(subscription.id),
-                    diagnostics=transport_diagnostics,
-                    message=msg,
-                )
-                raise SubscriptionBuild(msg)
+                raise SubscriptionBuild(self._build_no_routes_message(transport_diagnostics))
 
             selected_routes = self._merge_transport_routes(
                 subscription=subscription,
@@ -651,13 +603,6 @@ class SubscriptionService:
             key: ResolvedDeviceKey,
             max_routes: int,
     ) -> TransportBuildResult:
-        logger_sub.info(
-            "build_transport_start",
-            key_id=str(key.vpn_key_id),
-            transport=key.transport,
-            preferred_region=subscription.preferred_region,
-            max_routes=max_routes,
-        )
         try:
             selected_backend_id, placement, allowed_backend_ids = await self._ensure_backend_placements_for_key(
                 key_id=key.vpn_key_id,
@@ -665,20 +610,7 @@ class SubscriptionService:
                 desired_replicas=max_routes,
                 key_transport=key.transport,
             )
-            logger_sub.info(
-                "build_transport_placements_ok",
-                key_id=str(key.vpn_key_id),
-                selected_backend=str(selected_backend_id),
-                allowed_backends=[str(b) for b in allowed_backend_ids],
-                placement_id=str(placement.id),
-            )
         except SubscriptionBuild as exc:
-            logger_sub.warning(
-                "build_transport_placements_failed",
-                key_id=str(key.vpn_key_id),
-                transport=key.transport,
-                error=str(exc),
-            )
             return TransportBuildResult(
                 key=key,
                 routes=(),
@@ -692,12 +624,6 @@ class SubscriptionService:
             preferred_region=subscription.preferred_region,
             limit=max_fetch,
             node_seen_after=self._resolved_route_node_seen_after(),
-        )
-        logger_sub.info(
-            "build_transport_routes_fetched",
-            key_id=str(key.vpn_key_id),
-            route_rows_count=len(route_rows),
-            node_seen_after=str(self._resolved_route_node_seen_after()),
         )
 
         has_allowed = any(
@@ -932,25 +858,6 @@ class SubscriptionService:
         synced_by_backend: dict[UUID, UserPlacement] = {
             placement.backend_node_id: placement for placement in synced_placements
         }
-        logger_sub.info(
-            "ensure_placements_existing",
-            key_id=str(key_id),
-            key_transport=key_transport,
-            preferred_region=preferred_region,
-            all_placements_count=len(all_placements),
-            synced_count=len(synced_placements),
-            placements_by_backend=[str(nid) for nid in placements_by_backend],
-            placement_details=[
-                {
-                    "id": str(p.id),
-                    "backend": str(p.backend_node_id),
-                    "applied_state": getattr(p, "applied_state", None),
-                    "op_version": p.op_version,
-                    "applied_version": getattr(p, "applied_version", None),
-                }
-                for p in all_placements
-            ],
-        )
 
         try:
             candidate_nodes = await self.routing_service.select_nodes(
@@ -964,43 +871,11 @@ class SubscriptionService:
             )
             candidate_nodes = []
 
-        logger_sub.info(
-            "ensure_placements_select_nodes_raw",
-            key_id=str(key_id),
-            candidate_count=len(candidate_nodes),
-            candidates=[
-                {
-                    "id": str(n.id),
-                    "name": str(n.name),
-                    "region": n.region,
-                    "reality_ip": n.reality_ip,
-                    "public_domain": n.public_domain,
-                    "capacity": n.capacity,
-                }
-                for n in candidate_nodes
-            ],
-        )
-
-        pre_filter_count = len(candidate_nodes)
         candidate_nodes = [
             node for node in candidate_nodes
             if self._node_has_required_public_host(node=node, key_transport=key_transport)
         ]
-        logger_sub.info(
-            "ensure_placements_after_host_filter",
-            key_id=str(key_id),
-            key_transport=key_transport,
-            pre_filter=pre_filter_count,
-            post_filter=len(candidate_nodes),
-            filtered_out=pre_filter_count - len(candidate_nodes),
-        )
-
         if not candidate_nodes and not placements_by_backend:
-            logger_sub.error(
-                "ensure_placements_no_candidates_no_existing",
-                key_id=str(key_id),
-                key_transport=key_transport,
-            )
             raise SubscriptionBuild("No available nodes")
 
         if candidate_nodes:
@@ -1009,18 +884,7 @@ class SubscriptionService:
             for node in target_nodes:
                 node_id = self._as_uuid(str(node.id))
                 if node_id in placements_by_backend:
-                    logger_sub.info(
-                        "ensure_placements_skip_existing",
-                        key_id=str(key_id),
-                        node_id=str(node_id),
-                    )
                     continue
-                logger_sub.info(
-                    "ensure_placements_creating",
-                    key_id=str(key_id),
-                    node_id=str(node_id),
-                    node_name=str(node.name),
-                )
                 created = await self.placement_repository.upsert_set_pending(
                     key_id=key_id,
                     backend_node_id=node_id,
@@ -1030,18 +894,7 @@ class SubscriptionService:
                 )
                 placements_by_backend[node_id] = created
                 new_placement_ids.append(created.id)
-                logger_sub.info(
-                    "ensure_placements_created",
-                    key_id=str(key_id),
-                    placement_id=str(created.id),
-                    node_id=str(node_id),
-                )
             if new_placement_ids:
-                logger_sub.info(
-                    "ensure_placements_enqueue_nats",
-                    key_id=str(key_id),
-                    placement_ids=[str(pid) for pid in new_placement_ids],
-                )
                 await self.node_agent_transport.enqueue_for_placement_ids(new_placement_ids)
 
         preferred_placement: UserPlacement | None = None
@@ -1049,40 +902,15 @@ class SubscriptionService:
             node_id = self._as_uuid(str(node.id))
             preferred_placement = synced_by_backend.get(node_id)
             if preferred_placement is not None:
-                logger_sub.info(
-                    "ensure_placements_preferred_from_candidate",
-                    key_id=str(key_id),
-                    placement_id=str(preferred_placement.id),
-                    node_id=str(node_id),
-                )
                 break
         if preferred_placement is None and synced_placements:
             preferred_placement = synced_placements[0]
-            logger_sub.info(
-                "ensure_placements_preferred_from_synced",
-                key_id=str(key_id),
-                placement_id=str(preferred_placement.id),
-            )
 
         if preferred_placement is None:
             applied_placements = [
                 p for p in all_placements
                 if getattr(p, "applied_state", None) == "applied"
             ]
-            logger_sub.info(
-                "ensure_placements_no_synced_checking_applied",
-                key_id=str(key_id),
-                applied_count=len(applied_placements),
-                all_placement_states=[
-                    {
-                        "id": str(p.id),
-                        "applied_state": getattr(p, "applied_state", None),
-                        "op_version": p.op_version,
-                        "applied_version": getattr(p, "applied_version", None),
-                    }
-                    for p in all_placements
-                ],
-            )
             if applied_placements:
                 preferred_placement = applied_placements[0]
                 synced_by_backend[preferred_placement.backend_node_id] = preferred_placement
@@ -1094,15 +922,12 @@ class SubscriptionService:
                     applied_version=getattr(preferred_placement, "applied_version", None),
                 )
 
+        if preferred_placement is None and placements_by_backend:
+            pending_placement = next(iter(placements_by_backend.values()))
+            preferred_placement = pending_placement
+            synced_by_backend[pending_placement.backend_node_id] = pending_placement
+
         if preferred_placement is None:
-            logger_sub.error(
-                "ensure_placements_no_preferred_found",
-                key_id=str(key_id),
-                all_placements_count=len(all_placements),
-                synced_count=len(synced_placements),
-                candidate_nodes_count=len(candidate_nodes),
-                placements_by_backend_count=len(placements_by_backend),
-            )
             raise SubscriptionBuild("Node placement sync pending")
 
         preferred_backend_id = self._as_uuid(preferred_placement.backend_node_id)
@@ -1342,22 +1167,11 @@ class SubscriptionService:
             raise SubscriptionHwidRequired()
 
         hwid_hash = self._hash_hwid(hwid)
-        logger_sub.info(
-            "resolve_device_lookup",
-            sub_id=str(subscription.id),
-            hwid_hash=hwid_hash[:12],
-        )
         device = await self.device_repository.get_active_by_sub_and_hwid_hash(
             subscription_id=subscription.id,
             hwid_hash=hwid_hash,
         )
         if device:
-            logger_sub.info(
-                "resolve_device_found_existing",
-                sub_id=str(subscription.id),
-                device_id=str(device.id),
-                vpn_key_id=str(device.vpn_key_id) if device.vpn_key_id else None,
-            )
             await self.device_repository.touch(
                 device_id=device.id,
                 last_seen_at=now,
@@ -1369,22 +1183,12 @@ class SubscriptionService:
                 now=now,
             )
 
-        logger_sub.info(
-            "resolve_device_not_found_creating",
-            sub_id=str(subscription.id),
-            hwid_hash=hwid_hash[:12],
-        )
         await self._lock_subscription_for_device_allocation(subscription.id)
         device = await self.device_repository.get_active_by_sub_and_hwid_hash(
             subscription_id=subscription.id,
             hwid_hash=hwid_hash,
         )
         if device:
-            logger_sub.info(
-                "resolve_device_found_after_lock",
-                sub_id=str(subscription.id),
-                device_id=str(device.id),
-            )
             await self.device_repository.touch(
                 device_id=device.id,
                 last_seen_at=now,
@@ -1398,12 +1202,6 @@ class SubscriptionService:
 
         max_devices = subscription.max_devices or self.settings.subscriptions.max_devices_default
         current = await self.device_repository.count_active_for_subscription(subscription.id)
-        logger_sub.info(
-            "resolve_device_checking_limit",
-            sub_id=str(subscription.id),
-            current_devices=current,
-            max_devices=max_devices,
-        )
         if current >= max_devices:
             raise SubscriptionDeviceLimitReached()
 
@@ -1411,21 +1209,10 @@ class SubscriptionService:
         if valid_until is None:
             valid_until = now + timedelta(days=365)
         bundle_transports = self._subscription_bundle_transports(subscription)
-        logger_sub.info(
-            "resolve_device_bundle_transports",
-            sub_id=str(subscription.id),
-            transports=[t.value for t in bundle_transports],
-            profile_key=subscription.profile_key,
-        )
         if not bundle_transports:
             raise SubscriptionBuild("No available key")
 
         primary_transport = bundle_transports[0]
-        logger_sub.info(
-            "resolve_device_creating_primary_key",
-            sub_id=str(subscription.id),
-            transport=primary_transport.value,
-        )
         primary_key = await self._create_vpn_key_for_transport(
             subscription=subscription,
             transport=primary_transport,
@@ -1442,17 +1229,7 @@ class SubscriptionService:
                     user_agent=user_agent,
                 ).model_dump()
             )
-            logger_sub.info(
-                "resolve_device_created",
-                sub_id=str(subscription.id),
-                device_id=str(device.id),
-                primary_key_id=str(primary_key.id),
-            )
         except IntegrityError:
-            logger_sub.warning(
-                "resolve_device_integrity_error",
-                sub_id=str(subscription.id),
-            )
             device = await self.device_repository.get_active_by_sub_and_hwid_hash(
                 subscription_id=subscription.id,
                 hwid_hash=hwid_hash,
