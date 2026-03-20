@@ -236,12 +236,11 @@ class ConnectService:
             raise HTTPException(status_code=503, detail="Node placement sync pending")
         return preferred_backend_id, preferred_placement, allowed_backend_ids
 
-    def _stale_after_sec(self) -> int:
-        node_agent_settings = getattr(self.settings, "node_agent", None)
-        return max(30, int(getattr(node_agent_settings, "stale_after_sec", 90)))
-
     def _resolved_route_node_seen_after(self) -> datetime:
-        return datetime.now(timezone.utc) - timedelta(seconds=self._stale_after_sec() * 3)
+        node_agent_settings = getattr(self.settings, "node_agent", None)
+        stale_after_raw = getattr(node_agent_settings, "stale_after_sec", 90)
+        stale_after_sec = max(30, int(stale_after_raw)) * 3
+        return datetime.now(timezone.utc) - timedelta(seconds=stale_after_sec)
 
     async def _list_active_placements_for_key(self, *, key_id: UUID) -> list[UserPlacement]:
         rows = await self.placement_repository.list_by_key_id(

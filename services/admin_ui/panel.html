@@ -869,11 +869,11 @@
               <form id="form-sub-create" class="stack" autocomplete="off">
                 <input class="input mono" name="user_id" placeholder="ID пользователя (UUID)" required />
                 <div class="row-2">
-                  <input class="input" id="sub-profile-key" name="profile_key" list="sub-profile-keys" placeholder="profile_key" autocomplete="off" required />
+                  <input class="input" id="sub-profile-key" name="profile_key" list="sub-profile-keys" placeholder="profile_key (опционально)" autocomplete="off" />
                   <input class="input" name="preferred_region" placeholder="preferred_region (опционально)" />
                 </div>
                 <datalist id="sub-profile-keys"></datalist>
-                <div id="sub-profile-key-help" class="muted">Профили будут подгружены из активного artifact.</div>
+                <div id="sub-profile-key-help" class="muted">Необязательно. Влияет только на приоритет транспорта. Бандл всегда: Reality + WS.</div>
                 <div class="row-2"><input class="input" name="expires_at" type="datetime-local" /><input class="input" name="max_devices" type="number" min="1" max="100" placeholder="max_devices (опционально)" /></div>
                 <div class="muted">На первом запросе по HWID устройство получит bundle ключей. Базовый набор сейчас: Reality + WS.</div>
                 <button class="btn btn-primary" type="submit">Создать подписку</button>
@@ -2181,39 +2181,22 @@
         const d = new FormData(refs.formSubCreate);
         const payload = {
           user_id: String(d.get("user_id") || "").trim(),
-          profile_key: String(d.get("profile_key") || "").trim(),
         };
+        const profileKey = String(d.get("profile_key") || "").trim();
+        if (profileKey) payload.profile_key = profileKey;
         const preferredRegion = String(d.get("preferred_region") || "").trim();
         if (preferredRegion) payload.preferred_region = preferredRegion;
         const maxDevices = String(d.get("max_devices") || "").trim();
         if (maxDevices) payload.max_devices = Number(maxDevices);
         const expiresAt = parseDateTimeLocal(d.get("expires_at"));
         if (expiresAt) payload.expires_at = expiresAt;
-        let knownProfileKeys = null;
-        try {
-          knownProfileKeys = await loadActiveProfileKeys();
-        } catch (_) {}
-        if (Array.isArray(knownProfileKeys)) {
-          if (knownProfileKeys.length === 0) {
-            const message = "В активном profiles artifact нет доступных profile_key.";
-            renderSubscriptionCreateError(message);
-            notify(message, true);
-            return;
-          }
-          if (!knownProfileKeys.includes(payload.profile_key)) {
-            const message = `Неизвестный profile_key: ${payload.profile_key}. Доступные profile_key: ${knownProfileKeys.join(", ")}`;
-            renderSubscriptionCreateError(message);
-            notify(message, true);
-            return;
-          }
-        }
         runAction("Create subscription", () => req("/api/v1/subscriptions", { method: "POST", body: payload }))
           .then((created) => {
             renderSubscriptionCreateResult(created);
             const createdSub = {
               id: created.id,
               user_id: payload.user_id,
-              profile_key: payload.profile_key,
+              profile_key: payload.profile_key || null,
               preferred_region: payload.preferred_region || null,
               is_active: created.is_active,
               expires_at: created.expires_at,

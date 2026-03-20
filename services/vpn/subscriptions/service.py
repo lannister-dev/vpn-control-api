@@ -101,6 +101,12 @@ from shared.utils.node_display import (
     country_code_from_region,
     format_node_display_name,
 )
+from shared.utils.logger import StructuredLogger
+
+import logging
+
+logger_sub = StructuredLogger(logging.getLogger("subscription-build"))
+
 
 class SubscriptionService:
     def __init__(self, session: AsyncSession, redis: RedisClient):
@@ -128,26 +134,19 @@ class SubscriptionService:
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
-        if not data.profile_key:
-            raise HTTPException(
-                status_code=422,
-                detail="profile_key is required to create a subscription",
-            )
-
         raw_token = SubscriptionUtils.generate()
         token_hash = SubscriptionUtils.hash(raw_token)
 
         client_uuid = uuid4()
 
-        try:
-            profile = ProfileRegistry.get(data.profile_key).profile
-        except ProfileRegistryError as exc:
-            raise HTTPException(
-                status_code=422,
-                detail=self._describe_profile_registry_error(exc),
-            ) from exc
-
-        self._infer_transport(profile.type)
+        if data.profile_key:
+            try:
+                ProfileRegistry.get(data.profile_key)
+            except ProfileRegistryError as exc:
+                raise HTTPException(
+                    status_code=422,
+                    detail=self._describe_profile_registry_error(exc),
+                ) from exc
 
         internal = SubscriptionInternalCreate(
             user_id=data.user_id,
@@ -596,6 +595,18 @@ class SubscriptionService:
             node_seen_after=self._resolved_route_node_seen_after(),
         )
 
+        has_allowed = any(
+            self._as_uuid(node.id) in allowed_backend_ids
+            for _, node, _ in route_rows
+        )
+        if not has_allowed and allowed_backend_ids:
+            route_rows = await self.route_repository.list_resolved_active(
+                preferred_node_id=selected_backend_id,
+                preferred_region=subscription.preferred_region,
+                limit=max_fetch,
+                node_seen_after=None,
+            )
+
         resolved_routes: list[ResolvedSubscriptionRoute] = []
         seen_uris: set[str] = set()
         seen_logical_keys: set[tuple[str | None, UUID, str]] = set()
@@ -822,12 +833,18 @@ class SubscriptionService:
                 preferred_region=preferred_region,
             )
         except Exception:
+            logger_sub.exception(
+                "subscription_select_nodes_failed",
+                key_id=str(key_id),
+                preferred_region=preferred_region,
+            )
             candidate_nodes = []
+
         candidate_nodes = [
             node for node in candidate_nodes
             if self._node_has_required_public_host(node=node, key_transport=key_transport)
         ]
-        if not candidate_nodes and not synced_placements:
+        if not candidate_nodes and not placements_by_backend:
             raise SubscriptionBuild("No available nodes")
 
         if candidate_nodes:
@@ -843,7 +860,6 @@ class SubscriptionService:
                     sticky_until=None,
                     last_migration_reason="subscription_replica",
                 )
-                await self.node_agent_transport.enqueue_for_placement_ids([created.id])
                 placements_by_backend[node_id] = created
 
         preferred_placement: UserPlacement | None = None
@@ -854,13 +870,30 @@ class SubscriptionService:
                 break
         if preferred_placement is None and synced_placements:
             preferred_placement = synced_placements[0]
+
+        if preferred_placement is None:
+            applied_placements = [
+                p for p in all_placements
+                if getattr(p, "applied_state", None) == "applied"
+            ]
+            if applied_placements:
+                preferred_placement = applied_placements[0]
+                synced_by_backend[preferred_placement.backend_node_id] = preferred_placement
+                logger_sub.warning(
+                    "subscription_placement_version_drift_fallback",
+                    key_id=str(key_id),
+                    placement_id=str(preferred_placement.id),
+                    op_version=preferred_placement.op_version,
+                    applied_version=getattr(preferred_placement, "applied_version", None),
+                )
+
         if preferred_placement is None:
             raise SubscriptionBuild("Node placement sync pending")
 
         preferred_backend_id = self._as_uuid(preferred_placement.backend_node_id)
         allowed_backend_ids: set[UUID] = set(synced_by_backend.keys())
         if not allowed_backend_ids:
-            raise SubscriptionBuild("Backend placement sync pending")
+            allowed_backend_ids = {preferred_backend_id}
         return preferred_backend_id, preferred_placement, allowed_backend_ids
 
     def _stale_after_sec(self) -> int:
