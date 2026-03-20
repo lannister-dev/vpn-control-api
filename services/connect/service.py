@@ -285,7 +285,7 @@ class ConnectService:
             traffic_limit_mb=payload.traffic_limit_mb,
             is_revoked=False,
         )
-        return await self.key_repository.create(key_internal.model_dump())
+        return await self.key_repository.create(key_internal.model_dump(mode="json"))
 
     async def _select_backend(
             self,

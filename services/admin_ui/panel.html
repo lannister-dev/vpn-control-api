@@ -873,14 +873,9 @@
                 <select class="input" name="plan_id" id="sub-plan-select">
                   <option value="">— Без тарифа —</option>
                 </select>
-                <div class="row-2">
-                  <input class="input" id="sub-profile-key" name="profile_key" list="sub-profile-keys" placeholder="profile_key (опционально)" autocomplete="off" />
-                  <input class="input" name="preferred_region" placeholder="preferred_region (опционально)" />
-                </div>
-                <datalist id="sub-profile-keys"></datalist>
-                <div id="sub-profile-key-help" class="muted">Необязательно. Влияет только на приоритет транспорта. Бандл всегда: Reality + WS.</div>
+                <input class="input" name="preferred_region" placeholder="preferred_region (опционально)" />
                 <div class="row-2"><input class="input" name="expires_at" type="datetime-local" /><input class="input" name="max_devices" type="number" min="1" max="100" placeholder="max_devices (опционально)" /></div>
-                <div class="muted">На первом запросе по HWID устройство получит bundle ключей. Базовый набор сейчас: Reality + WS.</div>
+                <div class="muted">На первом запросе по HWID устройство получит bundle ключей (Reality + WS).</div>
                 <button class="btn btn-primary" type="submit">Создать подписку</button>
               </form>
               <div id="sub-create-result" class="stack empty">После создания здесь появится токен и URL.</div>
@@ -926,7 +921,7 @@
             <div class="card">
               <div class="muted">Список подписок пользователя</div>
               <table>
-                <thead><tr><th>ID подписки</th><th>ID пользователя</th><th>Тариф</th><th>Профиль</th><th>Статус</th><th>HWID</th><th>Макс. устройств</th><th>Трафик</th><th>Истекает</th><th>Обновлено</th></tr></thead>
+                <thead><tr><th>ID подписки</th><th>ID пользователя</th><th>Тариф</th><th>Статус</th><th>HWID</th><th>Макс. устройств</th><th>Трафик</th><th>Истекает</th><th>Обновлено</th></tr></thead>
                 <tbody id="subs-body"></tbody>
               </table>
             </div>
@@ -1162,7 +1157,7 @@
         readinessList: $("readiness-list"), routeHealthList: $("route-health-list"), probeFailList: $("probe-fail-list"), nodeAlertList: $("node-alert-list"), selectedNodeCard: $("selected-node-card"), actionLog: $("action-log"),
         nodesHead: $("nodes-head"), nodesBody: $("nodes-body"), routesHead: $("routes-head"), routesBody: $("routes-body"), placementsBody: $("placements-body"), placementsMeta: $("placements-meta"),
         subsBody: $("subs-body"), subDevicesBody: $("sub-devices-body"), subCreateResult: $("sub-create-result"), subManageResult: $("sub-manage-result"),
-        subProfileKey: $("sub-profile-key"), subProfileKeys: $("sub-profile-keys"), subProfileKeyHelp: $("sub-profile-key-help"),
+
         nodesSearch: $("nodes-search"), nodesHealth: $("nodes-health"), nodesState: $("nodes-state"), nodesClear: $("nodes-clear"), nodesReload: $("nodes-reload"),
         routesStatus: $("routes-status"), routesSearch: $("routes-search"), routesReload: $("routes-reload"),
         placementsNode: $("placements-node"), placementsKey: $("placements-key"), placementsDesired: $("placements-desired"), placementsApplied: $("placements-applied"), placementsReload: $("placements-reload"),
@@ -1187,7 +1182,7 @@
         panels: { overview: $("tab-overview"), nodes: $("tab-nodes"), transport: $("tab-transport"), routes: $("tab-routes"), placements: $("tab-placements"), users: $("tab-users"), plans: $("tab-plans"), subscriptions: $("tab-subscriptions"), traffic: $("tab-traffic"), "admin-users": $("tab-admin-users"), ops: $("tab-ops") },
       };
 
-      const state = { timer: null, selectedNode: null, status: null, readiness: null, routes: [], placements: [], probes: [], subscriptions: [], subscriptionDevices: [], logs: [], activeTab: "overview", loading: false, users: [], usersTotal: 0, usersLimit: 50, usersOffset: 0, plans: [], trafficKeys: [], trafficTotal: 0, trafficLimit: 50, trafficOffset: 0, trafficHistory: [], trafficHistoryTotal: 0, trafficHistoryLimit: 50, trafficHistoryOffset: 0, trafficHistoryKeyId: null, trafficHistoryKeyData: null, adminUsers: [], adminUsersTotal: 0, profileKeys: [], transportOverview: null, transportNodes: [], transportNodeDetail: null, outboxItems: [], outboxTotal: 0, outboxOffset: 0, eventsItems: [], eventsTotal: 0, eventsOffset: 0, transportSubTab: "nodes" };
+      const state = { timer: null, selectedNode: null, status: null, readiness: null, routes: [], placements: [], probes: [], subscriptions: [], subscriptionDevices: [], logs: [], activeTab: "overview", loading: false, users: [], usersTotal: 0, usersLimit: 50, usersOffset: 0, plans: [], trafficKeys: [], trafficTotal: 0, trafficLimit: 50, trafficOffset: 0, trafficHistory: [], trafficHistoryTotal: 0, trafficHistoryLimit: 50, trafficHistoryOffset: 0, trafficHistoryKeyId: null, trafficHistoryKeyData: null, adminUsers: [], adminUsersTotal: 0, transportOverview: null, transportNodes: [], transportNodeDetail: null, outboxItems: [], outboxTotal: 0, outboxOffset: 0, eventsItems: [], eventsTotal: 0, eventsOffset: 0, transportSubTab: "nodes" };
 
       const esc = (v) => String(v ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
       const fmtDate = (v) => { if (!v) return "-"; const d = new Date(v); return Number.isNaN(d.getTime()) ? "-" : d.toLocaleString(); };
@@ -1369,33 +1364,6 @@
           : `<div class="empty">Операций пока не было.</div>`;
       }
 
-      function renderProfileKeyOptions() {
-        const keys = Array.isArray(state.profileKeys) ? state.profileKeys : [];
-        if (refs.subProfileKeys) {
-          refs.subProfileKeys.innerHTML = keys.map((key) => `<option value="${esc(key)}"></option>`).join("");
-        }
-        if (refs.subProfileKeyHelp) {
-          refs.subProfileKeyHelp.textContent = keys.length
-            ? `Доступные profile_key: ${keys.join(", ")}`
-            : "Нет загруженных профилей в активном artifact.";
-        }
-        if (refs.subProfileKey && keys.length) {
-          const current = String(refs.subProfileKey.value || "").trim();
-          if (!current || !keys.includes(current)) refs.subProfileKey.value = keys[0];
-          refs.subProfileKey.placeholder = `profile_key (например: ${keys[0]})`;
-        }
-      }
-
-      async function loadActiveProfileKeys() {
-        const artifact = await req("/api/v1/artifacts/profiles/active");
-        const artifactPayload = artifact && typeof artifact === "object" ? artifact.artifact : null;
-        state.profileKeys = artifactPayload && typeof artifactPayload === "object"
-          ? Object.keys(artifactPayload).sort()
-          : [];
-        renderProfileKeyOptions();
-        return state.profileKeys;
-      }
-
       async function req(path, options) {
         const opt = options || {};
         const headers = { Accept: "application/json" };
@@ -1502,7 +1470,6 @@
         if (payload.user_id) rows.push(`<div class="result-row"><span class="muted">user_id</span><span class="mono">${uuidCell(payload.user_id)}</span></div>`);
         if (payload.plan_name !== undefined) rows.push(`<div class="result-row"><span class="muted">тариф</span><span class="mono">${esc(payload.plan_name || "-")}</span></div>`);
         if (payload.used_traffic_bytes != null && payload.used_traffic_bytes > 0) rows.push(`<div class="result-row"><span class="muted">трафик</span><span class="mono">${fmtTrafficLimit(payload.used_traffic_bytes)}</span></div>`);
-        if (payload.profile_key !== undefined) rows.push(`<div class="result-row"><span class="muted">profile</span><span class="mono">${esc(payload.profile_key || "-")}</span></div>`);
         if (payload.preferred_region !== undefined) rows.push(`<div class="result-row"><span class="muted">preferred_region</span><span class="mono">${esc(payload.preferred_region || "-")}</span></div>`);
         if (payload.max_devices !== undefined) rows.push(`<div class="result-row"><span class="muted">max_devices</span><span class="mono">${esc(payload.max_devices == null ? "-" : payload.max_devices)}</span></div>`);
         if (payload.loaded_devices !== undefined) rows.push(`<div class="result-row"><span class="muted">devices</span><span class="mono">${esc(payload.loaded_devices)}</span></div>`);
@@ -1678,9 +1645,6 @@
         }
         if (tab === "traffic" && state.trafficKeys.length === 0) {
           loadTrafficKeys().catch((e) => notify("\u041E\u0448\u0438\u0431\u043A\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0438 \u0442\u0440\u0430\u0444\u0438\u043A\u0430: " + e.message, true));
-        }
-        if (tab === "subscriptions" && state.profileKeys.length === 0) {
-          loadActiveProfileKeys().catch((e) => notify(`Ошибка загрузки profiles artifact: ${e.message}`, true));
         }
         if (tab === "admin-users" && state.adminUsers.length === 0) {
           loadAdminUsers().catch((e) => notify("Ошибка загрузки admin users: " + e.message, true));
@@ -1896,8 +1860,8 @@
         /* --- Subscriptions table (Phase 2.1: truncated UUID) --- */
         const subs = filteredSubscriptions();
         refs.subsBody.innerHTML = subs.length
-          ? subs.map((s) => `<tr><td>${uuidCell(s.id)}</td><td>${uuidCell(s.user_id)}</td><td>${esc(s.plan_name || "-")}</td><td>${esc(s.profile_key || "-")}</td><td>${s.is_active ? chip("ok", "active") : chip("bad", "inactive")}</td><td>${s.hwid_enabled ? chip("info", "on") : chip("warn", "off")}</td><td class="mono">${esc(s.max_devices == null ? "-" : s.max_devices)}</td><td>${s.used_traffic_bytes != null && s.used_traffic_bytes > 0 ? fmtTrafficLimit(s.used_traffic_bytes) : "-"}</td><td>${fmtDate(s.expires_at)}</td><td>${fmtDate(s.updated_at)}</td></tr>`).join("")
-          : `<tr><td colspan="10" class="empty">Список подписок пока пуст. Используйте форму &laquo;Поиск подписок по пользователю&raquo;.</td></tr>`;
+          ? subs.map((s) => `<tr><td>${uuidCell(s.id)}</td><td>${uuidCell(s.user_id)}</td><td>${esc(s.plan_name || "-")}</td><td>${s.is_active ? chip("ok", "active") : chip("bad", "inactive")}</td><td>${s.hwid_enabled ? chip("info", "on") : chip("warn", "off")}</td><td class="mono">${esc(s.max_devices == null ? "-" : s.max_devices)}</td><td>${s.used_traffic_bytes != null && s.used_traffic_bytes > 0 ? fmtTrafficLimit(s.used_traffic_bytes) : "-"}</td><td>${fmtDate(s.expires_at)}</td><td>${fmtDate(s.updated_at)}</td></tr>`).join("")
+          : `<tr><td colspan="9" class="empty">Список подписок пока пуст. Используйте форму &laquo;Поиск подписок по пользователю&raquo;.</td></tr>`;
 
         /* --- Devices table (Phase 2.1: truncated UUID) --- */
         refs.subDevicesBody.innerHTML = state.subscriptionDevices.length
@@ -1939,15 +1903,6 @@
           if (fullRefresh || tab === "placements") {
             fetches.push(req("/api/v1/placements?limit=500").then((p) => { state.placements = p; }));
           }
-          if (fullRefresh || tab === "subscriptions") {
-            fetches.push(
-              loadActiveProfileKeys()
-                .catch(() => {
-                  state.profileKeys = [];
-                  renderProfileKeyOptions();
-                })
-            );
-          }
           if (tab === "users" && state.users.length > 0) {
             fetches.push(loadUsers().catch(() => {}));
           }
@@ -1967,7 +1922,6 @@
             const cur = status.nodes.find((n) => n.id === state.selectedNode.id);
             if (cur) state.selectedNode = cur;
           }
-          renderProfileKeyOptions();
           render();
         } finally {
           state.loading = false;
@@ -2264,8 +2218,6 @@
         };
         const planId = String(d.get("plan_id") || "").trim();
         if (planId) payload.plan_id = planId;
-        const profileKey = String(d.get("profile_key") || "").trim();
-        if (profileKey) payload.profile_key = profileKey;
         const preferredRegion = String(d.get("preferred_region") || "").trim();
         if (preferredRegion) payload.preferred_region = preferredRegion;
         const maxDevices = String(d.get("max_devices") || "").trim();
@@ -2278,7 +2230,6 @@
             const createdSub = {
               id: created.id,
               user_id: payload.user_id,
-              profile_key: payload.profile_key || null,
               preferred_region: payload.preferred_region || null,
               is_active: created.is_active,
               expires_at: created.expires_at,
