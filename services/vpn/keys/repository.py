@@ -113,6 +113,51 @@ class VpnKeyRepository(BaseRepository[VpnKey]):
         keys = list(result.scalars().all())
         return keys, total
 
+    async def list_active_by_subscription_id(self, subscription_id: UUID) -> list[VpnKey]:
+        now = datetime.now(timezone.utc)
+        stmt = (
+            select(self.model)
+            .where(
+                self.model.subscription_id == subscription_id,
+                self.model.is_active.is_(True),
+                self.model.is_revoked.is_(False),
+                self.model.valid_until > now,
+            )
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def bulk_reset_traffic_by_subscription(self, subscription_id: UUID) -> list[UUID]:
+        """Reset used_traffic_bytes and un-revoke keys for a subscription. Returns key IDs that were un-revoked."""
+        from sqlalchemy import update as sa_update
+
+        # Find keys that were revoked due to traffic limit
+        revoked_stmt = (
+            select(self.model.id)
+            .where(
+                self.model.subscription_id == subscription_id,
+                self.model.is_active.is_(True),
+                self.model.is_revoked.is_(True),
+            )
+        )
+        revoked_result = await self.session.execute(revoked_stmt)
+        unrevoked_ids = list(revoked_result.scalars().all())
+
+        # Reset traffic counters and un-revoke
+        now = datetime.now(timezone.utc)
+        await self.session.execute(
+            sa_update(self.model)
+            .where(self.model.subscription_id == subscription_id, self.model.is_active.is_(True))
+            .values(
+                used_traffic_bytes=0,
+                last_reported_total_bytes=0,
+                is_revoked=False,
+                updated_at=now,
+            )
+        )
+        return unrevoked_ids
+
+
 async def get_vpn_key_repository(
         session: AsyncSession = Depends(AsyncDatabase.get_session)
 ) -> VpnKeyRepository:
