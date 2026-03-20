@@ -1,0 +1,128 @@
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+from uuid import uuid4
+
+import pytest
+
+from services.plans.exceptions import PlanAlreadyExists, PlanNotFound
+from services.plans.schemas import PlanCreateIn, PlanUpdateIn
+from services.plans.service import PlanService
+
+
+def _make_plan(
+    *,
+    name: str = "Basic",
+    traffic_limit_bytes: int = 0,
+    reset_strategy: str = "NO_RESET",
+    max_devices: int = 5,
+    duration_days: int = 30,
+    sort_order: int = 0,
+    is_active: bool = True,
+):
+    return SimpleNamespace(
+        id=uuid4(),
+        name=name,
+        description=None,
+        traffic_limit_bytes=traffic_limit_bytes,
+        reset_strategy=reset_strategy,
+        max_devices=max_devices,
+        duration_days=duration_days,
+        sort_order=sort_order,
+        is_active=is_active,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+
+
+@pytest.fixture()
+def service(async_session):
+    svc = PlanService(async_session)
+    svc.repo = AsyncMock()
+    return svc
+
+
+class TestPlanServiceCreate:
+    async def test_create_plan_success(self, service):
+        service.repo.get_by_name.return_value = None
+        plan = _make_plan(name="Pro", traffic_limit_bytes=10737418240)
+        service.repo.create.return_value = plan
+
+        data = PlanCreateIn(name="Pro", traffic_limit_bytes=10737418240)
+        result = await service.create_plan(data)
+
+        assert result.name == "Pro"
+        assert result.traffic_limit_bytes == 10737418240
+        service.repo.create.assert_awaited_once()
+
+    async def test_create_plan_duplicate_name_raises(self, service):
+        service.repo.get_by_name.return_value = _make_plan(name="Pro")
+
+        with pytest.raises(PlanAlreadyExists):
+            await service.create_plan(PlanCreateIn(name="Pro"))
+
+
+class TestPlanServiceGet:
+    async def test_get_plan_found(self, service):
+        plan = _make_plan()
+        service.repo.get_by_id.return_value = plan
+        result = await service.get_plan(plan.id)
+        assert result.id == plan.id
+
+    async def test_get_plan_not_found_raises(self, service):
+        service.repo.get_by_id.return_value = None
+        with pytest.raises(PlanNotFound):
+            await service.get_plan(uuid4())
+
+
+class TestPlanServiceUpdate:
+    async def test_update_plan_success(self, service):
+        plan = _make_plan(name="Basic")
+        updated = _make_plan(name="Premium")
+        service.repo.get_by_id.return_value = plan
+        service.repo.get_by_name.return_value = None
+        service.repo.update_by_id.return_value = updated
+
+        result = await service.update_plan(plan.id, PlanUpdateIn(name="Premium"))
+        assert result.name == "Premium"
+
+    async def test_update_plan_not_found_raises(self, service):
+        service.repo.get_by_id.return_value = None
+        with pytest.raises(PlanNotFound):
+            await service.update_plan(uuid4(), PlanUpdateIn(name="X"))
+
+    async def test_update_plan_empty_payload_returns_current(self, service):
+        plan = _make_plan()
+        service.repo.get_by_id.return_value = plan
+        result = await service.update_plan(plan.id, PlanUpdateIn())
+        assert result.id == plan.id
+        service.repo.update_by_id.assert_not_awaited()
+
+
+class TestPlanServiceDelete:
+    async def test_delete_plan_soft_deletes(self, service):
+        plan = _make_plan(is_active=True)
+        deactivated = _make_plan(is_active=False)
+        service.repo.get_by_id.return_value = plan
+        service.repo.update_by_id.return_value = deactivated
+
+        result = await service.delete_plan(plan.id)
+        assert result.is_active is False
+        service.repo.update_by_id.assert_awaited_once_with(plan.id, {"is_active": False})
+
+    async def test_delete_plan_not_found_raises(self, service):
+        service.repo.get_by_id.return_value = None
+        with pytest.raises(PlanNotFound):
+            await service.delete_plan(uuid4())
+
+
+class TestPlanServiceList:
+    async def test_list_plans(self, service):
+        plans = [_make_plan(name="A"), _make_plan(name="B")]
+        service.repo.list_all.return_value = (plans, 2)
+
+        result = await service.list_plans()
+        assert result.total == 2
+        assert len(result.items) == 2

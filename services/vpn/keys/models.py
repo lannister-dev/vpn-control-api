@@ -30,8 +30,12 @@ class VpnKey(Base):
         server_default=text("0"),
     )
     is_revoked: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"), nullable=False)
+    subscription_id: Mapped[UUID | None] = mapped_column(ForeignKey("subscription.id"), nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="keys")
+    subscription: Mapped["Subscription"] = relationship(
+        foreign_keys=[subscription_id], lazy="select",
+    )
     assignments: Mapped[list["KeyAssignment"]] = relationship(
         back_populates="key",
         cascade="all, delete-orphan"
@@ -40,6 +44,7 @@ class VpnKey(Base):
         Index("ix_vpn_key_user_id", "user_id"),
         Index("ix_vpn_key_valid_until", "valid_until"),
         Index("ix_vpn_key_is_revoked", "is_revoked"),
+        Index("ix_vpn_key_subscription_id", "subscription_id"),
     )
 
 

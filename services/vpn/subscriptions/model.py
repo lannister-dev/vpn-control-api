@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import String, ForeignKey, Index, DateTime, Boolean, Integer, UniqueConstraint
+from sqlalchemy import BigInteger, String, ForeignKey, Index, DateTime, Boolean, Integer, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.database.base_model import Base
@@ -11,6 +11,7 @@ class Subscription(Base):
     __tablename__ = "subscription"
 
     user_id: Mapped[UUID] = mapped_column(ForeignKey("user.id"), nullable=False)
+    plan_id: Mapped[UUID | None] = mapped_column(ForeignKey("plan.id"), nullable=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     prev_token_hash: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
     prev_token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -21,7 +22,18 @@ class Subscription(Base):
     hwid_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     max_devices: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    used_traffic_bytes: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default=text("0"),
+    )
+    lifetime_used_traffic_bytes: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default=text("0"),
+    )
+    last_traffic_reset_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+
     user: Mapped["User"] = relationship(back_populates="subscriptions")
+    plan: Mapped["Plan"] = relationship(lazy="joined")
     devices: Mapped[list["SubscriptionDevice"]] = relationship(
         back_populates="subscription",
         cascade="all, delete-orphan",
@@ -29,8 +41,9 @@ class Subscription(Base):
 
     __table_args__ = (
         Index("ix_subscription_user_id", "user_id"),
+        Index("ix_subscription_plan_id", "plan_id"),
         Index("ix_subscription_token_hash", "token_hash"),
-        Index("ix_subscription_prev_token_hash", "prev_token_hash")
+        Index("ix_subscription_prev_token_hash", "prev_token_hash"),
     )
 
 

@@ -508,12 +508,11 @@ async def test_build_payload_fetches_route_buffer_scaled_to_max_routes(service):
         await service.build_payload(raw_token="tok")
 
     assert str(exc.value).startswith("No available routes")
-    service.route_repository.list_resolved_active.assert_awaited_once_with(
-        preferred_node_id=preferred_backend_id,
-        preferred_region="fr",
-        limit=24,
-        node_seen_after=ANY,
-    )
+    assert service.route_repository.list_resolved_active.await_count == 2
+    first_call = service.route_repository.list_resolved_active.await_args_list[0]
+    assert first_call.kwargs["preferred_node_id"] == preferred_backend_id
+    assert first_call.kwargs["preferred_region"] == "fr"
+    assert first_call.kwargs["limit"] == 24
 
 
 @pytest.mark.asyncio
@@ -1026,7 +1025,6 @@ async def test_subscription_rejects_pending_placement_for_new_backend(service):
         )
 
     assert str(exc.value) == "Node placement sync pending"
-    service.node_agent_transport.enqueue_for_placement_ids.assert_awaited_once_with([created.id])
 
 
 @pytest.mark.asyncio

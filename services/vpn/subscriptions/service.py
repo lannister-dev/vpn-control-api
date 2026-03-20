@@ -1288,14 +1288,23 @@ class SubscriptionService:
             transport: VpnTransport,
             valid_until: datetime,
     ):
+        # Derive traffic limit from subscription's plan, fallback to 0 (unlimited at key level)
+        # when plan is set — enforcement happens at subscription level in traffic service
+        plan = getattr(subscription, "plan", None)
+        if plan and plan.traffic_limit_bytes and plan.traffic_limit_bytes > 0:
+            traffic_limit_mb = max(1, plan.traffic_limit_bytes // (1024 * 1024))
+        else:
+            traffic_limit_mb = 0  # unlimited or plan-controlled
+
         key_internal = VpnKeyInternalCreate(
             user_id=subscription.user_id,
             protocol=VpnProtocol.vless,
             transport=transport,
             client_id=str(uuid4()),
             valid_until=valid_until,
-            traffic_limit_mb=1000,
+            traffic_limit_mb=traffic_limit_mb,
             is_revoked=False,
+            subscription_id=subscription.id,
         )
         return await self.vpn_key_repository.create(key_internal.model_dump())
 
