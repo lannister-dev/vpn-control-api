@@ -317,6 +317,11 @@ class TestCalcEtag:
         assert e1 != e2
 
 
+def test_transport_label_normalizes_enum_like_string(service):
+    assert service._transport_label("VpnTransport.reality") == "Reality"
+    assert service._transport_label("TransportVpnTransport.ws") == "WS"
+
+
 def test_route_transport_compatibility(service):
     assert service._is_route_compatible_with_key_transport(
         key_transport="reality",
@@ -518,6 +523,7 @@ async def test_build_payload_fetches_route_buffer_scaled_to_max_routes(service):
     assert first_call.kwargs["preferred_node_id"] == preferred_backend_id
     assert first_call.kwargs["preferred_region"] == "fr"
     assert first_call.kwargs["limit"] == 24
+    assert first_call.kwargs["backend_node_ids"] == [preferred_backend_id]
 
 
 @pytest.mark.asyncio
@@ -705,12 +711,14 @@ async def test_load_device_bundle_supports_legacy_single_vpn_key_id(service):
     assert bundle.keys[0].client_id == "legacy-client"
 
 
-def test_merge_transport_routes_deduplicates_backend_transport_pairs(service):
+def test_merge_transport_routes_deduplicates_country_transport_pairs(service):
     route = MagicMock()
     route.id = uuid4()
     route.effective_weight = 50
     node = _make_node(public_domain="fr.example.com", reality_ip="198.51.100.10", region="fr")
     node.id = uuid4()
+    node_2 = _make_node(public_domain="fr2.example.com", reality_ip="198.51.100.11", region="fr")
+    node_2.id = uuid4()
     tp = _make_transport_profile(network="tcp", security="reality")
     key = _make_bundle("reality").keys[0]
     duplicated = ResolvedSubscriptionRoute(
@@ -731,14 +739,22 @@ def test_merge_transport_routes_deduplicates_backend_transport_pairs(service):
         node=node,
         transport_profile=tp,
     )
-    duplicate_same_backend_transport = duplicated.model_copy(update={"route_id": uuid4()})
+    duplicate_same_country_transport = duplicated.model_copy(
+        update={
+            "route_id": uuid4(),
+            "backend_node_id": node_2.id,
+            "uri": "vless://fr-reality-2#France%20Reality",
+            "preferred_backend": False,
+            "node": node_2,
+        }
+    )
 
     merged = service._merge_transport_routes(
         subscription=_make_sub(preferred_region="fr"),
         transport_results=[
             TransportBuildResult(
                 key=key,
-                routes=(duplicated, duplicate_same_backend_transport),
+                routes=(duplicated, duplicate_same_country_transport),
                 placement_signature="reality:1",
                 diagnostic_reason=None,
             )
@@ -993,7 +1009,7 @@ def test_fit_routes_to_payload_limit_rejects_if_single_route_too_large(service):
 
 
 @pytest.mark.asyncio
-async def test_subscription_uses_pending_placement_as_fallback(service):
+async def test_subscription_returns_new_target_placement_even_when_not_synced(service):
     backend = MagicMock()
     backend.id = uuid4()
     backend.public_domain = "be.example.com"
@@ -1028,9 +1044,9 @@ async def test_subscription_uses_pending_placement_as_fallback(service):
         key_transport="reality",
     )
 
-    assert placement.id == created.id
     assert preferred_backend_id == backend.id
-    assert backend.id in allowed_backend_ids
+    assert placement.id == created.id
+    assert allowed_backend_ids == {backend.id}
     service.node_agent_transport.enqueue_for_placement_ids.assert_awaited_once_with([created.id])
 
 
@@ -1074,7 +1090,7 @@ async def test_subscription_returns_synced_existing_placement(service):
 
 
 @pytest.mark.asyncio
-async def test_subscription_accepts_pending_existing_placement(service):
+async def test_subscription_returns_existing_target_placement_even_when_not_synced(service):
     backend = MagicMock()
     backend.id = uuid4()
     backend.public_domain = "be.example.com"
@@ -1107,6 +1123,6 @@ async def test_subscription_accepts_pending_existing_placement(service):
         key_transport="reality",
     )
 
-    assert placement.id == pending.id
     assert preferred_backend_id == backend.id
-    assert backend.id in allowed_backend_ids
+    assert placement.id == pending.id
+    assert allowed_backend_ids == {backend.id}

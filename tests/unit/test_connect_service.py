@@ -114,3 +114,35 @@ async def test_build_route_uri_reality_prefers_reality_ip(async_session):
     assert uri is not None
     assert "@203.0.113.10:" in uri
     assert "reality.example.com" not in uri
+
+
+@pytest.mark.asyncio
+async def test_connect_returns_target_placement_even_when_not_synced(async_session):
+    svc = ConnectService(async_session, _redis())
+    backend = _node(public_domain="be.example.com", reality_ip="203.0.113.10")
+    pending = MagicMock(
+        id=uuid4(),
+        key_id=uuid4(),
+        backend_node_id=backend.id,
+        desired_state="active",
+        op_version=3,
+        applied_version=0,
+        applied_state="pending",
+    )
+    svc.placement_repository = AsyncMock()
+    svc.node_agent_transport = AsyncMock()
+    svc.routing_service = AsyncMock()
+    svc.placement_repository.list_by_key_id.return_value = []
+    svc.placement_repository.upsert_set_pending = AsyncMock(return_value=pending)
+    svc.routing_service.select_nodes = AsyncMock(return_value=[backend])
+
+    preferred_backend_id, placement, allowed_backend_ids = await svc._ensure_backend_placements_for_key(
+        key_id=uuid4(),
+        preferred_region="fi",
+        desired_replicas=1,
+        key_transport="reality",
+    )
+
+    assert preferred_backend_id == backend.id
+    assert placement.id == pending.id
+    assert allowed_backend_ids == {backend.id}

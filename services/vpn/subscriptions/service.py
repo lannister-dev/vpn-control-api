@@ -620,10 +620,12 @@ class SubscriptionService:
             )
 
         max_fetch = max(max_routes * 4, 12)
+        allowed_backend_ids_sorted = sorted(allowed_backend_ids, key=str)
         route_rows = await self.route_repository.list_resolved_active(
             preferred_node_id=selected_backend_id,
             preferred_region=subscription.preferred_region,
             limit=max_fetch,
+            backend_node_ids=allowed_backend_ids_sorted,
             node_seen_after=self._resolved_route_node_seen_after(),
         )
 
@@ -636,12 +638,13 @@ class SubscriptionService:
                 preferred_node_id=selected_backend_id,
                 preferred_region=subscription.preferred_region,
                 limit=max_fetch,
+                backend_node_ids=allowed_backend_ids_sorted,
                 node_seen_after=None,
             )
 
         resolved_routes: list[ResolvedSubscriptionRoute] = []
         seen_uris: set[str] = set()
-        seen_logical_keys: set[tuple[str | None, UUID, str]] = set()
+        seen_logical_keys: set[tuple[str | None, str]] = set()
         for route, node, transport_profile in route_rows:
             backend_node_id = self._as_uuid(node.id)
             if backend_node_id not in allowed_backend_ids:
@@ -657,7 +660,11 @@ class SubscriptionService:
                 continue
 
             country_code, country_name = self._country_info_for_region(node.region)
-            logical_key = (country_code or node.region, backend_node_id, key.transport)
+            logical_key = self._route_country_transport_key(
+                country_code=country_code,
+                region=node.region,
+                transport=key.transport,
+            )
             if logical_key in seen_logical_keys:
                 continue
 
@@ -724,13 +731,13 @@ class SubscriptionService:
     ) -> list[ResolvedSubscriptionRoute]:
         merged: list[ResolvedSubscriptionRoute] = []
         seen_uris: set[str] = set()
-        seen_logical_keys: set[tuple[str | None, UUID, str]] = set()
+        seen_logical_keys: set[tuple[str | None, str]] = set()
         for result in transport_results:
             for route in result.routes:
-                logical_key = (
-                    route.country_code or route.node.region,
-                    route.backend_node_id,
-                    route.vpn_transport,
+                logical_key = self._route_country_transport_key(
+                    country_code=route.country_code,
+                    region=getattr(route.node, "region", None),
+                    transport=route.vpn_transport,
                 )
                 if route.uri in seen_uris or logical_key in seen_logical_keys:
                     continue
@@ -782,23 +789,43 @@ class SubscriptionService:
             return None, None
         return country_code, COUNTRY_CODE_TO_NAME.get(country_code, country_code)
 
+    def _route_country_transport_key(
+            self,
+            *,
+            country_code: str | None,
+            region: str | None,
+            transport: str,
+    ) -> tuple[str | None, str]:
+        location_key = country_code or ((region or "").strip().lower() or None)
+        return location_key, self._normalize_transport_value(transport)
+
     def _format_subscription_route_name(self, *, node: VpnNode, transport: str) -> str:
         base = format_node_display_name(node_name=str(node.name), region=node.region)
         return f"{base} {self._transport_label(transport)}"
 
     @staticmethod
     def _transport_label(transport: str) -> str:
-        if transport == VpnTransport.reality.value:
+        normalized = SubscriptionService._normalize_transport_value(transport)
+        if normalized == VpnTransport.reality.value:
             return "Reality"
-        if transport == VpnTransport.ws.value:
+        if normalized == VpnTransport.ws.value:
             return "WS"
-        if transport == VpnTransport.xhttp.value:
+        if normalized == VpnTransport.xhttp.value:
             return "XHTTP"
-        return transport.upper()
+        return normalized.upper()
+
+    @staticmethod
+    def _normalize_transport_value(transport: str) -> str:
+        value = str(transport or "").strip()
+        if not value:
+            return ""
+        if "." in value:
+            value = value.rsplit(".", 1)[-1]
+        return value.lower()
 
     @staticmethod
     def _transport_priority(transport: str) -> int:
-        return TRANSPORT_PRIORITY.get(transport, 99)
+        return TRANSPORT_PRIORITY.get(SubscriptionService._normalize_transport_value(transport), 99)
 
     def _subscription_bundle_transports(self, subscription) -> tuple[VpnTransport, ...]:
         preferred = self._infer_transport_from_profile_key(subscription.profile_key)
@@ -897,42 +924,25 @@ class SubscriptionService:
                 new_placement_ids.append(created.id)
             if new_placement_ids:
                 await self.node_agent_transport.enqueue_for_placement_ids(new_placement_ids)
+            target_node_ids = [self._as_uuid(str(node.id)) for node in target_nodes]
+        else:
+            target_node_ids = []
 
         preferred_placement: UserPlacement | None = None
-        for node in candidate_nodes:
-            node_id = self._as_uuid(str(node.id))
-            preferred_placement = synced_by_backend.get(node_id)
+        for node_id in target_node_ids:
+            preferred_placement = synced_by_backend.get(node_id) or placements_by_backend.get(node_id)
             if preferred_placement is not None:
                 break
-        if preferred_placement is None and synced_placements:
+        if preferred_placement is None and synced_placements and not target_node_ids:
             preferred_placement = synced_placements[0]
-
-        if preferred_placement is None:
-            applied_placements = [
-                p for p in all_placements
-                if getattr(p, "applied_state", None) == "applied"
-            ]
-            if applied_placements:
-                preferred_placement = applied_placements[0]
-                synced_by_backend[preferred_placement.backend_node_id] = preferred_placement
-                logger_sub.warning(
-                    "subscription_placement_version_drift_fallback",
-                    key_id=str(key_id),
-                    placement_id=str(preferred_placement.id),
-                    op_version=preferred_placement.op_version,
-                    applied_version=getattr(preferred_placement, "applied_version", None),
-                )
-
         if preferred_placement is None and placements_by_backend:
-            pending_placement = next(iter(placements_by_backend.values()))
-            preferred_placement = pending_placement
-            synced_by_backend[pending_placement.backend_node_id] = pending_placement
+            preferred_placement = next(iter(placements_by_backend.values()))
 
         if preferred_placement is None:
             raise SubscriptionBuild("Node placement sync pending")
 
         preferred_backend_id = self._as_uuid(preferred_placement.backend_node_id)
-        allowed_backend_ids: set[UUID] = set(synced_by_backend.keys())
+        allowed_backend_ids: set[UUID] = set(target_node_ids) if target_node_ids else set(placements_by_backend.keys())
         if not allowed_backend_ids:
             allowed_backend_ids = {preferred_backend_id}
         return preferred_backend_id, preferred_placement, allowed_backend_ids

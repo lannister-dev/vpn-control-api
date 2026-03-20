@@ -82,10 +82,12 @@ class ConnectService:
         )
 
         max_fetch = max(payload.max_routes * 4, 10)
+        allowed_backend_ids_sorted = sorted(allowed_backend_ids, key=str)
         route_rows = await self.route_repository.list_resolved_active(
             preferred_node_id=preferred_node_id,
             preferred_region=payload.preferred_region,
             limit=max_fetch,
+            backend_node_ids=allowed_backend_ids_sorted,
             node_seen_after=self._resolved_route_node_seen_after(),
         )
 
@@ -218,20 +220,24 @@ class ConnectService:
                 )
                 await self.node_agent_transport.enqueue_for_placement_ids([created.id])
                 placements_by_backend[node_id] = created
+            target_node_ids = [self._as_uuid(str(node.id)) for node in target_nodes]
+        else:
+            target_node_ids = []
 
         preferred_placement: UserPlacement | None = None
-        for node in candidate_nodes:
-            node_id = self._as_uuid(str(node.id))
-            preferred_placement = synced_by_backend.get(node_id)
+        for node_id in target_node_ids:
+            preferred_placement = synced_by_backend.get(node_id) or placements_by_backend.get(node_id)
             if preferred_placement is not None:
                 break
-        if preferred_placement is None and synced_placements:
+        if preferred_placement is None and synced_placements and not target_node_ids:
             preferred_placement = synced_placements[0]
+        if preferred_placement is None and placements_by_backend:
+            preferred_placement = next(iter(placements_by_backend.values()))
         if preferred_placement is None:
             raise HTTPException(status_code=503, detail="Node placement sync pending")
 
         preferred_backend_id = self._as_uuid(preferred_placement.backend_node_id)
-        allowed_backend_ids = set(synced_by_backend.keys())
+        allowed_backend_ids = set(target_node_ids) if target_node_ids else set(placements_by_backend.keys())
         if not allowed_backend_ids:
             raise HTTPException(status_code=503, detail="Node placement sync pending")
         return preferred_backend_id, preferred_placement, allowed_backend_ids

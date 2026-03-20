@@ -95,8 +95,11 @@ class RouteRepository(BaseRepository[Route]):
             preferred_node_id: UUID | None,
             preferred_region: str | None,
             limit: int,
+            backend_node_ids: list[UUID] | None = None,
             node_seen_after: datetime | None = None,
     ) -> list[tuple[Route, VpnNode, TransportProfile]]:
+        if backend_node_ids is not None and not backend_node_ids:
+            return []
         status_order = (
             case(
                 (Route.health_status == "healthy", 0),
@@ -122,6 +125,8 @@ class RouteRepository(BaseRepository[Route]):
                 NodeAgentState.is_healthy.is_(True),
             )
         )
+        if backend_node_ids is not None:
+            stmt = stmt.where(Route.node_id.in_(backend_node_ids))
         if node_seen_after is not None:
             stmt = stmt.where(NodeAgentState.last_seen_at >= node_seen_after)
         if preferred_node_id is not None:
