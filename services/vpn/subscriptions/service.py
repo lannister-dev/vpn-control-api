@@ -148,8 +148,18 @@ class SubscriptionService:
                     detail=self._describe_profile_registry_error(exc),
                 ) from exc
 
+        if data.plan_id:
+            from services.plans.repository import PlanRepository
+            plan_repo = PlanRepository(self.session)
+            plan = await plan_repo.get_by_id(data.plan_id)
+            if not plan:
+                raise HTTPException(status_code=404, detail="Plan not found")
+            if not plan.is_active:
+                raise HTTPException(status_code=422, detail="Plan is not active")
+
         internal = SubscriptionInternalCreate(
             user_id=data.user_id,
+            plan_id=data.plan_id,
             token_hash=token_hash,
             is_active=True,
             expires_at=data.expires_at,
@@ -175,7 +185,28 @@ class SubscriptionService:
         sub = await self.subscription_repository.get_by_id(subscription_id)
         if not sub:
             raise SubscriptionNotFound(subscription_id)
-        return SubscriptionOut.model_validate(sub)
+        return self._sub_to_out(sub)
+
+    @staticmethod
+    def _sub_to_out(sub) -> SubscriptionOut:
+        plan = getattr(sub, "plan", None)
+        return SubscriptionOut(
+            id=sub.id,
+            user_id=sub.user_id,
+            plan_id=sub.plan_id,
+            plan_name=plan.name if plan else None,
+            is_active=sub.is_active,
+            expires_at=sub.expires_at,
+            profile_key=sub.profile_key,
+            preferred_region=sub.preferred_region,
+            hwid_enabled=sub.hwid_enabled,
+            max_devices=sub.max_devices,
+            used_traffic_bytes=getattr(sub, "used_traffic_bytes", 0),
+            lifetime_used_traffic_bytes=getattr(sub, "lifetime_used_traffic_bytes", 0),
+            last_traffic_reset_at=getattr(sub, "last_traffic_reset_at", None),
+            created_at=sub.created_at,
+            updated_at=sub.updated_at,
+        )
 
     async def list_subscriptions_by_user(
             self,
@@ -187,7 +218,7 @@ class SubscriptionService:
             user_id=user_id,
             active_only=active_only,
         )
-        return [SubscriptionOut.model_validate(row) for row in rows]
+        return [self._sub_to_out(row) for row in rows]
 
     async def rotate_token(
             self,
@@ -849,6 +880,7 @@ class SubscriptionService:
 
         if candidate_nodes:
             target_nodes = candidate_nodes[:desired_replicas]
+            new_placement_ids: list[UUID] = []
             for node in target_nodes:
                 node_id = self._as_uuid(str(node.id))
                 if node_id in placements_by_backend:
@@ -861,6 +893,9 @@ class SubscriptionService:
                     last_migration_reason="subscription_replica",
                 )
                 placements_by_backend[node_id] = created
+                new_placement_ids.append(created.id)
+            if new_placement_ids:
+                await self.node_agent_transport.enqueue_for_placement_ids(new_placement_ids)
 
         preferred_placement: UserPlacement | None = None
         for node in candidate_nodes:

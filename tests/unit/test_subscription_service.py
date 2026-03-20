@@ -124,12 +124,17 @@ def _make_subscription_row(*, user_id=None, is_active=True):
     sub.user_id = user_id or uuid4()
     sub.client_id = uuid4()
     sub.root_vpn_key_id = None
+    sub.plan_id = None
+    sub.plan = None
     sub.is_active = is_active
     sub.expires_at = now + timedelta(days=30)
     sub.profile_key = "ws_tls_v1"
     sub.preferred_region = "fi"
     sub.hwid_enabled = True
     sub.max_devices = 2
+    sub.used_traffic_bytes = 0
+    sub.lifetime_used_traffic_bytes = 0
+    sub.last_traffic_reset_at = None
     sub.created_at = now
     sub.updated_at = now
     return sub
@@ -1025,6 +1030,7 @@ async def test_subscription_rejects_pending_placement_for_new_backend(service):
         )
 
     assert str(exc.value) == "Node placement sync pending"
+    service.node_agent_transport.enqueue_for_placement_ids.assert_awaited_once_with([created.id])
 
 
 @pytest.mark.asyncio
