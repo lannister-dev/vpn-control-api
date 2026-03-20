@@ -253,7 +253,8 @@ class SubscriptionService:
         await self._invalidate_payload_cache_by_token_hash(sub.token_hash)
         await self._invalidate_payload_cache_by_token_hash(new_hash)
 
-        return SubscriptionRotateOut(token=new_raw)
+        subscription_url = f"{self.settings.subscriptions.public_base_url}{new_raw}"
+        return SubscriptionRotateOut(token=new_raw, subscription_url=subscription_url)
 
     async def deactivate(self, subscription_id: UUID) -> int:
         """

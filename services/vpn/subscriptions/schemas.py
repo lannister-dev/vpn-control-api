@@ -77,6 +77,7 @@ class SubscriptionInternalRotate(BaseModel):
 
 class SubscriptionRotateOut(BaseModel):
     token: str
+    subscription_url: str
 
 
 class SubscriptionStatsOut(BaseModel):
