@@ -3,7 +3,10 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import func, select, update
+from typing import cast
+
+from sqlalchemy import delete, func, select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.admin_transport.read_models import (
@@ -276,6 +279,31 @@ class AdminTransportRepository:
             for row in rows
         ]
         return items, total
+
+    # ── Helpers ───────────────────────────────────────────────
+
+    # ── Cleanup ─────────────────────────────────────────────────
+
+    async def delete_published_outbox_older_than(self, *, cutoff: datetime) -> int:
+        stmt = delete(NodeTransportOutbox).where(
+            NodeTransportOutbox.status == "published",
+            NodeTransportOutbox.published_at < cutoff,
+        )
+        result = cast(CursorResult, await self.session.execute(stmt))
+        rowcount = result.rowcount
+        if callable(rowcount):
+            rowcount = rowcount()
+        return int(rowcount) if rowcount and rowcount > 0 else 0
+
+    async def delete_events_older_than(self, *, cutoff: datetime) -> int:
+        stmt = delete(NodeTransportEventLog).where(
+            NodeTransportEventLog.processed_at < cutoff,
+        )
+        result = cast(CursorResult, await self.session.execute(stmt))
+        rowcount = result.rowcount
+        if callable(rowcount):
+            rowcount = rowcount()
+        return int(rowcount) if rowcount and rowcount > 0 else 0
 
     # ── Helpers ───────────────────────────────────────────────
 

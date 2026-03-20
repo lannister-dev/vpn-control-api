@@ -131,3 +131,11 @@ class ForceSnapshotOut(BaseModel):
     ok: bool = True
     epoch: int
     snapshot_id: str
+
+
+# ── Cleanup ──────────────────────────────────────────────────
+
+class TransportCleanupOut(BaseModel):
+    deleted_outbox: int = 0
+    deleted_events: int = 0
+    retention_days: int
