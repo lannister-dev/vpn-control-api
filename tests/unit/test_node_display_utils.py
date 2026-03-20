@@ -29,3 +29,8 @@ def test_format_node_display_name_with_mapping():
 def test_format_node_display_name_unknown_region_falls_back_to_node_name():
     value = format_node_display_name(node_name="backend-1", region="unknown")
     assert value == "backend-1"
+
+
+def test_format_node_display_name_can_infer_country_from_node_name():
+    value = format_node_display_name(node_name="be-fr-1-reality-google", region="unknown")
+    assert value == "🇫🇷 France"

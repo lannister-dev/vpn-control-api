@@ -132,6 +132,8 @@ def flag_emoji_from_country_code(country_code: str | None) -> str:
 def format_node_display_name(*, node_name: str, region: str | None) -> str:
     safe_name = node_name.strip() if isinstance(node_name, str) else ""
     country_code = country_code_from_region(region)
+    if not country_code and safe_name:
+        country_code = country_code_from_region(safe_name)
     if not country_code:
         return safe_name or "Node"
 
