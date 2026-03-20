@@ -52,6 +52,7 @@ class NodeAgentRuntime:
         self._config = config
         self._nats = NatsClient(config)
         self._running = False
+        self._started_at: datetime | None = None
         self._tasks: list[asyncio.Task] = []
         self._subjects = AgentSubjects(
             command_prefix=config.js_command_subject_prefix,
@@ -68,6 +69,7 @@ class NodeAgentRuntime:
         await self._nats.connect()
         await self._ensure_topology()
         self._running = True
+        self._started_at = datetime.now(timezone.utc)
         self._tasks = [
             asyncio.create_task(self._run_outbox_publisher(), name="node-agent-outbox-publisher"),
             asyncio.create_task(
@@ -119,6 +121,86 @@ class NodeAgentRuntime:
         self._tasks.clear()
         await self._nats.close()
         logger_transport.info("node_agent_transport_stopped")
+
+    def get_runtime_status(self) -> dict:
+        now = datetime.now(timezone.utc)
+        uptime_s = None
+        if self._started_at is not None:
+            uptime_s = (now - self._started_at).total_seconds()
+        tasks = []
+        for task in self._tasks:
+            error = None
+            if task.done() and task.exception() is not None:
+                try:
+                    error = str(task.exception())
+                except Exception:
+                    error = "unknown error"
+            tasks.append({
+                "name": task.get_name(),
+                "running": not task.done(),
+                "error": error,
+            })
+        return {
+            "nats_connected": self._nats.is_connected,
+            "uptime_s": uptime_s,
+            "tasks": tasks,
+        }
+
+    async def trigger_snapshot_for_node(self, *, node_id: UUID, reason: str = "admin_requested") -> None:
+        session_maker = AsyncDatabase.get_session_maker()
+        async with session_maker() as session:
+            commands = await NodeAgentPlacementTransport(session).list_command_payloads_for_backend(
+                backend_node_id=node_id,
+            )
+            state_repo = NodeTransportStateRepository(session)
+            now = datetime.now(timezone.utc)
+            snapshot_id = f"snap-{node_id}-admin-{now.isoformat()}"
+            request_event_id = f"admin-snapshot:{node_id}:{now.isoformat()}"
+            epoch, reserved_snapshot_id = await state_repo.reserve_snapshot_epoch(
+                node_id=node_id,
+                request_event_id=request_event_id,
+                snapshot_id=snapshot_id,
+                snapshot_reason=reason,
+                requested_at=now,
+                generated_at=now,
+            )
+            snapshot_items = [
+                PlacementCommandEvent(
+                    node_id=str(cmd.node_id),
+                    emitted_at=now,
+                    snapshot_id=reserved_snapshot_id,
+                    epoch=epoch,
+                    event_id=f"snapshot-command:{cmd.placement_id}:{cmd.op_version}",
+                    placement_id=str(cmd.placement_id),
+                    key_id=str(cmd.key_id),
+                    op_version=cmd.op_version,
+                    desired_state=cmd.desired_state,
+                    backend_node_id=str(cmd.backend_node_id),
+                    protocol=cmd.protocol,
+                    transport=cmd.transport,
+                    client_id=cmd.client_id,
+                    is_revoked=cmd.is_revoked,
+                    valid_until=cmd.valid_until,
+                    updated_at=cmd.updated_at,
+                )
+                for cmd in commands
+            ]
+            if not snapshot_items:
+                await self._publish_snapshot_chunk(
+                    node_id=str(node_id), snapshot_id=reserved_snapshot_id,
+                    epoch=epoch, chunk_index=0, is_last_chunk=True, items=[],
+                )
+            else:
+                chunked = self._chunk_items(snapshot_items, chunk_size=200)
+                for index, chunk in enumerate(chunked):
+                    is_last = index == len(chunked) - 1
+                    for item in chunk:
+                        item.snapshot_complete = is_last
+                    await self._publish_snapshot_chunk(
+                        node_id=str(node_id), snapshot_id=reserved_snapshot_id,
+                        epoch=epoch, chunk_index=index, is_last_chunk=is_last, items=chunk,
+                    )
+            await session.commit()
 
     async def _ensure_topology(self) -> None:
         await self._nats.ensure_stream(

@@ -10,6 +10,8 @@ from shared.profiles.init import bootstrap_profiles_registry
 from shared.redis.client import redis_client
 from shared.utils.logger import StructuredLogger
 
+from services.admin_transport.router import router as admin_transport_router
+from services.admin_transport.cleanup_reconciler import AdminTransportCleanupReconciler
 from services.auth.docs import DocsBasicAuthMiddleware
 from services.auth.router import router as auth_router
 from services.admin_ops.router import router as admin_ops_router
@@ -31,9 +33,12 @@ from services.routes.router import router as routes_router
 from services.routes.reconciler import RouteWarmupReconciler
 from services.traffic.consumer import UserTrafficNatsConsumer
 from services.traffic.reconciler import TrafficHistoryCleanupReconciler
+from services.traffic.reset_reconciler import TrafficResetReconciler
 from services.auth.admin.router import router as admin_auth_router
 from services.traffic.router import router as traffic_admin_router
 from services.vpn.keys.router import router as vpn_router
+from services.plans.router import router as plans_router
+from services.users.router import router as users_router
 from services.vpn.subscriptions.router import router as subscriptions_router
 
 
@@ -58,16 +63,23 @@ async def lifespan(app: FastAPI):
     node_agent_runtime = NodeAgentRuntime(get_settings().nats)
     users_traffic_consumer = UserTrafficNatsConsumer(get_settings().nats)
     traffic_cleanup_reconciler = TrafficHistoryCleanupReconciler()
+    transport_cleanup_reconciler = AdminTransportCleanupReconciler()
+    traffic_reset_reconciler = TrafficResetReconciler()
     await warmup_reconciler.start()
     await probe_cleanup_reconciler.start()
     await probe_auto_drain_reconciler.start()
     await node_auto_heal_reconciler.start()
     await node_agent_runtime.start()
+    app.state.node_agent_runtime = node_agent_runtime
     await users_traffic_consumer.start()
     await traffic_cleanup_reconciler.start()
+    await transport_cleanup_reconciler.start()
+    await traffic_reset_reconciler.start()
     try:
         yield
     finally:
+        await traffic_reset_reconciler.stop()
+        await transport_cleanup_reconciler.stop()
         await traffic_cleanup_reconciler.stop()
         await users_traffic_consumer.stop()
         await node_agent_runtime.stop()
@@ -92,6 +104,7 @@ api_router.include_router(admin_auth_router)
 api_router.include_router(auth_router)
 api_router.include_router(admin_ops_router)
 api_router.include_router(admin_status_router)
+api_router.include_router(admin_transport_router)
 api_router.include_router(admin_ui_router)
 api_router.include_router(artifacts_router)
 api_router.include_router(connect_router)
@@ -101,6 +114,8 @@ api_router.include_router(probe_router)
 api_router.include_router(routes_router)
 api_router.include_router(traffic_admin_router)
 api_router.include_router(vpn_router)
+api_router.include_router(plans_router)
+api_router.include_router(users_router)
 api_router.include_router(subscriptions_router)
 
 app.include_router(api_router)

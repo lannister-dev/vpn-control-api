@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -20,6 +21,7 @@ from services.traffic.schemas import (
     UserTrafficIn,
 )
 from services.vpn.keys.repository import VpnKeyRepository
+from services.vpn.subscriptions.repository import SubscriptionRepository
 from shared.database.session import AsyncDatabase
 from services.placements.transport import NodeAgentPlacementTransport
 from shared.monitoring.metrics import VPN_KEY_OPERATION_TOTAL
@@ -35,6 +37,7 @@ class UserTrafficService:
         self.key_repository = VpnKeyRepository(session)
         self.placement_repository = UserPlacementRepository(session)
         self.traffic_usage_repository = TrafficUsageRepository(session)
+        self.subscription_repository = SubscriptionRepository(session)
         self.node_agent_transport = NodeAgentPlacementTransport(session)
 
     async def ingest_users_traffic(self, raw_payload: bytes) -> dict[str, int]:
@@ -72,7 +75,9 @@ class UserTrafficService:
         processed = 0
         revoked = 0
         history_rows: list[TrafficUsageCreate] = []
+        subscription_deltas: dict[UUID, int] = defaultdict(int)
 
+        # Phase 1: update per-key counters, collect subscription deltas
         for traffic in parsed:
             key = key_by_client.get(traffic.identifier)
             if key is None:
@@ -102,9 +107,38 @@ class UserTrafficService:
                 )
             )
 
+            if key.subscription_id:
+                subscription_deltas[key.subscription_id] += delta
+
+        # Phase 2: update subscription counters and check plan limits
+        exceeded_sub_ids: set[UUID] = set()
+        if subscription_deltas:
+            subs = await self.subscription_repository.list_by_ids_with_plan(
+                list(subscription_deltas.keys())
+            )
+            for sub in subs:
+                delta = subscription_deltas.get(sub.id, 0)
+                if delta <= 0:
+                    continue
+                sub.used_traffic_bytes = int(sub.used_traffic_bytes or 0) + delta
+                sub.lifetime_used_traffic_bytes = int(sub.lifetime_used_traffic_bytes or 0) + delta
+                sub.updated_at = now
+
+                if not sub.plan or sub.plan.traffic_limit_bytes <= 0:
+                    continue  # unlimited plan — no cap
+                if sub.used_traffic_bytes >= sub.plan.traffic_limit_bytes:
+                    exceeded_sub_ids.add(sub.id)
+
+            # Revoke all keys for exceeded subscriptions
+            for sub_id in exceeded_sub_ids:
+                revoked += await self._revoke_subscription_keys(sub_id, now)
+
+        # Phase 3: per-key limit fallback for keys WITHOUT subscription
+        for key in key_by_client.values():
+            if key.subscription_id:
+                continue  # handled at subscription level
             if key.is_revoked:
                 continue
-
             limit_bytes = max(0, int(key.traffic_limit_mb or 0)) * _MIB
             if limit_bytes <= 0:
                 continue
@@ -135,6 +169,29 @@ class UserTrafficService:
                 revoked=revoked,
             )
         return {"processed": processed, "revoked": revoked}
+
+    async def _revoke_subscription_keys(self, subscription_id: UUID, now: datetime) -> int:
+        """Revoke all active keys of a subscription due to plan traffic limit."""
+        active_keys = await self.key_repository.list_active_by_subscription_id(subscription_id)
+        count = 0
+        for key in active_keys:
+            if key.is_revoked:
+                continue
+            key.is_revoked = True
+            key.updated_at = now
+            await self.placement_repository.set_desired_state_for_key(
+                key_id=key.id,
+                desired_state=PlacementDesiredState.inactive.value,
+                last_migration_reason=_MIGRATION_REASON,
+                updated_at=now,
+            )
+            await self.node_agent_transport.enqueue_for_key_state(
+                key_id=key.id,
+                desired_state=PlacementDesiredState.inactive.value,
+            )
+            VPN_KEY_OPERATION_TOTAL.labels(operation="auto_revoked_traffic_limit").inc()
+            count += 1
+        return count
 
     @staticmethod
     def _compute_delta(*, new_total: int, old_total: int) -> int:

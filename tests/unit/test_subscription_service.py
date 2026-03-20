@@ -124,12 +124,17 @@ def _make_subscription_row(*, user_id=None, is_active=True):
     sub.user_id = user_id or uuid4()
     sub.client_id = uuid4()
     sub.root_vpn_key_id = None
+    sub.plan_id = None
+    sub.plan = None
     sub.is_active = is_active
     sub.expires_at = now + timedelta(days=30)
     sub.profile_key = "ws_tls_v1"
     sub.preferred_region = "fi"
     sub.hwid_enabled = True
     sub.max_devices = 2
+    sub.used_traffic_bytes = 0
+    sub.lifetime_used_traffic_bytes = 0
+    sub.last_traffic_reset_at = None
     sub.created_at = now
     sub.updated_at = now
     return sub
@@ -508,12 +513,11 @@ async def test_build_payload_fetches_route_buffer_scaled_to_max_routes(service):
         await service.build_payload(raw_token="tok")
 
     assert str(exc.value).startswith("No available routes")
-    service.route_repository.list_resolved_active.assert_awaited_once_with(
-        preferred_node_id=preferred_backend_id,
-        preferred_region="fr",
-        limit=24,
-        node_seen_after=ANY,
-    )
+    assert service.route_repository.list_resolved_active.await_count == 2
+    first_call = service.route_repository.list_resolved_active.await_args_list[0]
+    assert first_call.kwargs["preferred_node_id"] == preferred_backend_id
+    assert first_call.kwargs["preferred_region"] == "fr"
+    assert first_call.kwargs["limit"] == 24
 
 
 @pytest.mark.asyncio
@@ -989,7 +993,7 @@ def test_fit_routes_to_payload_limit_rejects_if_single_route_too_large(service):
 
 
 @pytest.mark.asyncio
-async def test_subscription_rejects_pending_placement_for_new_backend(service):
+async def test_subscription_uses_pending_placement_as_fallback(service):
     backend = MagicMock()
     backend.id = uuid4()
     backend.public_domain = "be.example.com"
@@ -1017,15 +1021,16 @@ async def test_subscription_rejects_pending_placement_for_new_backend(service):
     service.placement_repository.upsert_set_pending = AsyncMock(return_value=created)
     service.routing_service.select_nodes = AsyncMock(return_value=[backend])
 
-    with pytest.raises(SubscriptionBuild) as exc:
-        await service._ensure_backend_placements_for_key(
-            key_id=uuid4(),
-            preferred_region="fi",
-            desired_replicas=1,
-            key_transport="reality",
-        )
+    preferred_backend_id, placement, allowed_backend_ids = await service._ensure_backend_placements_for_key(
+        key_id=uuid4(),
+        preferred_region="fi",
+        desired_replicas=1,
+        key_transport="reality",
+    )
 
-    assert str(exc.value) == "Node placement sync pending"
+    assert placement.id == created.id
+    assert preferred_backend_id == backend.id
+    assert backend.id in allowed_backend_ids
     service.node_agent_transport.enqueue_for_placement_ids.assert_awaited_once_with([created.id])
 
 
@@ -1069,7 +1074,7 @@ async def test_subscription_returns_synced_existing_placement(service):
 
 
 @pytest.mark.asyncio
-async def test_subscription_rejects_unsynced_existing_placement(service):
+async def test_subscription_accepts_pending_existing_placement(service):
     backend = MagicMock()
     backend.id = uuid4()
     backend.public_domain = "be.example.com"
@@ -1095,12 +1100,13 @@ async def test_subscription_rejects_unsynced_existing_placement(service):
     service.placement_repository.list_by_key_id.return_value = [pending]
     service.routing_service.select_nodes = AsyncMock(return_value=[backend])
 
-    with pytest.raises(SubscriptionBuild) as exc:
-        await service._ensure_backend_placements_for_key(
-            key_id=uuid4(),
-            preferred_region="fi",
-            desired_replicas=1,
-            key_transport="reality",
-        )
+    preferred_backend_id, placement, allowed_backend_ids = await service._ensure_backend_placements_for_key(
+        key_id=uuid4(),
+        preferred_region="fi",
+        desired_replicas=1,
+        key_transport="reality",
+    )
 
-    assert str(exc.value) == "Node placement sync pending"
+    assert placement.id == pending.id
+    assert preferred_backend_id == backend.id
+    assert backend.id in allowed_backend_ids

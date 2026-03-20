@@ -110,7 +110,7 @@ class AlertsConfig:
 @dataclass
 class ProbeConfig:
     target_port: int = 443
-    retention_days: int = 30
+    retention_days: int = 3
     cleanup_enabled: bool = True
     cleanup_tick_sec: int = 3600
     auto_route_health_enabled: bool = True
@@ -150,6 +150,15 @@ class TrafficConfig:
     cleanup_enabled: bool = False
     cleanup_tick_sec: int = 3600
     history_retention_days: int = 14
+    reset_enabled: bool = False
+    reset_tick_sec: int = 300
+
+
+@dataclass
+class TransportConfig:
+    cleanup_enabled: bool = True
+    cleanup_tick_sec: int = 3600
+    retention_days: int = 30
 
 
 @dataclass
@@ -184,6 +193,7 @@ class Settings:
     routes: RoutesConfig
     edge: EdgeConfig
     traffic: TrafficConfig
+    transport: TransportConfig
     admin_auth: AdminAuthConfig
 
 
@@ -297,7 +307,7 @@ def get_settings() -> Settings:
 
     probe = ProbeConfig(
         target_port=env.int("PROBE_TARGET_PORT", default=443),
-        retention_days= env.int("PROBE_RETENTION_DAYS", default=30),
+        retention_days= env.int("PROBE_RETENTION_DAYS", default=3),
         cleanup_enabled=env.bool("PROBE_CLEANUP_ENABLED", default=True),
         cleanup_tick_sec=max(300, env.int("PROBE_CLEANUP_TICK_SEC", default=3600)),
         auto_route_health_enabled=env.bool("PROBE_AUTO_ROUTE_HEALTH_ENABLED", default=True),
@@ -339,6 +349,13 @@ def get_settings() -> Settings:
         cleanup_enabled=env.bool("TRAFFIC_CLEANUP_ENABLED", default=False),
         cleanup_tick_sec=max(300, env.int("TRAFFIC_CLEANUP_TICK_SEC", default=3600)),
         history_retention_days=max(1, env.int("TRAFFIC_HISTORY_RETENTION_DAYS", default=14)),
+        reset_enabled=env.bool("TRAFFIC_RESET_ENABLED", default=False),
+        reset_tick_sec=max(60, env.int("TRAFFIC_RESET_TICK_SEC", default=300)),
+    )
+    transport = TransportConfig(
+        cleanup_enabled=env.bool("TRANSPORT_CLEANUP_ENABLED", default=True),
+        cleanup_tick_sec=max(300, env.int("TRANSPORT_CLEANUP_TICK_SEC", default=3600)),
+        retention_days=max(1, env.int("TRANSPORT_RETENTION_DAYS", default=30)),
     )
 
     _tg_allowed_raw = env.str("ADMIN_TELEGRAM_ALLOWED_IDS", default="")
@@ -375,5 +392,6 @@ def get_settings() -> Settings:
         routes=routes,
         edge=edge,
         traffic=traffic,
+        transport=transport,
         admin_auth=admin_auth,
     )

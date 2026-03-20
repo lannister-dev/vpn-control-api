@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 class SubscriptionCreateIn(BaseModel):
     user_id: UUID
+    plan_id: UUID | None = None
     profile_key: str | None = Field(default=None, max_length=64)
     preferred_region: str | None = Field(default=None, max_length=16)
     expires_at: datetime | None = None
@@ -15,6 +16,7 @@ class SubscriptionCreateIn(BaseModel):
 
 class SubscriptionInternalCreate(BaseModel):
     user_id: UUID
+    plan_id: UUID | None = None
     token_hash: str = Field(min_length=64, max_length=64)
     prev_token_hash: str | None = None
     prev_token_expires_at: datetime | None = None
@@ -27,6 +29,7 @@ class SubscriptionInternalCreate(BaseModel):
 
 
 class SubscriptionInternalUpdate(BaseModel):
+    plan_id: UUID | None = None
     is_active: bool | None = None
     expires_at: datetime | None = None
     profile_key: str | None = Field(default=None, max_length=64)
@@ -48,12 +51,17 @@ class SubscriptionCreatedOut(BaseModel):
 class SubscriptionOut(BaseModel):
     id: UUID
     user_id: UUID
+    plan_id: UUID | None = None
+    plan_name: str | None = None
     is_active: bool
     expires_at: datetime | None
     profile_key: str | None
     preferred_region: str | None
     hwid_enabled: bool
     max_devices: int | None
+    used_traffic_bytes: int = 0
+    lifetime_used_traffic_bytes: int = 0
+    last_traffic_reset_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -69,6 +77,7 @@ class SubscriptionInternalRotate(BaseModel):
 
 class SubscriptionRotateOut(BaseModel):
     token: str
+    subscription_url: str
 
 
 class SubscriptionStatsOut(BaseModel):
