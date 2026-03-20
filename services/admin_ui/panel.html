@@ -270,8 +270,8 @@
     .kpi-icon.purple { background: rgba(168, 85, 247, 0.12); }
     .kpi-icon.cyan { background: rgba(6, 182, 212, 0.12); }
     .kpi-content { min-width: 0; }
-    .kpi-name { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em; white-space: nowrap; }
-    .kpi-value { margin-top: 3px; font-size: 22px; font-family: "JetBrains Mono", monospace; font-weight: 700; background: linear-gradient(135deg, #e2e8f0, #94a3b8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .kpi-name { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em; }
+    .kpi-value { margin-top: 3px; font-size: 18px; font-family: "JetBrains Mono", monospace; font-weight: 700; background: linear-gradient(135deg, #e2e8f0, #94a3b8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; word-break: break-word; overflow-wrap: break-word; }
     .panel {
       display: none;
       border: 1px solid var(--line);
@@ -294,7 +294,8 @@
     }
     .panel-title { font-size: 14px; font-weight: 700; }
     .panel-body { padding: 12px 14px; overflow-x: auto; }
-    .two-col { display: grid; grid-template-columns: 1.2fr 1fr; gap: 12px; }
+    .two-col { display: grid; grid-template-columns: 1.2fr 1fr; gap: 12px; min-width: 0; }
+    .two-col > * { min-width: 0; }
     .card {
       border: 1px solid var(--line);
       border-radius: 12px;
@@ -302,6 +303,8 @@
       padding: 10px;
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
       transition: transform 130ms ease, border-color 130ms ease;
+      min-width: 0;
+      overflow: hidden;
     }
     .card:hover {
       transform: translateY(-2px);
@@ -400,8 +403,9 @@
       box-shadow: var(--teal-ring);
       transform: translateY(-1px);
     }
-    .log { display: grid; gap: 6px; max-height: 280px; overflow: auto; }
-    .log-item { border: 1px solid var(--line); border-radius: 9px; background: rgba(15, 23, 42, 0.36); padding: 7px 8px; font-size: 12px; }
+    .log { display: grid; gap: 6px; max-height: 280px; overflow: auto; min-width: 0; }
+    .log-item { border: 1px solid var(--line); border-radius: 9px; background: rgba(15, 23, 42, 0.36); padding: 7px 8px; font-size: 12px; min-width: 0; overflow: hidden; }
+    .log-item .mono { word-break: break-all; overflow-wrap: break-word; }
     /* Transport tab */
     .t-kpi-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 18px; }
     .t-kpi-card { border: 1px solid var(--line); border-radius: 14px; background: rgba(15, 23, 42, 0.46); padding: 14px; text-align: center; box-shadow: inset 0 1px 0 rgba(255,255,255,0.06); transition: all 160ms ease; position: relative; overflow: hidden; }
@@ -829,7 +833,6 @@
             <div class="card"><div class="card-title"><span class="card-icon cyan">⚡</span> Transport Health</div><div id="transport-alert-list" class="stack"></div></div>
           </div>
           <div class="stack">
-            <div class="card"><div class="card-title"><span class="card-icon blue">🖥</span> Выбранный сервер</div><div id="selected-node-card" class="empty">Выберите сервер во вкладке &laquo;Серверы&raquo;.</div></div>
             <div class="card"><div class="card-title"><span class="card-icon">📋</span> Журнал операций</div><div id="action-log" class="log"></div></div>
           </div>
         </div>
@@ -1236,6 +1239,8 @@
   </main>
   <div id="toast-container" class="toast-container"></div>
   <div id="confirm-modal"></div>
+  <div id="node-config-modal"></div>
+  <div id="selected-node-card" style="display:none"></div>
 
   <script>
     (function () {
@@ -1252,7 +1257,7 @@
         readyDot: $("ready-dot"), readinessText: $("readiness-text"), lastSync: $("last-sync"), heroStatus: $("hero-status"),
         heroTitle: $("hero-title"), crumbs: $("crumbs"), contentArea: $("content-area"),
         kpiNodes: $("kpi-nodes"), kpiHealthy: $("kpi-healthy"), kpiDraining: $("kpi-draining"), kpiPlacements: $("kpi-placements"), kpiRoutes: $("kpi-routes"), kpiProbeFail: $("kpi-probe-fail"), kpiTrafficKeys: $("kpi-traffic-keys"), kpiTrafficRevoked: $("kpi-traffic-revoked"), kpiTrafficTotal: $("kpi-traffic-total"),
-        readinessList: $("readiness-list"), routeHealthList: $("route-health-list"), probeFailList: $("probe-fail-list"), nodeAlertList: $("node-alert-list"), selectedNodeCard: $("selected-node-card"), actionLog: $("action-log"),
+        readinessList: $("readiness-list"), routeHealthList: $("route-health-list"), probeFailList: $("probe-fail-list"), nodeAlertList: $("node-alert-list"), selectedNodeCard: $("selected-node-card"), actionLog: $("action-log"), nodeConfigModal: $("node-config-modal"),
         nodesHead: $("nodes-head"), nodesBody: $("nodes-body"), routesHead: $("routes-head"), routesBody: $("routes-body"), placementsBody: $("placements-body"), placementsMeta: $("placements-meta"),
         subsHead: $("subs-head"), subsBody: $("subs-body"), subCreateResult: $("sub-create-result"),
         subDetailContainer: $("sub-detail-container"), subDevicesContainer: $("sub-devices-container"),
@@ -1652,39 +1657,82 @@
       function filteredSubscriptions() { return state.subscriptions.slice(0, TABLE_LIMIT); }
 
       /* ── Selected node card ─────────────────────── */
-      function renderSelectedNode() {
-        const n = state.selectedNode;
-        if (!n) { refs.selectedNodeCard.innerHTML = `<div class="empty">Выберите сервер во вкладке &laquo;Серверы&raquo;.</div>`; return; }
+      function renderSelectedNode() { /* no-op: node config moved to modal in Servers tab */ }
+
+      function openNodeConfigModal(nodeId) {
+        if (!state.status || !state.status.nodes) return;
+        const n = state.status.nodes.find((x) => x.id === nodeId);
+        if (!n) { notify("Сервер не найден", true); return; }
+        state.selectedNode = n;
         const g = nodeGeo(n.region);
         const nodeRoutes = state.routes.filter((r) => r.node_id === n.id);
         const nodePlacementsCount = state.placements.filter((p) => p.backend_node_id === n.id).length;
-        let html = `<div class="stack">`;
-        html += `<div><div style="font-weight:700;font-size:16px">${esc(n.name)}</div>`;
-        html += `<div style="margin:4px 0">${chip("info", g.short)}</div>`;
-        html += `<div>${uuidCell(n.id)}</div>`;
-        if (n.public_domain) html += `<div class="mono muted" style="font-size:11px">domain: ${esc(n.public_domain)}</div>`;
-        if (n.reality_ip) html += `<div class="mono muted" style="font-size:11px">reality: ${esc(n.reality_ip)}</div>`;
-        html += `</div>`;
-        html += `<div>${n.is_healthy ? chip("ok", "Здоров") : chip("bad", "Нездоров")} ${n.is_draining ? chip("warn", "Draining") : (!n.is_enabled ? chip("bad", "Отключен") : chip("ok", "Активен"))}</div>`;
-        html += `<div><div class="muted" style="font-size:11px;margin-bottom:2px">Нагрузка</div>${capacityBar(n.placements_backend, n.capacity)}</div>`;
-        html += `<div><div class="muted" style="font-size:11px;margin-bottom:4px">Маршруты (${nodeRoutes.length})</div>`;
-        if (nodeRoutes.length) {
-          html += nodeRoutes.map((r) => {
-            const sCls = r.health_status === "healthy" ? "ok" : (r.health_status === "blocked" ? "bad" : "warn");
-            return `<div style="font-size:12px;margin-bottom:2px">${esc(r.name)} ${chip(sCls, routeStatusLabel(r.health_status))}</div>`;
-          }).join("");
-        } else html += `<div class="empty">Нет маршрутов</div>`;
-        html += `</div>`;
-        html += `<div class="muted" style="font-size:11px">Плейсменты на ноде: <strong style="color:var(--text)">${nodePlacementsCount}</strong></div>`;
-        html += `<div class="actions"><button class="btn-mini" data-selected="drain">Drain</button><button class="btn-mini" data-selected="enable">Enable</button></div>`;
-        html += `<details><summary style="cursor:pointer;font-weight:600;font-size:13px;margin:4px 0">Конфигурация</summary><div class="stack" style="margin-top:8px;gap:4px">`;
-        html += `<label class="muted" style="font-size:.85em">Region<input id="edit-region" class="input" value="${esc(n.region || "")}" style="margin-top:2px"></label>`;
-        html += `<label class="muted" style="font-size:.85em">Public domain<input id="edit-public-domain" class="input" value="${esc(n.public_domain || "")}" style="margin-top:2px"></label>`;
-        html += `<label class="muted" style="font-size:.85em">Reality IP<input id="edit-reality-ip" class="input" value="${esc(n.reality_ip || "")}" style="margin-top:2px"></label>`;
-        html += `<label class="muted" style="font-size:.85em">Capacity<input id="edit-capacity" class="input" type="number" min="1" max="10000" value="${n.capacity || ""}" style="margin-top:2px"></label>`;
-        html += `<div class="actions" style="margin-top:4px"><button class="btn-mini" data-selected="save-config">Сохранить</button></div>`;
-        html += `</div></details></div>`;
-        refs.selectedNodeCard.innerHTML = html;
+        const routesHtml = nodeRoutes.length
+          ? nodeRoutes.map((r) => { const sCls = r.health_status === "healthy" ? "ok" : (r.health_status === "blocked" ? "bad" : "warn"); return `<div style="font-size:12px;margin-bottom:2px">${esc(r.name)} ${chip(sCls, routeStatusLabel(r.health_status))}</div>`; }).join("")
+          : `<div class="empty">Нет маршрутов</div>`;
+        refs.nodeConfigModal.innerHTML = `<div class="modal-overlay"><div class="modal-box wide">
+          <div class="modal-title">${esc(n.name)}</div>
+          <div class="modal-body">
+            <div class="form-section"><div class="form-section-title">Информация</div>
+              <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px">
+                <div class="stat-inline">ID: ${uuidCell(n.id)}</div>
+                <div class="stat-inline">Geo: <strong>${esc(g.short)}</strong></div>
+              </div>
+              <div style="margin-bottom:8px">${n.is_healthy ? chip("ok", "Здоров") : chip("bad", "Нездоров")} ${n.is_draining ? chip("warn", "Draining") : (!n.is_enabled ? chip("bad", "Отключен") : chip("ok", "Активен"))}</div>
+              <div style="margin-bottom:8px"><div class="muted" style="font-size:11px;margin-bottom:2px">Нагрузка</div>${capacityBar(n.placements_backend, n.capacity)}</div>
+              <div class="mini-kpi-row">
+                <div class="mini-kpi"><div class="mini-kpi-label">Маршруты</div><div class="mini-kpi-value">${nodeRoutes.length}</div></div>
+                <div class="mini-kpi"><div class="mini-kpi-label">Плейсменты</div><div class="mini-kpi-value">${nodePlacementsCount}</div></div>
+              </div>
+              <div style="margin-top:8px"><div class="muted" style="font-size:11px;margin-bottom:4px">Маршруты</div>${routesHtml}</div>
+            </div>
+            <div class="form-section"><div class="form-section-title">Конфигурация</div>
+              <div class="form-group"><label class="form-label">Region</label><input id="edit-region" class="input" value="${esc(n.region || "")}" /></div>
+              <div class="form-group"><label class="form-label">Public domain</label><input id="edit-public-domain" class="input" value="${esc(n.public_domain || "")}" /></div>
+              <div class="form-group"><label class="form-label">Reality IP</label><input id="edit-reality-ip" class="input" value="${esc(n.reality_ip || "")}" /></div>
+              <div class="form-group"><label class="form-label">Capacity</label><input id="edit-capacity" class="input" type="number" min="1" max="10000" value="${n.capacity || ""}" /></div>
+            </div>
+            <div class="form-section"><div class="form-section-title">Действия</div>
+              <div class="actions">
+                <button class="btn btn-warn" id="ncm-drain">Drain</button>
+                <button class="btn btn-primary" id="ncm-enable">Enable</button>
+              </div>
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-ghost" id="ncm-cancel">Закрыть</button>
+            <button class="btn btn-primary" id="ncm-save">Сохранить конфигурацию</button>
+          </div>
+        </div></div>`;
+        const closeModal = () => { refs.nodeConfigModal.innerHTML = ""; };
+        refs.nodeConfigModal.querySelector("#ncm-cancel").addEventListener("click", closeModal);
+        refs.nodeConfigModal.querySelector(".modal-overlay").addEventListener("click", (ev) => { if (ev.target === ev.currentTarget) closeModal(); });
+        refs.nodeConfigModal.querySelector("#ncm-save").addEventListener("click", () => {
+          const body = {};
+          const region = document.getElementById("edit-region").value;
+          const publicDomain = document.getElementById("edit-public-domain").value;
+          const realityIp = document.getElementById("edit-reality-ip").value;
+          const capacity = document.getElementById("edit-capacity").value;
+          if (region !== (n.region || "")) body.region = region;
+          if (publicDomain !== (n.public_domain || "")) body.public_domain = publicDomain;
+          if (realityIp !== (n.reality_ip || "")) body.reality_ip = realityIp || null;
+          if (capacity !== "" && Number(capacity) !== n.capacity) body.capacity = Number(capacity);
+          if (!Object.keys(body).length) { notify("Нет изменений", false); return; }
+          closeModal();
+          runAction(`Update node config ${n.id}`, () => req(`/api/v1/agent/nodes/${encodeURIComponent(n.id)}`, { method: "PATCH", body })).then(() => refreshAll()).catch(() => {});
+        });
+        refs.nodeConfigModal.querySelector("#ncm-drain").addEventListener("click", async () => {
+          const ok = await confirmAction("Drain ноды", `Перевести "${esc(n.name)}" в режим drain?`, "btn-warn");
+          if (!ok) return;
+          closeModal();
+          runAction(`Node drain ${n.id}`, () => req(`/api/v1/agent/nodes/${encodeURIComponent(n.id)}/drain`, { method: "POST", body: {} })).then(() => refreshAll()).catch(() => {});
+        });
+        refs.nodeConfigModal.querySelector("#ncm-enable").addEventListener("click", async () => {
+          const ok = await confirmAction("Enable ноды", `Активировать ноду "${esc(n.name)}"?`, "btn-primary");
+          if (!ok) return;
+          closeModal();
+          runAction(`Node enable ${n.id}`, () => req(`/api/v1/agent/nodes/${encodeURIComponent(n.id)}/enable`, { method: "POST", body: {} })).then(() => refreshAll()).catch(() => {});
+        });
       }
 
       /* ── Main render ────────────────────────────── */
@@ -1753,7 +1801,7 @@
           ? nodes.map((n) => {
             const g = nodeGeo(n.region);
             const routingHint = n.routing_eligible ? `<div class="muted" style="font-size:11px">routing: eligible</div>` : (n.routing_reason ? `<div class="muted" style="font-size:11px">routing: ${esc(routingReasonLabel(n.routing_reason))}</div>` : "");
-            return `<tr><td><strong>${esc(n.name)}</strong><div>${uuidCell(n.id)}</div>${n.public_domain ? `<div class="mono muted" style="font-size:11px">${esc(n.public_domain)}</div>` : ""}${n.reality_ip ? `<div class="mono muted" style="font-size:11px">reality: ${esc(n.reality_ip)}</div>` : ""}</td><td><div class="geo"><span class="flag">${esc(g.flag)}</span>${esc(g.country)}</div><div class="mono muted">${esc(g.regionText)}</div></td><td>${n.is_healthy ? chip("ok", "Здоров") : chip("bad", "Нездоров")}</td><td>${n.is_draining ? chip("warn", "Draining") : (!n.is_enabled ? chip("bad", "Отключен") : chip("ok", "Активен"))}${routingHint}</td><td>${capacityBar(n.placements_backend, n.capacity)}</td><td><span title="${esc(fmtDate(n.last_seen_at))}">${relTime(n.last_seen_at)}</span></td><td><div class="actions"><button class="btn-mini node-action" data-action="drain" data-id="${esc(n.id)}">Drain</button><button class="btn-mini node-action" data-action="enable" data-id="${esc(n.id)}">Enable</button><button class="btn-mini node-select" data-id="${esc(n.id)}">Выбрать</button></div></td></tr>`;
+            return `<tr><td><strong>${esc(n.name)}</strong><div>${uuidCell(n.id)}</div>${n.public_domain ? `<div class="mono muted" style="font-size:11px">${esc(n.public_domain)}</div>` : ""}${n.reality_ip ? `<div class="mono muted" style="font-size:11px">reality: ${esc(n.reality_ip)}</div>` : ""}</td><td><div class="geo"><span class="flag">${esc(g.flag)}</span>${esc(g.country)}</div><div class="mono muted">${esc(g.regionText)}</div></td><td>${n.is_healthy ? chip("ok", "Здоров") : chip("bad", "Нездоров")}</td><td>${n.is_draining ? chip("warn", "Draining") : (!n.is_enabled ? chip("bad", "Отключен") : chip("ok", "Активен"))}${routingHint}</td><td>${capacityBar(n.placements_backend, n.capacity)}</td><td><span title="${esc(fmtDate(n.last_seen_at))}">${relTime(n.last_seen_at)}</span></td><td><div class="actions"><button class="btn-mini node-action" data-action="drain" data-id="${esc(n.id)}">Drain</button><button class="btn-mini node-action" data-action="enable" data-id="${esc(n.id)}">Enable</button><button class="btn-mini node-config" data-id="${esc(n.id)}">Настройки</button></div></td></tr>`;
           }).join("")
           : `<tr><td colspan="7" class="empty">Нет серверов по текущим фильтрам.</td></tr>`;
 
@@ -2295,10 +2343,9 @@
       /* ── Node action listeners (unchanged) ──────── */
       refs.nodesBody.addEventListener("click", async (ev) => {
         const t = ev.target; if (!(t instanceof HTMLElement)) return;
-        const sbtn = t.closest(".node-select"); const abtn = t.closest(".node-action");
-        if (sbtn && sbtn.dataset.id && state.status && state.status.nodes) {
-          const n = state.status.nodes.find((x) => x.id === sbtn.dataset.id);
-          if (n) { state.selectedNode = n; render(); setTab("overview"); }
+        const cfgBtn = t.closest(".node-config"); const abtn = t.closest(".node-action");
+        if (cfgBtn && cfgBtn.dataset.id) {
+          openNodeConfigModal(cfgBtn.dataset.id);
           return;
         }
         if (abtn && abtn.dataset.id && abtn.dataset.action) {
@@ -2310,29 +2357,7 @@
         }
       });
 
-      refs.selectedNodeCard.addEventListener("click", async (ev) => {
-        const t = ev.target; if (!(t instanceof HTMLElement) || !state.selectedNode) return;
-        const b = t.closest("[data-selected]"); if (!b) return;
-        const id = state.selectedNode.id; const act = b.dataset.selected;
-        if (act === "save-config") {
-          const body = {};
-          const region = (document.getElementById("edit-region") || {}).value;
-          const publicDomain = (document.getElementById("edit-public-domain") || {}).value;
-          const realityIp = (document.getElementById("edit-reality-ip") || {}).value;
-          const capacity = (document.getElementById("edit-capacity") || {}).value;
-          if (region !== undefined && region !== (state.selectedNode.region || "")) body.region = region;
-          if (publicDomain !== undefined && publicDomain !== (state.selectedNode.public_domain || "")) body.public_domain = publicDomain;
-          if (realityIp !== undefined && realityIp !== (state.selectedNode.reality_ip || "")) body.reality_ip = realityIp || null;
-          if (capacity !== undefined && capacity !== "" && Number(capacity) !== state.selectedNode.capacity) body.capacity = Number(capacity);
-          if (!Object.keys(body).length) { notify("Нет изменений", false); return; }
-          runAction(`Update node config ${id}`, () => req(`/api/v1/agent/nodes/${encodeURIComponent(id)}`, { method: "PATCH", body })).then(() => refreshAll()).catch(() => {});
-          return;
-        }
-        const nodeName = state.selectedNode.name || shortId(id);
-        const ok = await confirmAction(act === "drain" ? "Drain ноды" : "Enable ноды", act === "drain" ? `Перевести "${nodeName}" в режим drain?` : `Активировать ноду "${nodeName}"?`, act === "drain" ? "btn-warn" : "btn-primary");
-        if (!ok) return;
-        runAction(`Node ${act} ${id}`, () => req(act === "drain" ? `/api/v1/agent/nodes/${encodeURIComponent(id)}/drain` : `/api/v1/agent/nodes/${encodeURIComponent(id)}/enable`, { method: "POST", body: {} })).then(() => refreshAll()).catch(() => {});
-      });
+      /* selectedNodeCard click handler removed — node config is now a modal in Servers tab */
 
       refs.routesBody.addEventListener("click", async (ev) => {
         const t = ev.target; if (!(t instanceof HTMLElement)) return;
