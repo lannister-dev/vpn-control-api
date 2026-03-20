@@ -49,6 +49,7 @@ class VpnKeyInternalCreate(BaseModel):
     used_traffic_bytes: int = 0
     last_reported_total_bytes: int = 0
     is_revoked: bool = False
+    subscription_id: UUID | None = None
 
     @field_validator("valid_until")
     @classmethod

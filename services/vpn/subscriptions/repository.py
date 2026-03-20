@@ -2,6 +2,7 @@ from uuid import UUID
 
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from services.vpn.subscriptions.exceptions import SubscriptionNotFound
 from services.vpn.subscriptions.model import (
@@ -15,6 +16,38 @@ from shared.database.base_repository import BaseRepository
 class SubscriptionRepository(BaseRepository[Subscription]):
     def __init__(self, session: AsyncSession):
         super().__init__(Subscription, session)
+
+    async def list_by_ids_with_plan(self, ids: list[UUID]) -> list[Subscription]:
+        if not ids:
+            return []
+        stmt = (
+            select(self.model)
+            .options(joinedload(self.model.plan))
+            .where(self.model.id.in_(ids))
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().unique().all())
+
+    async def list_needing_traffic_reset(self, *, strategy: str, reset_before) -> list[Subscription]:
+        """Find active subscriptions with given reset strategy whose last reset is before cutoff."""
+        from services.plans.models import Plan
+        stmt = (
+            select(self.model)
+            .join(Plan, self.model.plan_id == Plan.id)
+            .options(joinedload(self.model.plan))
+            .where(
+                self.model.is_active.is_(True),
+                Plan.is_active.is_(True),
+                Plan.reset_strategy == strategy,
+                Plan.traffic_limit_bytes > 0,
+                or_(
+                    self.model.last_traffic_reset_at.is_(None),
+                    self.model.last_traffic_reset_at < reset_before,
+                ),
+            )
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().unique().all())
 
     async def get_by_token_hash(self, token_hash: str) -> Subscription | None:
         stmt = select(self.model).where(self.model.token_hash == token_hash)

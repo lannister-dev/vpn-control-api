@@ -150,6 +150,8 @@ class TrafficConfig:
     cleanup_enabled: bool = False
     cleanup_tick_sec: int = 3600
     history_retention_days: int = 14
+    reset_enabled: bool = False
+    reset_tick_sec: int = 300
 
 
 @dataclass
@@ -339,6 +341,8 @@ def get_settings() -> Settings:
         cleanup_enabled=env.bool("TRAFFIC_CLEANUP_ENABLED", default=False),
         cleanup_tick_sec=max(300, env.int("TRAFFIC_CLEANUP_TICK_SEC", default=3600)),
         history_retention_days=max(1, env.int("TRAFFIC_HISTORY_RETENTION_DAYS", default=14)),
+        reset_enabled=env.bool("TRAFFIC_RESET_ENABLED", default=False),
+        reset_tick_sec=max(60, env.int("TRAFFIC_RESET_TICK_SEC", default=300)),
     )
 
     _tg_allowed_raw = env.str("ADMIN_TELEGRAM_ALLOWED_IDS", default="")
