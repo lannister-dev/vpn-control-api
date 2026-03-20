@@ -870,6 +870,9 @@
               <div class="muted">Создание подписки</div>
               <form id="form-sub-create" class="stack" autocomplete="off">
                 <input class="input mono" name="user_id" placeholder="ID пользователя (UUID)" required />
+                <select class="input" name="plan_id" id="sub-plan-select">
+                  <option value="">— Без тарифа —</option>
+                </select>
                 <div class="row-2">
                   <input class="input" id="sub-profile-key" name="profile_key" list="sub-profile-keys" placeholder="profile_key (опционально)" autocomplete="off" />
                   <input class="input" name="preferred_region" placeholder="preferred_region (опционально)" />
@@ -923,7 +926,7 @@
             <div class="card">
               <div class="muted">Список подписок пользователя</div>
               <table>
-                <thead><tr><th>ID подписки</th><th>ID пользователя</th><th>Профиль</th><th>Статус</th><th>HWID</th><th>Макс. устройств</th><th>Истекает</th><th>Обновлено</th></tr></thead>
+                <thead><tr><th>ID подписки</th><th>ID пользователя</th><th>Тариф</th><th>Профиль</th><th>Статус</th><th>HWID</th><th>Макс. устройств</th><th>Трафик</th><th>Истекает</th><th>Обновлено</th></tr></thead>
                 <tbody id="subs-body"></tbody>
               </table>
             </div>
@@ -1497,6 +1500,8 @@
         const rows = [];
         if (payload.id) rows.push(`<div class="result-row"><span class="muted">subscription_id</span><span class="mono">${uuidCell(payload.id)}</span></div>`);
         if (payload.user_id) rows.push(`<div class="result-row"><span class="muted">user_id</span><span class="mono">${uuidCell(payload.user_id)}</span></div>`);
+        if (payload.plan_name !== undefined) rows.push(`<div class="result-row"><span class="muted">тариф</span><span class="mono">${esc(payload.plan_name || "-")}</span></div>`);
+        if (payload.used_traffic_bytes != null && payload.used_traffic_bytes > 0) rows.push(`<div class="result-row"><span class="muted">трафик</span><span class="mono">${fmtTrafficLimit(payload.used_traffic_bytes)}</span></div>`);
         if (payload.profile_key !== undefined) rows.push(`<div class="result-row"><span class="muted">profile</span><span class="mono">${esc(payload.profile_key || "-")}</span></div>`);
         if (payload.preferred_region !== undefined) rows.push(`<div class="result-row"><span class="muted">preferred_region</span><span class="mono">${esc(payload.preferred_region || "-")}</span></div>`);
         if (payload.max_devices !== undefined) rows.push(`<div class="result-row"><span class="muted">max_devices</span><span class="mono">${esc(payload.max_devices == null ? "-" : payload.max_devices)}</span></div>`);
@@ -1891,8 +1896,8 @@
         /* --- Subscriptions table (Phase 2.1: truncated UUID) --- */
         const subs = filteredSubscriptions();
         refs.subsBody.innerHTML = subs.length
-          ? subs.map((s) => `<tr><td>${uuidCell(s.id)}</td><td>${uuidCell(s.user_id)}</td><td>${esc(s.profile_key || "-")}</td><td>${s.is_active ? chip("ok", "active") : chip("bad", "inactive")}</td><td>${s.hwid_enabled ? chip("info", "on") : chip("warn", "off")}</td><td class="mono">${esc(s.max_devices == null ? "-" : s.max_devices)}</td><td>${fmtDate(s.expires_at)}</td><td>${fmtDate(s.updated_at)}</td></tr>`).join("")
-          : `<tr><td colspan="8" class="empty">Список подписок пока пуст. Используйте форму &laquo;Поиск подписок по пользователю&raquo;.</td></tr>`;
+          ? subs.map((s) => `<tr><td>${uuidCell(s.id)}</td><td>${uuidCell(s.user_id)}</td><td>${esc(s.plan_name || "-")}</td><td>${esc(s.profile_key || "-")}</td><td>${s.is_active ? chip("ok", "active") : chip("bad", "inactive")}</td><td>${s.hwid_enabled ? chip("info", "on") : chip("warn", "off")}</td><td class="mono">${esc(s.max_devices == null ? "-" : s.max_devices)}</td><td>${s.used_traffic_bytes != null && s.used_traffic_bytes > 0 ? fmtTrafficLimit(s.used_traffic_bytes) : "-"}</td><td>${fmtDate(s.expires_at)}</td><td>${fmtDate(s.updated_at)}</td></tr>`).join("")
+          : `<tr><td colspan="10" class="empty">Список подписок пока пуст. Используйте форму &laquo;Поиск подписок по пользователю&raquo;.</td></tr>`;
 
         /* --- Devices table (Phase 2.1: truncated UUID) --- */
         refs.subDevicesBody.innerHTML = state.subscriptionDevices.length
@@ -2257,6 +2262,8 @@
         const payload = {
           user_id: String(d.get("user_id") || "").trim(),
         };
+        const planId = String(d.get("plan_id") || "").trim();
+        if (planId) payload.plan_id = planId;
         const profileKey = String(d.get("profile_key") || "").trim();
         if (profileKey) payload.profile_key = profileKey;
         const preferredRegion = String(d.get("preferred_region") || "").trim();
@@ -2735,6 +2742,18 @@
         const data = await req("/api/v1/plans");
         state.plans = data.items || [];
         renderPlans();
+        renderPlanSelect();
+      }
+
+      function renderPlanSelect() {
+        const sel = $("sub-plan-select");
+        if (!sel) return;
+        const cur = sel.value;
+        sel.innerHTML = `<option value="">— Без тарифа —</option>` +
+          state.plans.filter((p) => p.is_active).map((p) =>
+            `<option value="${esc(p.id)}">${esc(p.name)} (${fmtTrafficLimit(p.traffic_limit_bytes)})</option>`
+          ).join("");
+        if (cur) sel.value = cur;
       }
 
       function renderPlans() {
