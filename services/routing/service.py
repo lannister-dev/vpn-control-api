@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -11,9 +10,6 @@ from services.config import get_settings
 from services.nodes.models import VpnNode, NodeAgentState
 from services.routing.repository import RoutingRepository
 from shared.database.session import AsyncDatabase
-from shared.utils.logger import StructuredLogger
-
-logger_routing = StructuredLogger(logging.getLogger("routing-select"))
 
 
 class RoutingService:
@@ -41,32 +37,12 @@ class RoutingService:
             preferred_region=preferred_region,
             exclude_node_ids=exclude_node_ids,
         )
-        logger_routing.info(
-            "select_nodes_query_result",
-            preferred_region=preferred_region,
-            rows_from_db=len(rows),
-            stale_after_sec=self.node_state_stale_after_sec,
-        )
         scored: list[tuple[float, VpnNode]] = []
         now = datetime.now(timezone.utc)
         for node, agent_state, active_count in rows:
-            is_healthy = self._is_healthy(agent_state, now=now)
-            capacity_ok = active_count < node.capacity
-            if not is_healthy or not capacity_ok:
-                last_seen = self._to_utc_or_none(agent_state.last_seen_at) if agent_state else None
-                staleness = (now - last_seen).total_seconds() if last_seen else None
-                logger_routing.info(
-                    "select_nodes_filtered_out",
-                    node_id=str(node.id),
-                    node_name=str(node.name),
-                    is_healthy=is_healthy,
-                    capacity_ok=capacity_ok,
-                    active_count=active_count,
-                    capacity=node.capacity,
-                    agent_is_healthy=agent_state.is_healthy if agent_state else None,
-                    last_seen_at=str(last_seen) if last_seen else None,
-                    staleness_sec=staleness,
-                )
+            if not self._is_healthy(agent_state, now=now):
+                continue
+            if active_count >= node.capacity:
                 continue
 
             score = self._calc_score(
@@ -77,11 +53,6 @@ class RoutingService:
             )
             scored.append((score, node))
 
-        logger_routing.info(
-            "select_nodes_result",
-            scored_count=len(scored),
-            nodes=[str(n.name) for _, n in scored],
-        )
         scored.sort(key=lambda x: x[0], reverse=True)
         return [node for _, node in scored]
 
