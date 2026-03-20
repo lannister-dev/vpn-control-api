@@ -1346,7 +1346,7 @@ class SubscriptionService:
             is_revoked=False,
             subscription_id=subscription.id,
         )
-        return await self.vpn_key_repository.create(key_internal.model_dump(mode="json"))
+        return await self.vpn_key_repository.create(key_internal.model_dump())
 
     async def _load_device_bundles(
             self,
