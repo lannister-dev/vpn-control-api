@@ -122,6 +122,7 @@ async def test_connect_routeset_returns_routes(async_session):
         preferred_node_id=backend.id,
         preferred_region="fi",
         limit=10,
+        backend_node_ids=sorted([backend.id, backend_2.id], key=str),
         node_seen_after=ANY,
     )
 
@@ -159,22 +160,29 @@ async def test_connect_routeset_creates_placement_when_missing(async_session):
     svc.route_repository.list_resolved_active = AsyncMock(return_value=[(route, backend, tp)])
     svc._build_route_uri = MagicMock(return_value="vless://route")
 
-    with pytest.raises(HTTPException) as exc:
-        await svc.connect_routeset(
-            ConnectRouteSetIn(user_id=user_id, preferred_region="fi", max_routes=4)
-        )
+    out = await svc.connect_routeset(
+        ConnectRouteSetIn(user_id=user_id, preferred_region="fi", max_routes=4)
+    )
 
-    assert exc.value.status_code == 503
-    assert exc.value.detail == "Node placement sync pending"
+    assert out.key_id == key.id
+    assert out.placement_id == placement_new.id
+    assert out.placement_op_version == 3
+    assert [item.uri for item in out.routes] == ["vless://route"]
     svc.placement_repository.upsert_set_pending.assert_awaited_once()
     svc.node_agent_transport.enqueue_for_placement_ids.assert_awaited_once_with([placement_new.id])
     kwargs = svc.placement_repository.upsert_set_pending.await_args.kwargs
     assert kwargs["backend_node_id"] == backend.id
-    svc.route_repository.list_resolved_active.assert_not_awaited()
+    svc.route_repository.list_resolved_active.assert_awaited_once_with(
+        preferred_node_id=backend.id,
+        preferred_region="fi",
+        limit=16,
+        backend_node_ids=[backend.id],
+        node_seen_after=ANY,
+    )
 
 
 @pytest.mark.asyncio
-async def test_connect_routeset_ignores_unsynced_existing_placements(async_session):
+async def test_connect_routeset_returns_existing_target_placement_even_when_not_synced(async_session):
     svc = ConnectService(async_session, _redis())
     svc.user_repository = AsyncMock()
     svc.key_repository = AsyncMock()
@@ -199,15 +207,26 @@ async def test_connect_routeset_ignores_unsynced_existing_placements(async_sessi
     svc.key_repository.get_latest_active_for_user = AsyncMock(return_value=key)
     svc.placement_repository.list_by_key_id = AsyncMock(return_value=[placement])
     svc.routing_service.select_nodes = AsyncMock(return_value=[backend])
+    route = _route(node_id=backend.id)
+    tp = _transport_profile()
+    svc.route_repository.list_resolved_active = AsyncMock(return_value=[(route, backend, tp)])
+    svc._build_route_uri = MagicMock(return_value="vless://route")
 
-    with pytest.raises(HTTPException) as exc:
-        await svc.connect_routeset(
-            ConnectRouteSetIn(user_id=user_id, preferred_region="fi", max_routes=1)
-        )
+    out = await svc.connect_routeset(
+        ConnectRouteSetIn(user_id=user_id, preferred_region="fi", max_routes=1)
+    )
 
-    assert exc.value.status_code == 503
-    assert exc.value.detail == "Node placement sync pending"
-    svc.route_repository.list_resolved_active.assert_not_awaited()
+    assert out.key_id == key.id
+    assert out.placement_id == placement.id
+    assert out.placement_op_version == 7
+    assert [item.uri for item in out.routes] == ["vless://route"]
+    svc.route_repository.list_resolved_active.assert_awaited_once_with(
+        preferred_node_id=backend.id,
+        preferred_region="fi",
+        limit=10,
+        backend_node_ids=[backend.id],
+        node_seen_after=ANY,
+    )
 
 
 @pytest.mark.asyncio
@@ -287,6 +306,7 @@ async def test_connect_routeset_keeps_primary_and_fallback_mix(async_session):
         preferred_node_id=backend_primary.id,
         preferred_region="fi",
         limit=16,
+        backend_node_ids=sorted([backend_primary.id, backend_f1.id, backend_f2.id], key=str),
         node_seen_after=ANY,
     )
 
