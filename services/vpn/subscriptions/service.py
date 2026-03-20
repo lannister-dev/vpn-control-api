@@ -876,7 +876,22 @@ class SubscriptionService:
             if self._node_has_required_public_host(node=node, key_transport=key_transport)
         ]
         if not candidate_nodes and not placements_by_backend:
-            raise SubscriptionBuild("No available nodes")
+            # Fallback: try any node regardless of transport host requirement
+            try:
+                all_nodes = await self.routing_service.select_nodes(preferred_region=None)
+                for node in all_nodes:
+                    if self._node_has_required_public_host(node=node, key_transport=key_transport):
+                        candidate_nodes = [node]
+                        break
+                if not candidate_nodes and all_nodes:
+                    candidate_nodes = [all_nodes[0]]
+            except Exception:
+                logger_sub.exception(
+                    "subscription_select_nodes_fallback_failed",
+                    key_id=str(key_id),
+                )
+            if not candidate_nodes:
+                raise SubscriptionBuild("No available nodes")
 
         if candidate_nodes:
             target_nodes = candidate_nodes[:desired_replicas]
@@ -922,6 +937,13 @@ class SubscriptionService:
                     applied_version=getattr(preferred_placement, "applied_version", None),
                 )
 
+        # Wait for newly created placements to be applied by node agent
+        if preferred_placement is None and placements_by_backend:
+            preferred_placement, synced_by_backend = await self._wait_for_placement_sync(
+                key_id=key_id,
+                candidate_nodes=candidate_nodes,
+            )
+
         if preferred_placement is None:
             raise SubscriptionBuild("Node placement sync pending")
 
@@ -930,6 +952,36 @@ class SubscriptionService:
         if not allowed_backend_ids:
             allowed_backend_ids = {preferred_backend_id}
         return preferred_backend_id, preferred_placement, allowed_backend_ids
+
+    async def _wait_for_placement_sync(
+            self,
+            *,
+            key_id: UUID,
+            candidate_nodes: list,
+            max_attempts: int = 10,
+            interval_sec: float = 0.5,
+    ) -> tuple[UserPlacement | None, dict[UUID, UserPlacement]]:
+        import asyncio
+        for _ in range(max_attempts):
+            await asyncio.sleep(interval_sec)
+            fresh = await self.placement_repository.list_by_key_id(
+                key_id=key_id,
+                active_only=True,
+                desired_state=PlacementDesiredState.active.value,
+            )
+            synced = [p for p in fresh if self._is_placement_synced(p)]
+            if synced:
+                by_backend = {p.backend_node_id: p for p in synced}
+                for node in candidate_nodes:
+                    nid = self._as_uuid(str(node.id))
+                    if nid in by_backend:
+                        return by_backend[nid], by_backend
+                return synced[0], by_backend
+            applied = [p for p in fresh if getattr(p, "applied_state", None) == "applied"]
+            if applied:
+                p = applied[0]
+                return p, {p.backend_node_id: p}
+        return None, {}
 
     def _stale_after_sec(self) -> int:
         node_agent_settings = getattr(self.settings, "node_agent", None)
