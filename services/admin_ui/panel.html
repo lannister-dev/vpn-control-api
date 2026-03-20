@@ -73,6 +73,9 @@
       position: sticky;
       top: 0;
       height: calc(100vh - 36px);
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(45, 212, 191, 0.2) transparent;
     }
     .brand h1 {
       margin: 0;
@@ -213,7 +216,8 @@
       animation: fade-up 260ms ease;
       position: relative;
       min-width: 0;
-      overflow: hidden;
+      overflow-x: hidden;
+      overflow-y: auto;
     }
     .hero {
       border: 1px solid var(--line-strong);
@@ -231,22 +235,43 @@
       font-size: 12px;
       letter-spacing: 0.03em;
     }
-    .kpis { margin-top: 14px; display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+    .kpis { margin-top: 14px; display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: 10px; }
     .kpi {
       border: 1px solid var(--line);
       border-radius: 14px;
       background: rgba(15, 23, 42, 0.46);
-      padding: 10px;
+      padding: 12px 14px;
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
       transition: transform 130ms ease, border-color 130ms ease;
+      display: flex;
+      align-items: center;
+      gap: 10px;
     }
     .kpi:hover {
       transform: translateY(-2px);
       border-color: rgba(45, 212, 191, 0.35);
       box-shadow: var(--teal-ring);
     }
+    .kpi-icon {
+      font-size: 20px;
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      background: rgba(45, 212, 191, 0.1);
+    }
+    .kpi-icon.green { background: rgba(34, 197, 94, 0.12); }
+    .kpi-icon.amber { background: rgba(245, 158, 11, 0.12); }
+    .kpi-icon.red { background: rgba(239, 68, 68, 0.12); }
+    .kpi-icon.blue { background: rgba(59, 130, 246, 0.12); }
+    .kpi-icon.purple { background: rgba(168, 85, 247, 0.12); }
+    .kpi-icon.cyan { background: rgba(6, 182, 212, 0.12); }
+    .kpi-content { min-width: 0; }
     .kpi-name { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em; white-space: nowrap; }
-    .kpi-value { margin-top: 5px; font-size: 22px; font-family: "JetBrains Mono", monospace; }
+    .kpi-value { margin-top: 3px; font-size: 22px; font-family: "JetBrains Mono", monospace; font-weight: 700; background: linear-gradient(135deg, #e2e8f0, #94a3b8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
     .panel {
       display: none;
       border: 1px solid var(--line);
@@ -283,6 +308,36 @@
       border-color: rgba(45, 212, 191, 0.34);
       box-shadow: var(--teal-ring);
     }
+    .card-title {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: rgba(159, 179, 207, 0.92);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .card-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      flex-shrink: 0;
+      background: rgba(45, 212, 191, 0.1);
+    }
+    .card-icon.green { background: rgba(34, 197, 94, 0.12); }
+    .card-icon.amber { background: rgba(245, 158, 11, 0.12); }
+    .card-icon.red { background: rgba(239, 68, 68, 0.12); }
+    .card-icon.blue { background: rgba(59, 130, 246, 0.12); }
+    .card-icon.purple { background: rgba(168, 85, 247, 0.12); }
+    .card-icon.cyan { background: rgba(6, 182, 212, 0.12); }
     .filters { display: grid; grid-template-columns: 1.6fr repeat(3, minmax(110px, 1fr)) auto; gap: 10px; margin-bottom: 10px; }
     .stack { display: grid; gap: 8px; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: auto; }
@@ -685,16 +740,16 @@
           <div class="mono muted">Control API /api/v1</div>
         </div>
         <div class="kpis">
-          <div class="kpi"><div class="kpi-name">Серверы</div><div id="kpi-nodes" class="kpi-value">-</div></div>
-          <div class="kpi"><div class="kpi-name">Здоровые</div><div id="kpi-healthy" class="kpi-value">-</div></div>
-          <div class="kpi"><div class="kpi-name">Draining</div><div id="kpi-draining" class="kpi-value">-</div></div>
-          <div class="kpi"><div class="kpi-name">Плейсменты</div><div id="kpi-placements" class="kpi-value">-</div></div>
-          <div class="kpi"><div class="kpi-name">Маршруты</div><div id="kpi-routes" class="kpi-value">-</div></div>
-          <div class="kpi"><div class="kpi-name">Сбои probe</div><div id="kpi-probe-fail" class="kpi-value">-</div></div>
-          <div class="kpi"><div class="kpi-name">Ключей (трафик)</div><div id="kpi-traffic-keys" class="kpi-value">-</div></div>
-          <div class="kpi"><div class="kpi-name">Отозвано</div><div id="kpi-traffic-revoked" class="kpi-value">-</div></div>
-          <div class="kpi"><div class="kpi-name">Суммарный трафик</div><div id="kpi-traffic-total" class="kpi-value">-</div></div>
-          <div class="kpi"><div class="kpi-name">NATS</div><div id="kpi-nats" class="kpi-value">-</div></div>
+          <div class="kpi"><div class="kpi-icon blue">🖥</div><div class="kpi-content"><div class="kpi-name">Серверы</div><div id="kpi-nodes" class="kpi-value">-</div></div></div>
+          <div class="kpi"><div class="kpi-icon green">✓</div><div class="kpi-content"><div class="kpi-name">Здоровые</div><div id="kpi-healthy" class="kpi-value">-</div></div></div>
+          <div class="kpi"><div class="kpi-icon amber">⏳</div><div class="kpi-content"><div class="kpi-name">Draining</div><div id="kpi-draining" class="kpi-value">-</div></div></div>
+          <div class="kpi"><div class="kpi-icon cyan">◎</div><div class="kpi-content"><div class="kpi-name">Плейсменты</div><div id="kpi-placements" class="kpi-value">-</div></div></div>
+          <div class="kpi"><div class="kpi-icon purple">⇄</div><div class="kpi-content"><div class="kpi-name">Маршруты</div><div id="kpi-routes" class="kpi-value">-</div></div></div>
+          <div class="kpi"><div class="kpi-icon red">✕</div><div class="kpi-content"><div class="kpi-name">Сбои probe</div><div id="kpi-probe-fail" class="kpi-value">-</div></div></div>
+          <div class="kpi"><div class="kpi-icon">🔑</div><div class="kpi-content"><div class="kpi-name">Ключей (трафик)</div><div id="kpi-traffic-keys" class="kpi-value">-</div></div></div>
+          <div class="kpi"><div class="kpi-icon red">⊘</div><div class="kpi-content"><div class="kpi-name">Отозвано</div><div id="kpi-traffic-revoked" class="kpi-value">-</div></div></div>
+          <div class="kpi"><div class="kpi-icon cyan">↕</div><div class="kpi-content"><div class="kpi-name">Суммарный трафик</div><div id="kpi-traffic-total" class="kpi-value">-</div></div></div>
+          <div class="kpi"><div class="kpi-icon green">⚡</div><div class="kpi-content"><div class="kpi-name">NATS</div><div id="kpi-nats" class="kpi-value">-</div></div></div>
         </div>
       </header>
 
@@ -702,15 +757,15 @@
         <div class="panel-head"><div class="panel-title">Общее состояние системы</div></div>
         <div class="panel-body two-col">
           <div class="stack">
-            <div class="card"><div class="muted">Проверки готовности</div><div id="readiness-list" class="stack"></div></div>
-            <div class="card"><div class="muted">Распределение состояния маршрутов</div><div id="route-health-list" class="stack"></div></div>
-            <div class="card"><div class="muted">Последние сбои probe</div><div id="probe-fail-list" class="stack"></div></div>
-            <div class="card"><div class="muted">Серверы, требующие внимания</div><div id="node-alert-list" class="stack"></div></div>
-            <div class="card"><div class="muted">Transport Health</div><div id="transport-alert-list" class="stack"></div></div>
+            <div class="card"><div class="card-title"><span class="card-icon green">✓</span> Проверки готовности</div><div id="readiness-list" class="stack"></div></div>
+            <div class="card"><div class="card-title"><span class="card-icon purple">⇄</span> Распределение маршрутов</div><div id="route-health-list" class="stack"></div></div>
+            <div class="card"><div class="card-title"><span class="card-icon red">✕</span> Последние сбои probe</div><div id="probe-fail-list" class="stack"></div></div>
+            <div class="card"><div class="card-title"><span class="card-icon amber">⚠</span> Серверы, требующие внимания</div><div id="node-alert-list" class="stack"></div></div>
+            <div class="card"><div class="card-title"><span class="card-icon cyan">⚡</span> Transport Health</div><div id="transport-alert-list" class="stack"></div></div>
           </div>
           <div class="stack">
-            <div class="card"><div class="muted">Выбранный сервер</div><div id="selected-node-card" class="empty">Выберите сервер во вкладке &laquo;Серверы&raquo;.</div></div>
-            <div class="card"><div class="muted">Журнал операций</div><div id="action-log" class="log"></div></div>
+            <div class="card"><div class="card-title"><span class="card-icon blue">🖥</span> Выбранный сервер</div><div id="selected-node-card" class="empty">Выберите сервер во вкладке &laquo;Серверы&raquo;.</div></div>
+            <div class="card"><div class="card-title"><span class="card-icon">📋</span> Журнал операций</div><div id="action-log" class="log"></div></div>
           </div>
         </div>
       </section>
@@ -2739,13 +2794,16 @@
                     <input class="input mono" id="plan-traffic" type="number" min="0" step="0.1" value="0" style="flex:1" />
                     <select class="select" id="plan-traffic-unit" style="width:80px"><option value="gb">GB</option><option value="mb">MB</option></select>
                   </div>
+                  <div class="muted" style="font-size:11px">Сброс трафика</div>
                   <select class="select" id="plan-reset">
                     <option value="NO_RESET">Без сброса</option>
                     <option value="DAY">Ежедневно</option>
                     <option value="WEEK">Еженедельно</option>
                     <option value="MONTH" selected>Ежемесячно</option>
                   </select>
+                  <div class="muted" style="font-size:11px">Макс. устройств</div>
                   <input class="input mono" id="plan-devices" type="number" min="1" max="100" value="5" placeholder="Макс. устройств" />
+                  <div class="muted" style="font-size:11px">Длительность (дни)</div>
                   <input class="input mono" id="plan-duration" type="number" min="1" max="3650" value="30" placeholder="Длительность (дни)" />
                 </div>
               </div>
@@ -2800,14 +2858,17 @@
                     <input class="input mono" id="plan-e-traffic" type="number" min="0" step="0.1" value="${tVal}" style="flex:1" />
                     <select class="select" id="plan-e-traffic-unit" style="width:80px"><option value="gb" ${isGb ? "selected" : ""}>GB</option><option value="mb" ${!isGb ? "selected" : ""}>MB</option></select>
                   </div>
+                  <div class="muted" style="font-size:11px">Сброс трафика</div>
                   <select class="select" id="plan-e-reset">
                     <option value="NO_RESET" ${plan.reset_strategy === "NO_RESET" ? "selected" : ""}>Без сброса</option>
                     <option value="DAY" ${plan.reset_strategy === "DAY" ? "selected" : ""}>Ежедневно</option>
                     <option value="WEEK" ${plan.reset_strategy === "WEEK" ? "selected" : ""}>Еженедельно</option>
                     <option value="MONTH" ${plan.reset_strategy === "MONTH" ? "selected" : ""}>Ежемесячно</option>
                   </select>
-                  <input class="input mono" id="plan-e-devices" type="number" min="1" max="100" value="${plan.max_devices}" />
-                  <input class="input mono" id="plan-e-duration" type="number" min="1" max="3650" value="${plan.duration_days}" />
+                  <div class="muted" style="font-size:11px">Макс. устройств</div>
+                  <input class="input mono" id="plan-e-devices" type="number" min="1" max="100" value="${plan.max_devices}" placeholder="Макс. устройств" />
+                  <div class="muted" style="font-size:11px">Длительность (дни)</div>
+                  <input class="input mono" id="plan-e-duration" type="number" min="1" max="3650" value="${plan.duration_days}" placeholder="Длительность (дни)" />
                   <label class="muted"><input type="checkbox" id="plan-e-active" ${plan.is_active ? "checked" : ""} /> Активен</label>
                 </div>
               </div>
