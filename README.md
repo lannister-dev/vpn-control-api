@@ -15,6 +15,9 @@ alembic upgrade head
 pytest -q
 ```
 
+Docker build note:
+- If Docker Hub starts returning `429 Too Many Requests` on `python:3.10*`, build with mirrored base images via `--build-arg PYTHON_BUILD_IMAGE=... --build-arg PYTHON_RUNTIME_IMAGE=...` instead of editing the `Dockerfile`.
+
 Config notes:
 - Use `PROBE_TARGET_PORT` (legacy `DEFAULT_TARGET_PORT` is still supported for backward compatibility).
 - Current node-agent placements endpoint is `GET /api/v1/agent/placements/page`.
