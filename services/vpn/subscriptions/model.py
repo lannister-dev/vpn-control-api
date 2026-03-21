@@ -52,7 +52,6 @@ class SubscriptionDevice(Base):
 
     subscription_id: Mapped[UUID] = mapped_column(ForeignKey("subscription.id"), nullable=False)
     hwid_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    vpn_key_id: Mapped[UUID] = mapped_column(ForeignKey("vpn_key.id"), nullable=False)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
@@ -65,7 +64,6 @@ class SubscriptionDevice(Base):
     __table_args__ = (
         UniqueConstraint("subscription_id", "hwid_hash", name="uq_subscription_device_hwid"),
         Index("ix_subscription_device_subscription_id", "subscription_id"),
-        Index("ix_subscription_device_vpn_key_id", "vpn_key_id"),
     )
 
 

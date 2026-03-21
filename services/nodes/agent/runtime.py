@@ -664,15 +664,6 @@ class NodeAgentRuntime:
                 logger_transport.warning("heartbeat_unknown_node", node_id=str(node_id))
                 return True
 
-            event_log_repo = NodeTransportEventLogRepository(session)
-            is_new = await event_log_repo.record_if_new(
-                node_id=node_id,
-                event_type="heartbeat",
-                event_id=self._heartbeat_event_id(event),
-                subject=getattr(msg, "subject", None),
-                payload=event.model_dump(mode="json"),
-                processed_at=event.emitted_at,
-            )
             service = VpnNodeService(session)
             await service.handle_heartbeat(
                 node=node,
@@ -714,31 +705,6 @@ class NodeAgentRuntime:
                         emitted_at=datetime.now(timezone.utc),
                         status=SyncReportAckStatus.skipped,
                         error="unknown_node",
-                    ),
-                )
-
-            event_log_repo = NodeTransportEventLogRepository(session)
-            is_new = await event_log_repo.record_if_new(
-                node_id=node_id,
-                event_type="sync_report",
-                event_id=self._sync_report_event_id(event),
-                subject=getattr(msg, "subject", None),
-                payload=event.model_dump(mode="json"),
-                processed_at=event.emitted_at,
-            )
-            if not is_new:
-                await NodeTransportStateRepository(session).touch_sync_report(
-                    node_id=node_id,
-                    at=event.emitted_at,
-                )
-                await self._finish_session(session)
-                return await self._publish_sync_report_ack(
-                    node_id=event.node_id,
-                    ack_event=SyncReportAckEvent(
-                        event_id=event.event_id,
-                        node_id=event.node_id,
-                        emitted_at=datetime.now(timezone.utc),
-                        status=SyncReportAckStatus.accepted,
                     ),
                 )
 
@@ -849,14 +815,6 @@ class NodeAgentRuntime:
             return UUID(raw)
         except (TypeError, ValueError):
             return None
-
-    @staticmethod
-    def _heartbeat_event_id(event: HeartbeatEvent) -> str:
-        return event.event_id
-
-    @staticmethod
-    def _sync_report_event_id(event: SyncReportEvent) -> str:
-        return event.event_id
 
     @staticmethod
     def _snapshot_request_event_id(event: SnapshotRequestEvent) -> str:

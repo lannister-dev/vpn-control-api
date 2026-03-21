@@ -98,7 +98,6 @@ def _make_transport_profile(*, network="tcp", security="reality", port=443):
 def _make_bundle(*transports: str):
     device = MagicMock()
     device.id = uuid4()
-    device.vpn_key_id = uuid4()
     keys = []
     for idx, transport in enumerate(transports):
         key = MagicMock()
@@ -693,22 +692,15 @@ async def test_build_payload_keeps_available_transport_when_second_pending(servi
 
 
 @pytest.mark.asyncio
-async def test_load_device_bundle_supports_legacy_single_vpn_key_id(service):
+async def test_load_device_bundle_returns_empty_without_bindings(service):
     device = MagicMock()
     device.id = uuid4()
-    device.vpn_key_id = uuid4()
     service.device_key_repository.list_by_device_ids.return_value = []
-    service.vpn_key_repository.list_by_ids.return_value = [MagicMock(
-        id=device.vpn_key_id,
-        transport="reality",
-        client_id="legacy-client",
-    )]
+    service.vpn_key_repository.list_by_ids.return_value = []
 
     bundle = await service._load_device_bundle(device)
 
-    assert len(bundle.keys) == 1
-    assert bundle.keys[0].transport == "reality"
-    assert bundle.keys[0].client_id == "legacy-client"
+    assert bundle.keys == ()
 
 
 def test_merge_transport_routes_deduplicates_country_transport_pairs(service):
