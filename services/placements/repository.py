@@ -232,6 +232,42 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
         updated_ids = list(result.scalars().all())
         return len(updated_ids)
 
+    async def bulk_apply_backend_report(
+        self,
+        items: list[dict],
+    ) -> set[UUID]:
+        """Bulk update placements. Each item: {id, op_version, backend_node_id, applied_state, applied_version, updated_at}.
+        Returns set of placement IDs that were actually updated."""
+        if not items:
+            return set()
+        # Group by applied_state to batch updates
+        from collections import defaultdict
+        by_state: dict[str, list[dict]] = defaultdict(list)
+        for item in items:
+            by_state[item["applied_state"]].append(item)
+
+        updated: set[UUID] = set()
+        for applied_state, group in by_state.items():
+            ids_versions = [
+                (item["id"], item["op_version"], item["backend_node_id"])
+                for item in group
+            ]
+            result = await self.session.execute(
+                sa_update(self.model)
+                .where(
+                    func.row(self.model.id, self.model.op_version, self.model.backend_node_id)
+                    .in_(ids_versions)
+                )
+                .values(
+                    applied_state=applied_state,
+                    applied_version=self.model.op_version,
+                    updated_at=group[0]["updated_at"],
+                )
+                .returning(self.model.id)
+            )
+            updated.update(result.scalars().all())
+        return updated
+
     async def bulk_migrate_backend(
         self,
         *,
