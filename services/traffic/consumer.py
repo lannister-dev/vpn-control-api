@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 import logging
 
 from services.config import NatsConfig
+from services.traffic.schemas import UserTrafficIn
 from services.traffic.service import UserTrafficService
 from shared.database.session import AsyncDatabase
 from shared.nats.client import NatsClient
@@ -44,11 +46,37 @@ class UserTrafficNatsConsumer:
         logger_traffic_consumer.info("users_traffic_consumer_stopped")
 
     async def _handle_message(self, raw_payload: bytes) -> None:
+        items = self._parse_payload(raw_payload)
+        if not items:
+            return
+
         session_maker = AsyncDatabase.get_session_maker()
         async with session_maker() as session:
             service = UserTrafficService(session)
-            await service.ingest_users_traffic(raw_payload)
+            await service.ingest_users_traffic(items)
             if session.has_pending_writes():
                 await session.commit()
             else:
                 await session.rollback()
+
+    @staticmethod
+    def _parse_payload(raw_payload: bytes) -> list[UserTrafficIn]:
+        try:
+            payload_obj = json.loads(raw_payload.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            logger_traffic_consumer.warning("users_traffic_payload_invalid", error=str(exc))
+            return []
+
+        if not isinstance(payload_obj, list):
+            logger_traffic_consumer.warning("users_traffic_payload_not_list")
+            return []
+
+        items: list[UserTrafficIn] = []
+        for item in payload_obj:
+            if not isinstance(item, dict):
+                continue
+            try:
+                items.append(UserTrafficIn.model_validate(item))
+            except Exception:
+                continue
+        return items
