@@ -98,6 +98,9 @@ class NodeAgentConfig:
     auto_heal_max_nodes: int = 20
     auto_heal_drain_cooldown_sec: int = 180
     auto_undrain_enabled: bool = False
+    placement_error_retry_enabled: bool = True
+    placement_error_retry_tick_sec: int = 120
+    placement_error_retry_after_sec: int = 120
 
 
 @dataclass
@@ -298,6 +301,9 @@ def get_settings() -> Settings:
         auto_heal_max_nodes=min(500, max(1, env.int("NODE_AUTO_HEAL_MAX_NODES", default=20))),
         auto_heal_drain_cooldown_sec=max(0, env.int("NODE_AUTO_HEAL_DRAIN_COOLDOWN_SEC", default=180)),
         auto_undrain_enabled=env.bool("NODE_AUTO_UNDRAIN_ENABLED", default=False),
+        placement_error_retry_enabled=env.bool("NODE_PLACEMENT_ERROR_RETRY_ENABLED", default=True),
+        placement_error_retry_tick_sec=max(30, env.int("NODE_PLACEMENT_ERROR_RETRY_TICK_SEC", default=120)),
+        placement_error_retry_after_sec=max(30, env.int("NODE_PLACEMENT_ERROR_RETRY_AFTER_SEC", default=120)),
     )
 
     alerts = AlertsConfig(
