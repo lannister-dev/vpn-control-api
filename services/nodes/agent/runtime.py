@@ -76,7 +76,7 @@ class NodeAgentRuntime:
                 self._run_consumer_loop(
                     subject=f"{self._config.js_result_subject_prefix}.*.results",
                     durable=f"{self._config.js_consumer_prefix}-placement-results",
-                    handler=self._handle_result_message,
+                    batch_handler=self._handle_result_batch,
                 ),
                 name="node-agent-placement-results-consumer",
             ),
@@ -312,7 +312,8 @@ class NodeAgentRuntime:
         *,
         subject: str,
         durable: str,
-        handler,
+        handler=None,
+        batch_handler=None,
         concurrency: int = 10,
     ) -> None:
         subscription = await self._nats.pull_subscribe(
@@ -343,22 +344,165 @@ class NodeAgentRuntime:
                 await asyncio.sleep(1.0)
                 continue
 
-            async def _handle(msg):
-                async with sem:
-                    try:
-                        should_ack = await handler(msg)
-                    except asyncio.CancelledError:
-                        raise
-                    except Exception:
-                        logger_transport.exception(
-                            "node_agent_consumer_message_failed",
-                            subject=getattr(msg, "subject", subject),
-                        )
-                        should_ack = False
-                    if should_ack:
-                        await msg.ack()
+            if batch_handler:
+                try:
+                    ack_flags = await batch_handler(messages)
+                    for msg, should_ack in zip(messages, ack_flags):
+                        if should_ack:
+                            await msg.ack()
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    logger_transport.exception(
+                        "node_agent_consumer_batch_failed",
+                        subject=subject,
+                    )
+            else:
+                async def _handle(msg):
+                    async with sem:
+                        try:
+                            should_ack = await handler(msg)
+                        except asyncio.CancelledError:
+                            raise
+                        except Exception:
+                            logger_transport.exception(
+                                "node_agent_consumer_message_failed",
+                                subject=getattr(msg, "subject", subject),
+                            )
+                            should_ack = False
+                        if should_ack:
+                            await msg.ack()
 
-            await asyncio.gather(*[_handle(msg) for msg in messages])
+                await asyncio.gather(*[_handle(msg) for msg in messages])
+
+    async def _handle_result_batch(self, messages: list) -> list[bool]:
+        """Process a batch of placement results with bulk DB operations."""
+        if not messages:
+            return []
+
+        # 1. Parse all events
+        parsed: list[tuple] = []  # (msg, event, node_id)
+        ack_flags: list[bool] = [False] * len(messages)
+        ack_statuses: list[TransportReportStatus | None] = [None] * len(messages)
+
+        for i, msg in enumerate(messages):
+            try:
+                event = PlacementApplyResultEvent.model_validate_json(msg.data.decode())
+            except Exception:
+                logger_transport.exception("placement_result_parse_failed")
+                ack_flags[i] = True
+                continue
+            node_id = self._parse_node_id(event.node_id)
+            if node_id is None:
+                logger_transport.warning("placement_result_invalid_node_id", node_id=event.node_id)
+                ack_flags[i] = True
+                continue
+            parsed.append((i, msg, event, node_id))
+
+        if not parsed:
+            return ack_flags
+
+        session_maker = AsyncDatabase.get_session_maker()
+        async with session_maker() as session:
+            # 2. Bulk resolve nodes (one SELECT with IN)
+            unique_node_ids = {nid for _, _, _, nid in parsed}
+            node_repo = VpnNodeRepository(session)
+            nodes: dict[UUID, object] = {}
+            for nid in unique_node_ids:
+                node = await node_repo.get_by_id(nid)
+                if node:
+                    nodes[nid] = node
+
+            # Filter out unknown nodes
+            valid: list[tuple] = []
+            for i, msg, event, node_id in parsed:
+                if node_id not in nodes:
+                    logger_transport.warning("placement_result_unknown_node", node_id=str(node_id))
+                    ack_flags[i] = True
+                    continue
+                valid.append((i, msg, event, node_id))
+
+            if not valid:
+                await session.rollback()
+                return ack_flags
+
+            # 3. Bulk insert event_log (one INSERT ... ON CONFLICT DO NOTHING RETURNING)
+            now = datetime.now(timezone.utc)
+            event_log_items = [
+                {
+                    "node_id": node_id,
+                    "event_type": "placement_result",
+                    "event_id": event.event_id,
+                    "subject": getattr(msg, "subject", None),
+                    "payload": event.model_dump(mode="json"),
+                    "processed_at": now,
+                }
+                for _, msg, event, node_id in valid
+            ]
+            event_log_repo = NodeTransportEventLogRepository(session)
+            new_event_ids = await event_log_repo.bulk_record_if_new(event_log_items)
+
+            # Separate new vs duplicate
+            new_items: list[tuple] = []
+            for i, msg, event, node_id in valid:
+                if event.event_id not in new_event_ids:
+                    ack_flags[i] = True
+                    ack_statuses[i] = TransportReportStatus.skipped_idempotent
+                else:
+                    new_items.append((i, msg, event, node_id))
+
+            # 4. Bulk update placements (one UPDATE per applied_state)
+            updated_placement_ids: set[UUID] = set()
+            if new_items:
+                from services.placements.repository import UserPlacementRepository
+                placement_repo = UserPlacementRepository(session)
+                bulk_items = [
+                    {
+                        "id": UUID(event.placement_id),
+                        "op_version": event.op_version,
+                        "backend_node_id": nodes[node_id].id,
+                        "applied_state": event.applied_state.value,
+                        "applied_version": event.op_version,
+                        "updated_at": now,
+                    }
+                    for _, _, event, node_id in new_items
+                ]
+                updated_placement_ids = await placement_repo.bulk_apply_backend_report(bulk_items)
+
+                for i, msg, event, node_id in new_items:
+                    pid = UUID(event.placement_id)
+                    if pid in updated_placement_ids:
+                        state = PlacementAppliedState(event.applied_state.value)
+                        if state == PlacementAppliedState.applied:
+                            ack_statuses[i] = TransportReportStatus.applied
+                        elif state == PlacementAppliedState.error:
+                            ack_statuses[i] = TransportReportStatus.error
+                        else:
+                            ack_statuses[i] = TransportReportStatus.pending
+                    else:
+                        ack_statuses[i] = TransportReportStatus.skipped_stale
+                    ack_flags[i] = True
+
+            # 5. Touch transport state per node (few queries — 2-3 nodes max)
+            state_repo = NodeTransportStateRepository(session)
+            last_events: dict[UUID, tuple[str, datetime]] = {}
+            for _, _, event, node_id in valid:
+                last_events[node_id] = (event.event_id, event.emitted_at)
+            for nid, (eid, at) in last_events.items():
+                await state_repo.touch_result(node_id=nid, event_id=eid, at=at)
+
+            await self._finish_session(session)
+
+        # 6. Publish all acks
+        for i, _, event, _ in parsed:
+            if ack_statuses[i] is not None:
+                await self._publish_result_ack(
+                    node_id=event.node_id,
+                    result_event=event,
+                    status=ack_statuses[i],
+                )
+
+        return ack_flags
 
     async def _handle_result_message(self, msg) -> bool:
         event = PlacementApplyResultEvent.model_validate_json(msg.data.decode())
@@ -369,7 +513,8 @@ class NodeAgentRuntime:
 
         session_maker = AsyncDatabase.get_session_maker()
         async with session_maker() as session:
-            if not await self._resolve_node(session, node_id):
+            node = await VpnNodeRepository(session).get_by_id(node_id)
+            if node is None:
                 logger_transport.warning("placement_result_unknown_node", node_id=str(node_id))
                 await session.rollback()
                 return True
@@ -392,11 +537,6 @@ class NodeAgentRuntime:
                 )
 
             service = PlacementApplyService(session)
-            node = await VpnNodeRepository(session).get_by_id(node_id)
-            if node is None:
-                await session.rollback()
-                return True
-
             try:
                 ack_status = await service.apply_result(
                     node=node,

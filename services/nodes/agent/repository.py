@@ -108,6 +108,16 @@ class NodeTransportEventLogRepository(BaseRepository[NodeTransportEventLog]):
             rowcount = rowcount()
         return bool(rowcount and rowcount > 0)
 
+    async def bulk_record_if_new(self, items: list[dict]) -> set[str]:
+        """Insert events in bulk, return set of event_ids that were new."""
+        if not items:
+            return set()
+        stmt = insert(NodeTransportEventLog).values(items)
+        stmt = stmt.on_conflict_do_nothing(index_elements=[NodeTransportEventLog.event_id])
+        stmt = stmt.returning(NodeTransportEventLog.event_id)
+        result = await self.session.execute(stmt)
+        return set(result.scalars().all())
+
 
 class NodeTransportStateRepository(BaseRepository[NodeTransportState]):
     def __init__(self, session: AsyncSession):

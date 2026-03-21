@@ -87,7 +87,11 @@ async def test_handle_result_message_publishes_ack_for_duplicate(monkeypatch):
         "services.nodes.agent.runtime.NodeTransportEventLogRepository",
         lambda _: event_log_repo,
     )
-    monkeypatch.setattr(runtime, "_resolve_node", AsyncMock(return_value=True))
+    node_mock = SimpleNamespace(id=node_id)
+    monkeypatch.setattr(
+        "services.nodes.agent.runtime.VpnNodeRepository",
+        lambda _: SimpleNamespace(get_by_id=AsyncMock(return_value=node_mock)),
+    )
 
     should_ack = await runtime._handle_result_message(
         _message(event.model_dump(mode="json"), subject="agent.placement_results.node.results")
