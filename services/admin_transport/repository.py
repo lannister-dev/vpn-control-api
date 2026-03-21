@@ -59,6 +59,8 @@ class AdminTransportRepository:
 
     # ── Event log summary ─────────────────────────────────────
 
+    _EXCLUDED_EVENT_TYPES = {"heartbeat", "sync_report"}
+
     async def get_event_log_summary(self, *, since: datetime) -> EventLogSummaryRow:
         stmt = (
             select(
@@ -66,6 +68,7 @@ class AdminTransportRepository:
                 func.count().label("cnt"),
             )
             .where(NodeTransportEventLog.processed_at >= since)
+            .where(NodeTransportEventLog.event_type.notin_(self._EXCLUDED_EVENT_TYPES))
             .group_by(NodeTransportEventLog.event_type)
         )
         rows = (await self.session.execute(stmt)).all()
@@ -95,6 +98,7 @@ class AdminTransportRepository:
         stmt = (
             select(NodeTransportEventLog)
             .where(NodeTransportEventLog.node_id == node_id)
+            .where(NodeTransportEventLog.event_type.notin_(self._EXCLUDED_EVENT_TYPES))
             .order_by(NodeTransportEventLog.processed_at.desc())
             .limit(limit)
         )
@@ -241,7 +245,7 @@ class AdminTransportRepository:
         )
         count_base = select(func.count()).select_from(NodeTransportEventLog)
 
-        filters = []
+        filters = [NodeTransportEventLog.event_type.notin_(self._EXCLUDED_EVENT_TYPES)]
         if node_id is not None:
             filters.append(NodeTransportEventLog.node_id == node_id)
         if event_type:
