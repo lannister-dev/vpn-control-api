@@ -129,7 +129,20 @@ class VpnKeyRepository(BaseRepository[VpnKey]):
 
     async def bulk_reset_traffic_by_subscription(self, subscription_id: UUID) -> list[UUID]:
         """Reset used_traffic_bytes and un-revoke keys for a subscription. Returns key IDs that were un-revoked."""
-        from sqlalchemy import update as sa_update
+        from sqlalchemy import delete as sa_delete, update as sa_update
+
+        from services.traffic.model import KeyNodeTrafficCounter
+
+        # Find all key IDs for this subscription
+        all_key_stmt = (
+            select(self.model.id)
+            .where(
+                self.model.subscription_id == subscription_id,
+                self.model.is_active.is_(True),
+            )
+        )
+        all_key_result = await self.session.execute(all_key_stmt)
+        all_key_ids = list(all_key_result.scalars().all())
 
         # Find keys that were revoked due to traffic limit
         revoked_stmt = (
@@ -155,6 +168,15 @@ class VpnKeyRepository(BaseRepository[VpnKey]):
                 updated_at=now,
             )
         )
+
+        # Also reset per-node traffic counters
+        if all_key_ids:
+            await self.session.execute(
+                sa_delete(KeyNodeTrafficCounter).where(
+                    KeyNodeTrafficCounter.key_id.in_(all_key_ids),
+                )
+            )
+
         return unrevoked_ids
 
 
