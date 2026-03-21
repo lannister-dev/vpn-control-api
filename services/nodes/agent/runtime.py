@@ -307,13 +307,22 @@ class NodeAgentRuntime:
                 await session.rollback()
             return published
 
-    async def _run_consumer_loop(self, *, subject: str, durable: str, handler) -> None:
+    async def _run_consumer_loop(
+        self,
+        *,
+        subject: str,
+        durable: str,
+        handler,
+        concurrency: int = 10,
+    ) -> None:
         subscription = await self._nats.pull_subscribe(
             subject=subject,
             durable=durable,
             ack_wait_s=self._config.js_ack_wait_s,
             max_deliver=self._config.js_max_deliver,
         )
+        sem = asyncio.Semaphore(concurrency)
+
         while self._running:
             try:
                 messages = await self._nats.fetch_messages(
@@ -334,19 +343,22 @@ class NodeAgentRuntime:
                 await asyncio.sleep(1.0)
                 continue
 
-            for msg in messages:
-                try:
-                    should_ack = await handler(msg)
-                except asyncio.CancelledError:
-                    raise
-                except Exception:
-                    logger_transport.exception(
-                        "node_agent_consumer_message_failed",
-                        subject=getattr(msg, "subject", subject),
-                    )
-                    should_ack = False
-                if should_ack:
-                    await msg.ack()
+            async def _handle(msg):
+                async with sem:
+                    try:
+                        should_ack = await handler(msg)
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception:
+                        logger_transport.exception(
+                            "node_agent_consumer_message_failed",
+                            subject=getattr(msg, "subject", subject),
+                        )
+                        should_ack = False
+                    if should_ack:
+                        await msg.ack()
+
+            await asyncio.gather(*[_handle(msg) for msg in messages])
 
     async def _handle_result_message(self, msg) -> bool:
         event = PlacementApplyResultEvent.model_validate_json(msg.data.decode())
