@@ -23,12 +23,6 @@ class VpnKey(Base):
         default=0,
         server_default=text("0"),
     )
-    last_reported_total_bytes: Mapped[int] = mapped_column(
-        BigInteger,
-        nullable=False,
-        default=0,
-        server_default=text("0"),
-    )
     is_revoked: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"), nullable=False)
     subscription_id: Mapped[UUID | None] = mapped_column(ForeignKey("subscription.id"), nullable=True)
 

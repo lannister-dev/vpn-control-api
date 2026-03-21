@@ -6,9 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class UserTrafficIn(BaseModel):
     identifier: str = Field(min_length=1)
-    uplink_bytes: int = Field(default=0, ge=0)
-    downlink_bytes: int = Field(default=0, ge=0)
-    total_bytes: int = Field(default=0, ge=0)
+    delta_bytes: int = Field(ge=0)
 
     model_config = ConfigDict(extra="ignore")
 
@@ -16,7 +14,7 @@ class UserTrafficIn(BaseModel):
 class TrafficUsageCreate(BaseModel):
     key_id: UUID
     delta_bytes: int = Field(ge=0)
-    reported_total_bytes: int = Field(ge=0)
+    reported_total_bytes: int = Field(default=0, ge=0)
 
 
 class TrafficKeySummaryOut(BaseModel):
@@ -28,7 +26,6 @@ class TrafficKeySummaryOut(BaseModel):
     valid_until: datetime
     traffic_limit_mb: int
     used_traffic_bytes: int
-    last_reported_total_bytes: int
     is_revoked: bool
     is_active: bool
     created_at: datetime

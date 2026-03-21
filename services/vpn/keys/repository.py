@@ -150,11 +150,11 @@ class VpnKeyRepository(BaseRepository[VpnKey]):
             .where(self.model.subscription_id == subscription_id, self.model.is_active.is_(True))
             .values(
                 used_traffic_bytes=0,
-                last_reported_total_bytes=0,
                 is_revoked=False,
                 updated_at=now,
             )
         )
+
         return unrevoked_ids
 
 

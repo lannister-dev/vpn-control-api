@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
@@ -40,31 +39,12 @@ class UserTrafficService:
         self.subscription_repository = SubscriptionRepository(session)
         self.node_agent_transport = NodeAgentPlacementTransport(session)
 
-    async def ingest_users_traffic(self, raw_payload: bytes) -> dict[str, int]:
-        try:
-            payload_obj = json.loads(raw_payload.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            logger_traffic.warning("users_traffic_payload_invalid", error=str(exc))
-            return {"processed": 0, "revoked": 0}
-
-        if not isinstance(payload_obj, list):
-            logger_traffic.warning("users_traffic_payload_not_list")
-            return {"processed": 0, "revoked": 0}
-
-        parsed: list[UserTrafficIn] = []
-        for item in payload_obj:
-            if not isinstance(item, dict):
-                continue
-            try:
-                parsed.append(UserTrafficIn.model_validate(item))
-            except Exception:
-                continue
-
-        if not parsed:
+    async def ingest_users_traffic(self, items: list[UserTrafficIn]) -> dict[str, int]:
+        if not items:
             return {"processed": 0, "revoked": 0}
 
         keys = await self.key_repository.list_by_client_ids(
-            client_ids=[item.identifier for item in parsed],
+            client_ids=[item.identifier for item in items],
             active_only=True,
         )
         if not keys:
@@ -77,33 +57,22 @@ class UserTrafficService:
         history_rows: list[TrafficUsageCreate] = []
         subscription_deltas: dict[UUID, int] = defaultdict(int)
 
-        # Phase 1: update per-key counters, collect subscription deltas
-        for traffic in parsed:
+        for traffic in items:
             key = key_by_client.get(traffic.identifier)
             if key is None:
                 continue
 
-            reported_total = traffic.total_bytes
-            if reported_total <= 0:
-                reported_total = traffic.uplink_bytes + traffic.downlink_bytes
-
-            delta = self._compute_delta(
-                new_total=reported_total,
-                old_total=key.last_reported_total_bytes or 0,
-            )
+            delta = traffic.delta_bytes
             if delta <= 0:
-                key.last_reported_total_bytes = reported_total
                 continue
 
             processed += 1
-            key.last_reported_total_bytes = reported_total
             key.used_traffic_bytes = int(key.used_traffic_bytes or 0) + delta
             key.updated_at = now
             history_rows.append(
                 TrafficUsageCreate(
                     key_id=key.id,
                     delta_bytes=delta,
-                    reported_total_bytes=reported_total,
                 )
             )
 
@@ -192,17 +161,6 @@ class UserTrafficService:
             VPN_KEY_OPERATION_TOTAL.labels(operation="auto_revoked_traffic_limit").inc()
             count += 1
         return count
-
-    @staticmethod
-    def _compute_delta(*, new_total: int, old_total: int) -> int:
-        if new_total < 0:
-            return 0
-        if old_total < 0:
-            return new_total
-        if new_total >= old_total:
-            return new_total - old_total
-        # Xray counter may reset after process restart.
-        return new_total
 
     async def cleanup_history(self, *, retention_days: int) -> int:
         cutoff = datetime.now(timezone.utc) - timedelta(days=max(1, int(retention_days)))
