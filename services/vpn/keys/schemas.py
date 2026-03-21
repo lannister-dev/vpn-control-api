@@ -33,7 +33,6 @@ class VpnKeyOut(BaseModel):
     valid_until: datetime
     traffic_limit_mb: int
     used_traffic_bytes: int
-    last_reported_total_bytes: int
     is_revoked: bool
 
     model_config = ConfigDict(from_attributes=True)
@@ -47,7 +46,6 @@ class VpnKeyInternalCreate(BaseModel):
     valid_until: datetime
     traffic_limit_mb: int
     used_traffic_bytes: int = 0
-    last_reported_total_bytes: int = 0
     is_revoked: bool = False
     subscription_id: UUID | None = None
 
@@ -66,7 +64,6 @@ class VpnKeyInternal(BaseModel):
     valid_until: datetime | None
     traffic_limit_mb: int | None
     used_traffic_bytes: int | None = 0
-    last_reported_total_bytes: int | None = 0
     is_revoked: bool
 
     model_config = ConfigDict(from_attributes=True)
