@@ -21,7 +21,6 @@ def _device(subscription_id):
     d = MagicMock()
     d.id = uuid4()
     d.subscription_id = subscription_id
-    d.vpn_key_id = uuid4()
     d.hwid_hash = "a" * 64
     d.last_seen_at = datetime.now(timezone.utc)
     d.user_agent = "happ/1.0"
@@ -62,6 +61,7 @@ async def test_list_devices_not_found(async_session, redis_client):
 async def test_list_devices_success(async_session, redis_client):
     sub = _subscription()
     dev = _device(sub.id)
+    primary_key_id = uuid4()
 
     svc = SubscriptionService(async_session, redis_client)
     svc.subscription_repository = AsyncMock()
@@ -69,7 +69,7 @@ async def test_list_devices_success(async_session, redis_client):
     svc.device_key_repository = AsyncMock()
     svc.vpn_key_repository = AsyncMock()
     svc.device_key_repository.list_by_device_ids = AsyncMock(return_value=[
-        _device_key_binding(dev.id, dev.vpn_key_id, "reality", is_primary=True),
+        _device_key_binding(dev.id, primary_key_id, "reality", is_primary=True),
     ])
     svc.vpn_key_repository.list_by_ids = AsyncMock(return_value=[])
 
@@ -110,9 +110,10 @@ async def test_revoke_device_not_found(async_session, redis_client):
 async def test_revoke_device_success(async_session, redis_client):
     sub = _subscription()
     dev = _device(sub.id)
+    primary_key_id = uuid4()
 
     key = MagicMock()
-    key.id = dev.vpn_key_id
+    key.id = primary_key_id
     key.transport = "reality"
     key.is_revoked = False
 
@@ -124,7 +125,7 @@ async def test_revoke_device_success(async_session, redis_client):
     svc.placement_repository = AsyncMock()
     svc.node_agent_transport = AsyncMock()
     svc.device_key_repository.list_by_device_ids = AsyncMock(return_value=[
-        _device_key_binding(dev.id, dev.vpn_key_id, "reality", is_primary=True),
+        _device_key_binding(dev.id, primary_key_id, "reality", is_primary=True),
     ])
 
     svc.subscription_repository.get_by_id.return_value = sub
@@ -145,9 +146,10 @@ async def test_revoke_device_idempotent(async_session, redis_client):
     sub = _subscription()
     dev = _device(sub.id)
     dev.is_active = False
+    primary_key_id = uuid4()
 
     key = MagicMock()
-    key.id = dev.vpn_key_id
+    key.id = primary_key_id
     key.transport = "reality"
     key.is_revoked = True
 
@@ -159,7 +161,7 @@ async def test_revoke_device_idempotent(async_session, redis_client):
     svc.placement_repository = AsyncMock()
     svc.node_agent_transport = AsyncMock()
     svc.device_key_repository.list_by_device_ids = AsyncMock(return_value=[
-        _device_key_binding(dev.id, dev.vpn_key_id, "reality", is_primary=True),
+        _device_key_binding(dev.id, primary_key_id, "reality", is_primary=True),
     ])
 
     svc.subscription_repository.get_by_id.return_value = sub

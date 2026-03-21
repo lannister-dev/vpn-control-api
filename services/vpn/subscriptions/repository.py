@@ -149,14 +149,6 @@ class SubscriptionDeviceRepository(BaseRepository[SubscriptionDevice]):
             *,
             active_only: bool = False,
     ) -> list[UUID]:
-        stmt = select(self.model.vpn_key_id).where(
-            self.model.subscription_id == subscription_id,
-        )
-        if active_only:
-            stmt = stmt.where(self.model.is_active.is_(True))
-        res = await self.session.execute(stmt)
-        key_ids = [row[0] for row in res.all() if row[0] is not None]
-
         bundle_stmt = (
             select(SubscriptionDeviceKey.vpn_key_id)
             .join(
@@ -171,7 +163,7 @@ class SubscriptionDeviceRepository(BaseRepository[SubscriptionDevice]):
                 SubscriptionDeviceKey.is_active.is_(True),
             )
         bundle_res = await self.session.execute(bundle_stmt)
-        key_ids.extend(row[0] for row in bundle_res.all() if row[0] is not None)
+        key_ids = [row[0] for row in bundle_res.all() if row[0] is not None]
         return list(dict.fromkeys(key_ids))
 
     async def touch(

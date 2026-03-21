@@ -355,7 +355,6 @@ class SubscriptionService:
                 SubscriptionDeviceOut(
                     id=device.id,
                     subscription_id=device.subscription_id,
-                    vpn_key_id=device.vpn_key_id,
                     vpn_key_ids=[item.vpn_key_id for item in bundle_keys],
                     transport_keys=bundle_keys,
                     hwid_hash=device.hwid_hash,
@@ -1235,7 +1234,6 @@ class SubscriptionService:
                 SubscriptionDeviceCreate(
                     subscription_id=subscription.id,
                     hwid_hash=hwid_hash,
-                    vpn_key_id=primary_key.id,
                     last_seen_at=now,
                     user_agent=user_agent,
                 ).model_dump()
@@ -1285,23 +1283,6 @@ class SubscriptionService:
         bundle = await self._load_device_bundle(device)
         existing = {item.transport for item in bundle.keys}
         valid_until = subscription.expires_at or (now + timedelta(days=365))
-
-        if device.vpn_key_id:
-            legacy_key = await self.vpn_key_repository.get_by_id(device.vpn_key_id)
-            if legacy_key and legacy_key.transport not in existing:
-                try:
-                    await self.device_key_repository.create(
-                        SubscriptionDeviceKeyCreate(
-                            subscription_device_id=device.id,
-                            vpn_key_id=legacy_key.id,
-                            transport=legacy_key.transport,
-                            is_primary=True,
-                        ).model_dump()
-                    )
-                except IntegrityError:
-                    pass
-                bundle = await self._load_device_bundle(device)
-                existing = {item.transport for item in bundle.keys}
 
         for idx, transport in enumerate(required_transports):
             if transport.value in existing:
@@ -1394,20 +1375,6 @@ class SubscriptionService:
                 )
                 seen_transports.add(transport)
 
-            if device.vpn_key_id:
-                legacy_key = key_by_id.get(device.vpn_key_id)
-                legacy_transport = str(getattr(legacy_key, "transport", "")) if legacy_key else ""
-                if legacy_key and legacy_transport and legacy_transport not in seen_transports:
-                    resolved.append(
-                        ResolvedDeviceKey(
-                            vpn_key_id=legacy_key.id,
-                            transport=legacy_transport,
-                            client_id=str(legacy_key.client_id),
-                            is_primary=True,
-                            key=legacy_key,
-                        )
-                    )
-
             resolved.sort(
                 key=lambda item: (
                     0 if item.is_primary else 1,
@@ -1425,33 +1392,15 @@ class SubscriptionService:
         if not devices:
             return {}
 
-        bindings_by_device, key_by_id = await self._collect_device_key_material(
+        bindings_by_device, _ = await self._collect_device_key_material(
             devices,
             binding_active_only=False,
         )
         outputs_by_device: dict[UUID, list[SubscriptionDeviceKeyOut]] = {}
         for device in devices:
             outputs: list[SubscriptionDeviceKeyOut] = []
-            seen_key_ids: set[UUID] = set()
             for binding in bindings_by_device.get(device.id, []):
                 outputs.append(SubscriptionDeviceKeyOut.model_validate(binding))
-                seen_key_ids.add(binding.vpn_key_id)
-
-            if device.vpn_key_id and device.vpn_key_id not in seen_key_ids:
-                legacy_key = key_by_id.get(device.vpn_key_id)
-                if legacy_key:
-                    outputs.append(
-                        SubscriptionDeviceKeyOut(
-                            id=device.id,
-                            subscription_device_id=device.id,
-                            vpn_key_id=legacy_key.id,
-                            transport=str(legacy_key.transport),
-                            is_primary=True,
-                            is_active=device.is_active,
-                            created_at=device.created_at,
-                            updated_at=device.updated_at,
-                        )
-                    )
 
             outputs.sort(
                 key=lambda item: (
@@ -1479,12 +1428,6 @@ class SubscriptionService:
         for binding in bindings:
             bindings_by_device.setdefault(binding.subscription_device_id, []).append(binding)
             key_ids.append(binding.vpn_key_id)
-
-        key_ids.extend(
-            device.vpn_key_id
-            for device in devices
-            if device.vpn_key_id is not None
-        )
         key_by_id = await self._load_vpn_keys_by_ids(key_ids)
         return bindings_by_device, key_by_id
 
