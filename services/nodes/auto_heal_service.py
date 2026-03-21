@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import UUID
@@ -18,6 +19,9 @@ from shared.monitoring.metrics import (
     PLACEMENT_AUTO_HEAL_TOTAL,
     PLACEMENT_ORPHAN_ACTIVE_TOTAL,
 )
+from shared.utils.logger import StructuredLogger
+
+logger = StructuredLogger(logging.getLogger("node-auto-heal"))
 
 
 @dataclass(slots=True)
@@ -32,6 +36,9 @@ class NodeAutoHealTickOut:
 
 
 class NodePlacementAutoHealService:
+    _HEARTBEAT_DETAILS_KEY = "heartbeat"
+    _DRAIN_REASON_UNHEALTHY_HEARTBEAT = "unhealthy_heartbeat"
+
     def __init__(
         self,
         session: AsyncSession,
@@ -39,6 +46,7 @@ class NodePlacementAutoHealService:
         stale_after_sec: int,
         max_nodes: int,
         auto_undrain_enabled: bool,
+        drain_cooldown_sec: int = 180,
     ):
         self.node_repository = VpnNodeRepository(session)
         self.node_agent_state_repository = NodeAgentStateRepository(session)
@@ -48,6 +56,7 @@ class NodePlacementAutoHealService:
         self.stale_after_sec = max(30, int(stale_after_sec))
         self.max_nodes = min(500, max(1, int(max_nodes)))
         self.auto_undrain_enabled = bool(auto_undrain_enabled)
+        self.drain_cooldown_sec = max(0, int(drain_cooldown_sec))
 
     async def run_once(self) -> NodeAutoHealTickOut:
         now = datetime.now(timezone.utc)
@@ -154,16 +163,26 @@ class NodePlacementAutoHealService:
         for node, state in rows:
             if not node.is_active or not node.is_enabled or not node.is_draining:
                 continue
-            if desired_active_counts.get(node.id, 0) > 0:
-                continue
             if state is None or not state.is_healthy:
                 continue
             freshness = self._freshness_seconds(state=state, now=now)
             if freshness is None or freshness > self.stale_after_sec:
                 continue
+            has_placements = desired_active_counts.get(node.id, 0) > 0
+            if has_placements:
+                heartbeat_meta = self._extract_heartbeat_meta(state)
+                if heartbeat_meta is None:
+                    continue
+                if heartbeat_meta.get("drain_reason") != self._DRAIN_REASON_UNHEALTHY_HEARTBEAT:
+                    continue
             await self.node_repository.update_by_id(node.id, {"is_draining": False})
             undrained += 1
             PLACEMENT_AUTO_HEAL_TOTAL.labels(action="undrain", result="ok").inc()
+            logger.info(
+                "node_undrained",
+                node_id=str(node.id),
+                had_placements=has_placements,
+            )
         return undrained
 
     async def _select_target_backend(
@@ -218,6 +237,8 @@ class NodePlacementAutoHealService:
         if not node.is_enabled:
             return "node_disabled"
         if node.is_draining:
+            if self._is_within_drain_cooldown(state=state, now=now):
+                return None
             return "node_draining"
         if state is None:
             return "state_missing"
@@ -229,6 +250,49 @@ class NodePlacementAutoHealService:
         if freshness > self.stale_after_sec:
             return "state_stale"
         return None
+
+    def _is_within_drain_cooldown(
+        self,
+        *,
+        state: NodeAgentState | None,
+        now: datetime,
+    ) -> bool:
+        if self.drain_cooldown_sec <= 0:
+            return False
+        heartbeat_meta = self._extract_heartbeat_meta(state)
+        if heartbeat_meta is None:
+            return False
+        if heartbeat_meta.get("drain_reason") != self._DRAIN_REASON_UNHEALTHY_HEARTBEAT:
+            return False
+        drained_at_raw = heartbeat_meta.get("drained_at")
+        if drained_at_raw is None:
+            return False
+        try:
+            if isinstance(drained_at_raw, str):
+                drained_at = datetime.fromisoformat(drained_at_raw)
+            else:
+                drained_at = drained_at_raw
+            if drained_at.tzinfo is None:
+                drained_at = drained_at.replace(tzinfo=timezone.utc)
+            elapsed = (now - drained_at).total_seconds()
+            if elapsed < self.drain_cooldown_sec:
+                logger.info(
+                    "drain_cooldown_active",
+                    elapsed_sec=round(elapsed),
+                    cooldown_sec=self.drain_cooldown_sec,
+                )
+                return True
+        except (TypeError, ValueError):
+            pass
+        return False
+
+    @staticmethod
+    def _extract_heartbeat_meta(state: NodeAgentState | None) -> dict | None:
+        if state is None:
+            return None
+        details = state.details if isinstance(state.details, dict) else {}
+        heartbeat = details.get("heartbeat")
+        return heartbeat if isinstance(heartbeat, dict) else None
 
     @staticmethod
     def _freshness_seconds(*, state: NodeAgentState | None, now: datetime) -> float | None:

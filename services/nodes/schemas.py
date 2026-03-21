@@ -99,6 +99,7 @@ class NodeHeartbeatMeta(BaseModel):
     consecutive_unhealthy: int = Field(default=0, ge=0)
     consecutive_healthy: int = Field(default=0, ge=0)
     drain_reason: str | None = None
+    drained_at: datetime | None = None
 
     model_config = ConfigDict(extra="ignore")
 
