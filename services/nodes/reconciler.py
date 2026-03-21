@@ -21,7 +21,7 @@ class NodePlacementReconciler:
         *,
         node_settings: NodeAgentConfig | None = None,
         session_maker: async_sessionmaker[AsyncSession] | None = None,
-        service_factory: Callable[[AsyncSession, int, int, bool], NodePlacementAutoHealService] | None = None,
+        service_factory: Callable[[AsyncSession, int, int, bool, int], NodePlacementAutoHealService] | None = None,
         tick_lock: RedisTickLock | None = None,
     ):
         settings = node_settings or get_settings().node_agent
@@ -31,6 +31,7 @@ class NodePlacementReconciler:
         self._stale_after_sec = max(30, int(settings.stale_after_sec))
         self._max_nodes = min(500, max(1, int(settings.auto_heal_max_nodes)))
         self._auto_undrain_enabled = bool(settings.auto_undrain_enabled)
+        self._drain_cooldown_sec = max(0, int(settings.auto_heal_drain_cooldown_sec))
 
         self._session_maker = session_maker or AsyncDatabase.get_session_maker()
         self._service_factory = service_factory or self._default_service_factory
@@ -87,6 +88,7 @@ class NodePlacementReconciler:
                 self._stale_after_sec,
                 self._max_nodes,
                 self._auto_undrain_enabled,
+                self._drain_cooldown_sec,
             )
             out = await service.run_once()
             await session.commit()
@@ -109,10 +111,12 @@ class NodePlacementReconciler:
         stale_after_sec: int,
         max_nodes: int,
         auto_undrain_enabled: bool,
+        drain_cooldown_sec: int = 180,
     ) -> NodePlacementAutoHealService:
         return NodePlacementAutoHealService(
             session,
             stale_after_sec=stale_after_sec,
             max_nodes=max_nodes,
             auto_undrain_enabled=auto_undrain_enabled,
+            drain_cooldown_sec=drain_cooldown_sec,
         )

@@ -105,17 +105,31 @@ class NatsClient:
         *,
         name: str,
         subjects: list[str],
+        max_msgs_per_subject: int = 1000,
+        max_age: float = 3600,
     ):
-        config = StreamConfig(name=name, subjects=subjects)
+        config = StreamConfig(
+            name=name,
+            subjects=subjects,
+            max_msgs_per_subject=max_msgs_per_subject,
+            max_age=max_age,
+        )
         try:
             info = await self.jetstream().stream_info(name)
         except Exception:
             return await self.jetstream().add_stream(config=config)
         current_subjects = set(info.config.subjects or [])
         desired_subjects = current_subjects | set(subjects)
-        if desired_subjects == current_subjects:
+        needs_update = desired_subjects != current_subjects
+        if info.config.max_msgs_per_subject != max_msgs_per_subject:
+            needs_update = True
+        if info.config.max_age != max_age:
+            needs_update = True
+        if not needs_update:
             return info
         info.config.subjects = sorted(desired_subjects)
+        info.config.max_msgs_per_subject = max_msgs_per_subject
+        info.config.max_age = max_age
         return await self.jetstream().update_stream(config=info.config)
 
     async def pull_subscribe(

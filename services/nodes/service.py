@@ -181,6 +181,7 @@ class VpnNodeService:
             )
             node.is_draining = True
             heartbeat_meta.drain_reason = self._DRAIN_REASON_UNHEALTHY_HEARTBEAT
+            heartbeat_meta.drained_at = now
             logger_node.info(
                 "node set to draining after unhealthy heartbeat threshold",
                 node_id=str(node.id),
@@ -202,6 +203,7 @@ class VpnNodeService:
             )
             node.is_draining = False
             heartbeat_meta.drain_reason = None
+            heartbeat_meta.drained_at = None
             logger_node.info(
                 "node restored from draining after healthy heartbeat threshold",
                 node_id=str(node.id),
