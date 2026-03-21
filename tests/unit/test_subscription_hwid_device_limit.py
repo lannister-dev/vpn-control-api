@@ -77,10 +77,9 @@ async def test_existing_hwid_path_skips_subscription_lock(service):
     sub = _sub(hwid_enabled=True, max_devices=1)
     device = MagicMock()
     device.id = uuid4()
-    device.vpn_key_id = uuid4()
     key = MagicMock()
     key.client_id = str(uuid4())
-    key.id = device.vpn_key_id
+    key.id = uuid4()
     key.is_revoked = False
 
     service.subscription_repository.get_by_any_token_hash.return_value = sub

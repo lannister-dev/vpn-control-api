@@ -88,7 +88,6 @@ class SubscriptionStatsOut(BaseModel):
 class SubscriptionDeviceCreate(BaseModel):
     subscription_id: UUID
     hwid_hash: str
-    vpn_key_id: UUID
     last_seen_at: datetime | None
     user_agent: str | None
 
@@ -123,7 +122,6 @@ class SubscriptionDeviceKeyOut(BaseModel):
 class SubscriptionDeviceOut(BaseModel):
     id: UUID
     subscription_id: UUID
-    vpn_key_id: UUID
     vpn_key_ids: list[UUID] = Field(default_factory=list)
     transport_keys: list[SubscriptionDeviceKeyOut] = Field(default_factory=list)
     hwid_hash: str
