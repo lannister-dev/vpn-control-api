@@ -17,13 +17,11 @@ logger = StructuredLogger(logging.getLogger("placement-error-retry-reconciler"))
 
 
 class PlacementErrorRetryReconciler:
-    """Re-queues placements stuck in 'error' state for automatic retry.
+    """Re-queues placements stuck in 'error' or stale 'pending' state.
 
-    When a node-agent fails to reconcile a placement (e.g. Xray was
-    temporarily unreachable), the placement remains in 'error' until
-    something re-pushes it.  This reconciler periodically finds such
-    placements, resets them to 'pending', bumps ``op_version``, and
-    enqueues new outbox entries so the agent retries.
+    - error: resets to pending, bumps op_version, creates outbox entries.
+    - stale pending: outbox entry was lost (e.g. NATS timeout during deploy),
+      re-creates outbox entries without changing state.
     """
 
     def __init__(
@@ -85,40 +83,54 @@ class PlacementErrorRetryReconciler:
 
     async def _execute_tick(self) -> int:
         cutoff = datetime.now(timezone.utc) - timedelta(seconds=self._retry_after_sec)
+        total = 0
         async with self._session_maker() as session:
-            # Find error placements older than cutoff on active nodes
-            stmt = (
+            transport = NodeAgentPlacementTransport(session)
+
+            # 1) Error placements → reset to pending + bump op_version + outbox
+            error_stmt = (
                 select(UserPlacement.id)
                 .where(UserPlacement.applied_state == "error")
                 .where(UserPlacement.is_active.is_(True))
                 .where(UserPlacement.updated_at < cutoff)
             )
-            result = await session.execute(stmt)
-            placement_ids = list(result.scalars().all())
+            error_ids = list((await session.execute(error_stmt)).scalars().all())
 
-            if not placement_ids:
-                return 0
-
-            # Reset to pending and bump op_version
-            await session.execute(
-                sa_update(UserPlacement)
-                .where(UserPlacement.id.in_(placement_ids))
-                .values(
-                    applied_state="pending",
-                    op_version=UserPlacement.op_version + 1,
-                    updated_at=datetime.now(timezone.utc),
+            if error_ids:
+                await session.execute(
+                    sa_update(UserPlacement)
+                    .where(UserPlacement.id.in_(error_ids))
+                    .values(
+                        applied_state="pending",
+                        op_version=UserPlacement.op_version + 1,
+                        updated_at=datetime.now(timezone.utc),
+                    )
                 )
+                await transport.enqueue_for_placement_ids(error_ids)
+                total += len(error_ids)
+                logger.info(
+                    "placement_error_retry",
+                    retried=len(error_ids),
+                )
+
+            # 2) Stale pending placements → re-create outbox entries
+            pending_stmt = (
+                select(UserPlacement.id)
+                .where(UserPlacement.applied_state == "pending")
+                .where(UserPlacement.is_active.is_(True))
+                .where(UserPlacement.updated_at < cutoff)
             )
+            pending_ids = list((await session.execute(pending_stmt)).scalars().all())
 
-            # Create outbox entries so the agent receives new commands
-            transport = NodeAgentPlacementTransport(session)
-            await transport.enqueue_for_placement_ids(placement_ids)
+            if pending_ids:
+                await transport.enqueue_for_placement_ids(pending_ids)
+                total += len(pending_ids)
+                logger.info(
+                    "placement_stale_pending_retry",
+                    retried=len(pending_ids),
+                )
 
-            await session.commit()
+            if total > 0:
+                await session.commit()
 
-            logger.info(
-                "placement_error_retry_tick",
-                retried=len(placement_ids),
-                cutoff_sec=self._retry_after_sec,
-            )
-            return len(placement_ids)
+            return total
