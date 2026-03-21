@@ -10,7 +10,7 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.placements.repository import UserPlacementRepository
-from services.traffic.repository import TrafficUsageRepository
+from services.traffic.repository import KeyNodeTrafficCounterRepository, TrafficUsageRepository
 from services.placements.schemas import PlacementDesiredState
 from services.traffic.schemas import (
     TrafficHistoryItemOut,
@@ -18,7 +18,7 @@ from services.traffic.schemas import (
     TrafficKeySummaryListOut,
     TrafficKeySummaryOut,
     TrafficUsageCreate,
-    UserTrafficIn,
+    UserTrafficIn, KeyNodeTrafficCounterCreate,
 )
 from services.vpn.keys.repository import VpnKeyRepository
 from services.vpn.subscriptions.repository import SubscriptionRepository
@@ -39,6 +39,7 @@ class UserTrafficService:
         self.traffic_usage_repository = TrafficUsageRepository(session)
         self.subscription_repository = SubscriptionRepository(session)
         self.node_agent_transport = NodeAgentPlacementTransport(session)
+        self.node_counter_repository = KeyNodeTrafficCounterRepository(session)
 
     async def ingest_users_traffic(self, raw_payload: bytes) -> dict[str, int]:
         try:
@@ -77,6 +78,10 @@ class UserTrafficService:
         history_rows: list[TrafficUsageCreate] = []
         subscription_deltas: dict[UUID, int] = defaultdict(int)
 
+        # Preload per-node counters for all matched keys
+        key_ids = [k.id for k in keys]
+        node_counters = await self.node_counter_repository.get_counters_for_keys(key_ids)
+
         # Phase 1: update per-key counters, collect subscription deltas
         for traffic in parsed:
             key = key_by_client.get(traffic.identifier)
@@ -87,16 +92,31 @@ class UserTrafficService:
             if reported_total <= 0:
                 reported_total = traffic.uplink_bytes + traffic.downlink_bytes
 
-            delta = self._compute_delta(
-                new_total=reported_total,
-                old_total=key.last_reported_total_bytes or 0,
-            )
+            # Per-node counter: isolates each node's cumulative total
+            source_node = traffic.node_id or "_unknown"
+            counter_key = (key.id, source_node)
+            counter = node_counters.get(counter_key)
+            old_total = counter.last_reported_total_bytes if counter else 0
+
+            delta = self._compute_delta(new_total=reported_total, old_total=old_total)
+
+            if counter:
+                counter.last_reported_total_bytes = reported_total
+                counter.updated_at = now
+            else:
+                new_counter = await self.node_counter_repository.create(
+                    KeyNodeTrafficCounterCreate(
+                        key_id=key.id,
+                        node_id=source_node,
+                        last_reported_total_bytes=reported_total,
+                    ).model_dump()
+                )
+                node_counters[counter_key] = new_counter
+
             if delta <= 0:
-                key.last_reported_total_bytes = reported_total
                 continue
 
             processed += 1
-            key.last_reported_total_bytes = reported_total
             key.used_traffic_bytes = int(key.used_traffic_bytes or 0) + delta
             key.updated_at = now
             history_rows.append(

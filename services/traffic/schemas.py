@@ -9,6 +9,7 @@ class UserTrafficIn(BaseModel):
     uplink_bytes: int = Field(default=0, ge=0)
     downlink_bytes: int = Field(default=0, ge=0)
     total_bytes: int = Field(default=0, ge=0)
+    node_id: str | None = Field(default=None, description="Source node identifier for per-node delta tracking")
 
     model_config = ConfigDict(extra="ignore")
 
@@ -59,3 +60,9 @@ class TrafficHistoryListOut(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class KeyNodeTrafficCounterCreate(BaseModel):
+    key_id: UUID
+    node_id: str
+    last_reported_total_bytes: int

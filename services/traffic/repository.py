@@ -6,9 +6,35 @@ from uuid import UUID
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.traffic.model import TrafficUsage
+from services.traffic.model import KeyNodeTrafficCounter, TrafficUsage
 from services.traffic.schemas import TrafficUsageCreate
 from shared.database.base_repository import BaseRepository
+
+
+class KeyNodeTrafficCounterRepository(BaseRepository[KeyNodeTrafficCounter]):
+    def __init__(self, session: AsyncSession):
+        super().__init__(KeyNodeTrafficCounter, session)
+
+    async def get_counters_for_keys(
+        self, key_ids: list[UUID],
+    ) -> dict[tuple[UUID, str], KeyNodeTrafficCounter]:
+        if not key_ids:
+            return {}
+        stmt = select(KeyNodeTrafficCounter).where(
+            KeyNodeTrafficCounter.key_id.in_(key_ids),
+        )
+        rows = (await self.session.execute(stmt)).scalars().all()
+        return {(r.key_id, r.node_id): r for r in rows}
+
+    async def delete_by_key_ids(self, key_ids: list[UUID]) -> int:
+        if not key_ids:
+            return 0
+        result = await self.session.execute(
+            delete(KeyNodeTrafficCounter).where(
+                KeyNodeTrafficCounter.key_id.in_(key_ids),
+            )
+        )
+        return result.rowcount or 0
 
 
 class TrafficUsageRepository(BaseRepository[TrafficUsage]):
