@@ -369,7 +369,8 @@ class NodeAgentRuntime:
 
         session_maker = AsyncDatabase.get_session_maker()
         async with session_maker() as session:
-            if not await self._resolve_node(session, node_id):
+            node = await VpnNodeRepository(session).get_by_id(node_id)
+            if node is None:
                 logger_transport.warning("placement_result_unknown_node", node_id=str(node_id))
                 await session.rollback()
                 return True
@@ -392,11 +393,6 @@ class NodeAgentRuntime:
                 )
 
             service = PlacementApplyService(session)
-            node = await VpnNodeRepository(session).get_by_id(node_id)
-            if node is None:
-                await session.rollback()
-                return True
-
             try:
                 ack_status = await service.apply_result(
                     node=node,

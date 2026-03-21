@@ -142,24 +142,6 @@ class PlacementApplyService:
             placement_id: UUID,
             payload: PlacementApplyResultIn,
     ) -> PlacementApplyStatus:
-        placement = await self.placement_repository.get_by_id(placement_id)
-        if not placement:
-            raise HTTPException(status_code=404, detail="Placement not found")
-
-        if placement.backend_node_id != node.id:
-            raise HTTPException(status_code=403, detail="Placement does not belong to this backend")
-
-        if payload.op_version != placement.op_version:
-            NODE_PLACEMENT_REPORT_TOTAL.labels(status="skipped_stale").inc()
-            return "skipped_stale"
-
-        if (
-                placement.applied_version == payload.op_version
-                and placement.applied_state == payload.applied_state
-        ):
-            NODE_PLACEMENT_REPORT_TOTAL.labels(status="skipped_idempotent").inc()
-            return "skipped_idempotent"
-
         now = datetime.now(timezone.utc)
         applied_state_value: str = payload.applied_state
         updated_rows = await self.placement_repository.apply_backend_report(
