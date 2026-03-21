@@ -90,12 +90,13 @@ class NodeAgentConfig:
     sync_report_debounce_sec: int = 10
     auth_token_rotation_grace_sec: int = 300
     bootstrap_allow_create: bool = True
-    heartbeat_unhealthy_drain_threshold: int = 2
+    heartbeat_unhealthy_drain_threshold: int = 5
     heartbeat_healthy_undrain_threshold: int = 3
     stale_after_sec: int = 90
     auto_heal_enabled: bool = False
     auto_heal_tick_sec: int = 60
     auto_heal_max_nodes: int = 20
+    auto_heal_drain_cooldown_sec: int = 180
     auto_undrain_enabled: bool = False
 
 
@@ -285,7 +286,7 @@ def get_settings() -> Settings:
         bootstrap_allow_create=env.bool("NODE_BOOTSTRAP_ALLOW_CREATE", default=True),
         heartbeat_unhealthy_drain_threshold=max(
             1,
-            env.int("NODE_HEARTBEAT_UNHEALTHY_DRAIN_THRESHOLD", default=2),
+            env.int("NODE_HEARTBEAT_UNHEALTHY_DRAIN_THRESHOLD", default=5),
         ),
         heartbeat_healthy_undrain_threshold=max(
             1,
@@ -295,6 +296,7 @@ def get_settings() -> Settings:
         auto_heal_enabled=env.bool("NODE_AUTO_HEAL_ENABLED", default=False),
         auto_heal_tick_sec=max(30, env.int("NODE_AUTO_HEAL_TICK_SEC", default=60)),
         auto_heal_max_nodes=min(500, max(1, env.int("NODE_AUTO_HEAL_MAX_NODES", default=20))),
+        auto_heal_drain_cooldown_sec=max(0, env.int("NODE_AUTO_HEAL_DRAIN_COOLDOWN_SEC", default=180)),
         auto_undrain_enabled=env.bool("NODE_AUTO_UNDRAIN_ENABLED", default=False),
     )
 
