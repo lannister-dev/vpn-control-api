@@ -100,6 +100,7 @@ class ProbeTargetOut(BaseModel):
     probe_kind: ProbeKind = "synthetic_vpn"
     node_name: str
     region: str
+    probe_client_id: str | None = None
     target_host: str
     target_port: int
     tls_sni: str | None = None

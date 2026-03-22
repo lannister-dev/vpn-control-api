@@ -114,6 +114,8 @@ class AlertsConfig:
 @dataclass
 class ProbeConfig:
     target_port: int = 443
+    synthetic_reality_client_id: str | None = None
+    synthetic_ws_client_id: str | None = None
     retention_days: int = 3
     cleanup_enabled: bool = True
     cleanup_tick_sec: int = 3600
@@ -323,6 +325,8 @@ def get_settings() -> Settings:
 
     probe = ProbeConfig(
         target_port=env.int("PROBE_TARGET_PORT", default=443),
+        synthetic_reality_client_id=env.str("PROBE_SYNTHETIC_REALITY_CLIENT_ID", default=""),
+        synthetic_ws_client_id=env.str("PROBE_SYNTHETIC_WS_CLIENT_ID", default=""),
         retention_days= env.int("PROBE_RETENTION_DAYS", default=3),
         cleanup_enabled=env.bool("PROBE_CLEANUP_ENABLED", default=True),
         cleanup_tick_sec=max(300, env.int("PROBE_CLEANUP_TICK_SEC", default=3600)),

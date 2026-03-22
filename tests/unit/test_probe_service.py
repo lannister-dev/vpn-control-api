@@ -89,9 +89,12 @@ def _ingestion_service() -> ProbeIngestionService:
         node_repository=AsyncMock(),
         probe_repository=AsyncMock(),
         route_repository=AsyncMock(),
+        placement_repository=AsyncMock(),
+        key_repository=AsyncMock(),
         alert_service=AsyncMock(),
         target_port=443,
         edge_public_domain="",
+        synthetic_probe_client_ids_by_transport={},
         retention_days=30,
         auto_route_health_enabled=True,
         route_block_cooldown_hours=6,
@@ -159,6 +162,7 @@ async def test_list_targets_filters_nodes(async_session):
     assert out[0].transport_kind == "reality"
     assert out[0].target_host == backend_ok.reality_ip
     assert out[0].target_port == 443
+    assert out[0].probe_client_id is None
     svc.route_repository.list_active_detailed.assert_awaited_once_with(limit=5000)
 
 
@@ -176,6 +180,77 @@ async def test_list_targets_skips_ws_routes_behind_shared_edge(async_session):
     out = await svc.list_targets()
 
     assert out == []
+
+
+@pytest.mark.asyncio
+async def test_list_targets_includes_probe_client_id_when_special_key_is_synced(async_session):
+    svc = _ingestion_service()
+    svc.route_repository = AsyncMock()
+    svc.key_repository = AsyncMock()
+    svc.placement_repository = AsyncMock()
+    svc.synthetic_probe_client_ids_by_transport = {"reality": "probe-reality-cid"}
+
+    node = _node()
+    transport_profile = _transport_profile()
+    route = _route(node_id=node.id, transport_profile_id=transport_profile.id, name="route-reality")
+    key = MagicMock()
+    key.id = uuid4()
+    key.client_id = "probe-reality-cid"
+    key.transport = "reality"
+    placement = MagicMock()
+    placement.backend_node_id = node.id
+    placement.applied_state = "applied"
+    placement.op_version = 7
+    placement.applied_version = 7
+
+    svc.route_repository.list_active_detailed.return_value = [(route, node, transport_profile, None)]
+    svc.key_repository.list_by_client_ids.return_value = [key]
+    svc.placement_repository.list_by_key_id.return_value = [placement]
+
+    out = await svc.list_targets()
+
+    assert len(out) == 1
+    assert out[0].probe_client_id == "probe-reality-cid"
+    svc.key_repository.list_by_client_ids.assert_awaited_once_with(
+        client_ids=["probe-reality-cid"],
+        active_only=True,
+    )
+    svc.placement_repository.list_by_key_id.assert_awaited_once_with(
+        key_id=key.id,
+        active_only=True,
+        desired_state="active",
+    )
+
+
+@pytest.mark.asyncio
+async def test_list_targets_omits_probe_client_id_when_special_key_not_synced(async_session):
+    svc = _ingestion_service()
+    svc.route_repository = AsyncMock()
+    svc.key_repository = AsyncMock()
+    svc.placement_repository = AsyncMock()
+    svc.synthetic_probe_client_ids_by_transport = {"reality": "probe-reality-cid"}
+
+    node = _node()
+    transport_profile = _transport_profile()
+    route = _route(node_id=node.id, transport_profile_id=transport_profile.id, name="route-reality")
+    key = MagicMock()
+    key.id = uuid4()
+    key.client_id = "probe-reality-cid"
+    key.transport = "reality"
+    placement = MagicMock()
+    placement.backend_node_id = node.id
+    placement.applied_state = "pending"
+    placement.op_version = 7
+    placement.applied_version = 0
+
+    svc.route_repository.list_active_detailed.return_value = [(route, node, transport_profile, None)]
+    svc.key_repository.list_by_client_ids.return_value = [key]
+    svc.placement_repository.list_by_key_id.return_value = [placement]
+
+    out = await svc.list_targets()
+
+    assert len(out) == 1
+    assert out[0].probe_client_id is None
 
 
 @pytest.mark.asyncio
