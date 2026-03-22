@@ -35,6 +35,7 @@ from services.traffic.consumer import UserTrafficNatsConsumer
 from services.traffic.reconciler import TrafficHistoryCleanupReconciler
 from services.traffic.reset_reconciler import TrafficResetReconciler
 from services.placements.error_retry_reconciler import PlacementErrorRetryReconciler
+from services.vpn.keys.expiration_reconciler import VpnKeyExpirationReconciler
 from services.auth.admin.router import router as admin_auth_router
 from services.traffic.router import router as traffic_admin_router
 from services.vpn.keys.router import router as vpn_router
@@ -67,6 +68,7 @@ async def lifespan(app: FastAPI):
     transport_cleanup_reconciler = AdminTransportCleanupReconciler()
     traffic_reset_reconciler = TrafficResetReconciler()
     placement_error_retry_reconciler = PlacementErrorRetryReconciler()
+    key_expiration_reconciler = VpnKeyExpirationReconciler()
     await warmup_reconciler.start()
     await probe_cleanup_reconciler.start()
     await probe_auto_drain_reconciler.start()
@@ -78,9 +80,11 @@ async def lifespan(app: FastAPI):
     await transport_cleanup_reconciler.start()
     await traffic_reset_reconciler.start()
     await placement_error_retry_reconciler.start()
+    await key_expiration_reconciler.start()
     try:
         yield
     finally:
+        await key_expiration_reconciler.stop()
         await placement_error_retry_reconciler.stop()
         await traffic_reset_reconciler.stop()
         await transport_cleanup_reconciler.stop()
