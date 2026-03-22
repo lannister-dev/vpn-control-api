@@ -385,6 +385,38 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
 
         return migrated, target_ids
 
+    async def bulk_set_desired_state_for_keys(
+        self,
+        *,
+        key_ids: list[UUID],
+        desired_state: str,
+        last_migration_reason: str | None,
+        updated_at: datetime,
+    ) -> list[UUID]:
+        if not key_ids:
+            return []
+        stmt = (
+            sa_update(self.model)
+            .where(self.model.key_id.in_(key_ids))
+            .where(self.model.is_active.is_(True))
+            .where(
+                or_(
+                    self.model.desired_state != desired_state,
+                    self.model.applied_state != "pending",
+                )
+            )
+            .values(
+                desired_state=desired_state,
+                applied_state="pending",
+                op_version=self.model.op_version + 1,
+                last_migration_reason=last_migration_reason,
+                updated_at=updated_at,
+            )
+            .returning(self.model.id)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
     async def list_active_ids_for_key(
         self,
         *,

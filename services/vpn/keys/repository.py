@@ -127,6 +127,32 @@ class VpnKeyRepository(BaseRepository[VpnKey]):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
+    async def bulk_revoke_expired(self, *, limit: int = 500) -> list[UUID]:
+        from sqlalchemy import update as sa_update
+
+        now = datetime.now(timezone.utc)
+        expired_ids_stmt = (
+            select(self.model.id)
+            .where(
+                self.model.is_active.is_(True),
+                self.model.is_revoked.is_(False),
+                self.model.valid_until <= now,
+            )
+            .order_by(self.model.valid_until.asc())
+            .limit(limit)
+        )
+        result = await self.session.execute(expired_ids_stmt)
+        key_ids = list(result.scalars().all())
+        if not key_ids:
+            return []
+
+        await self.session.execute(
+            sa_update(self.model)
+            .where(self.model.id.in_(key_ids))
+            .values(is_revoked=True, updated_at=now)
+        )
+        return key_ids
+
     async def bulk_reset_traffic_by_subscription(self, subscription_id: UUID) -> list[UUID]:
         """Reset used_traffic_bytes and un-revoke keys for a subscription. Returns key IDs that were un-revoked."""
         from sqlalchemy import update as sa_update

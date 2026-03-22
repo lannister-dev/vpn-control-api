@@ -150,6 +150,13 @@ class EdgeConfig:
 
 
 @dataclass
+class VpnKeyConfig:
+    expiration_enabled: bool = True
+    expiration_tick_sec: int = 60
+    expiration_batch_size: int = 500
+
+
+@dataclass
 class TrafficConfig:
     cleanup_enabled: bool = False
     cleanup_tick_sec: int = 3600
@@ -199,6 +206,7 @@ class Settings:
     traffic: TrafficConfig
     transport: TransportConfig
     admin_auth: AdminAuthConfig
+    vpn_key: VpnKeyConfig
 
 
 @lru_cache
@@ -366,6 +374,12 @@ def get_settings() -> Settings:
         retention_days=max(1, env.int("TRANSPORT_RETENTION_DAYS", default=30)),
     )
 
+    vpn_key = VpnKeyConfig(
+        expiration_enabled=env.bool("VPN_KEY_EXPIRATION_ENABLED", default=True),
+        expiration_tick_sec=max(30, env.int("VPN_KEY_EXPIRATION_TICK_SEC", default=60)),
+        expiration_batch_size=max(1, env.int("VPN_KEY_EXPIRATION_BATCH_SIZE", default=500)),
+    )
+
     _tg_allowed_raw = env.str("ADMIN_TELEGRAM_ALLOWED_IDS", default="")
     _tg_allowed = tuple(
         int(x.strip()) for x in _tg_allowed_raw.split(",") if x.strip().isdigit()
@@ -402,4 +416,5 @@ def get_settings() -> Settings:
         traffic=traffic,
         transport=transport,
         admin_auth=admin_auth,
+        vpn_key=vpn_key,
     )
