@@ -275,85 +275,115 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
         target_backend_id: UUID,
         last_migration_reason: str | None,
         updated_at: datetime,
-    ) -> int:
+    ) -> tuple[int, list[UUID]]:
+        """Migrate placements to a new backend node.
+
+        Returns (migrated_count, target_placement_ids) where
+        target_placement_ids are the IDs that need outbox entries on the
+        target node.  Uses SELECT FOR UPDATE to prevent concurrent
+        migration of the same rows.
+
+        SQL complexity: O(1) statements regardless of placement count
+        (2 SELECTs + up to 3 UPDATEs).
+        """
         if not placement_ids:
-            return 0
+            return 0, []
 
-        source_result = await self.session.execute(
-            select(self.model).where(
-                self.model.id.in_(placement_ids),
-                self.model.is_active.is_(True),
-            )
+        # Lock source rows to prevent concurrent migration
+        source_rows = list(
+            (await self.session.execute(
+                select(self.model)
+                .where(
+                    self.model.id.in_(placement_ids),
+                    self.model.is_active.is_(True),
+                )
+                .with_for_update()
+            )).scalars().all()
         )
-        if not hasattr(source_result, "scalars"):
-            rowcount = getattr(source_result, "rowcount", None)
-            if callable(rowcount):
-                rowcount = rowcount()
-            if rowcount is None or rowcount < 0:
-                return 0
-            return int(rowcount)
-        source_rows = list(source_result.scalars().all())
         if not source_rows:
-            return 0
+            return 0, []
 
-        key_ids = [row.key_id for row in source_rows]
-        target_result = await self.session.execute(
-            select(self.model).where(
-                self.model.key_id.in_(key_ids),
-                self.model.backend_node_id == target_backend_id,
-            )
-        )
-        target_rows = list(target_result.scalars().all())
+        # Lock any existing target rows (same key already on target node)
+        key_ids = [r.key_id for r in source_rows]
         target_by_key: dict[UUID, UserPlacement] = {
-            row.key_id: row for row in target_rows
+            r.key_id: r
+            for r in (await self.session.execute(
+                select(self.model)
+                .where(
+                    self.model.key_id.in_(key_ids),
+                    self.model.backend_node_id == target_backend_id,
+                )
+                .with_for_update()
+            )).scalars().all()
         }
 
+        # Partition into simple moves vs multi-home merges
+        simple_move_ids: list[UUID] = []
+        merge_source_ids: list[UUID] = []
+
+        for src in source_rows:
+            existing = target_by_key.get(src.key_id)
+            if existing is None:
+                simple_move_ids.append(src.id)
+            elif existing.id != src.id:
+                merge_source_ids.append(src.id)
+
+        target_ids: list[UUID] = []
         migrated = 0
-        for source in source_rows:
-            existing_target = target_by_key.get(source.key_id)
-            if existing_target is None:
-                await self.session.execute(
-                    sa_update(self.model)
-                    .where(self.model.id == source.id)
-                    .values(
-                        backend_node_id=target_backend_id,
-                        applied_state="pending",
-                        op_version=self.model.op_version + 1,
-                        last_migration_reason=last_migration_reason,
-                        updated_at=updated_at,
-                    )
-                )
-                migrated += 1
-                continue
 
-            if existing_target.id == source.id:
-                continue
-
-            # Target already has placement for this key. Merge desired state there
-            # and retire source row to avoid unique(key_id, backend_node_id) conflicts.
-            await self.session.execute(
+        # Bulk UPDATE: move placements to target node (single statement)
+        if simple_move_ids:
+            result = await self.session.execute(
                 sa_update(self.model)
-                .where(self.model.id == existing_target.id)
+                .where(self.model.id.in_(simple_move_ids))
                 .values(
-                    desired_state=source.desired_state,
+                    backend_node_id=target_backend_id,
                     applied_state="pending",
                     op_version=self.model.op_version + 1,
-                    sticky_until=source.sticky_until,
+                    last_migration_reason=last_migration_reason,
+                    updated_at=updated_at,
+                )
+                .returning(self.model.id)
+            )
+            moved = list(result.scalars().all())
+            target_ids.extend(moved)
+            migrated += len(moved)
+
+        # Bulk merge: UPDATE ... FROM self-join to copy desired_state
+        # and sticky_until from source rows into existing target rows,
+        # then retire the sources.
+        if merge_source_ids:
+            src = self.model.__table__.alias("src")
+            merge_result = await self.session.execute(
+                sa_update(self.model)
+                .where(
+                    self.model.backend_node_id == target_backend_id,
+                    self.model.key_id == src.c.key_id,
+                    src.c.id.in_(merge_source_ids),
+                )
+                .values(
+                    desired_state=src.c.desired_state,
+                    applied_state="pending",
+                    op_version=self.model.op_version + 1,
+                    sticky_until=src.c.sticky_until,
                     last_migration_reason=last_migration_reason,
                     is_active=True,
                     updated_at=updated_at,
                 )
+                .returning(self.model.id)
             )
+            merged = list(merge_result.scalars().all())
+            target_ids.extend(merged)
+            migrated += len(merged)
+
+            # Retire source rows
             await self.session.execute(
                 sa_update(self.model)
-                .where(self.model.id == source.id)
-                .values(
-                    is_active=False,
-                    updated_at=updated_at,
-                )
+                .where(self.model.id.in_(merge_source_ids))
+                .values(is_active=False, updated_at=updated_at)
             )
-            migrated += 1
-        return migrated
+
+        return migrated, target_ids
 
     async def list_active_ids_for_key(
         self,

@@ -213,14 +213,14 @@ class NodePlacementAutoHealService:
         ]
         if not active_ids:
             return 0
-        migrated = await self.placement_repository.bulk_migrate_backend(
+        migrated, target_ids = await self.placement_repository.bulk_migrate_backend(
             placement_ids=active_ids,
             target_backend_id=target_backend_id,
             last_migration_reason="node_auto_heal",
             updated_at=updated_at,
         )
-        if migrated > 0:
-            await self.node_agent_transport.enqueue_for_placement_ids(active_ids)
+        if target_ids:
+            await self.node_agent_transport.enqueue_for_placement_ids(target_ids)
         return migrated
 
     def _unavailability_reason(

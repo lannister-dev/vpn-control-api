@@ -77,7 +77,8 @@ async def test_run_once_drains_and_migrates_stale_source(async_session):
     service.placement_repository.list_active = AsyncMock(
         return_value=[_placement(desired_state="active"), _placement(desired_state="active")]
     )
-    service.placement_repository.bulk_migrate_backend = AsyncMock(return_value=2)
+    active_ids = [p.id for p in service.placement_repository.list_active.return_value if p.desired_state == "active"]
+    service.placement_repository.bulk_migrate_backend = AsyncMock(return_value=(2, active_ids))
 
     out = await service.run_once()
 
@@ -145,7 +146,8 @@ async def test_run_once_handles_missing_source_node_and_migrates(async_session):
     service.node_agent_state_repository.list_by_node_ids = AsyncMock(return_value=[])
     service.routing_service.select_nodes = AsyncMock(return_value=[target])
     service.placement_repository.list_active = AsyncMock(return_value=[_placement(desired_state="active")])
-    service.placement_repository.bulk_migrate_backend = AsyncMock(return_value=1)
+    active_ids = [p.id for p in service.placement_repository.list_active.return_value if p.desired_state == "active"]
+    service.placement_repository.bulk_migrate_backend = AsyncMock(return_value=(1, active_ids))
 
     out = await service.run_once()
 
