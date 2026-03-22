@@ -627,6 +627,7 @@ class SubscriptionService:
             backend_node_ids=allowed_backend_ids_sorted,
             node_seen_after=self._resolved_route_node_seen_after(),
         )
+        entry_nodes_by_id = await self._entry_nodes_by_id(route_rows=route_rows)
 
         has_allowed = any(
             self._as_uuid(node.id) in allowed_backend_ids
@@ -640,6 +641,7 @@ class SubscriptionService:
                 backend_node_ids=allowed_backend_ids_sorted,
                 node_seen_after=None,
             )
+            entry_nodes_by_id = await self._entry_nodes_by_id(route_rows=route_rows)
 
         resolved_routes: list[ResolvedSubscriptionRoute] = []
         seen_uris: set[str] = set()
@@ -648,6 +650,8 @@ class SubscriptionService:
             backend_node_id = self._as_uuid(node.id)
             if backend_node_id not in allowed_backend_ids:
                 continue
+            entry_node_id = self._route_entry_node_id(route)
+            entry_node = entry_nodes_by_id.get(entry_node_id) if entry_node_id is not None else None
 
             transport_security = transport_profile.security
             transport_network = transport_profile.network
@@ -669,10 +673,11 @@ class SubscriptionService:
 
             uri = self._build_route_uri(
                 client_id=key.client_id,
-                node=node,
+                backend_node=node,
+                public_node=entry_node,
                 transport_profile=transport_profile,
                 remark_override=self._format_subscription_route_name(
-                    node=node,
+                    node=entry_node or node,
                     transport=key.transport,
                 ),
             )
@@ -692,7 +697,7 @@ class SubscriptionService:
                     transport_network=transport_network,
                     country_code=country_code,
                     country_name=country_name,
-                    display_name=self._format_subscription_route_name(node=node, transport=key.transport),
+                    display_name=self._format_subscription_route_name(node=entry_node or node, transport=key.transport),
                     preferred_backend=backend_node_id == selected_backend_id,
                     selection_rank=len(resolved_routes),
                     uri=uri,
@@ -897,10 +902,19 @@ class SubscriptionService:
                 preferred_region=preferred_region,
             )
             candidate_nodes = []
+        backend_ids_with_entry_routes = set(
+            await self.route_repository.list_backend_ids_with_entry_routes(
+                key_transport=key_transport,
+            )
+        )
 
         candidate_nodes = [
             node for node in candidate_nodes
-            if self._node_has_required_public_host(node=node, key_transport=key_transport)
+            if self._node_has_required_public_host(
+                node=node,
+                key_transport=key_transport,
+                allow_entry_route=self._as_uuid(str(node.id)) in backend_ids_with_entry_routes,
+            )
         ]
         if not candidate_nodes and not placements_by_backend:
             raise SubscriptionBuild("No available nodes")
@@ -967,19 +981,26 @@ class SubscriptionService:
             self,
             *,
             client_id: str,
-            node: VpnNode,
+            backend_node: VpnNode | None = None,
+            node: VpnNode | None = None,
             transport_profile,
+            public_node: VpnNode | None = None,
             remark_override: str | None = None,
     ) -> str | None:
+        backend_node = backend_node or node
+        if backend_node is None:
+            return None
         domain = self._resolve_route_host_for_transport(
-            node=node,
+            backend_node=backend_node,
+            public_node=public_node,
             transport_profile=transport_profile,
         )
         if not domain:
             return None
+        display_node = public_node or backend_node
         node_display_name = remark_override or format_node_display_name(
-            node_name=str(node.name),
-            region=node.region,
+            node_name=str(display_node.name),
+            region=backend_node.region,
         )
 
         network = transport_profile.network
@@ -1008,7 +1029,7 @@ class SubscriptionService:
         profile = self._resolve_profile_from_transport(
             transport_profile=transport_profile,
             fallback_domain=domain,
-            region=node.region,
+            region=backend_node.region,
         )
         if profile is None:
             return None
@@ -1017,7 +1038,7 @@ class SubscriptionService:
             domain=domain,
             port=transport_profile.port,
             remark=node_display_name,
-            region=node.region,
+            region=backend_node.region,
         )
         try:
             return VlessUriBuilder.build(
@@ -1092,7 +1113,7 @@ class SubscriptionService:
             str(route.effective_weight),
             str(node.id),
             self._resolve_route_host_for_transport(
-                node=node,
+                backend_node=node,
                 transport_profile=transport_profile,
             ),
             str(transport_profile.id),
@@ -1101,20 +1122,42 @@ class SubscriptionService:
             transport_updated_at,
         ])
 
-    def _resolve_ws_public_host(self, node: VpnNode) -> str:
+    def _resolve_ws_public_host(self, node: VpnNode, *, prefer_node_domain: bool = False) -> str:
+        if prefer_node_domain:
+            node_domain = (node.public_domain or "").strip()
+            if node_domain:
+                return node_domain
         edge_domain = self.settings.edge.public_domain
         if edge_domain:
             return edge_domain
         return node.public_domain
 
-    def _resolve_route_host_for_transport(self, *, node: VpnNode, transport_profile) -> str:
+    def _resolve_route_host_for_transport(
+            self,
+            *,
+            backend_node: VpnNode,
+            transport_profile,
+            public_node: VpnNode | None = None,
+    ) -> str:
         network = transport_profile.network
         security = transport_profile.security
+        visible_node = public_node or backend_node
         if security == "reality" and network == "tcp":
-            return node.reality_ip
-        return self._resolve_ws_public_host(node)
+            return visible_node.reality_ip
+        return self._resolve_ws_public_host(
+            visible_node,
+            prefer_node_domain=public_node is not None,
+        )
 
-    def _node_has_required_public_host(self, *, node: VpnNode, key_transport: str | None) -> bool:
+    def _node_has_required_public_host(
+            self,
+            *,
+            node: VpnNode,
+            key_transport: str | None,
+            allow_entry_route: bool = False,
+    ) -> bool:
+        if allow_entry_route:
+            return True
         if key_transport == VpnTransport.reality.value:
             return bool(node.reality_ip)
         if key_transport == VpnTransport.tcp.value:
@@ -1140,6 +1183,30 @@ class SubscriptionService:
         if key_transport == VpnTransport.xhttp.value:
             return transport_security == "tls" and transport_network == "xhttp"
         return True
+
+    async def _entry_nodes_by_id(
+            self,
+            *,
+            route_rows: list[tuple[object, VpnNode, object]],
+    ) -> dict[UUID, VpnNode]:
+        entry_ids = [
+            entry_node_id
+            for route, _node, _transport_profile in route_rows
+            for entry_node_id in [self._route_entry_node_id(route)]
+            if entry_node_id is not None
+        ]
+        if not entry_ids:
+            return {}
+        rows = await self.node_repository.list_by_ids(list(dict.fromkeys(entry_ids)))
+        return {self._as_uuid(row.id): row for row in rows}
+
+    def _route_entry_node_id(self, route) -> UUID | None:
+        raw = getattr(route, "entry_node_id", None)
+        if isinstance(raw, UUID):
+            return raw
+        if isinstance(raw, str):
+            return UUID(raw)
+        return None
 
     async def _set_placement_desired_state(
             self,

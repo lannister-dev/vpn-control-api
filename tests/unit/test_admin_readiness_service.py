@@ -9,10 +9,11 @@ import pytest
 from services.admin_status.service import AdminStatusService
 
 
-def _node(*, enabled: bool, draining: bool):
+def _node(*, enabled: bool, draining: bool, role: str = "backend"):
     n = MagicMock()
     n.id = uuid4()
     n.name = f"node-{n.id.hex[:6]}"
+    n.role = role
     n.region = "fi"
     n.public_domain = "prod.example.com"
     n.is_active = True
@@ -101,4 +102,29 @@ async def test_admin_readiness_excludes_stale_node_from_healthy_regions(async_se
 
     by_name = {item.name: item for item in out.checks}
     assert by_name["healthy_nodes"].ok is False
+    assert by_name["healthy_regions_route_coverage"].ok is False
+
+
+@pytest.mark.asyncio
+async def test_admin_readiness_ignores_whitelist_entry_nodes(async_session):
+    svc = AdminStatusService(async_session)
+    svc.node_repository = AsyncMock()
+    svc.route_repository = AsyncMock()
+    svc.profile_artifact_repository = AsyncMock()
+
+    entry = _node(enabled=True, draining=False, role="whitelist_entry")
+    entry_state = _state(healthy=True)
+
+    svc.node_repository.list_active_with_agent_state = AsyncMock(
+        return_value=[(entry, entry_state)]
+    )
+    svc.route_repository.count_resolved_active = AsyncMock(return_value=0)
+    svc.route_repository.count_resolved_active_by_region = AsyncMock(return_value={})
+    svc.profile_artifact_repository.get_active = AsyncMock(return_value=MagicMock())
+
+    out = await svc.get_readiness()
+
+    by_name = {item.name: item for item in out.checks}
+    assert by_name["healthy_nodes"].ok is False
+    assert by_name["healthy_nodes"].detail == "healthy nodes: 0"
     assert by_name["healthy_regions_route_coverage"].ok is False
