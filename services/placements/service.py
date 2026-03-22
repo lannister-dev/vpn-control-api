@@ -89,19 +89,16 @@ class UserPlacementService:
 
         now = datetime.now(timezone.utc)
         if active_placements:
-            await self.placement_repository.bulk_migrate_backend(
+            _migrated, target_placement_ids = await self.placement_repository.bulk_migrate_backend(
                 placement_ids=[placement.id for placement in active_placements],
                 target_backend_id=target.id,
                 last_migration_reason=payload.last_migration_reason,
                 updated_at=now,
             )
-            target_placement_ids = await self.placement_repository.list_active_ids_for_keys(
-                key_ids=[placement.key_id for placement in active_placements],
-                backend_node_id=target.id,
-            )
-            await self.node_agent_transport.enqueue_for_placement_ids(
-                target_placement_ids
-            )
+            if target_placement_ids:
+                await self.node_agent_transport.enqueue_for_placement_ids(
+                    target_placement_ids
+                )
 
         return PlacementMigrateBackendOut(
             source_backend_id=payload.source_backend_id,

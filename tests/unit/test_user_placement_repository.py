@@ -57,74 +57,72 @@ async def test_list_active_ids_for_keys_returns_filtered_ids(async_session):
 async def test_bulk_migrate_backend_returns_zero_for_empty_ids(async_session):
     repo = UserPlacementRepository(async_session)
 
-    out = await repo.bulk_migrate_backend(
+    migrated, target_ids = await repo.bulk_migrate_backend(
         placement_ids=[],
         target_backend_id=uuid4(),
         last_migration_reason="test",
         updated_at=datetime.now(timezone.utc),
     )
 
-    assert out == 0
+    assert migrated == 0
+    assert target_ids == []
     async_session.execute.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_bulk_migrate_backend_reads_int_rowcount(async_session):
+async def test_bulk_migrate_backend_no_active_rows(async_session):
     repo = UserPlacementRepository(async_session)
-    async_session.execute = AsyncMock(return_value=_Result(7))
+    async_session.execute = AsyncMock(return_value=_ScalarResult([]))
 
-    out = await repo.bulk_migrate_backend(
+    migrated, target_ids = await repo.bulk_migrate_backend(
         placement_ids=[uuid4(), uuid4()],
         target_backend_id=uuid4(),
         last_migration_reason="test",
         updated_at=datetime.now(timezone.utc),
     )
 
-    assert out == 7
-    async_session.execute.assert_awaited_once()
+    assert migrated == 0
+    assert target_ids == []
 
 
 @pytest.mark.asyncio
-async def test_bulk_migrate_backend_reads_callable_rowcount(async_session):
+async def test_bulk_migrate_backend_simple_move(async_session):
+    """Simple move: no existing target → single bulk UPDATE RETURNING."""
     repo = UserPlacementRepository(async_session)
-    async_session.execute = AsyncMock(return_value=_Result(lambda: 3))
 
-    out = await repo.bulk_migrate_backend(
-        placement_ids=[uuid4()],
+    s1 = MagicMock()
+    s1.id = uuid4()
+    s1.key_id = uuid4()
+    s2 = MagicMock()
+    s2.id = uuid4()
+    s2.key_id = uuid4()
+
+    async_session.execute = AsyncMock(
+        side_effect=[
+            _ScalarResult([s1, s2]),        # SELECT FOR UPDATE source
+            _ScalarResult([]),              # SELECT FOR UPDATE target (no conflicts)
+            _ScalarResult([s1.id, s2.id]),  # UPDATE ... RETURNING id
+        ]
+    )
+
+    migrated, target_ids = await repo.bulk_migrate_backend(
+        placement_ids=[s1.id, s2.id],
         target_backend_id=uuid4(),
         last_migration_reason="test",
         updated_at=datetime.now(timezone.utc),
     )
 
-    assert out == 3
-    async_session.execute.assert_awaited_once()
+    assert migrated == 2
+    assert target_ids == [s1.id, s2.id]
+    assert async_session.execute.await_count == 3
 
 
 @pytest.mark.asyncio
-async def test_bulk_migrate_backend_handles_missing_or_negative_rowcount(async_session):
-    repo = UserPlacementRepository(async_session)
-    async_session.execute = AsyncMock(return_value=_Result(None))
+async def test_bulk_migrate_backend_merge_retires_source(async_session):
+    """Multi-home merge: target already has placement for same key.
 
-    out_none = await repo.bulk_migrate_backend(
-        placement_ids=[uuid4()],
-        target_backend_id=uuid4(),
-        last_migration_reason="test",
-        updated_at=datetime.now(timezone.utc),
-    )
-    assert out_none == 0
-
-    async_session.execute = AsyncMock(return_value=_Result(-1))
-    out_negative = await repo.bulk_migrate_backend(
-        placement_ids=[uuid4()],
-        target_backend_id=uuid4(),
-        last_migration_reason="test",
-        updated_at=datetime.now(timezone.utc),
-    )
-    assert out_negative == 0
-
-
-@pytest.mark.asyncio
-async def test_bulk_migrate_backend_reuses_inactive_target_row(async_session):
+    Uses UPDATE ... FROM self-join to copy state, then retires source.
+    """
     repo = UserPlacementRepository(async_session)
 
     key_id = uuid4()
@@ -141,30 +139,66 @@ async def test_bulk_migrate_backend_reuses_inactive_target_row(async_session):
 
     async_session.execute = AsyncMock(
         side_effect=[
-            _ScalarResult([source]),
-            _ScalarResult([target]),
-            _Result(1),
-            _Result(1),
+            _ScalarResult([source]),       # SELECT FOR UPDATE source
+            _ScalarResult([target]),       # SELECT FOR UPDATE target
+            _ScalarResult([target.id]),    # UPDATE ... FROM src RETURNING id
+            _Result(1),                    # UPDATE retire source
         ]
     )
 
-    out = await repo.bulk_migrate_backend(
+    migrated, target_ids = await repo.bulk_migrate_backend(
         placement_ids=[source.id],
         target_backend_id=uuid4(),
         last_migration_reason="admin_manual",
         updated_at=datetime.now(timezone.utc),
     )
 
-    assert out == 1
+    assert migrated == 1
+    assert target_ids == [target.id]
     assert async_session.execute.await_count == 4
 
-    merge_stmt = async_session.execute.await_args_list[2].args[0]
-    merge_params = merge_stmt.compile().params
-    assert "desired_state" in merge_params
-    assert "is_active" in merge_params
-    assert "backend_node_id" not in merge_params
 
-    retire_stmt = async_session.execute.await_args_list[3].args[0]
-    retire_params = retire_stmt.compile().params
-    assert retire_params["is_active"] is False
-    assert "backend_node_id" not in retire_params
+@pytest.mark.asyncio
+async def test_bulk_migrate_backend_mixed_move_and_merge(async_session):
+    """Mix of simple moves and multi-home merges in a single call."""
+    repo = UserPlacementRepository(async_session)
+
+    key_a = uuid4()
+    key_b = uuid4()
+
+    # source A: simple move (no existing target)
+    src_a = MagicMock()
+    src_a.id = uuid4()
+    src_a.key_id = key_a
+
+    # source B: merge (target already has placement for key_b)
+    src_b = MagicMock()
+    src_b.id = uuid4()
+    src_b.key_id = key_b
+    src_b.desired_state = "active"
+    src_b.sticky_until = None
+
+    existing_b = MagicMock()
+    existing_b.id = uuid4()
+    existing_b.key_id = key_b
+
+    async_session.execute = AsyncMock(
+        side_effect=[
+            _ScalarResult([src_a, src_b]),        # SELECT FOR UPDATE source
+            _ScalarResult([existing_b]),           # SELECT FOR UPDATE target
+            _ScalarResult([src_a.id]),             # bulk move RETURNING
+            _ScalarResult([existing_b.id]),        # merge RETURNING
+            _Result(1),                            # retire source_b
+        ]
+    )
+
+    migrated, target_ids = await repo.bulk_migrate_backend(
+        placement_ids=[src_a.id, src_b.id],
+        target_backend_id=uuid4(),
+        last_migration_reason="test",
+        updated_at=datetime.now(timezone.utc),
+    )
+
+    assert migrated == 2
+    assert target_ids == [src_a.id, existing_b.id]
+    assert async_session.execute.await_count == 5
