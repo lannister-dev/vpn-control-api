@@ -17,9 +17,10 @@ from services.routes.schemas import (
 from services.routes.service import RouteService
 
 
-def _node():
+def _node(*, role="backend"):
     n = MagicMock()
     n.id = uuid4()
+    n.role = role
     return n
 
 
@@ -49,7 +50,7 @@ def _route(*, status="healthy", base_weight=50, effective_weight=50, cooldown_un
 
 
 @pytest.mark.asyncio
-async def test_create_route_accepts_node_without_role_constraint(async_session):
+async def test_create_route_accepts_backend_node(async_session):
     svc = RouteService(async_session)
     svc.node_repository = AsyncMock()
     svc.transport_repository = AsyncMock()
@@ -74,6 +75,63 @@ async def test_create_route_accepts_node_without_role_constraint(async_session):
     out = await svc.create_route(payload)
 
     assert out.node_id == node.id
+
+
+@pytest.mark.asyncio
+async def test_create_route_rejects_non_backend_node(async_session):
+    svc = RouteService(async_session)
+    svc.node_repository = AsyncMock()
+    svc.transport_repository = AsyncMock()
+    svc.route_repository = AsyncMock()
+
+    node = _node(role="whitelist_entry")
+    svc.node_repository.get_by_id = AsyncMock(return_value=node)
+
+    payload = RouteCreateIn(
+        name="entry-as-backend",
+        node_id=node.id,
+        transport_profile_id=uuid4(),
+        base_weight=40,
+        health_status=RouteHealthStatus.healthy,
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await svc.create_route(payload)
+
+    assert exc.value.status_code == 422
+    assert "role=backend" in exc.value.detail
+
+
+@pytest.mark.asyncio
+async def test_create_route_accepts_whitelist_entry_node(async_session):
+    svc = RouteService(async_session)
+    svc.node_repository = AsyncMock()
+    svc.transport_repository = AsyncMock()
+    svc.route_repository = AsyncMock()
+
+    backend = _node(role="backend")
+    entry = _node(role="whitelist_entry")
+    svc.node_repository.get_by_id = AsyncMock(side_effect=[backend, entry])
+    svc.transport_repository.get_by_id = AsyncMock(return_value=_transport_profile())
+    svc.route_repository.get_one_by = AsyncMock(return_value=None)
+    created = _route()
+    created.node_id = backend.id
+    created.entry_node_id = entry.id
+    svc.route_repository.create = AsyncMock(return_value=created)
+
+    payload = RouteCreateIn(
+        name="be1-reality-via-entry",
+        node_id=backend.id,
+        entry_node_id=entry.id,
+        transport_profile_id=uuid4(),
+        base_weight=40,
+        health_status=RouteHealthStatus.healthy,
+    )
+
+    out = await svc.create_route(payload)
+
+    assert out.node_id == backend.id
+    assert out.entry_node_id == entry.id
 
 
 @pytest.mark.asyncio
