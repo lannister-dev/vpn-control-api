@@ -70,6 +70,23 @@ class RouteRepository(BaseRepository[Route]):
         res = await self.session.execute(stmt)
         return list(res.tuples().all())
 
+    async def get_active_detailed_by_id(
+            self,
+            route_id: UUID,
+    ) -> tuple[Route, VpnNode, TransportProfile, NodeAgentState | None] | None:
+        stmt = (
+            select(Route, VpnNode, TransportProfile, NodeAgentState)
+            .join(VpnNode, VpnNode.id == Route.node_id)
+            .join(TransportProfile, TransportProfile.id == Route.transport_profile_id)
+            .outerjoin(NodeAgentState, NodeAgentState.node_id == VpnNode.id)
+            .where(
+                Route.id == route_id,
+                Route.is_active.is_(True),
+            )
+        )
+        res = await self.session.execute(stmt)
+        return res.tuples().one_or_none()
+
     async def list_by_names(self, names: list[str]) -> list[Route]:
         if not names:
             return []

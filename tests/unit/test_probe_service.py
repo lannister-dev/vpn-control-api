@@ -18,12 +18,14 @@ def _node(
         name: str = "node",
         region: str = "fi",
         public_domain: str = "prod.lannister-dev.ru",
+        reality_ip: str = "203.0.113.10",
 ):
     n = MagicMock()
     n.id = uuid4()
     n.name = name
     n.region = region
     n.public_domain = public_domain
+    n.reality_ip = reality_ip
     n.role = role
     n.is_active = True
     n.is_enabled = True
@@ -31,9 +33,10 @@ def _node(
     return n
 
 
-def _probe(*, is_reachable: bool, checked_at: datetime):
+def _probe(*, is_reachable: bool, checked_at: datetime, route_id=None):
     p = MagicMock()
     p.id = uuid4()
+    p.route_id = route_id
     p.is_reachable = is_reachable
     p.checked_at = checked_at
     return p
@@ -41,16 +44,44 @@ def _probe(*, is_reachable: bool, checked_at: datetime):
 
 def _route(
         *,
+        node_id=None,
+        transport_profile_id=None,
+        name: str = "route-fi-1",
         health_status: str = "healthy",
         base_weight: int = 50,
         cooldown_until: datetime | None = None,
 ):
     r = MagicMock()
     r.id = uuid4()
+    r.name = name
+    r.node_id = node_id or uuid4()
+    r.transport_profile_id = transport_profile_id or uuid4()
+    r.is_active = True
     r.health_status = health_status
     r.base_weight = base_weight
     r.cooldown_until = cooldown_until
     return r
+
+
+def _transport_profile(
+        *,
+        name: str = "reality-main",
+        network: str = "tcp",
+        security: str = "reality",
+        port: int = 443,
+):
+    tp = MagicMock()
+    tp.id = uuid4()
+    tp.name = name
+    tp.network = network
+    tp.security = security
+    tp.port = port
+    tp.flow = "xtls-rprx-vision"
+    tp.reality_public_key = "pubkey"
+    tp.reality_short_id = "0123456789abcdef"
+    tp.reality_server_name = "reality.example.com"
+    tp.tls_fingerprint = "chrome"
+    return tp
 
 
 def _ingestion_service() -> ProbeIngestionService:
@@ -60,6 +91,7 @@ def _ingestion_service() -> ProbeIngestionService:
         route_repository=AsyncMock(),
         alert_service=AsyncMock(),
         target_port=443,
+        edge_public_domain="",
         retention_days=30,
         auto_route_health_enabled=True,
         route_block_cooldown_hours=6,
@@ -96,28 +128,54 @@ async def test_report_rejects_unknown_node(async_session):
 @pytest.mark.asyncio
 async def test_list_targets_filters_nodes(async_session):
     svc = _ingestion_service()
-    svc.node_repository = AsyncMock()
+    svc.route_repository = AsyncMock()
 
     backend_ok = _node(role="backend", name="be-fi-1", region="fi", public_domain="be-fi.example.com")
+    profile_ok = _transport_profile()
+    route_ok = _route(node_id=backend_ok.id, transport_profile_id=profile_ok.id, name="route-reality-fi")
     backend_draining = _node(role="backend", name="be-fi-2", region="fi", public_domain="be-fi-2.example.com")
     backend_draining.is_draining = True
+    profile_draining = _transport_profile()
+    route_draining = _route(node_id=backend_draining.id, transport_profile_id=profile_draining.id, name="route-reality-drain")
     backend_disabled = _node(role="backend", name="be-nl-1", region="nl", public_domain="be-nl.example.com")
     backend_disabled.is_enabled = False
-    backend_no_domain = _node(role="backend", name="be-empty", region="fi", public_domain="")
-    svc.node_repository.list_public.return_value = [
-        backend_ok,
-        backend_draining,
-        backend_disabled,
-        backend_no_domain,
+    profile_disabled = _transport_profile()
+    route_disabled = _route(node_id=backend_disabled.id, transport_profile_id=profile_disabled.id, name="route-reality-disabled")
+    backend_no_domain = _node(role="backend", name="be-empty", region="fi", public_domain="", reality_ip="")
+    profile_no_domain = _transport_profile()
+    route_no_domain = _route(node_id=backend_no_domain.id, transport_profile_id=profile_no_domain.id, name="route-no-host")
+    svc.route_repository.list_active_detailed.return_value = [
+        (route_ok, backend_ok, profile_ok, None),
+        (route_draining, backend_draining, profile_draining, None),
+        (route_disabled, backend_disabled, profile_disabled, None),
+        (route_no_domain, backend_no_domain, profile_no_domain, None),
     ]
 
     out = await svc.list_targets()
 
     assert len(out) == 1
     assert out[0].node_id == backend_ok.id
-    assert out[0].host == "be-fi.example.com"
-    assert out[0].port == 443
-    svc.node_repository.list_public.assert_awaited_once_with()
+    assert out[0].route_id == route_ok.id
+    assert out[0].transport_kind == "reality"
+    assert out[0].target_host == backend_ok.reality_ip
+    assert out[0].target_port == 443
+    svc.route_repository.list_active_detailed.assert_awaited_once_with(limit=5000)
+
+
+@pytest.mark.asyncio
+async def test_list_targets_skips_ws_routes_behind_shared_edge(async_session):
+    svc = _ingestion_service()
+    svc.route_repository = AsyncMock()
+    svc.edge_public_domain = "edge.example.com"
+
+    node = _node(public_domain="backend.example.com")
+    transport_profile = _transport_profile(name="ws-main", network="ws", security="tls")
+    route = _route(node_id=node.id, transport_profile_id=transport_profile.id, name="route-ws")
+    svc.route_repository.list_active_detailed.return_value = [(route, node, transport_profile, None)]
+
+    out = await svc.list_targets()
+
+    assert out == []
 
 
 @pytest.mark.asyncio
@@ -128,9 +186,18 @@ async def test_report_success(async_session):
     svc.alert_service = AsyncMock()
 
     node = _node()
+    transport_profile = _transport_profile()
+    route = _route(node_id=node.id, transport_profile_id=transport_profile.id)
     created = MagicMock()
     created.id = uuid4()
     created.node_id = node.id
+    created.route_id = route.id
+    created.transport_profile_id = transport_profile.id
+    created.transport_kind = "reality"
+    created.probe_kind = "synthetic_vpn"
+    created.target_host = node.reality_ip
+    created.target_port = 443
+    created.error_phase = "tcp"
     created.source = "ru-probe-1"
     created.is_reachable = False
     created.latency_ms = None
@@ -140,21 +207,25 @@ async def test_report_success(async_session):
     created.created_at = datetime.now(timezone.utc)
 
     svc.node_repository.get_by_id.return_value = node
-    svc.probe_repository.get_latest_for_node.return_value = None
+    svc.route_repository.get_active_detailed_by_id.return_value = (route, node, transport_profile, None)
     svc.probe_repository.create.return_value = created
-    svc.probe_repository.get_latest_for_node.side_effect = [None, created]
-    svc.route_repository.list_active.return_value = []
+    svc.probe_repository.get_latest_for_route.side_effect = [None, created]
+    svc.route_repository.get_by_id.return_value = route
 
     out = await svc.report(
         ProbeReportIn(
             node_id=node.id,
+            route_id=route.id,
             source="ru-probe-1",
+            probe_kind="synthetic_vpn",
             is_reachable=False,
             error="timeout",
+            error_phase="tcp",
             details={"asn": "12345"},
         )
     )
     assert out.node_id == node.id
+    assert out.route_id == route.id
     assert out.is_reachable is False
     svc.probe_repository.create.assert_awaited_once()
     svc.probe_repository.delete_older_than.assert_not_awaited()
@@ -170,26 +241,38 @@ async def test_report_blocks_routes_on_latest_failure(async_session):
     svc.alert_service = AsyncMock()
 
     node = _node()
+    transport_profile = _transport_profile()
+    route = _route(node_id=node.id, transport_profile_id=transport_profile.id)
     checked_at = datetime.now(timezone.utc)
-    created = _probe(is_reachable=False, checked_at=checked_at)
+    created = _probe(is_reachable=False, checked_at=checked_at, route_id=route.id)
     created.node_id = node.id
+    created.transport_profile_id = transport_profile.id
+    created.transport_kind = "reality"
+    created.probe_kind = "synthetic_vpn"
+    created.target_host = node.reality_ip
+    created.target_port = 443
+    created.error_phase = "tcp"
     created.source = "ru-probe-1"
     created.latency_ms = None
     created.error = "timeout"
     created.details = {}
     created.created_at = datetime.now(timezone.utc)
-    route = _route(health_status="healthy", base_weight=50)
+    route.health_status = "healthy"
+    route.base_weight = 50
 
     svc.node_repository.get_by_id.return_value = node
-    svc.probe_repository.get_latest_for_node.side_effect = [None, created]
+    svc.route_repository.get_active_detailed_by_id.return_value = (route, node, transport_profile, None)
+    svc.probe_repository.get_latest_for_route.side_effect = [None, created]
     svc.probe_repository.create.return_value = created
-    svc.route_repository.list_active.return_value = [route]
+    svc.route_repository.get_by_id.return_value = route
     svc.route_repository.update_by_id = AsyncMock(return_value=route)
 
     await svc.report(
         ProbeReportIn(
             node_id=node.id,
+            route_id=route.id,
             source="ru-probe-1",
+            probe_kind="synthetic_vpn",
             is_reachable=False,
             error="timeout",
         )
@@ -211,30 +294,42 @@ async def test_report_recovers_blocked_route_after_cooldown(async_session):
     svc.alert_service = AsyncMock()
 
     node = _node()
+    transport_profile = _transport_profile()
+    route = _route(node_id=node.id, transport_profile_id=transport_profile.id)
     checked_at = datetime.now(timezone.utc)
-    created = _probe(is_reachable=True, checked_at=checked_at)
+    created = _probe(is_reachable=True, checked_at=checked_at, route_id=route.id)
     created.node_id = node.id
+    created.transport_profile_id = transport_profile.id
+    created.transport_kind = "reality"
+    created.probe_kind = "synthetic_vpn"
+    created.target_host = node.reality_ip
+    created.target_port = 443
+    created.error_phase = None
     created.source = "ru-probe-1"
     created.latency_ms = 40
     created.error = None
     created.details = {}
     created.created_at = datetime.now(timezone.utc)
-    route = _route(
-        health_status="blocked",
-        base_weight=50,
-        cooldown_until=checked_at - timedelta(seconds=1),
-    )
+    route.health_status = "blocked"
+    route.base_weight = 50
+    route.cooldown_until = checked_at - timedelta(seconds=1)
 
     svc.node_repository.get_by_id.return_value = node
-    svc.probe_repository.get_latest_for_node.side_effect = [_probe(is_reachable=False, checked_at=checked_at), created]
+    svc.route_repository.get_active_detailed_by_id.return_value = (route, node, transport_profile, None)
+    svc.probe_repository.get_latest_for_route.side_effect = [
+        _probe(is_reachable=False, checked_at=checked_at, route_id=route.id),
+        created,
+    ]
     svc.probe_repository.create.return_value = created
-    svc.route_repository.list_active.return_value = [route]
+    svc.route_repository.get_by_id.return_value = route
     svc.route_repository.update_by_id = AsyncMock(return_value=route)
 
     await svc.report(
         ProbeReportIn(
             node_id=node.id,
+            route_id=route.id,
             source="ru-probe-1",
+            probe_kind="synthetic_vpn",
             is_reachable=True,
             latency_ms=40,
         )
@@ -249,6 +344,46 @@ async def test_report_recovers_blocked_route_after_cooldown(async_session):
 
 
 @pytest.mark.asyncio
+async def test_report_node_level_signal_does_not_block_all_routes(async_session):
+    svc = _ingestion_service()
+    svc.node_repository = AsyncMock()
+    svc.probe_repository = AsyncMock()
+    svc.route_repository = AsyncMock()
+    svc.alert_service = AsyncMock()
+
+    node = _node()
+    created = _probe(is_reachable=False, checked_at=datetime.now(timezone.utc))
+    created.node_id = node.id
+    created.transport_profile_id = None
+    created.transport_kind = None
+    created.probe_kind = "tcp_connect"
+    created.target_host = node.public_domain
+    created.target_port = 443
+    created.error_phase = "tcp"
+    created.source = "ru-probe-1"
+    created.latency_ms = None
+    created.error = "timeout"
+    created.details = {}
+    created.created_at = datetime.now(timezone.utc)
+
+    svc.node_repository.get_by_id.return_value = node
+    svc.probe_repository.get_latest_for_node.side_effect = [None, created]
+    svc.probe_repository.create.return_value = created
+    svc.route_repository.update_by_id = AsyncMock()
+
+    await svc.report(
+        ProbeReportIn(
+            node_id=node.id,
+            source="ru-probe-1",
+            is_reachable=False,
+            error="timeout",
+        )
+    )
+
+    svc.route_repository.update_by_id.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_report_skips_side_effects_for_stale_signal(async_session):
     svc = _ingestion_service()
     svc.node_repository = AsyncMock()
@@ -257,27 +392,42 @@ async def test_report_skips_side_effects_for_stale_signal(async_session):
     svc.alert_service = AsyncMock()
 
     node = _node()
-    stale_row = _probe(is_reachable=False, checked_at=datetime.now(timezone.utc) - timedelta(minutes=10))
+    transport_profile = _transport_profile()
+    route = _route(node_id=node.id, transport_profile_id=transport_profile.id)
+    stale_row = _probe(
+        is_reachable=False,
+        checked_at=datetime.now(timezone.utc) - timedelta(minutes=10),
+        route_id=route.id,
+    )
     stale_row.node_id = node.id
+    stale_row.transport_profile_id = transport_profile.id
+    stale_row.transport_kind = "reality"
+    stale_row.probe_kind = "synthetic_vpn"
+    stale_row.target_host = node.reality_ip
+    stale_row.target_port = 443
+    stale_row.error_phase = "tcp"
     stale_row.source = "ru-probe-1"
     stale_row.latency_ms = None
     stale_row.error = "timeout"
     stale_row.details = {}
     stale_row.created_at = datetime.now(timezone.utc)
-    latest_row = _probe(is_reachable=True, checked_at=datetime.now(timezone.utc))
+    latest_row = _probe(is_reachable=True, checked_at=datetime.now(timezone.utc), route_id=route.id)
     latest_row.node_id = node.id
     latest_row.source = "ru-probe-1"
 
     svc.node_repository.get_by_id.return_value = node
-    svc.probe_repository.get_latest_for_node.side_effect = [latest_row, latest_row]
+    svc.route_repository.get_active_detailed_by_id.return_value = (route, node, transport_profile, None)
+    svc.probe_repository.get_latest_for_route.side_effect = [latest_row, latest_row]
     svc.probe_repository.create.return_value = stale_row
-    svc.route_repository.list_active.return_value = [_route()]
+    svc.route_repository.get_by_id.return_value = route
     svc.route_repository.update_by_id = AsyncMock()
 
     await svc.report(
         ProbeReportIn(
             node_id=node.id,
+            route_id=route.id,
             source="ru-probe-1",
+            probe_kind="synthetic_vpn",
             is_reachable=False,
             error="timeout",
             checked_at=stale_row.checked_at,
@@ -296,11 +446,24 @@ async def test_report_alert_sent_on_recovery_transition(async_session):
     svc.alert_service = AsyncMock()
 
     node = _node()
-    previous = _probe(is_reachable=False, checked_at=datetime.now(timezone.utc) - timedelta(seconds=30))
+    transport_profile = _transport_profile()
+    route = _route(node_id=node.id, transport_profile_id=transport_profile.id)
+    previous = _probe(
+        is_reachable=False,
+        checked_at=datetime.now(timezone.utc) - timedelta(seconds=30),
+        route_id=route.id,
+    )
 
     created = MagicMock()
     created.id = uuid4()
     created.node_id = node.id
+    created.route_id = route.id
+    created.transport_profile_id = transport_profile.id
+    created.transport_kind = "reality"
+    created.probe_kind = "synthetic_vpn"
+    created.target_host = node.reality_ip
+    created.target_port = 443
+    created.error_phase = None
     created.source = "ru-probe-1"
     created.is_reachable = True
     created.latency_ms = 40
@@ -310,14 +473,17 @@ async def test_report_alert_sent_on_recovery_transition(async_session):
     created.created_at = datetime.now(timezone.utc)
 
     svc.node_repository.get_by_id.return_value = node
-    svc.probe_repository.get_latest_for_node.side_effect = [previous, created]
+    svc.route_repository.get_active_detailed_by_id.return_value = (route, node, transport_profile, None)
+    svc.probe_repository.get_latest_for_route.side_effect = [previous, created]
     svc.probe_repository.create.return_value = created
-    svc.route_repository.list_active.return_value = []
+    svc.route_repository.get_by_id.return_value = route
 
     await svc.report(
         ProbeReportIn(
             node_id=node.id,
+            route_id=route.id,
             source="ru-probe-1",
+            probe_kind="synthetic_vpn",
             is_reachable=True,
             latency_ms=40,
         )
@@ -334,11 +500,24 @@ async def test_report_alert_not_sent_without_status_transition(async_session):
     svc.alert_service = AsyncMock()
 
     node = _node()
-    previous = _probe(is_reachable=False, checked_at=datetime.now(timezone.utc) - timedelta(seconds=30))
+    transport_profile = _transport_profile()
+    route = _route(node_id=node.id, transport_profile_id=transport_profile.id)
+    previous = _probe(
+        is_reachable=False,
+        checked_at=datetime.now(timezone.utc) - timedelta(seconds=30),
+        route_id=route.id,
+    )
 
     created = MagicMock()
     created.id = uuid4()
     created.node_id = node.id
+    created.route_id = route.id
+    created.transport_profile_id = transport_profile.id
+    created.transport_kind = "reality"
+    created.probe_kind = "synthetic_vpn"
+    created.target_host = node.reality_ip
+    created.target_port = 443
+    created.error_phase = None
     created.source = "ru-probe-1"
     created.is_reachable = False
     created.latency_ms = None
@@ -348,14 +527,17 @@ async def test_report_alert_not_sent_without_status_transition(async_session):
     created.created_at = datetime.now(timezone.utc)
 
     svc.node_repository.get_by_id.return_value = node
-    svc.probe_repository.get_latest_for_node.side_effect = [previous, created]
+    svc.route_repository.get_active_detailed_by_id.return_value = (route, node, transport_profile, None)
+    svc.probe_repository.get_latest_for_route.side_effect = [previous, created]
     svc.probe_repository.create.return_value = created
-    svc.route_repository.list_active.return_value = []
+    svc.route_repository.get_by_id.return_value = route
 
     await svc.report(
         ProbeReportIn(
             node_id=node.id,
+            route_id=route.id,
             source="ru-probe-1",
+            probe_kind="synthetic_vpn",
             is_reachable=False,
             error="timeout",
         )
@@ -456,7 +638,7 @@ async def test_drain_and_migrate_rejects_insufficient_consecutive_failures(async
     older_ok = _probe(is_reachable=True, checked_at=datetime.now(timezone.utc) - timedelta(seconds=40))
     svc.node_repository.get_by_id.return_value = source
     svc.probe_repository.get_latest_for_node.return_value = latest
-    svc.probe_repository.list_recent.return_value = [latest, older_fail, older_ok]
+    svc.probe_repository.list_recent_for_node.return_value = [latest, older_fail, older_ok]
 
     with pytest.raises(HTTPException) as exc:
         await svc.drain_and_migrate_backend(
@@ -486,7 +668,7 @@ async def test_drain_and_migrate_success(async_session):
 
     svc.node_repository.get_by_id.return_value = source
     svc.probe_repository.get_latest_for_node.return_value = latest
-    svc.probe_repository.list_recent.return_value = [latest]
+    svc.probe_repository.list_recent_for_node.return_value = [latest]
     svc.placement_service.migrate_backend.return_value = migration
 
     out = await svc.drain_and_migrate_backend(

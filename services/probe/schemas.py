@@ -8,10 +8,27 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 ProbeDetailsValue: TypeAlias = str | int | float | bool | None
 ProbeDetails: TypeAlias = dict[str, ProbeDetailsValue]
+ProbeTransportKind: TypeAlias = Literal["reality", "ws"]
+ProbeKind: TypeAlias = Literal["tcp_connect", "synthetic_vpn"]
+ProbeErrorPhase: TypeAlias = Literal[
+    "dns",
+    "tcp",
+    "tls",
+    "reality_handshake",
+    "ws_upgrade",
+    "tunnel_http",
+]
 
 
 class ProbeReportIn(BaseModel):
     node_id: UUID
+    route_id: UUID | None = None
+    transport_profile_id: UUID | None = None
+    transport_kind: ProbeTransportKind | None = None
+    probe_kind: ProbeKind = "tcp_connect"
+    target_host: str | None = Field(default=None, min_length=1, max_length=255)
+    target_port: int | None = Field(default=None, ge=1, le=65535)
+    error_phase: ProbeErrorPhase | None = None
     source: str = Field(min_length=1, max_length=64)
     is_reachable: bool
     latency_ms: int | None = Field(default=None, ge=0)
@@ -38,6 +55,13 @@ class ProbeReportIn(BaseModel):
 class ProbeReportOut(BaseModel):
     id: UUID
     node_id: UUID
+    route_id: UUID | None
+    transport_profile_id: UUID | None
+    transport_kind: ProbeTransportKind | None
+    probe_kind: ProbeKind
+    target_host: str | None
+    target_port: int | None
+    error_phase: ProbeErrorPhase | None
     source: str
     is_reachable: bool
     latency_ms: int | None
@@ -51,6 +75,13 @@ class ProbeReportOut(BaseModel):
 
 class ProbeSignalInternalCreate(BaseModel):
     node_id: UUID
+    route_id: UUID | None = None
+    transport_profile_id: UUID | None = None
+    transport_kind: ProbeTransportKind | None = None
+    probe_kind: ProbeKind = "tcp_connect"
+    target_host: str | None = Field(default=None, min_length=1, max_length=255)
+    target_port: int | None = Field(default=None, ge=1, le=65535)
+    error_phase: ProbeErrorPhase | None = None
     source: str = Field(min_length=1, max_length=64)
     is_reachable: bool
     latency_ms: int | None = Field(default=None, ge=0)
@@ -61,10 +92,24 @@ class ProbeSignalInternalCreate(BaseModel):
 
 class ProbeTargetOut(BaseModel):
     node_id: UUID
+    route_id: UUID
+    route_name: str
+    transport_profile_id: UUID
+    transport_profile_name: str
+    transport_kind: ProbeTransportKind
+    probe_kind: ProbeKind = "synthetic_vpn"
     node_name: str
     region: str
-    host: str
-    port: int
+    target_host: str
+    target_port: int
+    tls_sni: str | None = None
+    tls_fingerprint: str | None = None
+    ws_host: str | None = None
+    ws_path: str | None = None
+    reality_public_key: str | None = None
+    reality_short_id: str | None = None
+    reality_server_name: str | None = None
+    flow: str | None = None
 
 
 class ProbeDrainMigrateIn(BaseModel):

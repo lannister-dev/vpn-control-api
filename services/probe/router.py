@@ -61,10 +61,11 @@ async def list_probe_targets(
 async def list_recent_probe_reports(
         limit: int = Query(default=100, ge=1, le=1000),
         node_id: UUID | None = Query(default=None),
+        route_id: UUID | None = Query(default=None),
         source: str | None = Query(default=None, max_length=64),
         service: ProbeIngestionService = Depends(get_probe_ingestion_service),
 ):
-    return await service.list_recent(limit=limit, node_id=node_id, source=source)
+    return await service.list_recent(limit=limit, node_id=node_id, route_id=route_id, source=source)
 
 
 @router.post(
