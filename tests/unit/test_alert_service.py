@@ -57,9 +57,17 @@ async def test_send_probe_status_change_posts_message():
         is_reachable=False,
         checked_at=datetime.now(timezone.utc),
         error="timeout",
+        route_id=uuid4(),
+        transport_kind="reality",
+        probe_kind="synthetic_vpn",
+        target_host="203.0.113.10",
+        target_port=443,
+        error_phase="tcp",
     )
 
     assert sent is True
     assert captured["chat_id"] == "chat"
     assert "VPN Probe Status" in captured["text"]
     assert "FAILED" in captured["text"]
+    assert "reality" in captured["text"]
+    assert "203.0.113.10:443" in captured["text"]

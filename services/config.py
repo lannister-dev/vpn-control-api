@@ -114,6 +114,14 @@ class AlertsConfig:
 @dataclass
 class ProbeConfig:
     target_port: int = 443
+    synthetic_reality_client_id: str | None = None
+    synthetic_ws_client_id: str | None = None
+    synthetic_reconcile_enabled: bool = False
+    synthetic_reconcile_tick_sec: int = 300
+    synthetic_user_telegram_id: int = 0
+    synthetic_user_username: str = "probe-synthetic"
+    synthetic_key_valid_days: int = 3650
+    synthetic_key_traffic_limit_mb: int = 102400
     retention_days: int = 3
     cleanup_enabled: bool = True
     cleanup_tick_sec: int = 3600
@@ -316,13 +324,21 @@ def get_settings() -> Settings:
 
     alerts = AlertsConfig(
         telegram_enabled=env.bool("ALERTS_TELEGRAM_ENABLED", default=False),
-        telegram_bot_token=env.str("ALERTS_TELEGRAM_BOT_TOKEN", default=""),
-        telegram_chat_id=env.str("ALERTS_TELEGRAM_CHAT_ID", default=""),
+        telegram_bot_token=env.str("ALERTS_TELEGRAM_BOT_TOKEN", default="").strip(),
+        telegram_chat_id=env.str("ALERTS_TELEGRAM_CHAT_ID", default="").strip(),
         telegram_timeout_sec=env.int("ALERTS_TELEGRAM_TIMEOUT_SEC", default=5),
     )
 
     probe = ProbeConfig(
         target_port=env.int("PROBE_TARGET_PORT", default=443),
+        synthetic_reality_client_id=env.str("PROBE_SYNTHETIC_REALITY_CLIENT_ID", default=""),
+        synthetic_ws_client_id=env.str("PROBE_SYNTHETIC_WS_CLIENT_ID", default=""),
+        synthetic_reconcile_enabled=env.bool("PROBE_SYNTHETIC_RECONCILE_ENABLED", default=False),
+        synthetic_reconcile_tick_sec=max(30, env.int("PROBE_SYNTHETIC_RECONCILE_TICK_SEC", default=300)),
+        synthetic_user_telegram_id=env.int("PROBE_SYNTHETIC_USER_TELEGRAM_ID", default=0),
+        synthetic_user_username=env.str("PROBE_SYNTHETIC_USER_USERNAME", default="probe-synthetic"),
+        synthetic_key_valid_days=max(1, env.int("PROBE_SYNTHETIC_KEY_VALID_DAYS", default=3650)),
+        synthetic_key_traffic_limit_mb=max(1, env.int("PROBE_SYNTHETIC_KEY_TRAFFIC_LIMIT_MB", default=102400)),
         retention_days= env.int("PROBE_RETENTION_DAYS", default=3),
         cleanup_enabled=env.bool("PROBE_CLEANUP_ENABLED", default=True),
         cleanup_tick_sec=max(300, env.int("PROBE_CLEANUP_TICK_SEC", default=3600)),
@@ -336,8 +352,8 @@ def get_settings() -> Settings:
         auto_drain_min_consecutive_failures=env.int("PROBE_AUTO_DRAIN_MIN_CONSECUTIVE_FAILURES", default=2),
         auto_drain_include_already_draining=env.bool("PROBE_AUTO_DRAIN_INCLUDE_ALREADY_DRAINING", default=False),
         auto_drain_max_nodes=env.int("PROBE_AUTO_DRAIN_MAX_NODES", default=20),
-        auto_drain_target_backend_id=env.str("PROBE_AUTO_DRAIN_TARGET_BACKEND_ID", default=""),
-        auto_drain_last_migration_reason=env.str("PROBE_AUTO_DRAIN_LAST_MIGRATION_REASON",default="probe_auto_failure"),
+        auto_drain_target_backend_id=env.str("PROBE_AUTO_DRAIN_TARGET_BACKEND_ID", default="").strip() or None,
+        auto_drain_last_migration_reason=env.str("PROBE_AUTO_DRAIN_LAST_MIGRATION_REASON", default="probe_auto_failure"),
     )
 
     routes = RoutesConfig(
@@ -359,7 +375,7 @@ def get_settings() -> Settings:
     )
 
     edge = EdgeConfig(
-        public_domain=env.str("VPN_PUBLIC_DOMAIN", default=""),
+        public_domain=env.str("VPN_PUBLIC_DOMAIN", default="").strip(),
     )
     traffic = TrafficConfig(
         cleanup_enabled=env.bool("TRAFFIC_CLEANUP_ENABLED", default=False),

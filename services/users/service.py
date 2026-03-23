@@ -8,6 +8,8 @@ from services.users.repository import UserRepository
 from services.users.schemas import (
     UserCreateIn,
     UserDetailOut,
+    UserInternalCreate,
+    UserInternalUpdate,
     UserListOut,
     UserOut,
     UserUpdateIn,
@@ -54,7 +56,14 @@ class UserService:
                 f"User with telegram_id={data.telegram_id} already exists"
             )
 
-        user = await self.repo.create(data.model_dump())
+        user = await self.repo.create(
+            UserInternalCreate(
+                telegram_id=data.telegram_id,
+                username=data.username,
+                tag=data.tag,
+                description=data.description,
+            ).model_dump()
+        )
         return UserOut.model_validate(user)
 
     async def update_user(self, user_id: UUID, data: UserUpdateIn) -> UserOut:
@@ -62,7 +71,9 @@ class UserService:
         if not user:
             raise UserNotFound(f"User {user_id} not found")
 
-        update_data = data.model_dump(exclude_unset=True)
+        update_data = UserInternalUpdate.model_validate(
+            data.model_dump(exclude_unset=True)
+        ).model_dump(exclude_unset=True)
         if not update_data:
             return UserOut.model_validate(user)
 
@@ -74,7 +85,10 @@ class UserService:
         if not user:
             raise UserNotFound(f"User {user_id} not found")
 
-        updated = await self.repo.update_by_id(user_id, {"is_active": False})
+        updated = await self.repo.update_by_id(
+            user_id,
+            UserInternalUpdate(is_active=False).model_dump(exclude_unset=True),
+        )
         return UserOut.model_validate(updated)
 
 

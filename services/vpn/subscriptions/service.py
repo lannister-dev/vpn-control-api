@@ -83,6 +83,7 @@ from shared.monitoring.metrics import (
     SUBSCRIPTION_PAYLOAD_SIZE_BYTES,
 )
 from shared.profiles.builder import VlessUriBuilder
+from shared.profiles.constants import WS_TLS_DEFAULT_PATH
 from shared.profiles.exceptions import ProfileRegistryError
 from shared.profiles.registry import ProfileRegistry
 from shared.profiles.schemas import (
@@ -1086,7 +1087,7 @@ class SubscriptionService:
             return WsTlsProfile(
                 metadata=metadata,
                 client=WsTlsClientConfig(
-                    path="/api/v1/stream",
+                    path=WS_TLS_DEFAULT_PATH,
                     host=fallback_domain,
                     sni=fallback_domain,
                 ),

@@ -31,6 +31,7 @@ from services.vpn.keys.schemas import VpnKeyInternalCreate, VpnProtocol, VpnTran
 from shared.database.session import AsyncDatabase
 from services.placements.transport import NodeAgentPlacementTransport
 from shared.profiles.builder import VlessUriBuilder
+from shared.profiles.constants import WS_TLS_DEFAULT_PATH
 from shared.profiles.schemas import (
     NodePublic,
     ProfileMetadata,
@@ -455,7 +456,7 @@ class ConnectService:
             return WsTlsProfile(
                 metadata=metadata,
                 client=WsTlsClientConfig(
-                    path="/api/v1/stream",
+                    path=WS_TLS_DEFAULT_PATH,
                     host=fallback_domain,
                     sni=fallback_domain,
                 ),

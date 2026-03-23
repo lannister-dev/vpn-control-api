@@ -265,7 +265,7 @@ class ProbeDrainService:
             raise HTTPException(status_code=409, detail="Latest probe failure is stale")
 
         if min_consecutive_failures > 1:
-            recent = await self.probe_repository.list_recent(
+            recent = await self.probe_repository.list_recent_for_node(
                 limit=max(20, min_consecutive_failures * 3),
                 node_id=node_id,
                 source=source,

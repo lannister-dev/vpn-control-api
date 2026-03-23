@@ -305,11 +305,11 @@ class ProfileArtifactService:
                 route_base_weight=route_base_weight,
                 now=datetime.now(timezone.utc),
             )
-            current_status = bootstrap_state["health_status"]
-            effective_weight = bootstrap_state["effective_weight"]
-            cooldown_until = bootstrap_state["cooldown_until"]
-            warmup_stage = bootstrap_state["warmup_stage"]
-            warmup_started_at = bootstrap_state["warmup_started_at"]
+            current_status = bootstrap_state.health_status
+            effective_weight = bootstrap_state.effective_weight
+            cooldown_until = bootstrap_state.cooldown_until
+            warmup_stage = bootstrap_state.warmup_stage
+            warmup_started_at = bootstrap_state.warmup_started_at
 
         desired = RouteReactivationUpdate(
             name=existing.name,

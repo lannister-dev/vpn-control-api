@@ -57,6 +57,7 @@ async def test_create_route_accepts_backend_node(async_session):
     svc.route_repository = AsyncMock()
 
     node = _node()
+    node.role = "backend"
     svc.node_repository.get_by_id = AsyncMock(return_value=node)
     svc.transport_repository.get_by_id = AsyncMock(return_value=_transport_profile())
     svc.route_repository.get_one_by = AsyncMock(return_value=None)
@@ -100,6 +101,33 @@ async def test_create_route_rejects_non_backend_node(async_session):
 
     assert exc.value.status_code == 422
     assert "role=backend" in exc.value.detail
+
+
+@pytest.mark.asyncio
+async def test_create_route_rejects_invalid_entry_node_role(async_session):
+    svc = RouteService(async_session)
+    svc.node_repository = AsyncMock()
+    svc.transport_repository = AsyncMock()
+    svc.route_repository = AsyncMock()
+
+    backend = _node(role="backend")
+    entry = _node(role="backend")
+    svc.node_repository.get_by_id = AsyncMock(side_effect=[backend, entry])
+
+    payload = RouteCreateIn(
+        name="be1-reality-via-backend-entry",
+        node_id=backend.id,
+        entry_node_id=entry.id,
+        transport_profile_id=uuid4(),
+        base_weight=40,
+        health_status=RouteHealthStatus.healthy,
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await svc.create_route(payload)
+
+    assert exc.value.status_code == 422
+    assert "role=whitelist_entry" in exc.value.detail
 
 
 @pytest.mark.asyncio
@@ -236,10 +264,9 @@ async def test_create_transport_profile_defaults_grpc_service_name(async_session
 
     payload = TransportProfileCreateIn(
         name="grpc-profile",
-        protocol="VLESS",
-        network="GRPC",
-        security="TLS",
-        grpc_service_name=" ",
+        protocol="vless",
+        network="grpc",
+        security="tls",
         tls_fingerprint="chrome",
         port=443,
     )

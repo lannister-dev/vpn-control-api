@@ -34,37 +34,23 @@ jobs:
       IMAGE_NAME: control-api
     steps:
       - uses: actions/checkout@v4
-
-      - name: Login to Harbor
-        env:
-          HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
-          HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
-        run: |
-          set -Eeuo pipefail
-          echo "$HARBOR_PASSWORD" | docker login ${{ secrets.HARBOR_URL }} \
-            -u "$HARBOR_USERNAME" \
-            --password-stdin
+      - name: Prepare runtime
+        uses: ./.github/workflows/runtime
+        with:
+          vault_scope: dev
+          env_file: "${{ runner.temp }}/control-api.dev.env"
 
       - name: Resolve image reference
         run: |
           set -Eeuo pipefail
-          echo "IMAGE_REF=${{ secrets.HARBOR_URL }}/${{ secrets.HARBOR_PROJECT }}/${IMAGE_NAME}:${{ inputs.image_tag }}" >> "$GITHUB_ENV"
-
-      - name: Render .env from secret
-        env:
-          CONTROL_API_ENV_DEV: ${{ secrets.CONTROL_API_ENV_DEV }}
-        run: |
-          set -Eeuo pipefail
-          test -n "${CONTROL_API_ENV_DEV}" || { echo "::error::Missing secret CONTROL_API_ENV_DEV"; exit 1; }
-          printf '%s\n' "${CONTROL_API_ENV_DEV}" > .env.dev
-          chmod 600 .env.dev
+          echo "IMAGE_REF=${HARBOR_URL}/${HARBOR_PROJECT}/${IMAGE_NAME}:${{ inputs.image_tag }}" >> "$GITHUB_ENV"
 
       - name: Run Alembic
         run: |
           set -Eeuo pipefail
           docker run --rm \
             --network data-dev-net \
-            --env-file .env.dev \
+            --env-file "${CONTROL_API_ENV_FILE}" \
             "${IMAGE_REF}" \
             alembic ${{ inputs.alembic_command }}
 
@@ -80,4 +66,4 @@ jobs:
 
       - name: Cleanup temporary env
         if: always()
-        run: rm -f .env.dev
+        run: rm -f "${CONTROL_API_ENV_FILE:-}"
