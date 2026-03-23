@@ -5,6 +5,15 @@ inputs:
   vault_scope:
     description: Vault scope under kv/data/control-api.
     required: true
+  vault_addr:
+    description: Vault HTTP(S) address.
+    required: true
+  vault_role_id:
+    description: Vault AppRole role ID.
+    required: true
+  vault_secret_id:
+    description: Vault AppRole secret ID.
+    required: true
   env_file:
     description: Absolute or relative path for the rendered env file.
     required: true
@@ -19,10 +28,10 @@ runs:
     - name: Load context from Vault
       uses: hashicorp/vault-action@v3
       with:
-        url: ${{ env.VAULT_ADDR }}
+        url: ${{ inputs.vault_addr }}
         method: approle
-        roleId: ${{ env.VAULT_ROLE_ID }}
-        secretId: ${{ env.VAULT_SECRET_ID }}
+        roleId: ${{ inputs.vault_role_id }}
+        secretId: ${{ inputs.vault_secret_id }}
         secrets: |
           kv/data/control-api/${{ inputs.vault_scope }} config | CONTROL_API_ENV_CONTENT ;
           kv/data/control-api/${{ inputs.vault_scope }} harbor_url | HARBOR_URL ;

@@ -104,10 +104,10 @@ Recommended GitHub branch protection for `dev`:
   - loads Harbor credentials and runtime env from Vault path `kv/data/control-api/prod`
   - runs `alembic` inside `data-prod-net` using selected image tag
 
-Runner prerequisites for Vault-backed deploys:
-- `VAULT_ADDR`
-- `VAULT_ROLE_ID`
-- `VAULT_SECRET_ID`
+Required GitHub environment variable/secret wiring for Vault-backed deploys:
+- variable `VAULT_ADDR`
+- secret `VAULT_ROLE_ID`
+- secret `VAULT_SECRET_ID`
 
 Required Vault fields:
 - `kv/data/control-api/dev#config`
