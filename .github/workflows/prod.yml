@@ -22,9 +22,6 @@ jobs:
         uses: ./.github/workflows/runtime
         with:
           vault_scope: prod
-          vault_addr: ${{ vars.VAULT_ADDR }}
-          vault_role_id: ${{ secrets.VAULT_ROLE_ID }}
-          vault_secret_id: ${{ secrets.VAULT_SECRET_ID }}
           env_file: .env.prod
       - name: Set image tag
         run: |
