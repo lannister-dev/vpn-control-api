@@ -83,6 +83,7 @@ class TransportProfileOut(BaseModel):
 class RouteCreateIn(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     node_id: UUID
+    entry_node_id: UUID | None = None
     transport_profile_id: UUID
     base_weight: int = Field(default=50, ge=0, le=100)
     effective_weight: int | None = Field(default=None, ge=0, le=100)
@@ -93,6 +94,7 @@ class RouteOut(BaseModel):
     id: UUID
     name: str
     node_id: UUID
+    entry_node_id: UUID | None = None
     transport_profile_id: UUID
     health_status: RouteHealthStatus
     base_weight: int
@@ -138,6 +140,7 @@ class ProfileReactivationUpdate(BaseModel):
 class RouteReactivationUpdate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     node_id: UUID
+    entry_node_id: UUID | None = None
     transport_profile_id: UUID
     health_status: RouteHealthStatus
     base_weight: int = Field(ge=0, le=100)
@@ -151,6 +154,7 @@ class RouteReactivationUpdate(BaseModel):
 class RouteCreateData(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     node_id: UUID
+    entry_node_id: UUID | None = None
     transport_profile_id: UUID
     health_status: RouteHealthStatus
     base_weight: int = Field(ge=0, le=100)

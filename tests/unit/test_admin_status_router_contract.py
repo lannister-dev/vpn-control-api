@@ -32,6 +32,7 @@ async def test_admin_status_router_contract():
             AdminNodeStatusOut(
                 id=uuid4(),
                 name="be-1",
+                role="backend",
                 region="fi",
                 public_domain="be-1.example.com",
                 is_enabled=True,

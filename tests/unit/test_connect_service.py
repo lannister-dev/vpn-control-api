@@ -49,10 +49,12 @@ async def test_select_backend_skips_nodes_without_public_domain(async_session):
     svc = ConnectService(async_session, _redis())
     svc.settings.edge.public_domain = ""
     svc.routing_service = AsyncMock()
+    svc.route_repository = AsyncMock()
 
     empty_domain = _node(public_domain="")
     with_domain = _node(public_domain="be-2.example.com")
     svc.routing_service.select_nodes = AsyncMock(return_value=[empty_domain, with_domain])
+    svc.route_repository.list_backend_ids_with_entry_routes = AsyncMock(return_value=[])
 
     out = await svc._select_backend(preferred_region="fi")
 
@@ -64,9 +66,11 @@ async def test_select_backend_uses_global_edge_domain(async_session):
     svc = ConnectService(async_session, _redis())
     svc.settings.edge.public_domain = "vpn.example.com"
     svc.routing_service = AsyncMock()
+    svc.route_repository = AsyncMock()
 
     empty_domain = _node(public_domain="")
     svc.routing_service.select_nodes = AsyncMock(return_value=[empty_domain])
+    svc.route_repository.list_backend_ids_with_entry_routes = AsyncMock(return_value=[])
 
     out = await svc._select_backend(preferred_region="fi")
 
@@ -80,7 +84,7 @@ async def test_build_route_uri_grpc_tls(async_session):
     node = _node(public_domain="be-grpc.example.com")
     tp = _transport_profile(network="grpc", security="tls", port=443)
 
-    uri = svc._build_route_uri(client_id="cid", node=node, transport_profile=tp)
+    uri = svc._build_route_uri(client_id="cid", backend_node=node, transport_profile=tp)
 
     assert uri is not None
     assert "type=grpc" in uri
@@ -95,7 +99,7 @@ async def test_build_route_uri_reality_uses_node_host_even_with_global_edge_doma
     node = _node(public_domain="1.2.3.4")
     tp = _transport_profile(network="tcp", security="reality", port=443)
 
-    uri = svc._build_route_uri(client_id="cid", node=node, transport_profile=tp)
+    uri = svc._build_route_uri(client_id="cid", backend_node=node, transport_profile=tp)
 
     assert uri is not None
     assert "@1.2.3.4:" in uri
@@ -109,11 +113,64 @@ async def test_build_route_uri_reality_prefers_reality_ip(async_session):
     node = _node(public_domain="reality.example.com", reality_ip="203.0.113.10")
     tp = _transport_profile(network="tcp", security="reality", port=443)
 
-    uri = svc._build_route_uri(client_id="cid", node=node, transport_profile=tp)
+    uri = svc._build_route_uri(client_id="cid", backend_node=node, transport_profile=tp)
 
     assert uri is not None
     assert "@203.0.113.10:" in uri
     assert "reality.example.com" not in uri
+
+
+@pytest.mark.asyncio
+async def test_build_route_uri_uses_entry_node_host(async_session):
+    svc = ConnectService(async_session, _redis())
+    svc.settings.edge.public_domain = "shared-edge.example.com"
+    backend = _node(public_domain="", reality_ip=None)
+    entry = _node(role="whitelist_entry", public_domain="entry.example.com", reality_ip="198.51.100.20")
+    tp = _transport_profile(network="tcp", security="reality", port=443)
+
+    uri = svc._build_route_uri(
+        client_id="cid",
+        backend_node=backend,
+        public_node=entry,
+        transport_profile=tp,
+    )
+
+    assert uri is not None
+    assert "@198.51.100.20:" in uri
+
+
+@pytest.mark.asyncio
+async def test_entry_route_makes_backend_eligible_without_public_host(async_session):
+    svc = ConnectService(async_session, _redis())
+    backend = _node(public_domain="", reality_ip=None)
+    pending = MagicMock(
+        id=uuid4(),
+        key_id=uuid4(),
+        backend_node_id=backend.id,
+        desired_state="active",
+        op_version=3,
+        applied_version=0,
+        applied_state="pending",
+    )
+    svc.placement_repository = AsyncMock()
+    svc.node_agent_transport = AsyncMock()
+    svc.routing_service = AsyncMock()
+    svc.route_repository = AsyncMock()
+    svc.placement_repository.list_by_key_id.return_value = []
+    svc.placement_repository.upsert_set_pending = AsyncMock(return_value=pending)
+    svc.routing_service.select_nodes = AsyncMock(return_value=[backend])
+    svc.route_repository.list_backend_ids_with_entry_routes = AsyncMock(return_value=[backend.id])
+
+    preferred_backend_id, placement, allowed_backend_ids = await svc._ensure_backend_placements_for_key(
+        key_id=uuid4(),
+        preferred_region="fi",
+        desired_replicas=1,
+        key_transport="reality",
+    )
+
+    assert preferred_backend_id == backend.id
+    assert placement.id == pending.id
+    assert allowed_backend_ids == {backend.id}
 
 
 @pytest.mark.asyncio
@@ -132,9 +189,11 @@ async def test_connect_returns_target_placement_even_when_not_synced(async_sessi
     svc.placement_repository = AsyncMock()
     svc.node_agent_transport = AsyncMock()
     svc.routing_service = AsyncMock()
+    svc.route_repository = AsyncMock()
     svc.placement_repository.list_by_key_id.return_value = []
     svc.placement_repository.upsert_set_pending = AsyncMock(return_value=pending)
     svc.routing_service.select_nodes = AsyncMock(return_value=[backend])
+    svc.route_repository.list_backend_ids_with_entry_routes = AsyncMock(return_value=[])
 
     preferred_backend_id, placement, allowed_backend_ids = await svc._ensure_backend_placements_for_key(
         key_id=uuid4(),

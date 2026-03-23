@@ -19,6 +19,8 @@ from shared.database.session import AsyncDatabase
 
 
 class AdminStatusService:
+    BACKEND_NODE_ROLE = "backend"
+
     def __init__(self, session: AsyncSession):
         self.settings = get_settings()
         self.node_state_stale_after_sec = max(30, int(self.settings.node_agent.stale_after_sec))
@@ -55,6 +57,7 @@ class AdminStatusService:
                 AdminNodeStatusOut(
                     id=node.id,
                     name=node.name,
+                    role=self._normalized_node_role(node, default=self.BACKEND_NODE_ROLE),
                     region=node.region,
                     public_domain=node.public_domain,
                     reality_ip=reality_ip,
@@ -98,6 +101,8 @@ class AdminStatusService:
         healthy_regions: set[str] = set()
         now = datetime.now(timezone.utc)
         for node, agent_state in node_rows:
+            if self._normalized_node_role(node, default=self.BACKEND_NODE_ROLE) != self.BACKEND_NODE_ROLE:
+                continue
             if not node.is_active or not node.is_enabled or node.is_draining:
                 continue
             if self._is_recent_healthy(agent_state, now=now):
@@ -154,6 +159,8 @@ class AdminStatusService:
         return last_seen_at >= self._node_seen_after(now=now)
 
     def _routing_reason(self, *, node, agent_state, now: datetime) -> str | None:
+        if self._normalized_node_role(node, default=self.BACKEND_NODE_ROLE) != self.BACKEND_NODE_ROLE:
+            return "node_role_excluded"
         if not node.is_active:
             return "node_inactive"
         if not node.is_enabled:
@@ -178,6 +185,15 @@ class AdminStatusService:
         if value.tzinfo is None:
             return value.replace(tzinfo=timezone.utc)
         return value.astimezone(timezone.utc)
+
+    @staticmethod
+    def _normalized_node_role(node, *, default: str) -> str:
+        raw = getattr(node, "role", default)
+        if isinstance(raw, str):
+            normalized = raw.strip().lower()
+            if normalized:
+                return normalized
+        return default
 
 
 def get_admin_status_service(

@@ -18,6 +18,7 @@ class ConnectRouteOut(BaseModel):
     route_id: UUID
     route_name: str
     backend_node_id: UUID
+    entry_node_id: UUID | None = None
     transport_profile_id: UUID
     health_status: str
     effective_weight: int

@@ -130,6 +130,20 @@ class RouteService:
         node = await self.node_repository.get_by_id(payload.node_id)
         if not node:
             raise HTTPException(status_code=404, detail="Node not found")
+        if self._normalized_node_role(node, default=self.BACKEND_NODE_ROLE) != self.BACKEND_NODE_ROLE:
+            raise HTTPException(status_code=422, detail="Route backend node must have role=backend")
+
+        entry_node = None
+        if payload.entry_node_id is not None:
+            entry_node = await self.node_repository.get_by_id(payload.entry_node_id)
+            if not entry_node:
+                raise HTTPException(status_code=404, detail="Entry node not found")
+            entry_role = self._normalized_node_role(entry_node, default="")
+            if entry_role not in {self.WHITELIST_ENTRY_NODE_ROLE, self.GATEWAY_NODE_ROLE}:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Route entry node must have role=whitelist_entry or role=gateway",
+                )
 
         tp = await self.transport_repository.get_by_id(payload.transport_profile_id)
         if not tp or not tp.is_active:
@@ -162,6 +176,7 @@ class RouteService:
         create_payload = RouteCreateData(
             name=payload.name,
             node_id=payload.node_id,
+            entry_node_id=payload.entry_node_id,
             transport_profile_id=payload.transport_profile_id,
             health_status=payload.health_status,
             base_weight=payload.base_weight,
@@ -322,6 +337,9 @@ class RouteService:
             "id": route.id,
             "name": route.name,
             "node_id": route.node_id,
+            "entry_node_id": RouteService._normalized_optional_uuid(
+                getattr(route, "entry_node_id", None),
+            ),
             "transport_profile_id": route.transport_profile_id,
             "health_status": route.health_status,
             "base_weight": route.base_weight,
@@ -373,6 +391,24 @@ class RouteService:
             return "heartbeat_missing"
         if last_seen_at < self._node_seen_after(now=now):
             return "heartbeat_stale"
+        return None
+
+    @staticmethod
+    def _normalized_node_role(node, *, default: str) -> str:
+        raw = getattr(node, "role", default)
+        if isinstance(raw, str):
+            normalized = raw.strip().lower()
+            if normalized:
+                return normalized
+        return default
+
+    @staticmethod
+    def _normalized_optional_uuid(value) -> UUID | str | None:
+        if isinstance(value, UUID):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip()
+            return normalized or None
         return None
 
     def _node_seen_after(self, *, now: datetime) -> datetime:
