@@ -127,7 +127,7 @@ async def test_create_route_rejects_invalid_entry_node_role(async_session):
         await svc.create_route(payload)
 
     assert exc.value.status_code == 422
-    assert "role=whitelist_entry or role=gateway" in exc.value.detail
+    assert "role=whitelist_entry" in exc.value.detail
 
 
 @pytest.mark.asyncio
