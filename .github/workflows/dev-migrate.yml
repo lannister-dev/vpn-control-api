@@ -38,6 +38,9 @@ jobs:
         uses: ./.github/workflows/runtime
         with:
           vault_scope: dev
+          vault_addr: ${{ vars.VAULT_ADDR }}
+          vault_role_id: ${{ secrets.VAULT_ROLE_ID }}
+          vault_secret_id: ${{ secrets.VAULT_SECRET_ID }}
           env_file: "${{ runner.temp }}/control-api.dev.env"
 
       - name: Resolve image reference
