@@ -38,6 +38,9 @@ from shared.database.session import AsyncDatabase
 
 
 class RouteService:
+    BACKEND_NODE_ROLE = "backend"
+    WHITELIST_ENTRY_NODE_ROLE = "whitelist_entry"
+    ALLOWED_ROUTE_NODE_ROLES = {BACKEND_NODE_ROLE, WHITELIST_ENTRY_NODE_ROLE}
     WARMUP_STAGES: list[RouteWarmupStage] = list(DEFAULT_WARMUP_STAGES)
 
     def __init__(self, session: AsyncSession):
@@ -130,6 +133,12 @@ class RouteService:
         node = await self.node_repository.get_by_id(payload.node_id)
         if not node:
             raise HTTPException(status_code=404, detail="Node not found")
+        node_role = self._normalized_node_role(node, default=self.BACKEND_NODE_ROLE)
+        if node_role not in self.ALLOWED_ROUTE_NODE_ROLES:
+            raise HTTPException(
+                status_code=422,
+                detail="Route node must have role backend or whitelist_entry",
+            )
 
         tp = await self.transport_repository.get_by_id(payload.transport_profile_id)
         if not tp or not tp.is_active:
@@ -186,6 +195,15 @@ class RouteService:
 
         created = await self.route_repository.create(create_payload.model_dump())
         return self._route_out_from_route(created)
+
+    @staticmethod
+    def _normalized_node_role(node, *, default: str) -> str:
+        raw_role = getattr(node, "role", default)
+        if isinstance(raw_role, str):
+            normalized_role = raw_role.strip().lower()
+            if normalized_role:
+                return normalized_role
+        return default
 
     async def list_routes(
             self,
