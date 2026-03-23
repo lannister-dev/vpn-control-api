@@ -9,7 +9,13 @@ from fastapi import HTTPException
 
 from services.probe.drain_service import ProbeDrainService
 from services.probe.ingestion_service import ProbeIngestionService
-from services.probe.schemas import ProbeAutoDrainMigrateIn, ProbeDrainMigrateIn, ProbeDrainMigrateOut, ProbeReportIn
+from services.probe.schemas import (
+    ProbeAutoDrainMigrateIn,
+    ProbeDrainMigrateIn,
+    ProbeDrainMigrateOut,
+    ProbeReportIn,
+    ProbeSyntheticClientIds,
+)
 
 
 def _node(
@@ -85,7 +91,7 @@ def _transport_profile(
 
 
 def _ingestion_service() -> ProbeIngestionService:
-    return ProbeIngestionService(
+    service = ProbeIngestionService(
         node_repository=AsyncMock(),
         probe_repository=AsyncMock(),
         route_repository=AsyncMock(),
@@ -94,11 +100,13 @@ def _ingestion_service() -> ProbeIngestionService:
         alert_service=AsyncMock(),
         target_port=443,
         edge_public_domain="",
-        synthetic_probe_client_ids_by_transport={},
+        synthetic_probe_client_ids=ProbeSyntheticClientIds(),
         retention_days=30,
         auto_route_health_enabled=True,
         route_block_cooldown_hours=6,
     )
+    service.node_repository.list_public.return_value = []
+    return service
 
 
 def _drain_service() -> ProbeDrainService:
@@ -183,12 +191,81 @@ async def test_list_targets_skips_ws_routes_behind_shared_edge(async_session):
 
 
 @pytest.mark.asyncio
+async def test_list_targets_filters_by_node_role(async_session):
+    svc = _ingestion_service()
+    svc.route_repository = AsyncMock()
+
+    backend_node = _node(role="backend", name="be-fi-1")
+    backend_profile = _transport_profile()
+    backend_route = _route(node_id=backend_node.id, transport_profile_id=backend_profile.id, name="route-backend")
+    entry_node = _node(role="whitelist_entry", name="entry-fi-1")
+    entry_profile = _transport_profile()
+    entry_route = _route(node_id=entry_node.id, transport_profile_id=entry_profile.id, name="route-entry")
+    svc.route_repository.list_active_detailed.return_value = [
+        (backend_route, backend_node, backend_profile, None),
+        (entry_route, entry_node, entry_profile, None),
+    ]
+
+    out = await svc.list_targets(role="backend")
+
+    assert len(out) == 1
+    assert out[0].node_id == backend_node.id
+    assert out[0].route_id == backend_route.id
+
+
+@pytest.mark.asyncio
+async def test_list_targets_includes_tcp_targets_for_whitelist_entry_nodes(async_session):
+    svc = _ingestion_service()
+    svc.route_repository = AsyncMock()
+
+    entry_node = _node(
+        role="whitelist_entry",
+        name="entry-fi-1",
+        public_domain="entry.example.com",
+        reality_ip="",
+    )
+    svc.route_repository.list_active_detailed.return_value = []
+    svc.node_repository.list_public.return_value = [entry_node]
+
+    out = await svc.list_targets(role="whitelist_entry")
+
+    assert len(out) == 1
+    assert out[0].node_id == entry_node.id
+    assert out[0].route_id is None
+    assert out[0].transport_profile_id is None
+    assert out[0].transport_kind == "reality"
+    assert out[0].probe_kind == "tcp_connect"
+    assert out[0].target_host == "entry.example.com"
+    assert out[0].target_port == 443
+
+
+@pytest.mark.asyncio
+async def test_list_targets_skips_disabled_whitelist_entry_nodes_by_default(async_session):
+    svc = _ingestion_service()
+    svc.route_repository = AsyncMock()
+
+    entry_node = _node(
+        role="whitelist_entry",
+        name="entry-fi-1",
+        public_domain="entry.example.com",
+        reality_ip="",
+    )
+    entry_node.is_enabled = False
+    svc.route_repository.list_active_detailed.return_value = []
+    svc.node_repository.list_public.return_value = [entry_node]
+
+    out = await svc.list_targets(role="whitelist_entry")
+
+    assert out == []
+
+
+@pytest.mark.asyncio
 async def test_list_targets_includes_probe_client_id_when_special_key_is_synced(async_session):
     svc = _ingestion_service()
     svc.route_repository = AsyncMock()
     svc.key_repository = AsyncMock()
     svc.placement_repository = AsyncMock()
-    svc.synthetic_probe_client_ids_by_transport = {"reality": "probe-reality-cid"}
+    svc.synthetic_probe_client_ids = ProbeSyntheticClientIds(reality="probe-reality-cid")
 
     node = _node()
     transport_profile = _transport_profile()
@@ -228,7 +305,7 @@ async def test_list_targets_omits_probe_client_id_when_special_key_not_synced(as
     svc.route_repository = AsyncMock()
     svc.key_repository = AsyncMock()
     svc.placement_repository = AsyncMock()
-    svc.synthetic_probe_client_ids_by_transport = {"reality": "probe-reality-cid"}
+    svc.synthetic_probe_client_ids = ProbeSyntheticClientIds(reality="probe-reality-cid")
 
     node = _node()
     transport_profile = _transport_profile()

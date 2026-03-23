@@ -10,6 +10,7 @@ ProbeDetailsValue: TypeAlias = str | int | float | bool | None
 ProbeDetails: TypeAlias = dict[str, ProbeDetailsValue]
 ProbeTransportKind: TypeAlias = Literal["reality", "ws"]
 ProbeKind: TypeAlias = Literal["tcp_connect", "synthetic_vpn"]
+ProbeTargetRole: TypeAlias = Literal["backend", "gateway", "whitelist_entry", "all"]
 ProbeErrorPhase: TypeAlias = Literal[
     "dns",
     "tcp",
@@ -92,12 +93,12 @@ class ProbeSignalInternalCreate(BaseModel):
 
 class ProbeTargetOut(BaseModel):
     node_id: UUID
-    route_id: UUID
-    route_name: str
-    transport_profile_id: UUID
-    transport_profile_name: str
-    transport_kind: ProbeTransportKind
-    probe_kind: ProbeKind = "synthetic_vpn"
+    route_id: UUID | None = None
+    route_name: str | None = None
+    transport_profile_id: UUID | None = None
+    transport_profile_name: str | None = None
+    transport_kind: ProbeTransportKind | None = None
+    probe_kind: ProbeKind = "tcp_connect"
     node_name: str
     region: str
     probe_client_id: str | None = None
@@ -111,6 +112,38 @@ class ProbeTargetOut(BaseModel):
     reality_short_id: str | None = None
     reality_server_name: str | None = None
     flow: str | None = None
+
+
+class ProbeSyntheticClientIds(BaseModel):
+    reality: str | None = None
+    ws: str | None = None
+
+    @field_validator("reality", "ws", mode="before")
+    @classmethod
+    def normalize_optional_client_id(cls, value: str | None):
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    def configured_transports(self) -> dict[str, str]:
+        configured: dict[str, str] = {}
+        for transport_kind, client_id in (
+            ("reality", self.reality),
+            ("ws", self.ws),
+        ):
+            if client_id is not None:
+                configured[transport_kind] = client_id
+        return configured
+
+
+class ProbeSyntheticReconcileResult(BaseModel):
+    processed_transports: int = 0
+    created_user: bool = False
+    created_keys: int = 0
+    reactivated_keys: int = 0
+    activated_placements: int = 0
+    deactivated_placements: int = 0
 
 
 class ProbeDrainMigrateIn(BaseModel):

@@ -16,12 +16,15 @@ from services.routes.schemas import RouteStateUpdate
 from services.routes.state_machine import resolve_probe_block, resolve_probe_recover
 from services.probe.repository import ProbeSignalRepository
 from services.probe.schemas import (
+    ProbeTargetRole,
     ProbeReportIn,
     ProbeReportOut,
     ProbeSignalInternalCreate,
+    ProbeSyntheticClientIds,
     ProbeTargetOut,
 )
 from services.vpn.keys.repository import VpnKeyRepository
+from shared.profiles.constants import WS_TLS_DEFAULT_PATH
 from shared.database.session import AsyncDatabase
 from shared.monitoring.metrics import PROBE_REPORT_TOTAL
 from shared.utils.logger import StructuredLogger
@@ -31,8 +34,6 @@ logger_probe = StructuredLogger(logging.getLogger("probe-ingestion-service"))
 
 
 class ProbeIngestionService:
-    WS_TLS_PATH = "/api/v1/stream"
-
     def __init__(
             self,
             *,
@@ -44,7 +45,7 @@ class ProbeIngestionService:
             alert_service: AlertService,
             target_port: int,
             edge_public_domain: str,
-            synthetic_probe_client_ids_by_transport: dict[str, str],
+            synthetic_probe_client_ids: ProbeSyntheticClientIds,
             retention_days: int,
             auto_route_health_enabled: bool,
             route_block_cooldown_hours: int,
@@ -56,12 +57,8 @@ class ProbeIngestionService:
         self.key_repository = key_repository
         self.alert_service = alert_service
         self.target_port = target_port
-        self.edge_public_domain = (edge_public_domain or "").strip()
-        self.synthetic_probe_client_ids_by_transport = {
-            transport_kind: client_id.strip()
-            for transport_kind, client_id in synthetic_probe_client_ids_by_transport.items()
-            if isinstance(client_id, str) and client_id.strip()
-        }
+        self.edge_public_domain = edge_public_domain
+        self.synthetic_probe_client_ids = synthetic_probe_client_ids
         self.retention_days = retention_days
         self.auto_route_health_enabled = auto_route_health_enabled
         self.route_block_cooldown_hours = max(1, route_block_cooldown_hours)
@@ -145,12 +142,17 @@ class ProbeIngestionService:
             *,
             include_draining: bool = False,
             include_disabled: bool = False,
+            role: ProbeTargetRole | None = None,
     ) -> list[ProbeTargetOut]:
         rows = await self.route_repository.list_active_detailed(limit=5000)
         probe_client_ids_by_target = await self._resolve_probe_client_ids_by_target(rows=rows)
 
         targets: list[ProbeTargetOut] = []
         for route, node, transport_profile, _agent_state in rows:
+            if node.role == "whitelist_entry":
+                continue
+            if role is not None and not self._matches_target_role(node=node, role=role):
+                continue
             target = self._build_probe_target(
                 route=route,
                 node=node,
@@ -165,7 +167,14 @@ class ProbeIngestionService:
                 continue
             targets.append(target)
 
-        targets.sort(key=lambda item: (item.region, item.node_name, item.route_name))
+        targets.extend(
+            await self._list_node_probe_targets(
+                include_draining=include_draining,
+                include_disabled=include_disabled,
+                role=role,
+            )
+        )
+        targets.sort(key=lambda item: (item.region, item.node_name, item.route_name or ""))
         return targets
 
     async def list_recent(
@@ -209,6 +218,12 @@ class ProbeIngestionService:
             is_reachable=current.is_reachable,
             checked_at=current.checked_at,
             error=current.error,
+            route_id=current.route_id,
+            transport_kind=current.transport_kind,
+            probe_kind=current.probe_kind,
+            target_host=current.target_host,
+            target_port=current.target_port,
+            error_phase=current.error_phase,
         )
 
     async def cleanup_old_signals(self) -> int:
@@ -226,7 +241,7 @@ class ProbeIngestionService:
     async def _apply_route_health_policy(self, *, node, signal) -> None:
         if not self.auto_route_health_enabled:
             return
-        route_id = getattr(signal, "route_id", None)
+        route_id = signal.route_id
         if route_id is None:
             logger_probe.info(
                 "probe_signal_node_scope_health_policy_skipped",
@@ -253,11 +268,11 @@ class ProbeIngestionService:
                 cooldown_hours=self.route_block_cooldown_hours,
             )
             updated_state = RouteStateUpdate(
-                health_status=next_state["health_status"],
-                effective_weight=next_state["effective_weight"],
-                cooldown_until=next_state["cooldown_until"],
-                warmup_stage=next_state["warmup_stage"],
-                warmup_started_at=next_state["warmup_started_at"],
+                health_status=next_state.health_status,
+                effective_weight=next_state.effective_weight,
+                cooldown_until=next_state.cooldown_until,
+                warmup_stage=next_state.warmup_stage,
+                warmup_started_at=next_state.warmup_started_at,
                 updated_at=datetime.now(timezone.utc),
             )
             await self.route_repository.update_by_id(
@@ -271,11 +286,11 @@ class ProbeIngestionService:
             if next_state is None:
                 continue
             updated_state = RouteStateUpdate(
-                health_status=next_state["health_status"],
-                effective_weight=next_state["effective_weight"],
-                cooldown_until=next_state["cooldown_until"],
-                warmup_stage=next_state["warmup_stage"],
-                warmup_started_at=next_state["warmup_started_at"],
+                health_status=next_state.health_status,
+                effective_weight=next_state.effective_weight,
+                cooldown_until=next_state.cooldown_until,
+                warmup_stage=next_state.warmup_stage,
+                warmup_started_at=next_state.warmup_started_at,
                 updated_at=datetime.now(timezone.utc),
             )
             await self.route_repository.update_by_id(
@@ -315,14 +330,14 @@ class ProbeIngestionService:
         if not include_draining and node.is_draining:
             return None
 
-        network = (transport_profile.network or "").strip().lower()
-        security = (transport_profile.security or "").strip().lower()
+        network = transport_profile.network
+        security = transport_profile.security
 
         if security == "reality" and network == "tcp":
-            host = (node.reality_ip or "").strip()
-            sni = (transport_profile.reality_server_name or "").strip()
-            public_key = (transport_profile.reality_public_key or "").strip()
-            short_id = (transport_profile.reality_short_id or "").strip()
+            host = node.reality_ip
+            sni = transport_profile.reality_server_name
+            public_key = transport_profile.reality_public_key
+            short_id = transport_profile.reality_short_id
             if not host or not sni or not public_key or not short_id:
                 return None
             return ProbeTargetOut(
@@ -339,7 +354,7 @@ class ProbeIngestionService:
                 target_host=host,
                 target_port=transport_profile.port,
                 tls_sni=sni,
-                tls_fingerprint=(transport_profile.tls_fingerprint or "").strip() or "chrome",
+                tls_fingerprint=transport_profile.tls_fingerprint or "chrome",
                 reality_public_key=public_key,
                 reality_short_id=short_id,
                 reality_server_name=sni,
@@ -349,7 +364,7 @@ class ProbeIngestionService:
         if security == "tls" and network == "ws":
             if self.edge_public_domain:
                 return None
-            host = (node.public_domain or "").strip()
+            host = node.public_domain
             if not host:
                 return None
             return ProbeTargetOut(
@@ -366,15 +381,68 @@ class ProbeIngestionService:
                 target_host=host,
                 target_port=transport_profile.port or self.target_port,
                 tls_sni=host,
-                tls_fingerprint=(transport_profile.tls_fingerprint or "").strip() or "chrome",
+                tls_fingerprint=transport_profile.tls_fingerprint or "chrome",
                 ws_host=host,
-                ws_path=self.WS_TLS_PATH,
+                ws_path=WS_TLS_DEFAULT_PATH,
             )
 
         return None
 
+    async def _list_node_probe_targets(
+            self,
+            *,
+            include_draining: bool,
+            include_disabled: bool,
+            role: ProbeTargetRole | None,
+    ) -> list[ProbeTargetOut]:
+        if role not in {None, "all", "whitelist_entry"}:
+            return []
+
+        nodes = await self.node_repository.list_public()
+        targets: list[ProbeTargetOut] = []
+        for node in nodes:
+            if node.role != "whitelist_entry":
+                continue
+            if role is not None and not self._matches_target_role(node=node, role=role):
+                continue
+            target = self._build_node_probe_target(
+                node=node,
+                include_disabled=include_disabled,
+                include_draining=include_draining,
+            )
+            if target is None:
+                continue
+            targets.append(target)
+        return targets
+
+    def _build_node_probe_target(
+            self,
+            *,
+            node,
+            include_disabled: bool,
+            include_draining: bool,
+    ) -> ProbeTargetOut | None:
+        if not include_disabled and not node.is_enabled:
+            return None
+        if not include_draining and node.is_draining:
+            return None
+
+        host = node.public_domain or node.reality_ip
+        if not host:
+            return None
+
+        return ProbeTargetOut(
+            node_id=node.id,
+            transport_kind="reality",
+            probe_kind="tcp_connect",
+            node_name=node.name,
+            region=node.region,
+            target_host=host,
+            target_port=self.target_port,
+        )
+
     async def _resolve_probe_client_ids_by_target(self, *, rows: list[tuple]) -> dict[tuple[UUID, str], str]:
-        configured_by_transport = self.synthetic_probe_client_ids_by_transport
+        configured_by_transport = self.synthetic_probe_client_ids.configured_transports()
         if not configured_by_transport:
             return {}
 
@@ -392,19 +460,14 @@ class ProbeIngestionService:
             client_ids=list(configured_by_transport.values()),
             active_only=True,
         )
-        key_by_client_id = {
-            str(key.client_id).strip(): key
-            for key in keys
-            if isinstance(getattr(key, "client_id", None), str) and str(key.client_id).strip()
-        }
+        key_by_client_id = {key.client_id: key for key in keys if key.client_id}
 
         resolved: dict[tuple[UUID, str], str] = {}
         for transport_kind, client_id in configured_by_transport.items():
             key = key_by_client_id.get(client_id)
             if key is None:
                 continue
-            key_transport = (getattr(key, "transport", "") or "").strip().lower()
-            if key_transport != transport_kind:
+            if key.transport != transport_kind:
                 continue
             expected_backend_ids = backend_ids_by_transport.get(transport_kind, set())
             if not expected_backend_ids:
@@ -415,18 +478,17 @@ class ProbeIngestionService:
                 desired_state="active",
             )
             for placement in placements:
-                backend_node_id = getattr(placement, "backend_node_id", None)
-                if backend_node_id not in expected_backend_ids:
+                if placement.backend_node_id not in expected_backend_ids:
                     continue
                 if not self._is_placement_synced(placement):
                     continue
-                resolved[(backend_node_id, transport_kind)] = client_id
+                resolved[(placement.backend_node_id, transport_kind)] = client_id
         return resolved
 
     @staticmethod
     def _transport_kind_for_profile(transport_profile) -> str | None:
-        network = (getattr(transport_profile, "network", "") or "").strip().lower()
-        security = (getattr(transport_profile, "security", "") or "").strip().lower()
+        network = transport_profile.network
+        security = transport_profile.security
         if security == "reality" and network == "tcp":
             return "reality"
         if security == "tls" and network == "ws":
@@ -435,14 +497,18 @@ class ProbeIngestionService:
 
     @staticmethod
     def _is_placement_synced(placement) -> bool:
-        applied_state = str(getattr(placement, "applied_state", "") or "").strip().lower()
-        op_version = getattr(placement, "op_version", None)
-        applied_version = getattr(placement, "applied_version", op_version)
-        if not isinstance(op_version, int):
+        if not isinstance(placement.op_version, int):
             return False
+        applied_version = placement.applied_version
         if not isinstance(applied_version, int):
-            applied_version = op_version
-        return applied_state == "applied" and applied_version == op_version
+            applied_version = placement.op_version
+        return placement.applied_state == "applied" and applied_version == placement.op_version
+
+    @staticmethod
+    def _matches_target_role(*, node, role: ProbeTargetRole) -> bool:
+        if role == "all":
+            return True
+        return node.role == role
 
 
 def get_probe_ingestion_service(
@@ -459,10 +525,10 @@ def get_probe_ingestion_service(
         alert_service=alert_service,
         target_port=probe_settings.target_port,
         edge_public_domain=get_settings().edge.public_domain,
-        synthetic_probe_client_ids_by_transport={
-            "reality": probe_settings.synthetic_reality_client_id or "",
-            "ws": probe_settings.synthetic_ws_client_id or "",
-        },
+        synthetic_probe_client_ids=ProbeSyntheticClientIds(
+            reality=probe_settings.synthetic_reality_client_id,
+            ws=probe_settings.synthetic_ws_client_id,
+        ),
         retention_days=probe_settings.retention_days,
         auto_route_health_enabled=probe_settings.auto_route_health_enabled,
         route_block_cooldown_hours=probe_settings.route_block_cooldown_hours,

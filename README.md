@@ -20,7 +20,10 @@ Docker build note:
 
 Config notes:
 - Use `PROBE_TARGET_PORT` (legacy `DEFAULT_TARGET_PORT` is still supported for backward compatibility).
+- `/api/v1/probe/targets` accepts optional `role`; current semantics are explicit `vpn_node.role` filtering (`backend`, `whitelist_entry`, `gateway`, or `all`).
+- `whitelist_entry` targets are node-scoped `tcp_connect` checks; backend targets remain route/transport-scoped and may carry synthetic probe credentials.
 - `PROBE_SYNTHETIC_REALITY_CLIENT_ID` / `PROBE_SYNTHETIC_WS_CLIENT_ID` let `/api/v1/probe/targets` attach a real probe `client_id` for synthetic checks, but only when that key is active and already synced to the backend node.
+- `PROBE_SYNTHETIC_RECONCILE_ENABLED=true` starts a background reconciler that creates/keeps the synthetic probe keys and placements aligned across all probeable backends for the configured transports.
 - Current node-agent placements endpoint is `GET /api/v1/agent/placements/page`.
 - For multi-agent-per-node rollout, pass stable `X-Agent-Instance-ID` UUID on `/api/v1/agent/initial` and all authenticated `/api/v1/agent/*` calls.
 - For authenticated `/api/v1/agent/*` calls, `X-Node-ID` is recommended. If it is temporarily missing, API can resolve node from `(X-Agent-Instance-ID + token)` without 422 loops.
