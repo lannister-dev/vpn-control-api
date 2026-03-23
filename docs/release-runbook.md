@@ -38,7 +38,7 @@ Fallback shell path for prod on a Swarm manager:
 ```bash
 docker run --rm \
   --network data-prod-net \
-  --env-file .env \
+  --env-file .env.prod \
   harbor.lannister-dev.ru/vpn-service/control-api:${IMAGE_TAG:-prod} \
   alembic upgrade head
 ```

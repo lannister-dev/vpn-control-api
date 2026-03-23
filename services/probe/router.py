@@ -13,6 +13,7 @@ from services.probe.schemas import (
     ProbeDrainMigrateOut,
     ProbeReportIn,
     ProbeReportOut,
+    ProbeTargetRole,
     ProbeTargetOut,
 )
 
@@ -43,11 +44,13 @@ async def report_probe(
 async def list_probe_targets(
         include_draining: bool = Query(default=False),
         include_disabled: bool = Query(default=False),
+        role: ProbeTargetRole | None = Query(default=None),
         service: ProbeIngestionService = Depends(get_probe_ingestion_service),
 ):
     return await service.list_targets(
         include_draining=include_draining,
         include_disabled=include_disabled,
+        role=role,
     )
 
 

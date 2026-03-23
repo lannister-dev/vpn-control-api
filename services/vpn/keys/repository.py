@@ -53,7 +53,7 @@ class VpnKeyRepository(BaseRepository[VpnKey]):
             client_ids: list[str],
             active_only: bool = True,
     ) -> list[VpnKey]:
-        normalized = [item.strip() for item in client_ids if isinstance(item, str) and item.strip()]
+        normalized = [item for item in client_ids if item]
         if not normalized:
             return []
 

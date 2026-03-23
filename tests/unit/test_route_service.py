@@ -178,10 +178,9 @@ async def test_create_transport_profile_defaults_grpc_service_name(async_session
 
     payload = TransportProfileCreateIn(
         name="grpc-profile",
-        protocol="VLESS",
-        network="GRPC",
-        security="TLS",
-        grpc_service_name=" ",
+        protocol="vless",
+        network="grpc",
+        security="tls",
         tls_fingerprint="chrome",
         port=443,
     )

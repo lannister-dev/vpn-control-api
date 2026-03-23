@@ -6,6 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.config import get_settings
 from services.nodes.repository import VpnNodeRepository
+from services.routes.exceptions import RouteCooldownActiveError
+from services.routes.policy import DEFAULT_WARMUP_STAGES
 from services.routes.repository import RouteRepository, TransportProfileRepository
 from services.routes.schemas import (
     RouteCreateData,
@@ -16,14 +18,17 @@ from services.routes.schemas import (
     RouteOut,
     RouteReactivationUpdate,
     RouteStateUpdate,
+    RouteWarmupStage,
+    RouteWarmupTickResult,
     RouteWarmupTickOut,
     ProfileReactivationUpdate,
+    TransportNetwork,
     TransportProfileCreateIn,
     TransportProfileOut,
+    TransportProtocol,
+    TransportSecurity,
 )
 from services.routes.state_machine import (
-    DEFAULT_WARMUP_STAGES,
-    RouteCooldownActiveError,
     initial_warmup_weight,
     resolve_route_health_action,
     resolve_warmup_tick,
@@ -33,7 +38,7 @@ from shared.database.session import AsyncDatabase
 
 
 class RouteService:
-    WARMUP_STAGES: list[tuple[int, int]] = list(DEFAULT_WARMUP_STAGES)
+    WARMUP_STAGES: list[RouteWarmupStage] = list(DEFAULT_WARMUP_STAGES)
 
     def __init__(self, session: AsyncSession):
         self.settings = get_settings()
@@ -72,54 +77,46 @@ class RouteService:
             self,
             payload: TransportProfileCreateIn,
     ) -> TransportProfileCreateIn:
-        protocol = payload.protocol.strip().lower()
-        network = payload.network.strip().lower()
-        security = payload.security.strip().lower()
-        if protocol != "vless":
-            raise HTTPException(status_code=422, detail=f"Unsupported protocol: {protocol}")
+        if payload.protocol != TransportProtocol.vless:
+            raise HTTPException(status_code=422, detail=f"Unsupported protocol: {payload.protocol.value}")
 
-        flow = payload.flow.strip() if isinstance(payload.flow, str) else payload.flow
-        reality_public_key = payload.reality_public_key.strip() if payload.reality_public_key else None
-        reality_short_id = payload.reality_short_id.strip() if payload.reality_short_id else None
-        reality_server_name = payload.reality_server_name.strip() if payload.reality_server_name else None
-        grpc_service_name = payload.grpc_service_name.strip() if payload.grpc_service_name else None
-
-        if security == "reality":
-            if network != "tcp":
+        if payload.security == TransportSecurity.reality:
+            if payload.network != TransportNetwork.tcp:
                 raise HTTPException(status_code=422, detail="reality transport requires network=tcp")
-            if not reality_public_key or not reality_short_id or not reality_server_name:
+            if not payload.reality_public_key or not payload.reality_short_id or not payload.reality_server_name:
                 raise HTTPException(
                     status_code=422,
                     detail="reality transport requires reality_public_key, reality_short_id and reality_server_name",
                 )
-            if grpc_service_name:
+            if payload.grpc_service_name:
                 raise HTTPException(status_code=422, detail="reality transport does not support grpc_service_name")
-        elif security == "tls":
-            if network not in {"grpc", "ws"}:
+        elif payload.security == TransportSecurity.tls:
+            if payload.network not in {TransportNetwork.grpc, TransportNetwork.ws}:
                 raise HTTPException(status_code=422, detail="tls transport supports only network=grpc or network=ws")
-            if reality_public_key or reality_short_id or reality_server_name:
+            if payload.reality_public_key or payload.reality_short_id or payload.reality_server_name:
                 raise HTTPException(
                     status_code=422,
                     detail="tls transport does not support reality_* fields",
                 )
-            if flow:
+            if payload.flow:
                 raise HTTPException(status_code=422, detail="tls transport does not support flow")
-            if network == "grpc":
+            grpc_service_name = payload.grpc_service_name
+            if payload.network == TransportNetwork.grpc:
                 grpc_service_name = grpc_service_name or "vl"
             elif grpc_service_name:
                 raise HTTPException(status_code=422, detail="ws transport does not support grpc_service_name")
         else:
-            raise HTTPException(status_code=422, detail=f"Unsupported security: {security}")
+            raise HTTPException(status_code=422, detail=f"Unsupported security: {payload.security.value}")
 
         return TransportProfileCreateIn(
             name=payload.name,
-            protocol=protocol,
-            network=network,
-            security=security,
-            flow=flow,
-            reality_public_key=reality_public_key,
-            reality_short_id=reality_short_id,
-            reality_server_name=reality_server_name,
+            protocol=payload.protocol,
+            network=payload.network,
+            security=payload.security,
+            flow=payload.flow,
+            reality_public_key=payload.reality_public_key,
+            reality_short_id=payload.reality_short_id,
+            reality_server_name=payload.reality_server_name,
             tls_fingerprint=payload.tls_fingerprint,
             grpc_service_name=grpc_service_name,
             port=payload.port,
@@ -233,11 +230,11 @@ class RouteService:
         updated = await self.route_repository.update_by_id(
             item_id=route.id,
             data=RouteStateUpdate(
-                health_status=next_state["health_status"],
-                effective_weight=next_state["effective_weight"],
-                cooldown_until=next_state["cooldown_until"],
-                warmup_stage=next_state["warmup_stage"],
-                warmup_started_at=next_state["warmup_started_at"],
+                health_status=next_state.health_status,
+                effective_weight=next_state.effective_weight,
+                cooldown_until=next_state.cooldown_until,
+                warmup_stage=next_state.warmup_stage,
+                warmup_started_at=next_state.warmup_started_at,
                 updated_at=now,
             ).model_dump(),
         )
@@ -265,18 +262,18 @@ class RouteService:
             updated = await self.route_repository.update_by_id(
                 item_id=route.id,
                 data=RouteStateUpdate(
-                    health_status=next_state["health_status"],
-                    effective_weight=next_state["effective_weight"],
-                    cooldown_until=next_state["cooldown_until"],
-                    warmup_stage=next_state["warmup_stage"],
-                    warmup_started_at=next_state["warmup_started_at"],
+                    health_status=next_state.health_status,
+                    effective_weight=next_state.effective_weight,
+                    cooldown_until=next_state.cooldown_until,
+                    warmup_stage=next_state.warmup_stage,
+                    warmup_started_at=next_state.warmup_started_at,
                     updated_at=now,
                 ).model_dump(),
             )
             if updated:
-                if tick_result == "advanced":
+                if tick_result == RouteWarmupTickResult.advanced:
                     advanced += 1
-                elif tick_result == "finalized":
+                elif tick_result == RouteWarmupTickResult.finalized:
                     finalized += 1
 
         return RouteWarmupTickOut(

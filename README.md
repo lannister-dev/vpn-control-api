@@ -91,34 +91,43 @@ Recommended GitHub branch protection for `dev`:
 
 - CI for `dev` branch and PRs into `dev`: `.github/workflows/dev-pr.yml`
 - CD for development environment: `.github/workflows/dev-deploy.yml`
+- CD for production environment: `.github/workflows/prod.yml`
   - triggers on push to `dev` and manual `workflow_dispatch`
   - runs tests before deploy
   - builds and pushes image tags `<sha7>` and `:dev`
+  - loads Harbor credentials and runtime env from Vault path `kv/data/control-api/dev`
   - deploys Docker Swarm stack `control-api-dev` using `docker-compose.dev.yml`
 - Manual DB migrations for development: `.github/workflows/dev-migrate.yml`
-  - renders `.env.dev` from `CONTROL_API_ENV_DEV`
+  - loads Harbor credentials and runtime env from Vault path `kv/data/control-api/dev`
   - runs `alembic` inside `data-dev-net` using selected image tag
 - Manual DB migrations for production: `.github/workflows/prod-migrate.yml`
-  - renders `.env` from `CONTROL_API_ENV_PROD`
+  - loads Harbor credentials and runtime env from Vault path `kv/data/control-api/prod`
   - runs `alembic` inside `data-prod-net` using selected image tag
 
-Required GitHub secrets (environment `development`):
-- `HARBOR_URL`
-- `HARBOR_PROJECT`
-- `HARBOR_USERNAME`
-- `HARBOR_PASSWORD`
-- `CONTROL_API_ENV_DEV` (multiline env content)
+Runner prerequisites for Vault-backed deploys:
+- `VAULT_ADDR`
+- `VAULT_ROLE_ID`
+- `VAULT_SECRET_ID`
 
-Use `control-api.dev.env.example` as template for `CONTROL_API_ENV_DEV`.
+Required Vault fields:
+- `kv/data/control-api/dev#config`
+- `kv/data/control-api/dev#harbor_url`
+- `kv/data/control-api/dev#harbor_project`
+- `kv/data/control-api/dev#harbor_username`
+- `kv/data/control-api/dev#harbor_password`
+- `kv/data/control-api/prod#config`
+- `kv/data/control-api/prod#harbor_url`
+- `kv/data/control-api/prod#harbor_project`
+- `kv/data/control-api/prod#harbor_username`
+- `kv/data/control-api/prod#harbor_password`
 
-Required GitHub secrets (environment `production`):
-- `HARBOR_URL`
-- `HARBOR_PROJECT`
-- `HARBOR_USERNAME`
-- `HARBOR_PASSWORD`
-- `CONTROL_API_ENV_PROD` (multiline env content)
+Use local `.env.dev` and `.env.prod` as the source shape for Vault `config`.
 
 Local dev deploy (Swarm):
 - prepare env file: `.env.dev`
 - deploy: `docker stack deploy --with-registry-auth --prune -c docker-compose.dev.yml control-api-dev`
 - DB migrations and data import commands: `docs/release-runbook.md`
+
+Local prod deploy (Swarm):
+- prepare env file: `.env.prod`
+- deploy: `docker stack deploy --with-registry-auth --prune -c docker-compose.yml control-api`

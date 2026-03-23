@@ -4,52 +4,45 @@ on:
   push:
     branches:
       - main
+
 jobs:
   tests:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest
-      - name: Run Tests
-        run: pytest -q
+    uses: ./.github/workflows/tests.yml
 
   deploy:
     needs: tests
     runs-on: [ self-hosted, prod ]
+    environment:
+      name: production
     env:
       IMAGE_NAME: control-api
     steps:
       - uses: actions/checkout@v4
-      - name: Login
-        env:
-          HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
-          HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
-        run: |
-          echo "$HARBOR_PASSWORD" | docker login ${{ secrets.HARBOR_URL }} \
-            -u "$HARBOR_USERNAME" \
-            --password-stdin
+      - name: Prepare runtime
+        uses: ./.github/workflows/runtime
+        with:
+          vault_scope: prod
+          env_file: .env.prod
       - name: Set image tag
-        run: echo "IMAGE_TAG=${GITHUB_SHA::7}" >> $GITHUB_ENV
+        run: |
+          set -Eeuo pipefail
+          echo "IMAGE_TAG=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
       - name: Build image
         run: |
+          set -Eeuo pipefail
           docker build \
-            -t ${{ secrets.HARBOR_URL }}/${{ secrets.HARBOR_PROJECT }}/${IMAGE_NAME}:${IMAGE_TAG} \
-            -t ${{ secrets.HARBOR_URL }}/${{ secrets.HARBOR_PROJECT }}/${IMAGE_NAME}:prod \
+            -t "${HARBOR_URL}/${HARBOR_PROJECT}/${IMAGE_NAME}:${IMAGE_TAG}" \
+            -t "${HARBOR_URL}/${HARBOR_PROJECT}/${IMAGE_NAME}:prod" \
             .
       - name: Push image
         run: |
-          docker push ${{ secrets.HARBOR_URL }}/${{ secrets.HARBOR_PROJECT }}/${IMAGE_NAME}:${IMAGE_TAG}
-          docker push ${{ secrets.HARBOR_URL }}/${{ secrets.HARBOR_PROJECT }}/${IMAGE_NAME}:prod
+          set -Eeuo pipefail
+          docker push "${HARBOR_URL}/${HARBOR_PROJECT}/${IMAGE_NAME}:${IMAGE_TAG}"
+          docker push "${HARBOR_URL}/${HARBOR_PROJECT}/${IMAGE_NAME}:prod"
       - name: Deploy Swarm
         run: |
-          echo "${{ secrets.CONTROL_API_ENV_PROD }}" > .env
+          set -Eeuo pipefail
           docker stack deploy --with-registry-auth --prune -c docker-compose.yml control-api
+      - name: Cleanup temporary env
+        if: always()
+        run: rm -f .env.prod

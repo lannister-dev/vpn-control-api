@@ -126,8 +126,8 @@ class ProbeSyntheticClientIds(BaseModel):
         normalized = value.strip()
         return normalized or None
 
-    def configured_transports(self) -> dict[str, str]:
-        configured: dict[str, str] = {}
+    def configured_transports(self) -> dict[ProbeTransportKind, str]:
+        configured: dict[ProbeTransportKind, str] = {}
         for transport_kind, client_id in (
             ("reality", self.reality),
             ("ws", self.ws),
@@ -135,6 +135,31 @@ class ProbeSyntheticClientIds(BaseModel):
             if client_id is not None:
                 configured[transport_kind] = client_id
         return configured
+
+
+class ProbeSyntheticTransportBackends(BaseModel):
+    transport_kind: ProbeTransportKind
+    backend_ids: set[UUID] = Field(default_factory=set)
+
+
+class ProbeSyntheticDesiredBackends(BaseModel):
+    transports: dict[ProbeTransportKind, ProbeSyntheticTransportBackends] = Field(default_factory=dict)
+
+    def add_backend(self, *, transport_kind: ProbeTransportKind, backend_id: UUID) -> None:
+        transport_backends = self.transports.setdefault(
+            transport_kind,
+            ProbeSyntheticTransportBackends(transport_kind=transport_kind),
+        )
+        transport_backends.backend_ids.add(backend_id)
+
+    def backend_ids_for(self, transport_kind: ProbeTransportKind) -> set[UUID]:
+        transport_backends = self.transports.get(transport_kind)
+        if transport_backends is None:
+            return set()
+        return set(transport_backends.backend_ids)
+
+    def is_empty(self) -> bool:
+        return not self.transports
 
 
 class ProbeSyntheticReconcileResult(BaseModel):
