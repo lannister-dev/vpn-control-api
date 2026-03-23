@@ -5,15 +5,6 @@ inputs:
   vault_scope:
     description: Vault scope under kv/data/control-api.
     required: true
-  vault_addr:
-    description: Vault HTTP(S) address.
-    required: true
-  vault_role_id:
-    description: Vault AppRole role ID.
-    required: true
-  vault_secret_id:
-    description: Vault AppRole secret ID.
-    required: true
   env_file:
     description: Absolute or relative path for the rendered env file.
     required: true
@@ -25,13 +16,26 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Prepare Vault auth inputs
+      shell: bash
+      run: |
+        set -Eeuo pipefail
+        : "${VAULT_ADDR:?VAULT_ADDR must be set on the runner}"
+        : "${VAULT_ROLE_ID:?VAULT_ROLE_ID must be set on the runner}"
+        : "${VAULT_SECRET_ID:?VAULT_SECRET_ID must be set on the runner}"
+        echo "::add-mask::${VAULT_ROLE_ID}"
+        echo "::add-mask::${VAULT_SECRET_ID}"
+        echo "VAULT_ADDR=${VAULT_ADDR}" >> "${GITHUB_ENV}"
+        echo "VAULT_ROLE_ID=${VAULT_ROLE_ID}" >> "${GITHUB_ENV}"
+        echo "VAULT_SECRET_ID=${VAULT_SECRET_ID}" >> "${GITHUB_ENV}"
+
     - name: Load context from Vault
       uses: hashicorp/vault-action@v3
       with:
-        url: ${{ inputs.vault_addr }}
+        url: ${{ env.VAULT_ADDR }}
         method: approle
-        roleId: ${{ inputs.vault_role_id }}
-        secretId: ${{ inputs.vault_secret_id }}
+        roleId: ${{ env.VAULT_ROLE_ID }}
+        secretId: ${{ env.VAULT_SECRET_ID }}
         secrets: |
           kv/data/control-api/${{ inputs.vault_scope }} config | CONTROL_API_ENV_CONTENT ;
           kv/data/control-api/${{ inputs.vault_scope }} harbor_url | HARBOR_URL ;
