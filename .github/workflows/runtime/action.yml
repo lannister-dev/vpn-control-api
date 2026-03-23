@@ -37,11 +37,11 @@ runs:
         roleId: ${{ env.VAULT_ROLE_ID }}
         secretId: ${{ env.VAULT_SECRET_ID }}
         secrets: |
-          kv/data/controle-plane/${{ inputs.vault_scope }} config | CONTROL_API_ENV_CONTENT ;
-          kv/data/controle-plane/${{ inputs.vault_scope }} harbor_url | HARBOR_URL ;
-          kv/data/controle-plane/${{ inputs.vault_scope }} harbor_project | HARBOR_PROJECT ;
-          kv/data/controle-plane/${{ inputs.vault_scope }} harbor_username | HARBOR_USERNAME ;
-          kv/data/controle-plane/${{ inputs.vault_scope }} harbor_password | HARBOR_PASSWORD ;
+          kv/data/control-plane/${{ inputs.vault_scope }} config | CONTROL_API_ENV_CONTENT ;
+          kv/data/control-plane/${{ inputs.vault_scope }} harbor_url | HARBOR_URL ;
+          kv/data/control-plane/${{ inputs.vault_scope }} harbor_project | HARBOR_PROJECT ;
+          kv/data/control-plane/${{ inputs.vault_scope }} harbor_username | HARBOR_USERNAME ;
+          kv/data/control-plane/${{ inputs.vault_scope }} harbor_password | HARBOR_PASSWORD ;
 
     - name: Render env
       shell: bash
