@@ -354,7 +354,7 @@
     }
     th { color: rgba(159, 179, 207, 0.84); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; }
     tbody tr:hover td { background: rgba(45, 212, 191, 0.06); }
-    .badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 2px 8px; font-size: 11px; border: 1px solid transparent; white-space: nowrap; }
+    .badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 2px 8px; font-size: 11px; border: 1px solid transparent; white-space: nowrap; margin-right: 4px; vertical-align: middle; }
     .env-pill {
       display: inline-flex;
       align-items: center;
@@ -437,13 +437,13 @@
     .t-node-row { cursor: pointer; transition: background 100ms ease; }
     .t-node-row:hover { background: rgba(45,212,191,0.04); }
     .t-node-row.selected { background: rgba(45,212,191,0.07); }
-    .t-detail-card { border: 1px solid rgba(45,212,191,0.2); border-radius: 14px; background: rgba(15,23,42,0.6); padding: 16px; margin-top: 14px; animation: fade-up 200ms ease; }
+    .t-detail-card { border: 1px solid rgba(45,212,191,0.2); border-radius: 14px; background: rgba(15,23,42,0.6); padding: 16px; margin-top: 14px; max-width: 820px; animation: fade-up 200ms ease; }
     .t-detail-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
     .t-detail-title { font-size: 15px; font-weight: 700; }
-    .t-snapshot-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; padding: 10px; border-radius: 10px; background: rgba(15,23,42,0.4); border: 1px solid var(--line); }
-    .t-snap-item { text-align: center; }
+    .t-snapshot-bar { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; padding: 10px; border-radius: 10px; background: rgba(15,23,42,0.4); border: 1px solid var(--line); }
+    .t-snap-item { text-align: left; min-width: 0; }
     .t-snap-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
-    .t-snap-value { font-family: "JetBrains Mono", monospace; font-size: 12px; margin-top: 2px; }
+    .t-snap-value { font-family: "JetBrains Mono", monospace; font-size: 11px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
     .t-event-card { border: 1px solid var(--line); border-radius: 8px; background: rgba(15,23,42,0.36); padding: 8px 10px; transition: all 100ms ease; }
     .t-event-card:hover { border-color: rgba(45,212,191,0.3); }
     .t-event-type { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
@@ -559,12 +559,15 @@
       border-radius: var(--radius);
       padding: 20px;
       max-width: 420px;
+      max-height: 85vh;
       width: 90%;
       box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
     }
-    .modal-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
-    .modal-body { color: var(--muted); font-size: 13px; margin-bottom: 16px; line-height: 1.5; }
-    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .modal-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; flex-shrink: 0; }
+    .modal-body { color: var(--muted); font-size: 13px; margin-bottom: 16px; line-height: 1.5; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(45, 212, 191, 0.2) transparent; }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; flex-shrink: 0; }
     .modal-actions .btn { width: auto; padding: 8px 16px; }
 
     /* Loading bar */
@@ -686,7 +689,7 @@
     .collapse-content { overflow: hidden; transition: max-height 300ms ease; }
 
     /* ── NEW: Wider modal ──────────────────────────── */
-    .modal-box.wide { max-width: 560px; }
+    .modal-box.wide { max-width: 560px; max-height: 85vh; }
     .modal-box.narrow { max-width: 400px; }
 
     /* ── NEW: Inline stat badges ───────────────────── */
@@ -1317,7 +1320,7 @@
       };
 
       const state = { timer: null, selectedNode: null, status: null, readiness: null, routes: [], placements: [], probes: [], subscriptions: [], subscriptionDevices: [], logs: [], activeTab: "overview", loading: false, users: [], usersTotal: 0, usersLimit: 50, usersOffset: 0, plans: [], trafficKeys: [], trafficTotal: 0, trafficLimit: 50, trafficOffset: 0, trafficHistory: [], trafficHistoryTotal: 0, trafficHistoryLimit: 50, trafficHistoryOffset: 0, trafficHistoryKeyId: null, trafficHistoryKeyData: null, adminUsers: [], adminUsersTotal: 0, transportOverview: null, transportNodes: [], transportNodeDetail: null, outboxItems: [], outboxTotal: 0, outboxOffset: 0, eventsItems: [], eventsTotal: 0, eventsOffset: 0, transportSubTab: "nodes",
-        probesAll: [], probesTotal: 0, probesLimit: 100, probesOffset: 0,
+        probesAll: [], probesTotal: 0, probesLimit: 30, probesOffset: 0,
         /* NEW state for redesigned sections */
         subscriptionContext: null, /* { userId, username, telegramId } or null */
         selectedSubscription: null, /* full subscription detail object */
@@ -1730,14 +1733,16 @@
         const nodeRoutes = state.routes.filter((r) => r.node_id === n.id || r.entry_node_id === n.id);
         const entryRoutes = isEntry ? state.routes.filter((r) => r.entry_node_id === n.id) : [];
         const nodePlacementsCount = state.placements.filter((p) => p.backend_node_id === n.id).length;
+        const routesVisible = nodeRoutes.slice(0, 4);
+        const routesExtra = nodeRoutes.length - routesVisible.length;
         const routesHtml = nodeRoutes.length
-          ? nodeRoutes.map((r) => {
+          ? routesVisible.map((r) => {
             const sCls = r.health_status === "healthy" ? "ok" : (r.health_status === "blocked" ? "bad" : "warn");
             const backendName = nodeNameById(r.node_id) || shortId(r.node_id);
             const entryName = r.entry_node_id ? (nodeNameById(r.entry_node_id) || shortId(r.entry_node_id)) : null;
             const pathLabel = entryName ? `${backendName} via ${entryName}` : backendName;
-            return `<div style="font-size:12px;margin-bottom:2px">${esc(r.name)} ${chip(sCls, routeStatusLabel(r.health_status))}<div class="muted" style="font-size:11px">${esc(pathLabel)}</div></div>`;
-          }).join("")
+            return `<div style="font-size:12px;margin-bottom:2px">${esc(r.name)} ${chip(sCls, routeStatusLabel(r.health_status))}<span class="muted" style="font-size:11px;margin-left:4px">${esc(pathLabel)}</span></div>`;
+          }).join("") + (routesExtra > 0 ? `<div class="muted" style="font-size:11px">+ ещё ${routesExtra}</div>` : "")
           : `<div class="empty">Нет маршрутов</div>`;
         refs.nodeConfigModal.innerHTML = `<div class="modal-overlay"><div class="modal-box wide">
           <div class="modal-title">${esc(n.name)}</div>
@@ -1953,12 +1958,14 @@
         refs.nodesBody.innerHTML = nodes.length
           ? nodes.map((n) => {
             const g = nodeGeo(n.region);
-            const routingHint = n.routing_eligible ? `<div class="muted" style="font-size:11px">routing: eligible</div>` : (n.routing_reason ? `<div class="muted" style="font-size:11px">routing: ${esc(routingReasonLabel(n.routing_reason))}</div>` : "");
+            const routingHint = n.routing_eligible ? `<div style="margin-top:3px">${chip("ok", "eligible")}</div>` : (n.routing_reason ? `<div style="margin-top:3px">${chip("warn", routingReasonLabel(n.routing_reason))}</div>` : "");
             const isEntryNode = String(n.role || "").toLowerCase() === "whitelist_entry";
             const healthCol = isEntryNode ? chip("info", "Relay") : (n.is_healthy ? chip("ok", "Здоров") : chip("bad", "Нездоров"));
             const nodeProbe = latestProbeForNode(n.id);
-            const probeHint = nodeProbe ? (nodeProbe.is_reachable ? chip("ok", "probe ok" + (nodeProbe.latency_ms != null ? " " + nodeProbe.latency_ms + "ms" : "")) : chip("bad", "probe fail")) : "";
-            const heartbeatCol = isEntryNode ? probeHint || `<span class="muted">no probe</span>` : `<span title="${esc(fmtDate(n.last_seen_at))}">${relTime(n.last_seen_at)}</span>${probeHint ? `<div style="margin-top:2px">${probeHint}</div>` : ""}`;
+            const probeLine = nodeProbe ? `<div class="muted" style="font-size:10px;margin-top:3px">${nodeProbe.is_reachable ? "probe ok" : "probe fail"}${nodeProbe.latency_ms != null ? " · " + nodeProbe.latency_ms + "ms" : ""}</div>` : "";
+            const heartbeatCol = isEntryNode
+              ? (nodeProbe ? `${nodeProbe.is_reachable ? chip("ok", "OK") : chip("bad", "FAIL")}${nodeProbe.latency_ms != null ? `<div class="mono muted" style="font-size:10px;margin-top:2px">${nodeProbe.latency_ms}ms</div>` : ""}` : `<span class="muted">no probe</span>`)
+              : `<span title="${esc(fmtDate(n.last_seen_at))}">${relTime(n.last_seen_at)}</span>${probeLine}`;
             const loadCol = isEntryNode ? `<span class="muted">—</span>` : capacityBar(n.placements_backend, n.capacity);
             return `<tr><td><strong>${esc(n.name)}</strong> ${chip(nodeRoleClass(n.role), nodeRoleLabel(n.role))}<div>${uuidCell(n.id)}</div>${n.public_domain ? `<div class="mono muted" style="font-size:11px">${esc(n.public_domain)}</div>` : ""}${n.reality_ip ? `<div class="mono muted" style="font-size:11px">reality: ${esc(n.reality_ip)}</div>` : ""}</td><td><div class="geo"><span class="flag">${esc(g.flag)}</span>${esc(g.country)}</div><div class="mono muted">${esc(g.regionText)}</div></td><td>${healthCol}</td><td>${n.is_draining ? chip("warn", "Draining") : (!n.is_enabled ? chip("bad", "Отключен") : chip("ok", "Активен"))}${routingHint}</td><td>${loadCol}</td><td>${heartbeatCol}</td><td><div class="actions"><button class="btn-mini node-action" data-action="drain" data-id="${esc(n.id)}">Drain</button><button class="btn-mini node-action" data-action="enable" data-id="${esc(n.id)}">Enable</button><button class="btn-mini node-config" data-id="${esc(n.id)}">Настройки</button></div></td></tr>`;
           }).join("")
@@ -1977,9 +1984,9 @@
           ? routes.map((r) => {
             const nName = nodeNameById(r.node_id);
             const entryName = nodeNameById(r.entry_node_id);
-            const routeHint = r.routing_eligible ? `<div class="muted" style="font-size:11px">routing: eligible</div>` : (r.routing_reason ? `<div class="muted" style="font-size:11px">routing: ${esc(routeReasonLabel(r.routing_reason))}</div>` : "");
+            const routeHint = r.routing_eligible ? `<div style="margin-top:3px">${chip("ok", "eligible")}</div>` : (r.routing_reason ? `<div style="margin-top:3px">${chip("warn", routeReasonLabel(r.routing_reason))}</div>` : "");
             const rProbe = latestProbeForRoute(r.id);
-            const routeProbeHint = rProbe ? (rProbe.is_reachable ? `<div style="margin-top:2px">${chip("ok", "probe ok" + (rProbe.latency_ms != null ? " " + rProbe.latency_ms + "ms" : ""))}</div>` : `<div style="margin-top:2px">${chip("bad", "probe fail" + (rProbe.error_phase ? " @ " + rProbe.error_phase : ""))}</div>`) : "";
+            const routeProbeHint = rProbe ? `<div class="muted" style="font-size:10px;margin-top:3px">${rProbe.is_reachable ? "probe ok" : "probe fail"}${rProbe.latency_ms != null ? " · " + rProbe.latency_ms + "ms" : ""}${!rProbe.is_reachable && rProbe.error_phase ? " · " + rProbe.error_phase : ""}</div>` : "";
             const entryHtml = r.entry_node_id ? `<div class="muted" style="font-size:11px">entry: ${entryName ? esc(entryName) + " " : ""}${uuidCell(r.entry_node_id)}</div>` : `<div class="muted" style="font-size:11px">entry: -</div>`;
             return `<tr><td><strong>${esc(r.name)}</strong><div>${uuidCell(r.id)}</div></td><td>${nName ? `<strong>${esc(nName)}</strong> ` : ""}${uuidCell(r.node_id)}${entryHtml}</td><td>${r.health_status === "healthy" ? chip("ok", routeStatusLabel(r.health_status)) : (r.health_status === "blocked" ? chip("bad", routeStatusLabel(r.health_status)) : chip("warn", routeStatusLabel(r.health_status)))}${routeHint}${routeProbeHint}</td><td class="mono">${esc(r.effective_weight)} / ${esc(r.base_weight)}</td><td class="mono">${esc(r.warmup_stage == null ? "-" : r.warmup_stage)}</td><td><div class="actions"><button class="btn-mini route-action" data-id="${esc(r.id)}" data-action="set_healthy">Healthy</button><button class="btn-mini route-action" data-id="${esc(r.id)}" data-action="set_degraded">Degrade</button><button class="btn-mini route-action" data-id="${esc(r.id)}" data-action="block">Block</button><button class="btn-mini btn-info route-entry" data-id="${esc(r.id)}">Entry</button></div></td></tr>`;
           }).join("")
@@ -2196,12 +2203,12 @@
             const nName = nodeNameById(p.node_id);
             const rName = p.route_id ? (state.routes.find((r) => r.id === p.route_id) || {}).name : null;
             const statusChip = p.is_reachable ? chip("ok", "OK") : chip("bad", "FAIL");
-            const kindLabel = p.probe_kind === "synthetic_vpn" ? "Synthetic VPN" : "TCP connect";
-            const transportChip = p.transport_kind ? chip("info", p.transport_kind) : "";
+            const kindLabel = p.probe_kind === "synthetic_vpn" ? "Synthetic" : "TCP";
+            const transportLabel = p.transport_kind || "";
             const latency = p.latency_ms != null ? `<span class="mono">${p.latency_ms}ms</span>` : `<span class="muted">-</span>`;
             const errorPhase = p.error_phase ? chip("warn", p.error_phase) : `<span class="muted">-</span>`;
             const rowStyle = p.is_reachable ? "" : ' style="background:rgba(255,127,133,0.04)"';
-            return `<tr${rowStyle}><td>${chip("info", p.source)}</td><td>${nName ? `<strong>${esc(nName)}</strong> ` : ""}${uuidCell(p.node_id)}</td><td>${rName ? `${esc(rName)} ` : ""}${p.route_id ? uuidCell(p.route_id) : '<span class="muted">node-scope</span>'}</td><td>${esc(kindLabel)} ${transportChip}</td><td>${statusChip}</td><td>${latency}</td><td>${errorPhase}</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(p.error || "")}">${p.error ? `<span style="font-size:11px">${esc(p.error)}</span>` : '<span class="muted">-</span>'}</td><td><span title="${esc(fmtDate(p.checked_at))}">${relTime(p.checked_at)}</span></td></tr>`;
+            return `<tr${rowStyle}><td>${chip("info", p.source)}</td><td>${nName ? `<strong>${esc(nName)}</strong> ` : ""}${uuidCell(p.node_id)}</td><td>${rName ? `${esc(rName)} ` : ""}${p.route_id ? uuidCell(p.route_id) : '<span class="muted">node-scope</span>'}</td><td>${esc(kindLabel)}${transportLabel ? `<div class="muted" style="font-size:10px">${esc(transportLabel)}</div>` : ""}</td><td>${statusChip}</td><td>${latency}</td><td>${errorPhase}</td><td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(p.error || "")}">${p.error ? `<span style="font-size:11px">${esc(p.error)}</span>` : '<span class="muted">-</span>'}</td><td><span title="${esc(fmtDate(p.checked_at))}">${relTime(p.checked_at)}</span></td></tr>`;
           }).join("")
           : `<tr><td colspan="9" class="empty">Нет probe-сигналов по фильтрам.</td></tr>`;
         renderPagination(refs.probesPagination, filtered.length, state.probesLimit, state.probesOffset, (page) => {
@@ -2323,7 +2330,7 @@
         $("tnd-title").textContent = d.name;
         $("tnd-subtitle").textContent = `Эпоха ${d.current_epoch} \u00B7 ${verdictLabel(d.health_verdict)}`;
         $("tnd-snapshot-bar").innerHTML = [
-          { label: "Snapshot ID", value: d.last_snapshot_id ? `<span title="${esc(d.last_snapshot_id)}">${esc(d.last_snapshot_id.length > 20 ? d.last_snapshot_id.slice(0, 20) + "\u2026" : d.last_snapshot_id)}</span>` : "-" },
+          { label: "Snapshot ID", value: d.last_snapshot_id ? `<span title="${esc(d.last_snapshot_id)}">${esc(d.last_snapshot_id.length > 12 ? d.last_snapshot_id.slice(0, 12) + "\u2026" : d.last_snapshot_id)}</span>` : "-" },
           { label: "Причина", value: snapshotReasonLabel(d.last_snapshot_reason) },
           { label: "Запрошен", value: relTime(d.last_snapshot_requested_at) },
           { label: "Сгенерирован", value: relTime(d.last_snapshot_generated_at) },
