@@ -80,6 +80,17 @@ class TransportProfileOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class RouteUpdateIn(BaseModel):
+    entry_node_id: UUID | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class RouteEntryUpdate(BaseModel):
+    entry_node_id: UUID | None
+    updated_at: datetime
+
+
 class RouteCreateIn(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     node_id: UUID
