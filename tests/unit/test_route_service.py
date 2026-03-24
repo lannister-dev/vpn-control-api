@@ -12,6 +12,7 @@ from services.routes.schemas import (
     RouteHealthAction,
     RouteHealthUpdateIn,
     RouteHealthStatus,
+    RouteUpdateIn,
     TransportProfileCreateIn,
 )
 from services.routes.service import RouteService
@@ -387,3 +388,106 @@ async def test_list_routes_includes_routing_diagnostics(async_session):
     assert out[0].routing_reason is None
     assert out[1].routing_eligible is False
     assert out[1].routing_reason == "route_zero_weight"
+
+
+@pytest.mark.asyncio
+async def test_update_route_sets_entry_node(async_session):
+    svc = RouteService(async_session)
+    svc.node_repository = AsyncMock()
+    svc.route_repository = AsyncMock()
+
+    entry = _node(role="whitelist_entry")
+    route = _route()
+    route.entry_node_id = None
+    svc.route_repository.get_by_id = AsyncMock(return_value=route)
+    svc.node_repository.get_by_id = AsyncMock(return_value=entry)
+
+    updated_route = _route()
+    updated_route.id = route.id
+    updated_route.entry_node_id = entry.id
+    svc.route_repository.update_by_id = AsyncMock(return_value=updated_route)
+
+    payload = RouteUpdateIn(entry_node_id=entry.id)
+    out = await svc.update_route(route.id, payload)
+
+    svc.route_repository.update_by_id.assert_awaited_once()
+    call_args = svc.route_repository.update_by_id.await_args
+    call_data = call_args.args[1] if len(call_args.args) > 1 else call_args.kwargs["data"]
+    assert call_data["entry_node_id"] == entry.id
+    assert out.entry_node_id == entry.id
+
+
+@pytest.mark.asyncio
+async def test_update_route_detach_entry_node(async_session):
+    svc = RouteService(async_session)
+    svc.node_repository = AsyncMock()
+    svc.route_repository = AsyncMock()
+
+    route = _route()
+    route.entry_node_id = uuid4()
+    svc.route_repository.get_by_id = AsyncMock(return_value=route)
+
+    updated_route = _route()
+    updated_route.id = route.id
+    updated_route.entry_node_id = None
+    svc.route_repository.update_by_id = AsyncMock(return_value=updated_route)
+
+    payload = RouteUpdateIn(entry_node_id=None)
+    out = await svc.update_route(route.id, payload)
+
+    svc.route_repository.update_by_id.assert_awaited_once()
+    call_args = svc.route_repository.update_by_id.await_args
+    call_data = call_args.args[1] if len(call_args.args) > 1 else call_args.kwargs["data"]
+    assert call_data["entry_node_id"] is None
+    assert out.entry_node_id is None
+
+
+@pytest.mark.asyncio
+async def test_update_route_rejects_non_entry_role(async_session):
+    svc = RouteService(async_session)
+    svc.node_repository = AsyncMock()
+    svc.route_repository = AsyncMock()
+
+    backend_node = _node(role="backend")
+    route = _route()
+    svc.route_repository.get_by_id = AsyncMock(return_value=route)
+    svc.node_repository.get_by_id = AsyncMock(return_value=backend_node)
+
+    payload = RouteUpdateIn(entry_node_id=backend_node.id)
+
+    with pytest.raises(HTTPException) as exc:
+        await svc.update_route(route.id, payload)
+
+    assert exc.value.status_code == 422
+    assert "role=whitelist_entry" in exc.value.detail
+
+
+@pytest.mark.asyncio
+async def test_update_route_noop_when_field_not_sent(async_session):
+    svc = RouteService(async_session)
+    svc.node_repository = AsyncMock()
+    svc.route_repository = AsyncMock()
+
+    route = _route()
+    route.entry_node_id = None
+    svc.route_repository.get_by_id = AsyncMock(return_value=route)
+
+    payload = RouteUpdateIn()
+    out = await svc.update_route(route.id, payload)
+
+    svc.route_repository.update_by_id.assert_not_awaited()
+    assert out.id == route.id
+
+
+@pytest.mark.asyncio
+async def test_update_route_not_found(async_session):
+    svc = RouteService(async_session)
+    svc.route_repository = AsyncMock()
+    svc.route_repository.get_by_id = AsyncMock(return_value=None)
+
+    payload = RouteUpdateIn(entry_node_id=None)
+
+    with pytest.raises(HTTPException) as exc:
+        await svc.update_route(uuid4(), payload)
+
+    assert exc.value.status_code == 404

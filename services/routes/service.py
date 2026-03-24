@@ -12,12 +12,14 @@ from services.routes.repository import RouteRepository, TransportProfileReposito
 from services.routes.schemas import (
     RouteCreateData,
     RouteCreateIn,
+    RouteEntryUpdate,
     RouteHealthAction,
     RouteHealthStatus,
     RouteHealthUpdateIn,
     RouteOut,
     RouteReactivationUpdate,
     RouteStateUpdate,
+    RouteUpdateIn,
     RouteWarmupStage,
     RouteWarmupTickResult,
     RouteWarmupTickOut,
@@ -201,6 +203,33 @@ class RouteService:
 
         created = await self.route_repository.create(create_payload.model_dump())
         return build_route_out(created)
+
+    async def update_route(self, route_id: UUID, payload: RouteUpdateIn) -> RouteOut:
+        route = await self.route_repository.get_by_id(route_id)
+        if not route or not route.is_active:
+            raise HTTPException(status_code=404, detail="Route not found")
+
+        if "entry_node_id" not in payload.model_fields_set:
+            return build_route_out(route)
+
+        if payload.entry_node_id is not None:
+            entry_node = await self.node_repository.get_by_id(payload.entry_node_id)
+            if not entry_node:
+                raise HTTPException(status_code=404, detail="Entry node not found")
+            if normalized_node_role(entry_node) != RouteNodeRole.whitelist_entry:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Route entry node must have role=whitelist_entry",
+                )
+
+        update = RouteEntryUpdate(
+            entry_node_id=payload.entry_node_id,
+            updated_at=datetime.now(timezone.utc),
+        )
+        updated = await self.route_repository.update_by_id(route.id, update.model_dump())
+        if not updated:
+            raise HTTPException(status_code=500, detail="Failed to update route")
+        return build_route_out(updated)
 
     async def list_routes(
             self,

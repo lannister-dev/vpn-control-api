@@ -7,6 +7,7 @@ from services.routes.schemas import (
     RouteCreateIn,
     RouteHealthUpdateIn,
     RouteOut,
+    RouteUpdateIn,
     RouteWarmupTickOut,
     TransportProfileCreateIn,
     TransportProfileOut,
@@ -56,6 +57,21 @@ async def create_route(
         service: RouteService = Depends(get_route_service),
 ):
     return await service.create_route(payload)
+
+
+@router.patch(
+    "/{route_id}",
+    response_model=RouteOut,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(admin_auth)],
+    summary="Update route",
+)
+async def update_route(
+        route_id: UUID,
+        payload: RouteUpdateIn,
+        service: RouteService = Depends(get_route_service),
+):
+    return await service.update_route(route_id, payload)
 
 
 @router.get(
