@@ -21,6 +21,17 @@ def _backend_node(*, name: str):
     return node
 
 
+def _entry_node(*, name: str):
+    node = MagicMock()
+    node.id = uuid4()
+    node.name = name
+    node.role = "whitelist_entry"
+    node.is_active = True
+    node.is_enabled = True
+    node.is_draining = False
+    return node
+
+
 def _transport_profile(*, name: str, is_active: bool, port: int):
     profile = MagicMock()
     profile.id = uuid4()
@@ -43,6 +54,7 @@ def _route(
         *,
         name: str,
         node_id,
+        entry_node_id=None,
         transport_profile_id,
         is_active: bool,
         health_status: str = "healthy",
@@ -55,6 +67,7 @@ def _route(
     route.id = uuid4()
     route.name = name
     route.node_id = node_id
+    route.entry_node_id = entry_node_id
     route.transport_profile_id = transport_profile_id
     route.base_weight = 50
     route.effective_weight = effective_weight
@@ -123,6 +136,89 @@ async def test_bootstrap_from_artifact_dry_run_counts_without_writes(async_sessi
     assert any("ws-backup" in item for item in out.skipped_profiles)
     service.transport_repository.create.assert_not_awaited()
     service.route_repository.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_ignores_whitelist_entry_nodes_in_backend_selection(async_session):
+    service = ProfileArtifactService(async_session)
+    service.repository = AsyncMock()
+    service.node_repository = AsyncMock()
+    service.transport_repository = AsyncMock()
+    service.route_repository = AsyncMock()
+
+    artifact = {"reality-google": _artifact_profile_reality()}
+    service.repository.get_active.return_value = MagicMock(
+        version=8,
+        artifact=artifact,
+    )
+
+    backend = _backend_node(name="be-main")
+    entry = _entry_node(name="entry-main")
+    service.node_repository.list_public.return_value = [backend, entry]
+    service.transport_repository.list_by_names.return_value = []
+    service.route_repository.list_by_names.return_value = []
+
+    out = await service.bootstrap_routes_from_active_artifact(
+        ArtifactRoutesBootstrapIn(
+            dry_run=True,
+            include_ws_tls=False,
+        )
+    )
+
+    assert out.backends_selected == 1
+    assert out.routes_total == 1
+    assert out.routes_created == 1
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_creates_routes_via_selected_entry_nodes(async_session):
+    service = ProfileArtifactService(async_session)
+    service.repository = AsyncMock()
+    service.node_repository = AsyncMock()
+    service.transport_repository = AsyncMock()
+    service.route_repository = AsyncMock()
+
+    artifact = {"reality-google": _artifact_profile_reality()}
+    service.repository.get_active.return_value = MagicMock(
+        version=9,
+        artifact=artifact,
+    )
+
+    backend = _backend_node(name="be-main")
+    entry = _entry_node(name="entry-main")
+    service.transport_repository.list_by_names.return_value = []
+    service.transport_repository.create = AsyncMock(
+        return_value=_transport_profile(name="reality-google", is_active=True, port=443)
+    )
+    service.route_repository.list_by_names.return_value = []
+    service.route_repository.create = AsyncMock()
+
+    async def list_by_ids(node_ids):
+        by_id = {
+            backend.id: backend,
+            entry.id: entry,
+        }
+        return [by_id[node_id] for node_id in node_ids if node_id in by_id]
+
+    service.node_repository.list_by_ids = AsyncMock(side_effect=list_by_ids)
+
+    out = await service.bootstrap_routes_from_active_artifact(
+        ArtifactRoutesBootstrapIn(
+            dry_run=False,
+            include_ws_tls=False,
+            backend_node_ids=[backend.id],
+            entry_node_ids=[entry.id],
+        )
+    )
+
+    assert out.backends_selected == 1
+    assert out.routes_total == 1
+    assert out.routes_created == 1
+
+    create_payload = service.route_repository.create.await_args.args[0]
+    assert create_payload["node_id"] == backend.id
+    assert create_payload["entry_node_id"] == entry.id
+    assert create_payload["name"] == "auto-be-main-via-entry-main-reality-google"
 
 
 @pytest.mark.asyncio

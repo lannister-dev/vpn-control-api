@@ -778,6 +778,10 @@
           <button disabled><span class="nav-icon">A</span><span>API Tokens</span></button>
         </section>
         <section class="nav-group">
+          <div class="nav-group-title">Monitoring</div>
+          <button data-tab="probes"><span class="nav-icon">Q</span><span>Probes</span></button>
+        </section>
+        <section class="nav-group">
           <div class="nav-group-title">Utilities</div>
           <button data-tab="ops"><span class="nav-icon">O</span><span>Ops</span></button>
           <button disabled><span class="nav-icon">S</span><span>Subscription Page</span></button>
@@ -1216,16 +1220,41 @@
         </div>
       </section>
 
+      <section id="tab-probes" class="panel">
+        <div class="panel-head">
+          <div class="panel-title">Probe мониторинг</div>
+          <div class="actions">
+            <select id="probes-status" class="select" style="max-width:140px"><option value="">Любой статус</option><option value="failed">Сбой</option><option value="ok">Доступен</option></select>
+            <select id="probes-kind" class="select" style="max-width:160px"><option value="">Любой тип</option><option value="tcp_connect">TCP connect</option><option value="synthetic_vpn">Synthetic VPN</option></select>
+            <select id="probes-source" class="select" style="max-width:160px"><option value="">Все источники</option></select>
+            <input id="probes-search" class="input mono" placeholder="UUID ноды, маршрута, ошибка" style="max-width:200px" />
+            <button id="probes-reload" class="btn btn-primary">Загрузить</button>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div id="probes-meta" class="card muted" style="margin-bottom:10px">Нажмите «Загрузить» для получения probe-сигналов.</div>
+          <div id="probes-summary" style="margin-bottom:10px"></div>
+          <div style="overflow-x:auto">
+            <table>
+              <thead id="probes-head"><tr><th>Источник</th><th>Нода</th><th>Маршрут</th><th>Тип</th><th>Статус</th><th>Latency</th><th>Фаза ошибки</th><th>Ошибка</th><th>Время</th></tr></thead>
+              <tbody id="probes-body"></tbody>
+            </table>
+          </div>
+          <div id="probes-pagination" class="actions" style="margin-top:10px;justify-content:center"></div>
+          <div id="probes-node-summary" style="margin-top:16px"></div>
+        </div>
+      </section>
+
       <section id="tab-ops" class="panel">
         <div class="panel-head"><div class="panel-title">Операции</div><div class="muted">Управление миграциями, route health и probe-политиками</div></div>
         <div class="panel-body two-col">
           <div class="stack">
-            <div class="card ops-card ops-info"><div class="muted">Миграция плейсментов между нодами</div><form id="form-migrate" class="stack"><input class="input mono" name="source_backend_id" placeholder="ID исходной ноды (UUID)" required /><input class="input mono" name="target_backend_id" placeholder="ID целевой ноды (опционально)" /><input class="input" name="last_migration_reason" value="admin_manual" placeholder="Причина миграции" /><button class="btn btn-primary" type="submit">Запустить миграцию</button></form></div>
-            <div class="card ops-card ops-danger"><div class="muted">Авто drain+migrate по probe-сигналам</div><form id="form-probe-auto" class="stack"><div class="row-2"><input class="input" name="source" placeholder="Источник probe (опционально)" /><input class="input mono" name="target_backend_id" placeholder="ID целевой ноды (опционально)" /></div><div class="row-2"><input class="input" name="max_nodes" type="number" min="1" max="200" value="20" /><label class="muted"><input type="checkbox" name="dry_run" checked /> Только проверка (dry run)</label></div><input class="input" name="last_migration_reason" value="probe_auto_failure" placeholder="Причина миграции" /><button class="btn btn-danger" type="submit">Применить probe-политику</button></form></div>
+            <div class="card ops-card ops-info"><div class="muted">Миграция плейсментов между нодами</div><form id="form-migrate" class="stack"><select class="select ops-node-select" name="source_backend_id" required><option value="">Исходная нода...</option></select><select class="select ops-node-select" name="target_backend_id"><option value="">Целевая нода (авто)</option></select><input class="input" name="last_migration_reason" value="admin_manual" placeholder="Причина миграции" /><button class="btn btn-primary" type="submit">Запустить миграцию</button></form></div>
+            <div class="card ops-card ops-danger"><div class="muted">Авто drain+migrate по probe-сигналам</div><form id="form-probe-auto" class="stack"><div class="row-2"><input class="input" name="source" placeholder="Источник probe (опционально)" /><select class="select ops-node-select" name="target_backend_id"><option value="">Целевая нода (авто)</option></select></div><div class="row-2"><input class="input" name="max_nodes" type="number" min="1" max="200" value="20" /><label class="muted"><input type="checkbox" name="dry_run" checked /> Только проверка (dry run)</label></div><input class="input" name="last_migration_reason" value="probe_auto_failure" placeholder="Причина миграции" /><button class="btn btn-danger" type="submit">Применить probe-политику</button><div id="probe-auto-result" class="stack" style="margin-top:8px"></div></form></div>
           </div>
           <div class="stack">
-            <div class="card ops-card ops-warn"><div class="muted">Изменение состояния маршрута</div><form id="form-route-health" class="stack"><input class="input mono" name="route_id" placeholder="ID маршрута (UUID)" required /><select class="select" name="action"><option value="set_healthy">set_healthy</option><option value="set_degraded">set_degraded</option><option value="set_suspected">set_suspected</option><option value="block">block</option><option value="recover">recover</option></select><input class="input" name="cooldown_hours" type="number" min="1" max="72" value="6" placeholder="Cooldown (часы)" /><button class="btn btn-warn" type="submit">Обновить route health</button></form></div>
-            <div class="card ops-card ops-danger"><div class="muted">Ручной drain+migrate одной ноды</div><form id="form-probe-manual" class="stack"><input class="input mono" name="source_backend_id" placeholder="ID исходной ноды (UUID)" required /><input class="input mono" name="target_backend_id" placeholder="ID целевой ноды (опционально)" /><input class="input" name="source" placeholder="Источник probe (опционально)" /><button class="btn btn-danger" type="submit">Drain и migrate</button></form></div>
+            <div class="card ops-card ops-warn"><div class="muted">Изменение состояния маршрута</div><form id="form-route-health" class="stack"><select class="select ops-route-select" name="route_id" required><option value="">Маршрут...</option></select><select class="select" name="action"><option value="set_healthy">set_healthy</option><option value="set_degraded">set_degraded</option><option value="set_suspected">set_suspected</option><option value="block">block</option><option value="recover">recover</option></select><input class="input" name="cooldown_hours" type="number" min="1" max="72" value="6" placeholder="Cooldown (часы)" /><button class="btn btn-warn" type="submit">Обновить route health</button></form></div>
+            <div class="card ops-card ops-danger"><div class="muted">Ручной drain+migrate одной ноды</div><form id="form-probe-manual" class="stack"><select class="select ops-node-select" name="source_backend_id" required><option value="">Исходная нода...</option></select><select class="select ops-node-select" name="target_backend_id"><option value="">Целевая нода (авто)</option></select><input class="input" name="source" placeholder="Источник probe (опционально)" /><button class="btn btn-danger" type="submit">Drain и migrate</button></form></div>
             <div class="row-2"><button id="btn-warmup" class="btn btn-info">Сдвинуть warmup tick</button><button id="btn-cleanup-probe" class="btn btn-ghost">Очистить старые probe-сигналы</button></div>
           </div>
         </div>
@@ -1242,7 +1271,7 @@
     (function () {
       const REFRESH_MS = 15000;
       const TABLE_LIMIT = 500;
-      const TAB_LABELS = { overview: "Home", nodes: "Серверы", transport: "Transport", routes: "Маршруты", placements: "Плейсменты", users: "Пользователи", plans: "Тарифы", subscriptions: "Подписки", traffic: "Трафик", "admin-users": "Админы", ops: "Ops" };
+      const TAB_LABELS = { overview: "Home", nodes: "Серверы", transport: "Transport", routes: "Маршруты", placements: "Плейсменты", users: "Пользователи", plans: "Тарифы", subscriptions: "Подписки", traffic: "Трафик", "admin-users": "Админы", probes: "Probes", ops: "Ops" };
       let sessionAuth = false;
       let csrfToken = null;
 
@@ -1266,6 +1295,8 @@
         routesStatus: $("routes-status"), routesSearch: $("routes-search"), routesReload: $("routes-reload"),
         placementsNode: $("placements-node"), placementsKey: $("placements-key"), placementsDesired: $("placements-desired"), placementsApplied: $("placements-applied"), placementsReload: $("placements-reload"),
         formSubCreate: $("form-sub-create"),
+        probesStatus: $("probes-status"), probesKind: $("probes-kind"), probesSource: $("probes-source"), probesSearch: $("probes-search"), probesReload: $("probes-reload"),
+        probesHead: $("probes-head"), probesBody: $("probes-body"), probesPagination: $("probes-pagination"), probesMeta: $("probes-meta"), probesSummary: $("probes-summary"), probesNodeSummary: $("probes-node-summary"),
         formMigrate: $("form-migrate"), formProbeAuto: $("form-probe-auto"), formRouteHealth: $("form-route-health"), formProbeManual: $("form-probe-manual"),
         btnWarmup: $("btn-warmup"), btnCleanupProbe: $("btn-cleanup-probe"),
         usersSearch: $("users-search"), usersStatus: $("users-status"), usersReload: $("users-reload"), usersCreateBtn: $("users-create-btn"),
@@ -1282,10 +1313,11 @@
         trafficChartContainer: $("traffic-chart-container"), trafficChart: $("traffic-chart"),
         toastContainer: $("toast-container"), confirmModal: $("confirm-modal"),
         navButtons: Array.from(document.querySelectorAll(".nav button[data-tab]")),
-        panels: { overview: $("tab-overview"), nodes: $("tab-nodes"), transport: $("tab-transport"), routes: $("tab-routes"), placements: $("tab-placements"), users: $("tab-users"), plans: $("tab-plans"), subscriptions: $("tab-subscriptions"), traffic: $("tab-traffic"), "admin-users": $("tab-admin-users"), ops: $("tab-ops") },
+        panels: { overview: $("tab-overview"), nodes: $("tab-nodes"), transport: $("tab-transport"), routes: $("tab-routes"), placements: $("tab-placements"), users: $("tab-users"), plans: $("tab-plans"), subscriptions: $("tab-subscriptions"), traffic: $("tab-traffic"), "admin-users": $("tab-admin-users"), probes: $("tab-probes"), ops: $("tab-ops") },
       };
 
       const state = { timer: null, selectedNode: null, status: null, readiness: null, routes: [], placements: [], probes: [], subscriptions: [], subscriptionDevices: [], logs: [], activeTab: "overview", loading: false, users: [], usersTotal: 0, usersLimit: 50, usersOffset: 0, plans: [], trafficKeys: [], trafficTotal: 0, trafficLimit: 50, trafficOffset: 0, trafficHistory: [], trafficHistoryTotal: 0, trafficHistoryLimit: 50, trafficHistoryOffset: 0, trafficHistoryKeyId: null, trafficHistoryKeyData: null, adminUsers: [], adminUsersTotal: 0, transportOverview: null, transportNodes: [], transportNodeDetail: null, outboxItems: [], outboxTotal: 0, outboxOffset: 0, eventsItems: [], eventsTotal: 0, eventsOffset: 0, transportSubTab: "nodes",
+        probesAll: [], probesTotal: 0, probesLimit: 100, probesOffset: 0,
         /* NEW state for redesigned sections */
         subscriptionContext: null, /* { userId, username, telegramId } or null */
         selectedSubscription: null, /* full subscription detail object */
@@ -1328,6 +1360,22 @@
         if (!state.status || !state.status.nodes) return null;
         const n = state.status.nodes.find((x) => x.id === nodeId);
         return n ? n.name : null;
+      }
+      function latestProbeForNode(nodeId) {
+        if (!nodeId) return null;
+        return state.probes.find((p) => p.node_id === nodeId) || null;
+      }
+      function probeChip(nodeId) {
+        const p = latestProbeForNode(nodeId);
+        if (!p) return `<span class="muted" style="font-size:11px">no probe</span>`;
+        const label = p.is_reachable ? "probe ok" : "probe fail";
+        const cls = p.is_reachable ? "ok" : "bad";
+        const extra = p.latency_ms != null && p.is_reachable ? ` ${p.latency_ms}ms` : "";
+        return chip(cls, label + extra);
+      }
+      function latestProbeForRoute(routeId) {
+        if (!routeId) return null;
+        return state.probes.find((p) => p.route_id === routeId) || null;
       }
       function relTime(v) {
         if (!v) return "-";
@@ -1619,6 +1667,7 @@
         if (tab === "admin-users" && state.adminUsers.length === 0) loadAdminUsers().catch((e) => notify("Ошибка загрузки admin users: " + e.message, true));
         if (tab === "transport") loadTransportData().catch((e) => notify("Transport load error: " + e.message, true));
         if (tab === "subscriptions" && state.plans.length === 0) loadPlans().catch(() => {});
+        if (tab === "probes" && state.probesAll.length === 0) loadProbes().catch((e) => notify("Ошибка загрузки probe: " + e.message, true));
       }
 
       function filteredNodes() {
@@ -1677,7 +1726,9 @@
         if (!n) { notify("Сервер не найден", true); return; }
         state.selectedNode = n;
         const g = nodeGeo(n.region);
+        const isEntry = String(n.role || "").toLowerCase() === "whitelist_entry";
         const nodeRoutes = state.routes.filter((r) => r.node_id === n.id || r.entry_node_id === n.id);
+        const entryRoutes = isEntry ? state.routes.filter((r) => r.entry_node_id === n.id) : [];
         const nodePlacementsCount = state.placements.filter((p) => p.backend_node_id === n.id).length;
         const routesHtml = nodeRoutes.length
           ? nodeRoutes.map((r) => {
@@ -1697,12 +1748,19 @@
                 <div class="stat-inline">Geo: <strong>${esc(g.short)}</strong></div>
                 <div class="stat-inline">Role: ${chip(nodeRoleClass(n.role), nodeRoleLabel(n.role))}</div>
               </div>
-              <div style="margin-bottom:8px">${n.is_healthy ? chip("ok", "Здоров") : chip("bad", "Нездоров")} ${n.is_draining ? chip("warn", "Draining") : (!n.is_enabled ? chip("bad", "Отключен") : chip("ok", "Активен"))}</div>
-              <div style="margin-bottom:8px"><div class="muted" style="font-size:11px;margin-bottom:2px">Нагрузка</div>${capacityBar(n.placements_backend, n.capacity)}</div>
+              <div style="margin-bottom:8px">${isEntry ? chip("info", "Relay") : (n.is_healthy ? chip("ok", "Здоров") : chip("bad", "Нездоров"))} ${n.is_draining ? chip("warn", "Draining") : (!n.is_enabled ? chip("bad", "Отключен") : chip("ok", "Активен"))}</div>
+              ${isEntry ? "" : `<div style="margin-bottom:8px"><div class="muted" style="font-size:11px;margin-bottom:2px">Нагрузка</div>${capacityBar(n.placements_backend, n.capacity)}</div>`}
               <div class="mini-kpi-row">
                 <div class="mini-kpi"><div class="mini-kpi-label">Маршруты</div><div class="mini-kpi-value">${nodeRoutes.length}</div></div>
-                <div class="mini-kpi"><div class="mini-kpi-label">Плейсменты</div><div class="mini-kpi-value">${nodePlacementsCount}</div></div>
+                ${isEntry ? "" : `<div class="mini-kpi"><div class="mini-kpi-label">Плейсменты</div><div class="mini-kpi-value">${nodePlacementsCount}</div></div>`}
               </div>
+              ${isEntry && entryRoutes.length ? `<div style="margin-top:8px"><div class="muted" style="font-size:11px;margin-bottom:4px">Upstream бэкенды</div>${entryRoutes.map((r) => { const bName = nodeNameById(r.node_id) || shortId(r.node_id); return '<div style="font-size:12px;margin-bottom:2px">' + esc(r.name) + ' → <strong>' + esc(bName) + '</strong></div>'; }).join("")}</div>` : ""}
+              <div style="margin-top:8px"><div class="muted" style="font-size:11px;margin-bottom:4px">Последний probe</div>${(() => {
+                const np = latestProbeForNode(n.id);
+                if (!np) return '<div class="empty" style="font-size:12px">Нет probe-данных</div>';
+                const s = np.is_reachable ? chip("ok", "OK") : chip("bad", "FAIL");
+                return '<div style="font-size:12px">' + s + (np.latency_ms != null ? ' <span class="mono">' + np.latency_ms + 'ms</span>' : '') + (np.error_phase ? ' ' + chip("warn", np.error_phase) : '') + (np.error ? ' <span class="muted">' + esc(np.error) + '</span>' : '') + '<div class="muted" style="font-size:11px">' + esc(np.source) + ' | ' + fmtDate(np.checked_at) + '</div></div>';
+              })()}</div>
               <div style="margin-top:8px"><div class="muted" style="font-size:11px;margin-bottom:4px">Маршруты</div>${routesHtml}</div>
             </div>
             <div class="form-section"><div class="form-section-title">Конфигурация</div>
@@ -1710,7 +1768,7 @@
               <div class="form-group"><label class="form-label">Region</label><input id="edit-region" class="input" value="${esc(n.region || "")}" /></div>
               <div class="form-group"><label class="form-label">Public domain</label><input id="edit-public-domain" class="input" value="${esc(n.public_domain || "")}" /></div>
               <div class="form-group"><label class="form-label">Reality IP</label><input id="edit-reality-ip" class="input" value="${esc(n.reality_ip || "")}" /></div>
-              <div class="form-group"><label class="form-label">Capacity</label><input id="edit-capacity" class="input" type="number" min="1" max="10000" value="${n.capacity || ""}" /></div>
+              ${isEntry ? "" : `<div class="form-group"><label class="form-label">Capacity</label><input id="edit-capacity" class="input" type="number" min="1" max="10000" value="${n.capacity || ""}" /></div>`}
             </div>
             <div class="form-section"><div class="form-section-title">Действия</div>
               <div class="actions">
@@ -1733,7 +1791,8 @@
           const region = document.getElementById("edit-region").value;
           const publicDomain = document.getElementById("edit-public-domain").value;
           const realityIp = document.getElementById("edit-reality-ip").value;
-          const capacity = document.getElementById("edit-capacity").value;
+          const capacityEl = document.getElementById("edit-capacity");
+          const capacity = capacityEl ? capacityEl.value : "";
           if (role !== (n.role || "backend")) body.role = role;
           if (region !== (n.region || "")) body.region = region;
           if (publicDomain !== (n.public_domain || "")) body.public_domain = publicDomain;
@@ -1755,6 +1814,37 @@
           closeModal();
           runAction(`Node enable ${n.id}`, () => req(`/api/v1/agent/nodes/${encodeURIComponent(n.id)}/enable`, { method: "POST", body: {} })).then(() => refreshAll()).catch(() => {});
         });
+      }
+
+      /* ── Entry node selection modal ──────────────── */
+      function openEntryNodeModal(routeId) {
+        const route = state.routes.find((r) => r.id === routeId);
+        if (!route) { notify("Маршрут не найден", true); return; }
+        const entryNodes = ((state.status && state.status.nodes) || []).filter((n) => String(n.role || "").toLowerCase() === "whitelist_entry");
+        const optionsHtml = [`<div class="entry-option${!route.entry_node_id ? " selected" : ""}" data-entry-id="none" style="padding:8px 12px;border:1px solid var(--line);border-radius:10px;cursor:pointer;margin-bottom:6px;transition:border-color 120ms ease">Без entry (прямое подключение)</div>`].concat(
+          entryNodes.map((en) => {
+            const sel = route.entry_node_id === en.id ? " selected" : "";
+            const g = nodeGeo(en.region);
+            return `<div class="entry-option${sel}" data-entry-id="${esc(en.id)}" style="padding:8px 12px;border:1px solid var(--line);border-radius:10px;cursor:pointer;margin-bottom:6px;transition:border-color 120ms ease"><strong>${esc(en.name)}</strong> <span class="geo"><span class="flag">${esc(g.flag)}</span>${esc(g.country)}</span><div class="muted" style="font-size:11px">${uuidCell(en.id)}</div></div>`;
+          })
+        ).join("");
+        refs.nodeConfigModal.innerHTML = `<div class="modal-overlay"><div class="modal-box">
+          <div class="modal-title">Entry node для "${esc(route.name)}"</div>
+          <div class="modal-body"><div id="entry-options">${optionsHtml}</div></div>
+          <div class="modal-actions"><button class="btn btn-ghost" id="entry-modal-cancel">Отмена</button></div>
+        </div></div>`;
+        const closeModal = () => { refs.nodeConfigModal.innerHTML = ""; };
+        refs.nodeConfigModal.querySelector("#entry-modal-cancel").addEventListener("click", closeModal);
+        refs.nodeConfigModal.querySelector(".modal-overlay").addEventListener("click", (ev) => { if (ev.target === ev.currentTarget) closeModal(); });
+        refs.nodeConfigModal.querySelector("#entry-options").addEventListener("click", (ev) => {
+          const opt = ev.target.closest(".entry-option");
+          if (!opt) return;
+          const entryId = opt.dataset.entryId;
+          const body = { entry_node_id: entryId === "none" ? null : entryId };
+          closeModal();
+          runAction(`Set entry node on route ${shortId(routeId)}`, () => req(`/api/v1/routes/${encodeURIComponent(routeId)}`, { method: "PATCH", body })).then(() => refreshAll()).catch(() => {});
+        });
+        refs.nodeConfigModal.querySelectorAll(".entry-option.selected").forEach((el) => { el.style.borderColor = "rgba(45, 212, 191, 0.6)"; });
       }
 
       /* ── Main render ────────────────────────────── */
@@ -1797,17 +1887,58 @@
         state.routes.forEach((r) => { if (Object.prototype.hasOwnProperty.call(rc, r.health_status)) rc[r.health_status] += 1; });
         refs.routeHealthList.innerHTML = Object.keys(rc).map((s) => `<div class="card">${chip(s === "healthy" ? "ok" : (s === "blocked" ? "bad" : "warn"), routeStatusLabel(s))} <span class="mono">${rc[s]}</span></div>`).join("");
 
-        const fails = state.probes.filter((p) => !p.is_reachable).slice(0, 8);
-        refs.probeFailList.innerHTML = fails.length
-          ? fails.map((p) => `<div class="card">${chip("bad", p.source)} ${uuidCell(p.node_id)}<div class="muted">${esc(p.error || "unreachable")} | ${fmtDate(p.checked_at)}</div></div>`).join("")
+        /* Group probe failures by node */
+        const probeByNode = {};
+        state.probes.forEach((p) => {
+          if (!p.node_id) return;
+          if (!probeByNode[p.node_id]) probeByNode[p.node_id] = { fails: 0, total: 0, consecutive: 0, counting: true, lastError: null, lastChecked: null };
+          const e = probeByNode[p.node_id];
+          e.total++;
+          if (!p.is_reachable) {
+            e.fails++;
+            if (!e.lastError) { e.lastError = p.error || "unreachable"; e.lastChecked = p.checked_at; }
+            if (e.counting) e.consecutive++;
+          } else { e.counting = false; }
+        });
+        const failedNodes = Object.entries(probeByNode).filter(([, v]) => v.fails > 0).sort(([, a], [, b]) => b.consecutive - a.consecutive);
+        refs.probeFailList.innerHTML = failedNodes.length
+          ? failedNodes.slice(0, 10).map(([nodeId, v]) => {
+            const nName = nodeNameById(nodeId) || shortId(nodeId);
+            const consLabel = v.consecutive >= 3 ? chip("bad", v.consecutive + " подряд") : (v.consecutive >= 1 ? chip("warn", v.consecutive + " подряд") : "");
+            return `<div class="card"><strong>${esc(nName)}</strong> ${uuidCell(nodeId)} ${chip("bad", v.fails + "/" + v.total + " failed")} ${consLabel}<div class="muted">${esc(v.lastError)} | ${fmtDate(v.lastChecked)}</div></div>`;
+          }).join("")
           : `<div class="empty">Сбоев probe не найдено.</div>`;
 
-        const alertNodes = ((state.status && state.status.nodes) || []).filter((n) => !n.is_healthy || n.is_draining || !n.is_enabled).slice(0, 10);
-        refs.nodeAlertList.innerHTML = alertNodes.length
-          ? alertNodes.map((n) => { const g = nodeGeo(n.region); return `<div class="card"><div><strong>${esc(n.name)}</strong></div><div class="geo"><span class="flag">${esc(g.flag)}</span>${esc(g.country)}</div><div>${uuidCell(n.id)}</div><div>${n.is_healthy ? "" : chip("bad", "Нездоров")} ${n.is_draining ? chip("warn", "Draining") : ""} ${!n.is_enabled ? chip("bad", "Отключен") : ""}</div></div>`; }).join("")
-          : `<div class="empty">Проблемных серверов не обнаружено.</div>`;
+        const allNodes = (state.status && state.status.nodes) || [];
+        const alertNodes = allNodes.filter((n) => {
+          const isEntry = String(n.role || "").toLowerCase() === "whitelist_entry";
+          if (isEntry) return false;
+          return !n.is_healthy || n.is_draining || !n.is_enabled;
+        }).slice(0, 10);
+        const unusedEntryNodes = allNodes.filter((n) => {
+          if (String(n.role || "").toLowerCase() !== "whitelist_entry") return false;
+          return !state.routes.some((r) => r.entry_node_id === n.id);
+        });
+        const alertHtml = alertNodes.map((n) => { const g = nodeGeo(n.region); return `<div class="card"><div><strong>${esc(n.name)}</strong></div><div class="geo"><span class="flag">${esc(g.flag)}</span>${esc(g.country)}</div><div>${uuidCell(n.id)}</div><div>${n.is_healthy ? "" : chip("bad", "Нездоров")} ${n.is_draining ? chip("warn", "Draining") : ""} ${!n.is_enabled ? chip("bad", "Отключен") : ""}</div></div>`; }).join("");
+        const entryAlertHtml = unusedEntryNodes.map((n) => { const g = nodeGeo(n.region); return `<div class="card"><div><strong>${esc(n.name)}</strong></div><div class="geo"><span class="flag">${esc(g.flag)}</span>${esc(g.country)}</div><div>${uuidCell(n.id)}</div><div>${chip("warn", "Entry без маршрутов")}</div></div>`; }).join("");
+        refs.nodeAlertList.innerHTML = (alertHtml + entryAlertHtml) || `<div class="empty">Проблемных серверов не обнаружено.</div>`;
 
         renderSelectedNode();
+
+        /* Populate ops dropdowns */
+        const opsNodes = ((state.status && state.status.nodes) || []).filter((n) => String(n.role || "").toLowerCase() === "backend");
+        document.querySelectorAll(".ops-node-select").forEach((sel) => {
+          const current = sel.value;
+          const firstOpt = sel.querySelector("option:first-child");
+          const firstLabel = firstOpt ? firstOpt.textContent : "";
+          sel.innerHTML = `<option value="">${esc(firstLabel)}</option>` + opsNodes.map((n) => `<option value="${esc(n.id)}"${n.id === current ? " selected" : ""}>${esc(n.name)} (${esc(shortId(n.id))})</option>`).join("");
+        });
+        document.querySelectorAll(".ops-route-select").forEach((sel) => {
+          const current = sel.value;
+          const firstOpt = sel.querySelector("option:first-child");
+          const firstLabel = firstOpt ? firstOpt.textContent : "";
+          sel.innerHTML = `<option value="">${esc(firstLabel)}</option>` + state.routes.map((r) => `<option value="${esc(r.id)}"${r.id === current ? " selected" : ""}>${esc(r.name)} (${esc(shortId(r.id))})</option>`).join("");
+        });
 
         /* Nodes table */
         const nodeComparators = {
@@ -1823,7 +1954,13 @@
           ? nodes.map((n) => {
             const g = nodeGeo(n.region);
             const routingHint = n.routing_eligible ? `<div class="muted" style="font-size:11px">routing: eligible</div>` : (n.routing_reason ? `<div class="muted" style="font-size:11px">routing: ${esc(routingReasonLabel(n.routing_reason))}</div>` : "");
-            return `<tr><td><strong>${esc(n.name)}</strong> ${chip(nodeRoleClass(n.role), nodeRoleLabel(n.role))}<div>${uuidCell(n.id)}</div>${n.public_domain ? `<div class="mono muted" style="font-size:11px">${esc(n.public_domain)}</div>` : ""}${n.reality_ip ? `<div class="mono muted" style="font-size:11px">reality: ${esc(n.reality_ip)}</div>` : ""}</td><td><div class="geo"><span class="flag">${esc(g.flag)}</span>${esc(g.country)}</div><div class="mono muted">${esc(g.regionText)}</div></td><td>${n.is_healthy ? chip("ok", "Здоров") : chip("bad", "Нездоров")}</td><td>${n.is_draining ? chip("warn", "Draining") : (!n.is_enabled ? chip("bad", "Отключен") : chip("ok", "Активен"))}${routingHint}</td><td>${capacityBar(n.placements_backend, n.capacity)}</td><td><span title="${esc(fmtDate(n.last_seen_at))}">${relTime(n.last_seen_at)}</span></td><td><div class="actions"><button class="btn-mini node-action" data-action="drain" data-id="${esc(n.id)}">Drain</button><button class="btn-mini node-action" data-action="enable" data-id="${esc(n.id)}">Enable</button><button class="btn-mini node-config" data-id="${esc(n.id)}">Настройки</button></div></td></tr>`;
+            const isEntryNode = String(n.role || "").toLowerCase() === "whitelist_entry";
+            const healthCol = isEntryNode ? chip("info", "Relay") : (n.is_healthy ? chip("ok", "Здоров") : chip("bad", "Нездоров"));
+            const nodeProbe = latestProbeForNode(n.id);
+            const probeHint = nodeProbe ? (nodeProbe.is_reachable ? chip("ok", "probe ok" + (nodeProbe.latency_ms != null ? " " + nodeProbe.latency_ms + "ms" : "")) : chip("bad", "probe fail")) : "";
+            const heartbeatCol = isEntryNode ? probeHint || `<span class="muted">no probe</span>` : `<span title="${esc(fmtDate(n.last_seen_at))}">${relTime(n.last_seen_at)}</span>${probeHint ? `<div style="margin-top:2px">${probeHint}</div>` : ""}`;
+            const loadCol = isEntryNode ? `<span class="muted">—</span>` : capacityBar(n.placements_backend, n.capacity);
+            return `<tr><td><strong>${esc(n.name)}</strong> ${chip(nodeRoleClass(n.role), nodeRoleLabel(n.role))}<div>${uuidCell(n.id)}</div>${n.public_domain ? `<div class="mono muted" style="font-size:11px">${esc(n.public_domain)}</div>` : ""}${n.reality_ip ? `<div class="mono muted" style="font-size:11px">reality: ${esc(n.reality_ip)}</div>` : ""}</td><td><div class="geo"><span class="flag">${esc(g.flag)}</span>${esc(g.country)}</div><div class="mono muted">${esc(g.regionText)}</div></td><td>${healthCol}</td><td>${n.is_draining ? chip("warn", "Draining") : (!n.is_enabled ? chip("bad", "Отключен") : chip("ok", "Активен"))}${routingHint}</td><td>${loadCol}</td><td>${heartbeatCol}</td><td><div class="actions"><button class="btn-mini node-action" data-action="drain" data-id="${esc(n.id)}">Drain</button><button class="btn-mini node-action" data-action="enable" data-id="${esc(n.id)}">Enable</button><button class="btn-mini node-config" data-id="${esc(n.id)}">Настройки</button></div></td></tr>`;
           }).join("")
           : `<tr><td colspan="7" class="empty">Нет серверов по текущим фильтрам.</td></tr>`;
 
@@ -1841,8 +1978,10 @@
             const nName = nodeNameById(r.node_id);
             const entryName = nodeNameById(r.entry_node_id);
             const routeHint = r.routing_eligible ? `<div class="muted" style="font-size:11px">routing: eligible</div>` : (r.routing_reason ? `<div class="muted" style="font-size:11px">routing: ${esc(routeReasonLabel(r.routing_reason))}</div>` : "");
+            const rProbe = latestProbeForRoute(r.id);
+            const routeProbeHint = rProbe ? (rProbe.is_reachable ? `<div style="margin-top:2px">${chip("ok", "probe ok" + (rProbe.latency_ms != null ? " " + rProbe.latency_ms + "ms" : ""))}</div>` : `<div style="margin-top:2px">${chip("bad", "probe fail" + (rProbe.error_phase ? " @ " + rProbe.error_phase : ""))}</div>`) : "";
             const entryHtml = r.entry_node_id ? `<div class="muted" style="font-size:11px">entry: ${entryName ? esc(entryName) + " " : ""}${uuidCell(r.entry_node_id)}</div>` : `<div class="muted" style="font-size:11px">entry: -</div>`;
-            return `<tr><td><strong>${esc(r.name)}</strong><div>${uuidCell(r.id)}</div></td><td>${nName ? `<strong>${esc(nName)}</strong> ` : ""}${uuidCell(r.node_id)}${entryHtml}</td><td>${r.health_status === "healthy" ? chip("ok", routeStatusLabel(r.health_status)) : (r.health_status === "blocked" ? chip("bad", routeStatusLabel(r.health_status)) : chip("warn", routeStatusLabel(r.health_status)))}${routeHint}</td><td class="mono">${esc(r.effective_weight)} / ${esc(r.base_weight)}</td><td class="mono">${esc(r.warmup_stage == null ? "-" : r.warmup_stage)}</td><td><div class="actions"><button class="btn-mini route-action" data-id="${esc(r.id)}" data-action="set_healthy">Healthy</button><button class="btn-mini route-action" data-id="${esc(r.id)}" data-action="set_degraded">Degrade</button><button class="btn-mini route-action" data-id="${esc(r.id)}" data-action="block">Block</button></div></td></tr>`;
+            return `<tr><td><strong>${esc(r.name)}</strong><div>${uuidCell(r.id)}</div></td><td>${nName ? `<strong>${esc(nName)}</strong> ` : ""}${uuidCell(r.node_id)}${entryHtml}</td><td>${r.health_status === "healthy" ? chip("ok", routeStatusLabel(r.health_status)) : (r.health_status === "blocked" ? chip("bad", routeStatusLabel(r.health_status)) : chip("warn", routeStatusLabel(r.health_status)))}${routeHint}${routeProbeHint}</td><td class="mono">${esc(r.effective_weight)} / ${esc(r.base_weight)}</td><td class="mono">${esc(r.warmup_stage == null ? "-" : r.warmup_stage)}</td><td><div class="actions"><button class="btn-mini route-action" data-id="${esc(r.id)}" data-action="set_healthy">Healthy</button><button class="btn-mini route-action" data-id="${esc(r.id)}" data-action="set_degraded">Degrade</button><button class="btn-mini route-action" data-id="${esc(r.id)}" data-action="block">Block</button><button class="btn-mini btn-info route-entry" data-id="${esc(r.id)}">Entry</button></div></td></tr>`;
           }).join("")
           : `<tr><td colspan="6" class="empty">Нет маршрутов по фильтрам.</td></tr>`;
 
@@ -1962,6 +2101,121 @@
         </div>`;
       }
 
+      /* ── Probes tab ─────────────────────────────── */
+      async function loadProbes() {
+        const params = new URLSearchParams();
+        params.set("limit", String(state.probesLimit));
+        const nodeFilter = refs.probesSearch.value.trim();
+        if (nodeFilter && nodeFilter.match(/^[0-9a-f-]{36}$/i)) params.set("node_id", nodeFilter);
+        const sourceFilter = refs.probesSource.value;
+        if (sourceFilter) params.set("source", sourceFilter);
+        const data = await req(`/api/v1/probe/reports/recent?${params}`);
+        state.probesAll = Array.isArray(data) ? data : (data.items || []);
+        state.probesTotal = state.probesAll.length;
+        populateProbeSourceFilter();
+        renderProbes();
+      }
+
+      function populateProbeSourceFilter() {
+        const sources = new Set();
+        state.probesAll.forEach((p) => { if (p.source) sources.add(p.source); });
+        const current = refs.probesSource.value;
+        const opts = [`<option value="">Все источники</option>`].concat(
+          [...sources].sort().map((s) => `<option value="${esc(s)}"${s === current ? " selected" : ""}>${esc(s)}</option>`)
+        );
+        refs.probesSource.innerHTML = opts.join("");
+      }
+
+      function filteredProbes() {
+        const statusF = refs.probesStatus.value;
+        const kindF = refs.probesKind.value;
+        const q = refs.probesSearch.value.trim().toLowerCase();
+        return state.probesAll.filter((p) => {
+          if (statusF === "failed" && p.is_reachable) return false;
+          if (statusF === "ok" && !p.is_reachable) return false;
+          if (kindF && p.probe_kind !== kindF) return false;
+          if (q && !q.match(/^[0-9a-f-]{36}$/i)) {
+            const hay = [p.source, p.node_id, p.route_id, p.error, p.target_host, p.transport_kind, p.error_phase].join(" ").toLowerCase();
+            if (!hay.includes(q)) return false;
+          }
+          return true;
+        });
+      }
+
+      const probeComparators = {
+        source: (a, b) => (a.source || "").localeCompare(b.source || ""),
+        node: (a, b) => (nodeNameById(a.node_id) || a.node_id || "").localeCompare(nodeNameById(b.node_id) || b.node_id || ""),
+        status: (a, b) => (a.is_reachable === b.is_reachable ? 0 : a.is_reachable ? -1 : 1),
+        latency: (a, b) => ((a.latency_ms || 0) - (b.latency_ms || 0)),
+        time: (a, b) => (new Date(a.checked_at || 0).getTime() - new Date(b.checked_at || 0).getTime()),
+      };
+
+      function renderProbes() {
+        const all = state.probesAll;
+        const failCount = all.filter((p) => !p.is_reachable).length;
+        const okCount = all.filter((p) => p.is_reachable).length;
+        const sources = new Set(all.map((p) => p.source));
+        refs.probesMeta.innerHTML = `${chip("info", "всего: " + all.length)} ${chip("ok", "доступных: " + okCount)} ${chip("bad", "сбоев: " + failCount)} ${chip("warn", "источников: " + sources.size)}`;
+
+        /* Node summary — group failures by node, show consecutive failures */
+        const nodeFailMap = {};
+        all.forEach((p) => {
+          if (!p.node_id) return;
+          if (!nodeFailMap[p.node_id]) nodeFailMap[p.node_id] = { total: 0, fails: 0, consecutive: 0, counting: true, lastFail: null, latencies: [] };
+          const entry = nodeFailMap[p.node_id];
+          entry.total++;
+          if (p.latency_ms != null && p.is_reachable) entry.latencies.push(p.latency_ms);
+          if (!p.is_reachable) {
+            entry.fails++;
+            if (!entry.lastFail) entry.lastFail = p;
+            if (entry.counting) entry.consecutive++;
+          } else {
+            entry.counting = false;
+          }
+        });
+        const problemNodes = Object.entries(nodeFailMap)
+          .filter(([, v]) => v.fails > 0)
+          .sort(([, a], [, b]) => b.consecutive - a.consecutive);
+        if (problemNodes.length) {
+          refs.probesNodeSummary.innerHTML = `<div class="card"><div class="card-title"><span class="card-icon red">\u2718</span> Проблемные ноды по probe</div><div class="stack">${problemNodes.map(([nodeId, v]) => {
+            const nName = nodeNameById(nodeId) || shortId(nodeId);
+            const avgLat = v.latencies.length ? Math.round(v.latencies.reduce((a, b) => a + b, 0) / v.latencies.length) : null;
+            const consChip = v.consecutive >= 3 ? chip("bad", v.consecutive + " подряд") : (v.consecutive >= 1 ? chip("warn", v.consecutive + " подряд") : "");
+            return `<div style="display:flex;align-items:center;gap:8px;font-size:12px"><strong>${esc(nName)}</strong> ${uuidCell(nodeId)} ${chip("bad", v.fails + "/" + v.total + " failed")} ${consChip}${avgLat !== null ? ` <span class="muted">avg ${avgLat}ms</span>` : ""}${v.lastFail && v.lastFail.error ? ` <span class="muted" style="font-size:11px">${esc(v.lastFail.error)}</span>` : ""}</div>`;
+          }).join("")}</div></div>`;
+        } else {
+          refs.probesNodeSummary.innerHTML = "";
+        }
+
+        refs.probesHead.innerHTML = `<tr>${sortTh("probes", "source", "Источник")}${sortTh("probes", "node", "Нода")}<th>Маршрут</th><th>Тип</th>${sortTh("probes", "status", "Статус")}${sortTh("probes", "latency", "Latency")}<th>Фаза ошибки</th><th>Ошибка</th>${sortTh("probes", "time", "Время")}</tr>`;
+        const filtered = filteredProbes();
+        const page = filtered.slice(state.probesOffset, state.probesOffset + state.probesLimit);
+        const sorted = sortedBy(page, "probes", probeComparators);
+        refs.probesBody.innerHTML = sorted.length
+          ? sorted.map((p) => {
+            const nName = nodeNameById(p.node_id);
+            const rName = p.route_id ? (state.routes.find((r) => r.id === p.route_id) || {}).name : null;
+            const statusChip = p.is_reachable ? chip("ok", "OK") : chip("bad", "FAIL");
+            const kindLabel = p.probe_kind === "synthetic_vpn" ? "Synthetic VPN" : "TCP connect";
+            const transportChip = p.transport_kind ? chip("info", p.transport_kind) : "";
+            const latency = p.latency_ms != null ? `<span class="mono">${p.latency_ms}ms</span>` : `<span class="muted">-</span>`;
+            const errorPhase = p.error_phase ? chip("warn", p.error_phase) : `<span class="muted">-</span>`;
+            const rowStyle = p.is_reachable ? "" : ' style="background:rgba(255,127,133,0.04)"';
+            return `<tr${rowStyle}><td>${chip("info", p.source)}</td><td>${nName ? `<strong>${esc(nName)}</strong> ` : ""}${uuidCell(p.node_id)}</td><td>${rName ? `${esc(rName)} ` : ""}${p.route_id ? uuidCell(p.route_id) : '<span class="muted">node-scope</span>'}</td><td>${esc(kindLabel)} ${transportChip}</td><td>${statusChip}</td><td>${latency}</td><td>${errorPhase}</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(p.error || "")}">${p.error ? `<span style="font-size:11px">${esc(p.error)}</span>` : '<span class="muted">-</span>'}</td><td><span title="${esc(fmtDate(p.checked_at))}">${relTime(p.checked_at)}</span></td></tr>`;
+          }).join("")
+          : `<tr><td colspan="9" class="empty">Нет probe-сигналов по фильтрам.</td></tr>`;
+        renderPagination(refs.probesPagination, filtered.length, state.probesLimit, state.probesOffset, (page) => {
+          state.probesOffset = page * state.probesLimit;
+          renderProbes();
+        });
+      }
+
+      refs.probesReload.addEventListener("click", () => { state.probesOffset = 0; loadProbes().catch((e) => notify("Ошибка загрузки probe: " + e.message, true)); });
+      refs.probesSearch.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); refs.probesReload.click(); } });
+      refs.probesStatus.addEventListener("change", () => { state.probesOffset = 0; renderProbes(); });
+      refs.probesKind.addEventListener("change", () => { state.probesOffset = 0; renderProbes(); });
+      refs.probesSource.addEventListener("change", () => { state.probesOffset = 0; refs.probesReload.click(); });
+
       /* ── RefreshAll + Timer (unchanged) ─────────── */
       async function refreshAll(fullRefresh) {
         if (fullRefresh === undefined) fullRefresh = true;
@@ -1978,6 +2232,7 @@
           }
           if (fullRefresh || tab === "routes" || tab === "overview") fetches.push(req("/api/v1/routes?limit=500").then((r) => { state.routes = r; }));
           if (fullRefresh || tab === "overview" || tab === "ops") fetches.push(req("/api/v1/probe/reports/recent?limit=60").then((p) => { state.probes = p; }));
+          if (tab === "probes" && state.probesAll.length > 0) fetches.push(loadProbes().catch(() => {}));
           if (fullRefresh || tab === "placements") fetches.push(req("/api/v1/placements?limit=500").then((p) => { state.placements = p; }));
           if (tab === "users" && state.users.length > 0) fetches.push(loadUsers().catch(() => {}));
           if (tab === "traffic" && state.trafficKeys.length > 0) fetches.push(loadTrafficKeys().catch(() => {}));
@@ -2385,6 +2640,8 @@
 
       refs.routesBody.addEventListener("click", async (ev) => {
         const t = ev.target; if (!(t instanceof HTMLElement)) return;
+        const entryBtn = t.closest(".route-entry");
+        if (entryBtn && entryBtn.dataset.id) { openEntryNodeModal(entryBtn.dataset.id); return; }
         const b = t.closest(".route-action"); if (!b || !b.dataset.id || !b.dataset.action) return;
         const action = b.dataset.action;
         if (action === "block") { const ok = await confirmAction("Блокировка маршрута", `Заблокировать маршрут ${shortId(b.dataset.id)}...?`); if (!ok) return; }
@@ -2407,7 +2664,17 @@
         const payload = { source: String(d.get("source") || "").trim() || null, require_recent_failure: true, max_probe_age_sec: 600, min_consecutive_failures: 2, include_already_draining: false, dry_run: d.get("dry_run") === "on", max_nodes: Number(d.get("max_nodes") || 20), last_migration_reason: String(d.get("last_migration_reason") || "probe_auto_failure").trim() || "probe_auto_failure" };
         const t = String(d.get("target_backend_id") || "").trim(); if (t) payload.target_backend_id = t;
         const ok = await confirmAction("Probe auto-политика", `Применить автоматическую drain+migrate политику?${payload.dry_run ? " (dry run)" : " \u26A0 БОЕВОЙ РЕЖИМ"}`, payload.dry_run ? "btn-warn" : "btn-danger"); if (!ok) return;
-        runAction("Probe auto policy", () => req("/api/v1/probe/admin/auto-drain-migrate-backends", { method: "POST", body: payload })).then(() => refreshAll()).catch(() => {});
+        runAction("Probe auto policy", () => req("/api/v1/probe/admin/auto-drain-migrate-backends", { method: "POST", body: payload })).then((result) => {
+          if (result && result.items) {
+            const resEl = $("probe-auto-result");
+            resEl.innerHTML = `<div class="card" style="font-size:12px">${chip("info", "processed: " + result.processed)} ${chip("ok", "migrated: " + result.migrated)} ${chip("warn", "skipped: " + result.skipped)}${result.dry_run ? " " + chip("warn", "dry run") : ""}<div class="stack" style="margin-top:6px">${result.items.map((it) => {
+              const nName = nodeNameById(it.source_backend_id) || shortId(it.source_backend_id);
+              const actionCls = it.action === "migrated" ? "ok" : (it.action === "would_migrate" ? "warn" : "info");
+              return `<div>${esc(nName)} ${chip(actionCls, it.action)}${it.detail ? ` <span class="muted">${esc(it.detail)}</span>` : ""}${it.migrated_count ? ` (${it.migrated_count} placements)` : ""}</div>`;
+            }).join("")}</div></div>`;
+          }
+          refreshAll();
+        }).catch(() => {});
       });
       refs.formRouteHealth.addEventListener("submit", async (e) => {
         e.preventDefault();

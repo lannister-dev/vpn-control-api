@@ -103,6 +103,10 @@ class ArtifactRoutesBootstrapIn(BaseModel):
         default=None,
         description="Optional explicit list of node ids to bootstrap.",
     )
+    entry_node_ids: list[UUID] | None = Field(
+        default=None,
+        description="whitelist entry node ids for first-hop routes.",
+    )
     include_reality_tcp: bool = True
     include_ws_tls: bool = False
     default_reality_port: int = Field(default=443, ge=1, le=65535)
