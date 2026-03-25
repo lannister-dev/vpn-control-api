@@ -621,11 +621,16 @@ async def test_build_payload_merges_multiple_transports(service):
 
     payload, etag, not_modified = await service.build_payload(raw_token="tok", hwid="hwid-1")
 
-    assert payload.splitlines() == [
-        "vless://fr-reality#France%20Reality",
-        "vless://fr-ws#France%20WS",
-        "vless://fi-ws#Finland%20WS",
-    ]
+    lines = payload.splitlines()
+    assert len(lines) == 3
+    # France has 2 routes (reality + ws) → numbered
+    assert "fr-reality" in lines[0]
+    assert "France%201" in lines[0]
+    assert "fr-ws" in lines[1]
+    assert "France%202" in lines[1]
+    # Finland has 1 route → no number
+    assert "fi-ws" in lines[2]
+    assert "Finland" in lines[2]
     assert etag
     assert not not_modified
 
@@ -703,7 +708,7 @@ async def test_load_device_bundle_returns_empty_without_bindings(service):
     assert bundle.keys == ()
 
 
-def test_merge_transport_routes_deduplicates_country_transport_pairs(service):
+def test_merge_transport_routes_numbers_same_country_backends(service):
     route = MagicMock()
     route.id = uuid4()
     route.effective_weight = 50
@@ -713,7 +718,7 @@ def test_merge_transport_routes_deduplicates_country_transport_pairs(service):
     node_2.id = uuid4()
     tp = _make_transport_profile(network="tcp", security="reality")
     key = _make_bundle("reality").keys[0]
-    duplicated = ResolvedSubscriptionRoute(
+    route_1 = ResolvedSubscriptionRoute(
         route_id=uuid4(),
         backend_node_id=node.id,
         vpn_key_id=key.vpn_key_id,
@@ -723,19 +728,19 @@ def test_merge_transport_routes_deduplicates_country_transport_pairs(service):
         transport_network="tcp",
         country_code="FR",
         country_name="France",
-        display_name="France Reality",
+        display_name="\U0001f1eb\U0001f1f7 France Reality",
         preferred_backend=True,
         selection_rank=0,
-        uri="vless://fr-reality#France%20Reality",
+        uri="vless://fr-reality#%F0%9F%87%AB%F0%9F%87%B7%20France%20Reality",
         route=route,
         node=node,
         transport_profile=tp,
     )
-    duplicate_same_country_transport = duplicated.model_copy(
+    route_2 = route_1.model_copy(
         update={
             "route_id": uuid4(),
             "backend_node_id": node_2.id,
-            "uri": "vless://fr-reality-2#France%20Reality",
+            "uri": "vless://fr-reality-2#%F0%9F%87%AB%F0%9F%87%B7%20France%20Reality",
             "preferred_backend": False,
             "node": node_2,
         }
@@ -746,14 +751,18 @@ def test_merge_transport_routes_deduplicates_country_transport_pairs(service):
         transport_results=[
             TransportBuildResult(
                 key=key,
-                routes=(duplicated, duplicate_same_country_transport),
+                routes=(route_1, route_2),
                 placement_signature="reality:1",
                 diagnostic_reason=None,
             )
         ],
     )
 
-    assert merged == [duplicated]
+    assert len(merged) == 2
+    assert "1" in merged[0].display_name
+    assert "2" in merged[1].display_name
+    assert "WL" not in merged[0].display_name
+    assert "WL" not in merged[1].display_name
 
 
 def test_route_selector_limits_size_and_keeps_fallback_diversity(service):

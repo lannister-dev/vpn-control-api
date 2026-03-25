@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import time
+import urllib.parse
 from datetime import datetime, timedelta, timezone
 from typing import Iterable
 from uuid import UUID, uuid4
@@ -646,7 +647,7 @@ class SubscriptionService:
 
         resolved_routes: list[ResolvedSubscriptionRoute] = []
         seen_uris: set[str] = set()
-        seen_logical_keys: set[tuple[str | None, str]] = set()
+        seen_logical_keys: set[tuple] = set()
         for route, node, transport_profile in route_rows:
             backend_node_id = self._as_uuid(node.id)
             if backend_node_id not in allowed_backend_ids:
@@ -664,23 +665,24 @@ class SubscriptionService:
                 continue
 
             country_code, country_name = self._country_info_for_region(node.region)
+            is_entry = entry_node is not None
             logical_key = self._route_country_transport_key(
                 country_code=country_code,
                 region=node.region,
                 transport=key.transport,
+                is_entry_route=is_entry,
+                backend_node_id=backend_node_id,
             )
             if logical_key in seen_logical_keys:
                 continue
 
+            display = format_node_display_name(node_name=str(node.name), region=node.region)
             uri = self._build_route_uri(
                 client_id=key.client_id,
                 backend_node=node,
                 public_node=entry_node,
                 transport_profile=transport_profile,
-                remark_override=self._format_subscription_route_name(
-                    node=entry_node or node,
-                    transport=key.transport,
-                ),
+                remark_override=display,
             )
             if uri is None or uri in seen_uris:
                 continue
@@ -698,7 +700,8 @@ class SubscriptionService:
                     transport_network=transport_network,
                     country_code=country_code,
                     country_name=country_name,
-                    display_name=self._format_subscription_route_name(node=entry_node or node, transport=key.transport),
+                    display_name=display,
+                    is_entry_route=is_entry,
                     preferred_backend=backend_node_id == selected_backend_id,
                     selection_rank=len(resolved_routes),
                     uri=uri,
@@ -736,13 +739,15 @@ class SubscriptionService:
     ) -> list[ResolvedSubscriptionRoute]:
         merged: list[ResolvedSubscriptionRoute] = []
         seen_uris: set[str] = set()
-        seen_logical_keys: set[tuple[str | None, str]] = set()
+        seen_logical_keys: set[tuple] = set()
         for result in transport_results:
             for route in result.routes:
                 logical_key = self._route_country_transport_key(
                     country_code=route.country_code,
                     region=getattr(route.node, "region", None),
                     transport=route.vpn_transport,
+                    is_entry_route=route.is_entry_route,
+                    backend_node_id=route.backend_node_id,
                 )
                 if route.uri in seen_uris or logical_key in seen_logical_keys:
                     continue
@@ -750,13 +755,14 @@ class SubscriptionService:
                 seen_logical_keys.add(logical_key)
                 merged.append(route)
 
-        return sorted(
+        sorted_routes = sorted(
             merged,
             key=lambda item: self._presentation_sort_key(
                 route=item,
                 preferred_region=subscription.preferred_region,
             ),
         )
+        return self._number_routes_display(sorted_routes)
 
     def _presentation_sort_key(
             self,
@@ -769,6 +775,7 @@ class SubscriptionService:
         country_name = route.country_name or (route.country_code or "Unknown")
         weight = getattr(route.route, "effective_weight", 0)
         return (
+            1 if route.is_entry_route else 0,
             0 if preferred_region_norm and region == preferred_region_norm else 1,
             country_name,
             self._transport_priority(route.vpn_transport),
@@ -800,13 +807,59 @@ class SubscriptionService:
             country_code: str | None,
             region: str | None,
             transport: str,
-    ) -> tuple[str | None, str]:
+            is_entry_route: bool = False,
+            backend_node_id: UUID | None = None,
+    ) -> tuple:
         location_key = country_code or ((region or "").strip().lower() or None)
-        return location_key, self._normalize_transport_value(transport)
+        norm_transport = self._normalize_transport_value(transport)
+        if is_entry_route:
+            return (location_key, norm_transport, True, "entry")
+        return (location_key, norm_transport, False, str(backend_node_id) if backend_node_id else "")
 
-    def _format_subscription_route_name(self, *, node: VpnNode, transport: str) -> str:
-        base = format_node_display_name(node_name=str(node.name), region=node.region)
-        return f"{base} {self._transport_label(transport)}"
+    def _number_routes_display(
+            self,
+            routes: list[ResolvedSubscriptionRoute],
+    ) -> list[ResolvedSubscriptionRoute]:
+        from collections import defaultdict
+
+        groups: dict[str | None, list[int]] = defaultdict(list)
+        for idx, route in enumerate(routes):
+            groups[route.country_code].append(idx)
+
+        for _cc, indices in groups.items():
+            direct_indices = [i for i in indices if not routes[i].is_entry_route]
+            entry_indices = [i for i in indices if routes[i].is_entry_route]
+            needs_number = len(direct_indices) > 1 or (direct_indices and entry_indices)
+
+            if needs_number:
+                for seq, i in enumerate(direct_indices, start=1):
+                    route = routes[i]
+                    base = format_node_display_name(
+                        node_name=str(route.node.name), region=route.node.region,
+                    )
+                    new_name = f"{base} {seq}"
+                    routes[i] = route.model_copy(update={
+                        "display_name": new_name,
+                        "uri": self._update_uri_remark(route.uri, new_name),
+                    })
+
+            for i in entry_indices:
+                route = routes[i]
+                base = format_node_display_name(
+                    node_name=str(route.node.name), region=route.node.region,
+                )
+                new_name = f"{base} WL"
+                routes[i] = route.model_copy(update={
+                    "display_name": new_name,
+                    "uri": self._update_uri_remark(route.uri, new_name),
+                })
+
+        return routes
+
+    @staticmethod
+    def _update_uri_remark(uri: str, new_remark: str) -> str:
+        base, _, _ = uri.partition("#")
+        return f"{base}#{urllib.parse.quote(new_remark)}"
 
     @staticmethod
     def _transport_label(transport: str) -> str:

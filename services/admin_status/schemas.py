@@ -11,6 +11,7 @@ class AdminNodeStatusOut(BaseModel):
     region: str
     public_domain: str
     reality_ip: str | None = None
+    upstream_node_id: UUID | None = None
     is_enabled: bool
     is_draining: bool
     capacity: int
