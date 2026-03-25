@@ -27,6 +27,7 @@ router = APIRouter(prefix="/agent", tags=["Node Agent"])
 )
 async def initial(wg_request: Request,
                   x_node_key: str | None = Header(default=None, alias="X-Node-Key"),
+                  x_node_role: str | None = Header(default=None, alias="X-Node-Role"),
                   x_agent_instance_id: UUID | None = Header(default=None, alias="X-Agent-Instance-ID"),
                   service: VpnNodeService = Depends(get_vpn_node_service)):
     """
@@ -46,7 +47,7 @@ async def initial(wg_request: Request,
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot determine source IP",
         )
-    if not x_node_key or not x_node_key.strip():
+    if not x_node_key or not x_node_key:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="X-Node-Key header required",
@@ -56,11 +57,20 @@ async def initial(wg_request: Request,
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="X-Agent-Instance-ID header required",
         )
+    normalized_node_role = None
+    if x_node_role is not None:
+        normalized_node_role = x_node_role
+        if normalized_node_role not in {"backend", "whitelist_entry"}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="X-Node-Role must be backend or whitelist_entry",
+            )
 
     try:
         return await service.initial(
             source_ip=source_ip,
             node_key=x_node_key,
+            node_role=normalized_node_role,
             agent_instance_id=x_agent_instance_id,
         )
     except NodeBootstrapConflictError as exc:

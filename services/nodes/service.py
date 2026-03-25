@@ -41,6 +41,8 @@ class NodeBootstrapConflictError(ValueError):
 class VpnNodeService:
     _HEARTBEAT_DETAILS_KEY = "heartbeat"
     _DRAIN_REASON_UNHEALTHY_HEARTBEAT = "unhealthy_heartbeat"
+    _DEFAULT_BOOTSTRAP_NODE_ROLE = "backend"
+    _ALLOWED_BOOTSTRAP_NODE_ROLES = {"backend", "whitelist_entry"}
 
     def __init__(self, session: AsyncSession):
         self.vpn_node_repository = (
@@ -71,6 +73,7 @@ class VpnNodeService:
             *,
             source_ip: str,
             node_key: str,
+            node_role: str | None,
             agent_instance_id: UUID,
     ) -> NodeAgentInitialOut:
         """
@@ -84,6 +87,7 @@ class VpnNodeService:
         normalized_node_key = node_key.strip()
         if not normalized_node_key:
             raise ValueError("node_key cannot be empty")
+        normalized_node_role = self._normalize_bootstrap_node_role(node_role)
         node = await self.vpn_node_repository.get_by_node_key(normalized_node_key)
         if node is None:
             same_ip_nodes = await self.vpn_node_repository.list_by_internal_ip(source_ip=source_ip)
@@ -121,6 +125,7 @@ class VpnNodeService:
                 )
             create_schema = VpnNodeCreate(
                 name=f"node-{source_ip.replace('.', '-')}",
+                role=normalized_node_role,
                 region="unknown",
                 public_domain="",
                 internal_wg_ip=source_ip,
@@ -150,6 +155,14 @@ class VpnNodeService:
             agent_instance_id=str(agent_instance_id),
             full_resync_required=True,
         )
+
+    def _normalize_bootstrap_node_role(self, node_role: str | None) -> str:
+        if node_role is None:
+            return self._DEFAULT_BOOTSTRAP_NODE_ROLE
+        normalized = node_role
+        if normalized in self._ALLOWED_BOOTSTRAP_NODE_ROLES:
+            return normalized
+        return self._DEFAULT_BOOTSTRAP_NODE_ROLE
 
     async def handle_heartbeat(
             self,
