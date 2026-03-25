@@ -28,6 +28,7 @@ async def test_initial_with_agent_instance_issues_identity_token_without_node_ro
     out = await service.initial(
         source_ip="10.0.1.180",
         node_key="node-180",
+        node_role=None,
         agent_instance_id=agent_instance_id,
     )
 
@@ -58,6 +59,7 @@ async def test_initial_strict_mode_creates_node_by_node_key(async_session):
     out = await service.initial(
         source_ip="10.0.1.180",
         node_key="node-180",
+        node_role=None,
         agent_instance_id=agent_instance_id,
     )
 
@@ -87,6 +89,7 @@ async def test_initial_with_node_key_does_not_merge_into_different_key_node(asyn
     out = await service.initial(
         source_ip="10.0.1.180",
         node_key="node-b",
+        node_role=None,
         agent_instance_id=uuid4(),
     )
 
@@ -115,6 +118,7 @@ async def test_initial_recovers_existing_node_by_source_ip(async_session):
     out = await service.initial(
         source_ip="10.0.1.180",
         node_key="new-node-key",
+        node_role=None,
         agent_instance_id=uuid4(),
     )
 
@@ -143,6 +147,7 @@ async def test_initial_recovery_ambiguous_source_ip_raises_conflict(async_sessio
         await service.initial(
             source_ip="10.0.1.180",
             node_key="new-node-key",
+            node_role=None,
             agent_instance_id=uuid4(),
         )
 
@@ -167,7 +172,34 @@ async def test_initial_with_create_disabled_raises_conflict(async_session):
         await service.initial(
             source_ip="10.0.1.180",
             node_key="new-node-key",
+            node_role=None,
             agent_instance_id=uuid4(),
         )
 
     service.vpn_node_repository.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_initial_auto_create_uses_entry_role_when_requested(async_session):
+    service = VpnNodeService(async_session)
+    created_node = SimpleNamespace(id=uuid4())
+    agent_instance_id = uuid4()
+    service.vpn_node_repository = SimpleNamespace(
+        get_by_node_key=AsyncMock(return_value=None),
+        list_by_internal_ip=AsyncMock(return_value=[]),
+        update_by_id=AsyncMock(),
+        create=AsyncMock(return_value=created_node),
+    )
+    service.node_agent_identity_repository = SimpleNamespace(
+        upsert_token=AsyncMock(),
+    )
+
+    await service.initial(
+        source_ip="10.0.1.180",
+        node_key="entry-node-key",
+        node_role="whitelist_entry",
+        agent_instance_id=agent_instance_id,
+    )
+
+    create_payload = service.vpn_node_repository.create.await_args.args[0]
+    assert create_payload["role"] == "whitelist_entry"
