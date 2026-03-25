@@ -1,8 +1,9 @@
+import asyncio
 import json
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -248,3 +249,69 @@ async def test_handle_sync_report_unknown_node_publishes_error_ack(monkeypatch):
     assert publish_kwargs["payload"]["error"] == "unknown_node"
 
 
+@pytest.mark.asyncio
+async def test_runtime_acquires_singleton_leader_lock(monkeypatch):
+    runtime = _runtime()
+    connection = SimpleNamespace(
+        execute=AsyncMock(return_value=SimpleNamespace(scalar=lambda: True)),
+        close=AsyncMock(),
+    )
+    engine = SimpleNamespace(connect=AsyncMock(return_value=connection))
+    monkeypatch.setattr("services.nodes.agent.runtime.AsyncDatabase.engine", engine)
+
+    acquired = await runtime._try_acquire_leader_lock()
+
+    assert acquired is True
+    assert runtime._leader_connection is connection
+    connection.close.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_runtime_releases_connection_when_leader_lock_busy(monkeypatch):
+    runtime = _runtime()
+    connection = SimpleNamespace(
+        execute=AsyncMock(return_value=SimpleNamespace(scalar=lambda: False)),
+        close=AsyncMock(),
+    )
+    engine = SimpleNamespace(connect=AsyncMock(return_value=connection))
+    monkeypatch.setattr("services.nodes.agent.runtime.AsyncDatabase.engine", engine)
+
+    acquired = await runtime._try_acquire_leader_lock()
+
+    assert acquired is False
+    assert runtime._leader_connection is None
+    connection.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_runtime_stays_standby_without_leader_lock(monkeypatch):
+    runtime = _runtime()
+    runtime._running = True
+    runtime._try_acquire_leader_lock = AsyncMock(return_value=False)
+    runtime._activate_runtime = AsyncMock()
+    monkeypatch.setattr(runtime, "_has_leader_lock", MagicMock(return_value=False))
+    monkeypatch.setattr("services.nodes.agent.runtime.asyncio.sleep", AsyncMock(side_effect=asyncio.CancelledError))
+
+    with pytest.raises(asyncio.CancelledError):
+        await runtime._run_leader_loop()
+
+    runtime._activate_runtime.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_runtime_activates_after_leader_lock(monkeypatch):
+    runtime = _runtime()
+    runtime._running = True
+    runtime._leader_connection = SimpleNamespace(execute=AsyncMock(), close=AsyncMock())
+    runtime._try_acquire_leader_lock = AsyncMock(return_value=True)
+
+    async def _activate():
+        runtime._running = False
+
+    runtime._activate_runtime = AsyncMock(side_effect=_activate)
+    monkeypatch.setattr(runtime, "_has_leader_lock", MagicMock(side_effect=[False, True]))
+    monkeypatch.setattr("services.nodes.agent.runtime.asyncio.sleep", AsyncMock())
+
+    await runtime._run_leader_loop()
+
+    runtime._activate_runtime.assert_awaited_once()
