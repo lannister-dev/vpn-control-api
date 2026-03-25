@@ -168,6 +168,11 @@ class NodeAgentStateCreate(BaseModel):
     details: dict[str, object]
 
 
+class NodeUpstreamUpdate(BaseModel):
+    upstream_node_id: UUID
+    updated_at: datetime
+
+
 class NodeAgentStateUpdate(BaseModel):
     agent_version: str | None = None
     is_healthy: bool | None = None
