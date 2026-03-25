@@ -57,6 +57,22 @@ class VpnKeyInternalCreate(BaseModel):
         return v.replace(tzinfo=timezone.utc)
 
 
+class VpnKeyInternalUpdate(BaseModel):
+    valid_until: datetime | None = None
+    traffic_limit_mb: int | None = None
+    is_revoked: bool | None = None
+    is_active: bool | None = None
+
+    @field_validator("valid_until")
+    @classmethod
+    def normalize_optional(cls, v: datetime | None) -> datetime | None:
+        if v is None:
+            return None
+        if v.tzinfo is not None:
+            return v.astimezone(timezone.utc)
+        return v.replace(tzinfo=timezone.utc)
+
+
 class VpnKeyInternal(BaseModel):
     protocol: VpnProtocol
     transport: VpnTransport

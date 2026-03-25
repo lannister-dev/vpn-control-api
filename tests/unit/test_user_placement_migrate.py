@@ -88,8 +88,7 @@ async def test_migrate_backend_moves_only_active(async_session):
     inactive = _placement(desired_state="inactive", op_version=5)
     target_placement_id = uuid4()
     svc.placement_repository.list_active = AsyncMock(return_value=[active, inactive])
-    svc.placement_repository.bulk_migrate_backend = AsyncMock(return_value=1)
-    svc.placement_repository.list_active_ids_for_keys = AsyncMock(return_value=[target_placement_id])
+    svc.placement_repository.bulk_migrate_backend = AsyncMock(return_value=(1, [target_placement_id]))
 
     out = await svc.migrate_backend(payload)
 
@@ -100,10 +99,6 @@ async def test_migrate_backend_moves_only_active(async_session):
         target_backend_id=target.id,
         last_migration_reason="admin_manual",
         updated_at=ANY,
-    )
-    svc.placement_repository.list_active_ids_for_keys.assert_awaited_once_with(
-        key_ids=[active.key_id],
-        backend_node_id=target.id,
     )
     svc.node_agent_transport.enqueue_for_placement_ids.assert_awaited_once_with([target_placement_id])
 
@@ -127,8 +122,7 @@ async def test_migrate_backend_autoselects_target(async_session):
     svc.routing_service.select_nodes = AsyncMock(return_value=[target])
     active = _placement(desired_state="active", op_version=1)
     svc.placement_repository.list_active = AsyncMock(return_value=[active])
-    svc.placement_repository.bulk_migrate_backend = AsyncMock(return_value=1)
-    svc.placement_repository.list_active_ids_for_keys = AsyncMock(return_value=[active.id])
+    svc.placement_repository.bulk_migrate_backend = AsyncMock(return_value=(1, [active.id]))
 
     out = await svc.migrate_backend(payload)
 
@@ -167,9 +161,8 @@ async def test_migrate_backend_bulk_updates_active_only(async_session):
 
     inactive = _placement(desired_state="inactive", op_version=99)
     svc.placement_repository.list_active = AsyncMock(return_value=[*active, inactive])
-    svc.placement_repository.bulk_migrate_backend = AsyncMock(return_value=len(active))
     target_ids = [uuid4() for _ in active]
-    svc.placement_repository.list_active_ids_for_keys = AsyncMock(return_value=target_ids)
+    svc.placement_repository.bulk_migrate_backend = AsyncMock(return_value=(len(active), target_ids))
 
     out = await svc.migrate_backend(payload)
 
@@ -180,8 +173,4 @@ async def test_migrate_backend_bulk_updates_active_only(async_session):
     assert bulk_kwargs["target_backend_id"] == target.id
     assert bulk_kwargs["last_migration_reason"] == "admin_bulk"
     assert bulk_kwargs["updated_at"] is not None
-    svc.placement_repository.list_active_ids_for_keys.assert_awaited_once_with(
-        key_ids=[placement.key_id for placement in active],
-        backend_node_id=target.id,
-    )
     svc.node_agent_transport.enqueue_for_placement_ids.assert_awaited_once_with(target_ids)

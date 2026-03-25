@@ -105,30 +105,26 @@ class ProbeAutoDrainReconciler:
                 return result
 
     def _build_payload(self, settings: ProbeConfig) -> ProbeAutoDrainMigrateIn:
-        raw_target_backend_id = (settings.auto_drain_target_backend_id or "").strip()
         target_backend_id: UUID | None = None
-        if raw_target_backend_id:
+        if settings.auto_drain_target_backend_id is not None:
             try:
-                target_backend_id = UUID(raw_target_backend_id)
+                target_backend_id = UUID(settings.auto_drain_target_backend_id)
             except ValueError:
                 logger.warning(
                     "probe_auto_drain_invalid_target_backend_id",
-                    target_backend_id=raw_target_backend_id,
+                    target_backend_id=settings.auto_drain_target_backend_id,
                 )
-
-        source = (settings.auto_drain_source or "").strip() or None
-        reason = (settings.auto_drain_last_migration_reason or "").strip() or "probe_auto_failure"
 
         return ProbeAutoDrainMigrateIn(
             target_backend_id=target_backend_id,
-            source=source,
+            source=settings.auto_drain_source,
             require_recent_failure=bool(settings.auto_drain_require_recent_failure),
             max_probe_age_sec=max(30, int(settings.auto_drain_max_probe_age_sec)),
             min_consecutive_failures=max(1, int(settings.auto_drain_min_consecutive_failures)),
             include_already_draining=bool(settings.auto_drain_include_already_draining),
             dry_run=False,
             max_nodes=min(200, max(1, int(settings.auto_drain_max_nodes))),
-            last_migration_reason=reason,
+            last_migration_reason=settings.auto_drain_last_migration_reason,
         )
 
     @staticmethod

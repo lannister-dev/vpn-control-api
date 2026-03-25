@@ -25,6 +25,8 @@ from services.routes.schemas import (
     ProfileReactivationUpdate,
 )
 from services.routes.state_machine import resolve_bootstrap_recovery
+from services.routes.types import RouteNodeRole
+from services.routes.utils import normalized_node_role
 from shared.database.session import AsyncDatabase
 from shared.profiles.artifact_mapper import ArtifactProfileMapper
 
@@ -88,9 +90,11 @@ class ProfileArtifactService:
         if not backends:
             raise HTTPException(
                 status_code=409,
-                detail="No eligible nodes for routes bootstrap",
+                detail="No eligible backend nodes for routes bootstrap",
             )
-        routes_total = len(desired_profiles) * len(backends)
+        entry_nodes = await self._resolve_target_entry_nodes(entry_node_ids=payload.entry_node_ids)
+        route_variants = entry_nodes or [None]
+        routes_total = len(desired_profiles) * len(backends) * len(route_variants)
         self._validate_matrix_expectations(
             expected_backends_selected=payload.expected_backends_selected,
             actual_backends_selected=len(backends),
@@ -155,61 +159,69 @@ class ProfileArtifactService:
         route_created = 0
         route_updated = 0
         route_reactivated = 0
-        route_names = self._build_route_names(backends=backends, transport_names=transport_names)
+        route_names = self._build_route_names(
+            backends=backends,
+            entry_nodes=entry_nodes,
+            transport_names=transport_names,
+        )
         existing_routes = await self.route_repository.list_by_names(route_names)
         route_by_name = {row.name: row for row in existing_routes}
 
         for backend in backends:
-            for transport_name in transport_names:
-                route_name = self._build_route_name(
-                    backend_name=backend.name,
-                    transport_name=transport_name,
-                )
-                existing = route_by_name.get(route_name)
-                transport = transport_by_name.get(transport_name)
-                transport_id: UUID | None = None if transport is None else transport.id
+            for entry_node in route_variants:
+                for transport_name in transport_names:
+                    route_name = self._build_route_name(
+                        backend_name=backend.name,
+                        entry_name=None if entry_node is None else entry_node.name,
+                        transport_name=transport_name,
+                    )
+                    existing = route_by_name.get(route_name)
+                    transport = transport_by_name.get(transport_name)
+                    transport_id: UUID | None = None if transport is None else transport.id
 
-                if existing is None:
-                    route_created += 1
+                    if existing is None:
+                        route_created += 1
+                        if payload.dry_run:
+                            continue
+                        if transport_id is None:
+                            continue
+                        route_create = RouteCreateData(
+                            name=route_name,
+                            node_id=backend.id,
+                            entry_node_id=None if entry_node is None else entry_node.id,
+                            transport_profile_id=transport_id,
+                            health_status=RouteHealthStatus.healthy,
+                            base_weight=payload.route_base_weight,
+                            effective_weight=payload.route_base_weight,
+                            cooldown_until=None,
+                            warmup_stage=None,
+                            warmup_started_at=None,
+                            is_active=True,
+                        )
+                        created = await self.route_repository.create(route_create.model_dump())
+                        route_by_name[route_name] = created
+                        continue
+
+                    route_update = self._build_route_update(
+                        existing=existing,
+                        backend_id=backend.id,
+                        entry_node_id=None if entry_node is None else entry_node.id,
+                        transport_profile_id=transport_id,
+                        route_base_weight=payload.route_base_weight,
+                        recover_unhealthy_routes=payload.recover_unhealthy_routes,
+                    )
+                    if route_update is None:
+                        continue
+
+                    if not existing.is_active:
+                        route_reactivated += 1
+                    route_updated += 1
                     if payload.dry_run:
                         continue
-                    if transport_id is None:
-                        continue
-                    route_create = RouteCreateData(
-                        name=route_name,
-                        node_id=backend.id,
-                        transport_profile_id=transport_id,
-                        health_status=RouteHealthStatus.healthy,
-                        base_weight=payload.route_base_weight,
-                        effective_weight=payload.route_base_weight,
-                        cooldown_until=None,
-                        warmup_stage=None,
-                        warmup_started_at=None,
-                        is_active=True,
+                    await self.route_repository.update_by_id(
+                        existing.id,
+                        route_update.model_dump(),
                     )
-                    created = await self.route_repository.create(route_create.model_dump())
-                    route_by_name[route_name] = created
-                    continue
-
-                route_update = self._build_route_update(
-                    existing=existing,
-                    backend_id=backend.id,
-                    transport_profile_id=transport_id,
-                    route_base_weight=payload.route_base_weight,
-                    recover_unhealthy_routes=payload.recover_unhealthy_routes,
-                )
-                if route_update is None:
-                    continue
-
-                if not existing.is_active:
-                    route_reactivated += 1
-                route_updated += 1
-                if payload.dry_run:
-                    continue
-                await self.route_repository.update_by_id(
-                    existing.id,
-                    route_update.model_dump(),
-                )
 
         return ArtifactRoutesBootstrapOut(
             artifact_version=artifact.version,
@@ -262,6 +274,7 @@ class ProfileArtifactService:
             *,
             existing,
             backend_id: UUID,
+            entry_node_id: UUID | None,
             transport_profile_id: UUID | None,
             route_base_weight: int,
             recover_unhealthy_routes: bool,
@@ -269,6 +282,7 @@ class ProfileArtifactService:
         target_transport_id = transport_profile_id or existing.transport_profile_id
         structural_change = (
                 existing.node_id != backend_id
+                or getattr(existing, "entry_node_id", None) != entry_node_id
                 or existing.transport_profile_id != target_transport_id
         )
         was_inactive = not bool(existing.is_active)
@@ -305,15 +319,16 @@ class ProfileArtifactService:
                 route_base_weight=route_base_weight,
                 now=datetime.now(timezone.utc),
             )
-            current_status = bootstrap_state["health_status"]
-            effective_weight = bootstrap_state["effective_weight"]
-            cooldown_until = bootstrap_state["cooldown_until"]
-            warmup_stage = bootstrap_state["warmup_stage"]
-            warmup_started_at = bootstrap_state["warmup_started_at"]
+            current_status = bootstrap_state.health_status
+            effective_weight = bootstrap_state.effective_weight
+            cooldown_until = bootstrap_state.cooldown_until
+            warmup_stage = bootstrap_state.warmup_stage
+            warmup_started_at = bootstrap_state.warmup_started_at
 
         desired = RouteReactivationUpdate(
             name=existing.name,
             node_id=backend_id,
+            entry_node_id=entry_node_id,
             transport_profile_id=target_transport_id,
             health_status=current_status,
             base_weight=int(route_base_weight),
@@ -327,6 +342,7 @@ class ProfileArtifactService:
         no_changes = (
                 existing.name == desired.name
                 and existing.node_id == desired.node_id
+                and getattr(existing, "entry_node_id", None) == desired.entry_node_id
                 and existing.transport_profile_id == desired.transport_profile_id
                 and str(existing.health_status) == desired.health_status.value
                 and int(existing.base_weight) == int(desired.base_weight)
@@ -358,18 +374,67 @@ class ProfileArtifactService:
         return [
             row
             for row in ordered
+            if (
+                row.is_active
+                and row.is_enabled
+                and not row.is_draining
+                and normalized_node_role(row) == RouteNodeRole.backend
+            )
+        ]
+
+    async def _resolve_target_entry_nodes(self, *, entry_node_ids: list[UUID] | None):
+        if not entry_node_ids:
+            return []
+
+        rows = await self.node_repository.list_by_ids(entry_node_ids)
+        by_id = {row.id: row for row in rows}
+        missing = [str(node_id) for node_id in entry_node_ids if node_id not in by_id]
+        if missing:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Entry nodes not found: {', '.join(missing)}",
+            )
+        ordered = [by_id[node_id] for node_id in entry_node_ids]
+        invalid = [
+            str(row.id)
+            for row in ordered
+            if normalized_node_role(row) != RouteNodeRole.whitelist_entry
+        ]
+        if invalid:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Entry nodes must have role=whitelist_entry: {', '.join(invalid)}",
+            )
+        return [
+            row
+            for row in ordered
             if row.is_active and row.is_enabled and not row.is_draining
         ]
 
-    def _build_route_names(self, *, backends: list, transport_names: list[str]) -> list[str]:
+    def _build_route_names(self, *, backends: list, entry_nodes: list, transport_names: list[str]) -> list[str]:
+        route_variants = entry_nodes or [None]
         return [
-            self._build_route_name(backend_name=backend.name, transport_name=transport_name)
+            self._build_route_name(
+                backend_name=backend.name,
+                entry_name=None if entry_node is None else entry_node.name,
+                transport_name=transport_name,
+            )
             for backend in backends
+            for entry_node in route_variants
             for transport_name in transport_names
         ]
 
-    def _build_route_name(self, *, backend_name: str, transport_name: str) -> str:
-        base = f"auto-{backend_name}-{transport_name}"
+    def _build_route_name(
+            self,
+            *,
+            backend_name: str,
+            entry_name: str | None,
+            transport_name: str,
+    ) -> str:
+        if entry_name:
+            base = f"auto-{backend_name}-via-{entry_name}-{transport_name}"
+        else:
+            base = f"auto-{backend_name}-{transport_name}"
         return ArtifactProfileMapper.normalize_name(key=base, max_len=100)
 
     @staticmethod

@@ -29,12 +29,14 @@ from services.placements.router import router as placements_router
 from services.probe.router import router as probe_router
 from services.probe.cleanup_reconciler import ProbeSignalCleanupReconciler
 from services.probe.reconciler import ProbeAutoDrainReconciler
+from services.probe.synthetic_reconciler import ProbeSyntheticCredentialReconciler
 from services.routes.router import router as routes_router
 from services.routes.reconciler import RouteWarmupReconciler
 from services.traffic.consumer import UserTrafficNatsConsumer
 from services.traffic.reconciler import TrafficHistoryCleanupReconciler
 from services.traffic.reset_reconciler import TrafficResetReconciler
 from services.placements.error_retry_reconciler import PlacementErrorRetryReconciler
+from services.vpn.keys.expiration_reconciler import VpnKeyExpirationReconciler
 from services.auth.admin.router import router as admin_auth_router
 from services.traffic.router import router as traffic_admin_router
 from services.vpn.keys.router import router as vpn_router
@@ -60,6 +62,7 @@ async def lifespan(app: FastAPI):
     warmup_reconciler = RouteWarmupReconciler()
     probe_cleanup_reconciler = ProbeSignalCleanupReconciler()
     probe_auto_drain_reconciler = ProbeAutoDrainReconciler()
+    probe_synthetic_reconciler = ProbeSyntheticCredentialReconciler()
     node_auto_heal_reconciler = NodePlacementReconciler()
     node_agent_runtime = NodeAgentRuntime(get_settings().nats)
     users_traffic_consumer = UserTrafficNatsConsumer(get_settings().nats)
@@ -67,9 +70,11 @@ async def lifespan(app: FastAPI):
     transport_cleanup_reconciler = AdminTransportCleanupReconciler()
     traffic_reset_reconciler = TrafficResetReconciler()
     placement_error_retry_reconciler = PlacementErrorRetryReconciler()
+    key_expiration_reconciler = VpnKeyExpirationReconciler()
     await warmup_reconciler.start()
     await probe_cleanup_reconciler.start()
     await probe_auto_drain_reconciler.start()
+    await probe_synthetic_reconciler.start()
     await node_auto_heal_reconciler.start()
     await node_agent_runtime.start()
     app.state.node_agent_runtime = node_agent_runtime
@@ -78,9 +83,11 @@ async def lifespan(app: FastAPI):
     await transport_cleanup_reconciler.start()
     await traffic_reset_reconciler.start()
     await placement_error_retry_reconciler.start()
+    await key_expiration_reconciler.start()
     try:
         yield
     finally:
+        await key_expiration_reconciler.stop()
         await placement_error_retry_reconciler.stop()
         await traffic_reset_reconciler.stop()
         await transport_cleanup_reconciler.stop()
@@ -88,6 +95,7 @@ async def lifespan(app: FastAPI):
         await users_traffic_consumer.stop()
         await node_agent_runtime.stop()
         await node_auto_heal_reconciler.stop()
+        await probe_synthetic_reconciler.stop()
         await probe_auto_drain_reconciler.stop()
         await probe_cleanup_reconciler.stop()
         await warmup_reconciler.stop()

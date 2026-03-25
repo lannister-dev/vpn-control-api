@@ -6,8 +6,13 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import HTTPException
+from sqlalchemy import text
 
 from services.config import NatsConfig
+from services.nodes.agent.constants import (
+    NODE_AGENT_RUNTIME_LEADER_LOCK_KEY,
+    NODE_AGENT_RUNTIME_LEADER_POLL_INTERVAL_S,
+)
 from services.nodes.agent.repository import (
     NodeTransportEventLogRepository,
     NodeTransportOutboxRepository,
@@ -52,8 +57,12 @@ class NodeAgentRuntime:
         self._config = config
         self._nats = NatsClient(config)
         self._running = False
+        self._active = False
         self._started_at: datetime | None = None
         self._tasks: list[asyncio.Task] = []
+        self._leader_task: asyncio.Task | None = None
+        self._leader_connection = None
+        self._standby_logged = False
         self._subjects = AgentSubjects(
             command_prefix=config.js_command_subject_prefix,
             result_prefix=config.js_result_subject_prefix,
@@ -66,10 +75,60 @@ class NodeAgentRuntime:
         if not self._config.enabled:
             logger_transport.info("node_agent_transport_disabled")
             return
-        await self._nats.connect()
-        await self._ensure_topology()
+        if self._running:
+            return
         self._running = True
         self._started_at = datetime.now(timezone.utc)
+        self._leader_task = asyncio.create_task(
+            self._run_leader_loop(),
+            name="node-agent-leader-election",
+        )
+        logger_transport.info("node_agent_transport_supervisor_started")
+
+    async def stop(self) -> None:
+        if not self._running:
+            return
+        self._running = False
+        if self._leader_task is not None:
+            self._leader_task.cancel()
+            try:
+                await self._leader_task
+            except asyncio.CancelledError:
+                pass
+            self._leader_task = None
+        await self._deactivate_runtime()
+        await self._release_leader_lock()
+        logger_transport.info("node_agent_transport_stopped")
+
+    async def _run_leader_loop(self) -> None:
+        while self._running:
+            try:
+                if not self._has_leader_lock():
+                    acquired = await self._try_acquire_leader_lock()
+                    if not acquired:
+                        if not self._standby_logged:
+                            logger_transport.info("node_agent_transport_standby")
+                            self._standby_logged = True
+                        await asyncio.sleep(NODE_AGENT_RUNTIME_LEADER_POLL_INTERVAL_S)
+                        continue
+                    self._standby_logged = False
+                    await self._activate_runtime()
+                if self._leader_connection is not None:
+                    await self._leader_connection.execute(text("SELECT 1"))
+                await asyncio.sleep(NODE_AGENT_RUNTIME_LEADER_POLL_INTERVAL_S)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger_transport.exception("node_agent_transport_leader_loop_failed")
+                await self._deactivate_runtime()
+                await self._release_leader_lock()
+                await asyncio.sleep(NODE_AGENT_RUNTIME_LEADER_POLL_INTERVAL_S)
+
+    async def _activate_runtime(self) -> None:
+        if self._active:
+            return
+        await self._nats.connect()
+        await self._ensure_topology()
         self._tasks = [
             asyncio.create_task(self._run_outbox_publisher(), name="node-agent-outbox-publisher"),
             asyncio.create_task(
@@ -105,12 +164,12 @@ class NodeAgentRuntime:
                 name="node-agent-sync-report-consumer",
             ),
         ]
+        self._active = True
         logger_transport.info("node_agent_transport_started")
 
-    async def stop(self) -> None:
-        if not self._running:
+    async def _deactivate_runtime(self) -> None:
+        if not self._active and not self._tasks:
             return
-        self._running = False
         for task in self._tasks:
             task.cancel()
         for task in self._tasks:
@@ -120,7 +179,43 @@ class NodeAgentRuntime:
                 pass
         self._tasks.clear()
         await self._nats.close()
-        logger_transport.info("node_agent_transport_stopped")
+        self._active = False
+        logger_transport.info("node_agent_transport_deactivated")
+
+    async def _try_acquire_leader_lock(self) -> bool:
+        connection = await AsyncDatabase.engine.connect()
+        try:
+            result = await connection.execute(
+                text("SELECT pg_try_advisory_lock(:key)"),
+                {"key": NODE_AGENT_RUNTIME_LEADER_LOCK_KEY},
+            )
+            acquired = bool(result.scalar())
+            if not acquired:
+                await connection.close()
+                return False
+            self._leader_connection = connection
+            logger_transport.info("node_agent_transport_leader_acquired")
+            return True
+        except Exception:
+            await connection.close()
+            raise
+
+    async def _release_leader_lock(self) -> None:
+        if self._leader_connection is None:
+            return
+        try:
+            await self._leader_connection.execute(
+                text("SELECT pg_advisory_unlock(:key)"),
+                {"key": NODE_AGENT_RUNTIME_LEADER_LOCK_KEY},
+            )
+        except Exception:
+            logger_transport.exception("node_agent_transport_leader_release_failed")
+        finally:
+            await self._leader_connection.close()
+            self._leader_connection = None
+
+    def _has_leader_lock(self) -> bool:
+        return self._leader_connection is not None
 
     def get_runtime_status(self) -> dict:
         now = datetime.now(timezone.utc)
@@ -138,6 +233,18 @@ class NodeAgentRuntime:
             tasks.append({
                 "name": task.get_name(),
                 "running": not task.done(),
+                "error": error,
+            })
+        if self._leader_task is not None:
+            error = None
+            if self._leader_task.done() and self._leader_task.exception() is not None:
+                try:
+                    error = str(self._leader_task.exception())
+                except Exception:
+                    error = "unknown error"
+            tasks.append({
+                "name": self._leader_task.get_name(),
+                "running": not self._leader_task.done(),
                 "error": error,
             })
         return {

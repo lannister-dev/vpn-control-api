@@ -162,6 +162,7 @@ class ResolvedSubscriptionRoute(BaseModel):
     country_code: str | None = None
     country_name: str | None = None
     display_name: str | None = None
+    is_entry_route: bool = False
     preferred_backend: bool = False
     selection_rank: int = 0
     uri: str

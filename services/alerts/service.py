@@ -21,7 +21,7 @@ class AlertService:
     async def send(self, payload: AlertMessage) -> bool:
         if not self.alerts_config.telegram_enabled:
             return False
-        if not self.alerts_config.telegram_bot_token.strip() or not self.alerts_config.telegram_chat_id.strip():
+        if not self.alerts_config.telegram_bot_token or not self.alerts_config.telegram_chat_id:
             self.logger.warning("telegram alerts are enabled but bot token/chat id is not configured")
             return False
 
@@ -46,17 +46,31 @@ class AlertService:
             is_reachable: bool,
             checked_at: datetime,
             error: str | None,
+            route_id: UUID | None = None,
+            transport_kind: str | None = None,
+            probe_kind: str | None = None,
+            target_host: str | None = None,
+            target_port: int | None = None,
+            error_phase: str | None = None,
     ) -> bool:
         state = "RECOVERED" if is_reachable else "FAILED"
         level = AlertLevel.info if is_reachable else AlertLevel.critical
         error_text = error or "-"
+        target = "-"
+        if target_host:
+            target = f"{target_host}:{target_port}" if target_port is not None else target_host
         body = AlertTexts.PROBE_STATUS_BODY.format(
             node_name=node_name,
             node_id=node_id,
             region=region,
             source=source,
+            route_id=str(route_id) if route_id is not None else "-",
+            transport_kind=transport_kind or "-",
+            probe_kind=probe_kind or "-",
+            target=target,
             state=state,
             checked_at=checked_at.isoformat(),
+            error_phase=error_phase or "-",
             error=error_text,
         )
         return await self.send(

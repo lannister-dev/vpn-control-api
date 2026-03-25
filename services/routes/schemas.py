@@ -21,11 +21,36 @@ class RouteHealthAction(str, Enum):
     set_suspected = "set_suspected"
 
 
+class RouteWarmupTickResult(str, Enum):
+    advanced = "advanced"
+    finalized = "finalized"
+
+
+class RouteWarmupStage(BaseModel):
+    target_weight: int = Field(ge=0, le=100)
+    hold_minutes: int = Field(ge=1)
+
+
+class TransportProtocol(str, Enum):
+    vless = "vless"
+
+
+class TransportNetwork(str, Enum):
+    tcp = "tcp"
+    ws = "ws"
+    grpc = "grpc"
+
+
+class TransportSecurity(str, Enum):
+    reality = "reality"
+    tls = "tls"
+
+
 class TransportProfileCreateIn(BaseModel):
     name: str = Field(min_length=1, max_length=100)
-    protocol: str = Field(default="vless", min_length=1, max_length=16)
-    network: str = Field(default="tcp", min_length=1, max_length=16)
-    security: str = Field(default="reality", min_length=1, max_length=16)
+    protocol: TransportProtocol = TransportProtocol.vless
+    network: TransportNetwork = TransportNetwork.tcp
+    security: TransportSecurity = TransportSecurity.reality
     flow: str | None = Field(default=None, max_length=64)
     reality_public_key: str | None = Field(default=None, max_length=128)
     reality_short_id: str | None = Field(default=None, max_length=32)
@@ -55,9 +80,21 @@ class TransportProfileOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class RouteUpdateIn(BaseModel):
+    entry_node_id: UUID | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class RouteEntryUpdate(BaseModel):
+    entry_node_id: UUID | None
+    updated_at: datetime
+
+
 class RouteCreateIn(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     node_id: UUID
+    entry_node_id: UUID | None = None
     transport_profile_id: UUID
     base_weight: int = Field(default=50, ge=0, le=100)
     effective_weight: int | None = Field(default=None, ge=0, le=100)
@@ -68,6 +105,7 @@ class RouteOut(BaseModel):
     id: UUID
     name: str
     node_id: UUID
+    entry_node_id: UUID | None = None
     transport_profile_id: UUID
     health_status: RouteHealthStatus
     base_weight: int
@@ -113,6 +151,7 @@ class ProfileReactivationUpdate(BaseModel):
 class RouteReactivationUpdate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     node_id: UUID
+    entry_node_id: UUID | None = None
     transport_profile_id: UUID
     health_status: RouteHealthStatus
     base_weight: int = Field(ge=0, le=100)
@@ -126,6 +165,7 @@ class RouteReactivationUpdate(BaseModel):
 class RouteCreateData(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     node_id: UUID
+    entry_node_id: UUID | None = None
     transport_profile_id: UUID
     health_status: RouteHealthStatus
     base_weight: int = Field(ge=0, le=100)
@@ -143,3 +183,11 @@ class RouteStateUpdate(BaseModel):
     warmup_stage: int | None = None
     warmup_started_at: datetime | None = None
     updated_at: datetime
+
+
+class RouteStateResolution(BaseModel):
+    health_status: RouteHealthStatus
+    effective_weight: int = Field(ge=0, le=100)
+    cooldown_until: datetime | None = None
+    warmup_stage: int | None = None
+    warmup_started_at: datetime | None = None

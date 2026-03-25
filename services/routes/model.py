@@ -35,6 +35,7 @@ class Route(Base):
 
     name: Mapped[str] = mapped_column(String(length=100), nullable=False, unique=True)
     node_id: Mapped[UUID] = mapped_column(ForeignKey("vpn_node.id"), nullable=False)
+    entry_node_id: Mapped[UUID | None] = mapped_column(ForeignKey("vpn_node.id"), nullable=True)
     transport_profile_id: Mapped[UUID] = mapped_column(ForeignKey("transport_profile.id"), nullable=False)
     health_status: Mapped[str] = mapped_column(
         String(length=16),
@@ -52,6 +53,7 @@ class Route(Base):
         CheckConstraint("effective_weight >= 0", name="ck_route_effective_weight_ge_0"),
         CheckConstraint("effective_weight <= base_weight", name="ck_route_effective_weight_lte_base_weight"),
         Index("ix_route_node_id", "node_id"),
+        Index("ix_route_entry_node_id", "entry_node_id"),
         Index("ix_route_transport_profile_id", "transport_profile_id"),
         Index("ix_route_health_status", "health_status"),
         Index("ix_route_effective_weight", "effective_weight"),

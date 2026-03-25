@@ -31,6 +31,7 @@ from services.vpn.keys.schemas import VpnKeyInternalCreate, VpnProtocol, VpnTran
 from shared.database.session import AsyncDatabase
 from services.placements.transport import NodeAgentPlacementTransport
 from shared.profiles.builder import VlessUriBuilder
+from shared.profiles.constants import WS_TLS_DEFAULT_PATH
 from shared.profiles.schemas import (
     NodePublic,
     ProfileMetadata,
@@ -90,12 +91,15 @@ class ConnectService:
             backend_node_ids=allowed_backend_ids_sorted,
             node_seen_after=self._resolved_route_node_seen_after(),
         )
+        entry_nodes_by_id = await self._entry_nodes_by_id(route_rows=route_rows)
 
         resolved_routes: list[ResolvedRouteInternal] = []
         for route, node, transport_profile in route_rows:
             backend_node_id = self._as_uuid(node.id)
             if backend_node_id not in allowed_backend_ids:
                 continue
+            entry_node_id = self._route_entry_node_id(route)
+            entry_node = entry_nodes_by_id.get(entry_node_id) if entry_node_id is not None else None
             transport_security = transport_profile.security
             transport_network = transport_profile.network
             if not self._is_route_compatible_with_key_transport(
@@ -106,7 +110,8 @@ class ConnectService:
                 continue
             uri = self._build_route_uri(
                 client_id=key.client_id,
-                node=node,
+                backend_node=node,
+                public_node=entry_node,
                 transport_profile=transport_profile,
             )
             if uri is None:
@@ -119,6 +124,7 @@ class ConnectService:
                         route_id=route_id,
                         route_name=route.name,
                         backend_node_id=backend_node_id,
+                        entry_node_id=entry_node_id,
                         transport_profile_id=transport_profile_id,
                         health_status=route.health_status,
                         effective_weight=route.effective_weight,
@@ -193,10 +199,19 @@ class ConnectService:
                 preferred_region=preferred_region,
             )
             candidate_nodes = []
+        backend_ids_with_entry_routes = set(
+            await self.route_repository.list_backend_ids_with_entry_routes(
+                key_transport=key_transport,
+            )
+        )
         candidate_nodes = [
             node
             for node in candidate_nodes
-            if self._node_has_required_public_host(node=node, key_transport=key_transport)
+            if self._node_has_required_public_host(
+                node=node,
+                key_transport=key_transport,
+                allow_entry_route=self._as_uuid(str(node.id)) in backend_ids_with_entry_routes,
+            )
         ]
         if not candidate_nodes and not placements_by_backend:
             fallback = await self._select_backend(
@@ -302,10 +317,16 @@ class ConnectService:
         candidates = await self.routing_service.select_nodes(
             preferred_region=preferred_region,
         )
+        backend_ids_with_entry_routes = set(
+            await self.route_repository.list_backend_ids_with_entry_routes(
+                key_transport=key_transport,
+            )
+        )
         for candidate in candidates:
             if self._node_has_required_public_host(
                 node=candidate,
                 key_transport=key_transport,
+                allow_entry_route=self._as_uuid(str(candidate.id)) in backend_ids_with_entry_routes,
             ):
                 return candidate
         raise HTTPException(status_code=503, detail="No eligible node available")
@@ -331,18 +352,25 @@ class ConnectService:
             self,
             *,
             client_id: str,
-            node: VpnNode,
+            backend_node: VpnNode | None = None,
+            node: VpnNode | None = None,
             transport_profile,
+            public_node: VpnNode | None = None,
     ) -> str | None:
+        backend_node = backend_node or node
+        if backend_node is None:
+            return None
         domain = self._resolve_route_host_for_transport(
-            node=node,
+            backend_node=backend_node,
+            public_node=public_node,
             transport_profile=transport_profile,
         )
         if not domain:
             return None
+        display_node = public_node or backend_node
         node_display_name = format_node_display_name(
-            node_name=str(node.name),
-            region=node.region,
+            node_name=str(display_node.name),
+            region=backend_node.region,
         )
 
         network = (transport_profile.network or "").strip().lower()
@@ -371,7 +399,7 @@ class ConnectService:
         profile = self._resolve_profile_from_transport(
             transport_profile=transport_profile,
             fallback_domain=domain,
-            region=node.region,
+            region=backend_node.region,
         )
         if profile is None:
             return None
@@ -380,7 +408,7 @@ class ConnectService:
             domain=domain,
             port=transport_profile.port,
             remark=node_display_name,
-            region=node.region,
+            region=backend_node.region,
         )
         try:
             return VlessUriBuilder.build(
@@ -428,7 +456,7 @@ class ConnectService:
             return WsTlsProfile(
                 metadata=metadata,
                 client=WsTlsClientConfig(
-                    path="/api/v1/stream",
+                    path=WS_TLS_DEFAULT_PATH,
                     host=fallback_domain,
                     sni=fallback_domain,
                 ),
@@ -436,7 +464,11 @@ class ConnectService:
 
         return None
 
-    def _resolve_ws_public_host(self, node: VpnNode) -> str:
+    def _resolve_ws_public_host(self, node: VpnNode, *, prefer_node_domain: bool = False) -> str:
+        if prefer_node_domain:
+            node_domain = (node.public_domain or "").strip()
+            if node_domain:
+                return node_domain
         edge_domain = self.settings.edge.public_domain
         if edge_domain:
             return edge_domain
@@ -446,14 +478,32 @@ class ConnectService:
     def _resolve_reality_host(node: VpnNode) -> str:
         return node.reality_ip or ""
 
-    def _resolve_route_host_for_transport(self, *, node: VpnNode, transport_profile) -> str:
+    def _resolve_route_host_for_transport(
+            self,
+            *,
+            backend_node: VpnNode,
+            transport_profile,
+            public_node: VpnNode | None = None,
+    ) -> str:
         network = transport_profile.network
         security = transport_profile.security
+        visible_node = public_node or backend_node
         if security == "reality" and network == "tcp":
-            return self._resolve_reality_host(node)
-        return self._resolve_ws_public_host(node)
+            return self._resolve_reality_host(visible_node)
+        return self._resolve_ws_public_host(
+            visible_node,
+            prefer_node_domain=public_node is not None,
+        )
 
-    def _node_has_required_public_host(self, *, node: VpnNode, key_transport: str | None) -> bool:
+    def _node_has_required_public_host(
+            self,
+            *,
+            node: VpnNode,
+            key_transport: str | None,
+            allow_entry_route: bool = False,
+    ) -> bool:
+        if allow_entry_route:
+            return True
         if key_transport == VpnTransport.reality.value:
             return bool(self._resolve_reality_host(node))
         if key_transport == VpnTransport.tcp.value:
@@ -485,6 +535,30 @@ class ConnectService:
         if key_transport == VpnTransport.xhttp.value:
             return transport_security == "tls" and transport_network == "xhttp"
         return True
+
+    async def _entry_nodes_by_id(
+            self,
+            *,
+            route_rows: list[tuple[object, VpnNode, object]],
+    ) -> dict[UUID, VpnNode]:
+        entry_ids = [
+            entry_node_id
+            for route, _node, _transport_profile in route_rows
+            for entry_node_id in [self._route_entry_node_id(route)]
+            if entry_node_id is not None
+        ]
+        if not entry_ids:
+            return {}
+        rows = await self.node_repository.list_by_ids(list(dict.fromkeys(entry_ids)))
+        return {self._as_uuid(row.id): row for row in rows}
+
+    def _route_entry_node_id(self, route) -> UUID | None:
+        raw = getattr(route, "entry_node_id", None)
+        if isinstance(raw, UUID):
+            return raw
+        if isinstance(raw, str):
+            return UUID(raw)
+        return None
 
     async def _cache_allowed_telemetry_routes(
             self,

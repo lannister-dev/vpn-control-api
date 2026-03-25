@@ -26,6 +26,23 @@ class ProbeSignalRepository(BaseRepository[ProbeSignal]):
         stmt = select(self.model).where(
             self.model.is_active.is_(True),
             self.model.node_id == node_id,
+            self.model.route_id.is_(None),
+        )
+        if source:
+            stmt = stmt.where(self.model.source == source)
+        stmt = stmt.order_by(self.model.checked_at.desc(), self.model.created_at.desc()).limit(1)
+        res = await self.session.execute(stmt)
+        return res.scalar_one_or_none()
+
+    async def get_latest_for_route(
+            self,
+            *,
+            route_id: UUID,
+            source: str | None = None,
+    ) -> ProbeSignal | None:
+        stmt = select(self.model).where(
+            self.model.is_active.is_(True),
+            self.model.route_id == route_id,
         )
         if source:
             stmt = stmt.where(self.model.source == source)
@@ -38,11 +55,32 @@ class ProbeSignalRepository(BaseRepository[ProbeSignal]):
             *,
             limit: int,
             node_id: UUID | None = None,
+            route_id: UUID | None = None,
             source: str | None = None,
     ) -> list[ProbeSignal]:
         stmt = select(self.model).where(self.model.is_active.is_(True))
         if node_id is not None:
             stmt = stmt.where(self.model.node_id == node_id)
+        if route_id is not None:
+            stmt = stmt.where(self.model.route_id == route_id)
+        if source:
+            stmt = stmt.where(self.model.source == source)
+        stmt = stmt.order_by(self.model.checked_at.desc(), self.model.created_at.desc()).limit(limit)
+        res = await self.session.execute(stmt)
+        return list(res.scalars().all())
+
+    async def list_recent_for_node(
+            self,
+            *,
+            limit: int,
+            node_id: UUID,
+            source: str | None = None,
+    ) -> list[ProbeSignal]:
+        stmt = select(self.model).where(
+            self.model.is_active.is_(True),
+            self.model.node_id == node_id,
+            self.model.route_id.is_(None),
+        )
         if source:
             stmt = stmt.where(self.model.source == source)
         stmt = stmt.order_by(self.model.checked_at.desc(), self.model.created_at.desc()).limit(limit)

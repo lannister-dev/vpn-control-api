@@ -45,6 +45,7 @@ services:
       placement:
         constraints:
           - node.role == manager
+          - node.labels.kind == prod
       labels:
          # --------- Traefik ---------
         - "traefik.enable=true"
@@ -66,7 +67,7 @@ services:
       - traefik_swarm
       - data-prod
     env_file:
-      - .env
+      - .env.prod
 
 networks:
   monitoring:

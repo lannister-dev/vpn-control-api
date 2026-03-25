@@ -103,3 +103,10 @@ dist/
 tmp/
 .temp/
 .cache/
+
+# =========================
+# Whitelist data (utility)
+# =========================
+ipwhitelist.txt
+cidrwhitelist.txt
+check_whitelist_ip.py

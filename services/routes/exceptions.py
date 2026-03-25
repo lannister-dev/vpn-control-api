@@ -1,0 +1,2 @@
+class RouteCooldownActiveError(ValueError):
+    pass

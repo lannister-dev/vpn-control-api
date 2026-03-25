@@ -6,34 +6,42 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.config import get_settings
 from services.nodes.repository import VpnNodeRepository
+from services.routes.exceptions import RouteCooldownActiveError
+from services.routes.policy import DEFAULT_WARMUP_STAGES
 from services.routes.repository import RouteRepository, TransportProfileRepository
 from services.routes.schemas import (
     RouteCreateData,
     RouteCreateIn,
+    RouteEntryUpdate,
     RouteHealthAction,
     RouteHealthStatus,
     RouteHealthUpdateIn,
     RouteOut,
     RouteReactivationUpdate,
     RouteStateUpdate,
+    RouteUpdateIn,
+    RouteWarmupStage,
+    RouteWarmupTickResult,
     RouteWarmupTickOut,
     ProfileReactivationUpdate,
+    TransportNetwork,
     TransportProfileCreateIn,
     TransportProfileOut,
+    TransportProtocol,
+    TransportSecurity,
 )
 from services.routes.state_machine import (
-    DEFAULT_WARMUP_STAGES,
-    RouteCooldownActiveError,
     initial_warmup_weight,
     resolve_route_health_action,
     resolve_warmup_tick,
-    stage_weight,
 )
+from services.routes.types import RouteNodeRole
+from services.routes.utils import build_route_out, normalized_node_role, to_utc_or_none
 from shared.database.session import AsyncDatabase
 
 
 class RouteService:
-    WARMUP_STAGES: list[tuple[int, int]] = list(DEFAULT_WARMUP_STAGES)
+    WARMUP_STAGES: list[RouteWarmupStage] = list(DEFAULT_WARMUP_STAGES)
 
     def __init__(self, session: AsyncSession):
         self.settings = get_settings()
@@ -72,54 +80,46 @@ class RouteService:
             self,
             payload: TransportProfileCreateIn,
     ) -> TransportProfileCreateIn:
-        protocol = payload.protocol.strip().lower()
-        network = payload.network.strip().lower()
-        security = payload.security.strip().lower()
-        if protocol != "vless":
-            raise HTTPException(status_code=422, detail=f"Unsupported protocol: {protocol}")
+        if payload.protocol != TransportProtocol.vless:
+            raise HTTPException(status_code=422, detail=f"Unsupported protocol: {payload.protocol.value}")
 
-        flow = payload.flow.strip() if isinstance(payload.flow, str) else payload.flow
-        reality_public_key = payload.reality_public_key.strip() if payload.reality_public_key else None
-        reality_short_id = payload.reality_short_id.strip() if payload.reality_short_id else None
-        reality_server_name = payload.reality_server_name.strip() if payload.reality_server_name else None
-        grpc_service_name = payload.grpc_service_name.strip() if payload.grpc_service_name else None
-
-        if security == "reality":
-            if network != "tcp":
+        grpc_service_name = payload.grpc_service_name
+        if payload.security == TransportSecurity.reality:
+            if payload.network != TransportNetwork.tcp:
                 raise HTTPException(status_code=422, detail="reality transport requires network=tcp")
-            if not reality_public_key or not reality_short_id or not reality_server_name:
+            if not payload.reality_public_key or not payload.reality_short_id or not payload.reality_server_name:
                 raise HTTPException(
                     status_code=422,
                     detail="reality transport requires reality_public_key, reality_short_id and reality_server_name",
                 )
-            if grpc_service_name:
+            if payload.grpc_service_name:
                 raise HTTPException(status_code=422, detail="reality transport does not support grpc_service_name")
-        elif security == "tls":
-            if network not in {"grpc", "ws"}:
+        elif payload.security == TransportSecurity.tls:
+            if payload.network not in {TransportNetwork.grpc, TransportNetwork.ws}:
                 raise HTTPException(status_code=422, detail="tls transport supports only network=grpc or network=ws")
-            if reality_public_key or reality_short_id or reality_server_name:
+            if payload.reality_public_key or payload.reality_short_id or payload.reality_server_name:
                 raise HTTPException(
                     status_code=422,
                     detail="tls transport does not support reality_* fields",
                 )
-            if flow:
+            if payload.flow:
                 raise HTTPException(status_code=422, detail="tls transport does not support flow")
-            if network == "grpc":
+            if payload.network == TransportNetwork.grpc:
                 grpc_service_name = grpc_service_name or "vl"
             elif grpc_service_name:
                 raise HTTPException(status_code=422, detail="ws transport does not support grpc_service_name")
         else:
-            raise HTTPException(status_code=422, detail=f"Unsupported security: {security}")
+            raise HTTPException(status_code=422, detail=f"Unsupported security: {payload.security.value}")
 
         return TransportProfileCreateIn(
             name=payload.name,
-            protocol=protocol,
-            network=network,
-            security=security,
-            flow=flow,
-            reality_public_key=reality_public_key,
-            reality_short_id=reality_short_id,
-            reality_server_name=reality_server_name,
+            protocol=payload.protocol,
+            network=payload.network,
+            security=payload.security,
+            flow=payload.flow,
+            reality_public_key=payload.reality_public_key,
+            reality_short_id=payload.reality_short_id,
+            reality_server_name=payload.reality_server_name,
             tls_fingerprint=payload.tls_fingerprint,
             grpc_service_name=grpc_service_name,
             port=payload.port,
@@ -133,6 +133,19 @@ class RouteService:
         node = await self.node_repository.get_by_id(payload.node_id)
         if not node:
             raise HTTPException(status_code=404, detail="Node not found")
+        if normalized_node_role(node) != RouteNodeRole.backend:
+            raise HTTPException(status_code=422, detail="Route backend node must have role=backend")
+
+        if payload.entry_node_id is not None:
+            entry_node = await self.node_repository.get_by_id(payload.entry_node_id)
+            if not entry_node:
+                raise HTTPException(status_code=404, detail="Entry node not found")
+            entry_role = normalized_node_role(entry_node)
+            if entry_role != RouteNodeRole.whitelist_entry:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Route entry node must have role=whitelist_entry",
+                )
 
         tp = await self.transport_repository.get_by_id(payload.transport_profile_id)
         if not tp or not tp.is_active:
@@ -165,6 +178,7 @@ class RouteService:
         create_payload = RouteCreateData(
             name=payload.name,
             node_id=payload.node_id,
+            entry_node_id=payload.entry_node_id,
             transport_profile_id=payload.transport_profile_id,
             health_status=payload.health_status,
             base_weight=payload.base_weight,
@@ -185,10 +199,37 @@ class RouteService:
             )
             if not updated:
                 raise HTTPException(status_code=500, detail="Failed to create route")
-            return self._route_out_from_route(updated)
+            return build_route_out(updated)
 
         created = await self.route_repository.create(create_payload.model_dump())
-        return self._route_out_from_route(created)
+        return build_route_out(created)
+
+    async def update_route(self, route_id: UUID, payload: RouteUpdateIn) -> RouteOut:
+        route = await self.route_repository.get_by_id(route_id)
+        if not route or not route.is_active:
+            raise HTTPException(status_code=404, detail="Route not found")
+
+        if "entry_node_id" not in payload.model_fields_set:
+            return build_route_out(route)
+
+        if payload.entry_node_id is not None:
+            entry_node = await self.node_repository.get_by_id(payload.entry_node_id)
+            if not entry_node:
+                raise HTTPException(status_code=404, detail="Entry node not found")
+            if normalized_node_role(entry_node) != RouteNodeRole.whitelist_entry:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Route entry node must have role=whitelist_entry",
+                )
+
+        update = RouteEntryUpdate(
+            entry_node_id=payload.entry_node_id,
+            updated_at=datetime.now(timezone.utc),
+        )
+        updated = await self.route_repository.update_by_id(route.id, update.model_dump())
+        if not updated:
+            raise HTTPException(status_code=500, detail="Failed to update route")
+        return build_route_out(updated)
 
     async def list_routes(
             self,
@@ -233,17 +274,17 @@ class RouteService:
         updated = await self.route_repository.update_by_id(
             item_id=route.id,
             data=RouteStateUpdate(
-                health_status=next_state["health_status"],
-                effective_weight=next_state["effective_weight"],
-                cooldown_until=next_state["cooldown_until"],
-                warmup_stage=next_state["warmup_stage"],
-                warmup_started_at=next_state["warmup_started_at"],
+                health_status=next_state.health_status,
+                effective_weight=next_state.effective_weight,
+                cooldown_until=next_state.cooldown_until,
+                warmup_stage=next_state.warmup_stage,
+                warmup_started_at=next_state.warmup_started_at,
                 updated_at=now,
             ).model_dump(),
         )
         if not updated:
             raise HTTPException(status_code=500, detail="Failed to update route health")
-        return self._route_out_from_route(updated)
+        return build_route_out(updated)
 
     async def advance_warmup(self) -> RouteWarmupTickOut:
         now = datetime.now(timezone.utc)
@@ -265,31 +306,24 @@ class RouteService:
             updated = await self.route_repository.update_by_id(
                 item_id=route.id,
                 data=RouteStateUpdate(
-                    health_status=next_state["health_status"],
-                    effective_weight=next_state["effective_weight"],
-                    cooldown_until=next_state["cooldown_until"],
-                    warmup_stage=next_state["warmup_stage"],
-                    warmup_started_at=next_state["warmup_started_at"],
+                    health_status=next_state.health_status,
+                    effective_weight=next_state.effective_weight,
+                    cooldown_until=next_state.cooldown_until,
+                    warmup_stage=next_state.warmup_stage,
+                    warmup_started_at=next_state.warmup_started_at,
                     updated_at=now,
                 ).model_dump(),
             )
             if updated:
-                if tick_result == "advanced":
+                if tick_result == RouteWarmupTickResult.advanced:
                     advanced += 1
-                elif tick_result == "finalized":
+                elif tick_result == RouteWarmupTickResult.finalized:
                     finalized += 1
 
         return RouteWarmupTickOut(
             processed=processed,
             advanced=advanced,
             finalized=finalized,
-        )
-
-    def _stage_weight(self, base_weight: int, stage: int) -> int:
-        return stage_weight(
-            base_weight=base_weight,
-            stage=stage,
-            warmup_stages=tuple(self.WARMUP_STAGES),
         )
 
     def _build_route_out(
@@ -308,36 +342,11 @@ class RouteService:
             agent_state=agent_state,
             now=now,
         )
-        return RouteOut.model_validate(
-            {
-                **self._route_out_payload(route),
-                "routing_eligible": routing_reason is None,
-                "routing_reason": routing_reason,
-            }
+        return build_route_out(
+            route,
+            routing_eligible=routing_reason is None,
+            routing_reason=routing_reason,
         )
-
-    def _route_out_from_route(self, route) -> RouteOut:
-        return RouteOut.model_validate(self._route_out_payload(route))
-
-    @staticmethod
-    def _route_out_payload(route) -> dict:
-        return {
-            "id": route.id,
-            "name": route.name,
-            "node_id": route.node_id,
-            "transport_profile_id": route.transport_profile_id,
-            "health_status": route.health_status,
-            "base_weight": route.base_weight,
-            "effective_weight": route.effective_weight,
-            "cooldown_until": route.cooldown_until,
-            "warmup_stage": route.warmup_stage,
-            "warmup_started_at": route.warmup_started_at,
-            "routing_eligible": False,
-            "routing_reason": None,
-            "is_active": route.is_active,
-            "created_at": route.created_at,
-            "updated_at": route.updated_at,
-        }
 
     def _route_routing_reason(
             self,
@@ -371,23 +380,12 @@ class RouteService:
             return "agent_state_missing"
         if not bool(agent_state.is_healthy):
             return "agent_unhealthy"
-        last_seen_at = self._to_utc_or_none(agent_state.last_seen_at)
+        last_seen_at = to_utc_or_none(agent_state.last_seen_at)
         if last_seen_at is None:
             return "heartbeat_missing"
-        if last_seen_at < self._node_seen_after(now=now):
+        if last_seen_at < now - timedelta(seconds=self.node_state_stale_after_sec):
             return "heartbeat_stale"
         return None
-
-    def _node_seen_after(self, *, now: datetime) -> datetime:
-        return now - timedelta(seconds=self.node_state_stale_after_sec)
-
-    @staticmethod
-    def _to_utc_or_none(value: datetime | None) -> datetime | None:
-        if value is None:
-            return None
-        if value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc)
 
 
 def get_route_service(

@@ -50,6 +50,7 @@ class RoutingRepository:
                 VpnNode.is_active.is_(True),
                 VpnNode.is_enabled.is_(True),
                 VpnNode.is_draining.is_(False),
+                VpnNode.role == "backend",
                 NodeAgentState.is_healthy.is_(True),
                 VpnNode.capacity > 0,
                 active_count_expr < VpnNode.capacity,

@@ -14,7 +14,27 @@ class UserCreateIn(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class UserInternalCreate(BaseModel):
+    telegram_id: int
+    username: str | None = None
+    balance: Decimal = Decimal("0")
+    tag: str | None = None
+    description: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class UserUpdateIn(BaseModel):
+    username: str | None = None
+    balance: Decimal | None = None
+    is_active: bool | None = None
+    tag: str | None = None
+    description: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UserInternalUpdate(BaseModel):
     username: str | None = None
     balance: Decimal | None = None
     is_active: bool | None = None

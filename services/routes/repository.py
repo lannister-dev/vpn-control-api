@@ -70,6 +70,23 @@ class RouteRepository(BaseRepository[Route]):
         res = await self.session.execute(stmt)
         return list(res.tuples().all())
 
+    async def get_active_detailed_by_id(
+            self,
+            route_id: UUID,
+    ) -> tuple[Route, VpnNode, TransportProfile, NodeAgentState | None] | None:
+        stmt = (
+            select(Route, VpnNode, TransportProfile, NodeAgentState)
+            .join(VpnNode, VpnNode.id == Route.node_id)
+            .join(TransportProfile, TransportProfile.id == Route.transport_profile_id)
+            .outerjoin(NodeAgentState, NodeAgentState.node_id == VpnNode.id)
+            .where(
+                Route.id == route_id,
+                Route.is_active.is_(True),
+            )
+        )
+        res = await self.session.execute(stmt)
+        return res.tuples().one_or_none()
+
     async def list_by_names(self, names: list[str]) -> list[Route]:
         if not names:
             return []
@@ -88,6 +105,41 @@ class RouteRepository(BaseRepository[Route]):
         )
         res = await self.session.execute(stmt)
         return list(res.scalars().all())
+
+    async def list_backend_ids_with_entry_routes(
+            self,
+            *,
+            key_transport: str | None,
+    ) -> list[UUID]:
+        stmt = (
+            select(Route.node_id)
+            .join(TransportProfile, TransportProfile.id == Route.transport_profile_id)
+            .where(
+                Route.is_active.is_(True),
+                Route.entry_node_id.is_not(None),
+                TransportProfile.is_active.is_(True),
+            )
+            .distinct()
+        )
+        if key_transport == "reality":
+            stmt = stmt.where(
+                TransportProfile.security == "reality",
+                TransportProfile.network == "tcp",
+            )
+        elif key_transport == "ws":
+            stmt = stmt.where(
+                TransportProfile.security == "tls",
+                TransportProfile.network == "ws",
+            )
+        elif key_transport == "xhttp":
+            stmt = stmt.where(
+                TransportProfile.security == "tls",
+                TransportProfile.network == "xhttp",
+            )
+        elif key_transport == "tcp":
+            return []
+        res = await self.session.execute(stmt)
+        return [row[0] for row in res.all()]
 
     async def list_resolved_active(
             self,

@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 class VpnNodeCreate(BaseModel):
     name: str
+    role: str = Field(default="backend", min_length=1, max_length=16)
     region: str
     public_domain: str
     reality_ip: str | None = None
@@ -23,6 +24,7 @@ class VpnNodeCreate(BaseModel):
 
 class VpnNodeUpdate(BaseModel):
     name: str | None = None
+    role: str | None = Field(default=None, min_length=1, max_length=16)
     region: str | None = None
     public_domain: str | None = None
     reality_ip: str | None = None
@@ -38,9 +40,11 @@ class VpnNodeUpdate(BaseModel):
 
 class AdminNodeUpdateIn(BaseModel):
     name: str | None = None
+    role: str | None = Field(default=None, min_length=1, max_length=16)
     region: str | None = None
     public_domain: str | None = None
     reality_ip: str | None = None
+    upstream_node_id: UUID | None = None
     capacity: int | None = Field(default=None, ge=1, le=10000)
     is_enabled: bool | None = None
     is_draining: bool | None = None
@@ -50,6 +54,7 @@ class AdminNodeUpdateIn(BaseModel):
 class VpnNodeOut(BaseModel):
     id: UUID
     name: str
+    role: str
     region: str
     public_domain: str
     reality_ip: str | None = None
@@ -60,6 +65,7 @@ class VpnNodeOut(BaseModel):
     is_enabled: bool
     is_draining: bool
     capacity: int
+    upstream_node_id: UUID | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

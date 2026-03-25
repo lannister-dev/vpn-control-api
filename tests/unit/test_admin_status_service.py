@@ -9,12 +9,15 @@ import pytest
 from services.admin_status.service import AdminStatusService
 
 
-def _node(*, enabled: bool, draining: bool):
+def _node(*, enabled: bool, draining: bool, role: str = "backend"):
     n = MagicMock()
     n.id = uuid4()
     n.name = f"node-{n.id.hex[:6]}"
+    n.role = role
     n.region = "fi"
     n.public_domain = "prod.example.com"
+    n.upstream_node_id = None
+    n.is_active = True
     n.is_enabled = enabled
     n.is_draining = draining
     n.capacity = 100
@@ -76,6 +79,7 @@ async def test_admin_status_aggregates(async_session):
     assert out.totals.placements_total == 3
     assert len(out.nodes) == 2
     by_id = {item.id: item for item in out.nodes}
+    assert by_id[primary.id].role == "backend"
     assert by_id[primary.id].placements_backend == 3
     assert by_id[primary.id].reality_ip == "203.0.113.7"
     assert by_id[primary.id].routing_eligible is True
@@ -108,3 +112,26 @@ async def test_admin_status_marks_stale_node_unhealthy(async_session):
     assert out.nodes[0].is_healthy is False
     assert out.nodes[0].routing_eligible is False
     assert out.nodes[0].routing_reason == "heartbeat_stale"
+
+
+@pytest.mark.asyncio
+async def test_admin_status_excludes_whitelist_entry_from_backend_routing(async_session):
+    svc = AdminStatusService(async_session)
+    svc.node_repository = AsyncMock()
+    svc.placement_repository = AsyncMock()
+
+    entry = _node(enabled=True, draining=False, role="whitelist_entry")
+    entry_state = _state(healthy=True)
+
+    svc.node_repository.list_active_with_agent_state = AsyncMock(
+        return_value=[(entry, entry_state)]
+    )
+    svc.placement_repository.count_active_by_backend_node = AsyncMock(return_value={})
+
+    out = await svc.get_status()
+
+    assert out.totals.nodes_total == 1
+    assert out.totals.nodes_healthy == 1
+    assert out.nodes[0].role == "whitelist_entry"
+    assert out.nodes[0].routing_eligible is False
+    assert out.nodes[0].routing_reason == "node_role_excluded"

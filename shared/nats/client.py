@@ -48,6 +48,8 @@ class NatsClient:
                 closed_cb=self._on_closed,
                 ping_interval=20,
                 max_outstanding_pings=3,
+                pending_size=8 * 1024 * 1024,
+                flusher_queue_size=512,
             )
             self._connected = True
             self._js = self._nc.jetstream()
