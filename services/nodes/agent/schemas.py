@@ -184,6 +184,29 @@ class AgentSubjects:
     def sync_report_ack(self, node_id: str) -> str:
         return f"{self._sync_report_prefix}.{node_id}.acks"
 
+    def upstream_changed(self, node_id: str) -> str:
+        return f"{self._command_prefix}.{node_id}.upstream"
+
+
+class UpstreamChangedPayload(BaseModel):
+    schema_version: int = Field(default=1, ge=1)
+    event_id: str
+    node_id: str
+    emitted_at: datetime
+    upstream_node_id: str
+    upstream_public_domain: str
+    upstream_reality_ip: str | None = None
+
+
+class OutboxEnqueueItem(BaseModel):
+    node_id: UUID
+    event_type: str = Field(min_length=1, max_length=64)
+    aggregate_id: UUID | None = None
+    subject: str = Field(min_length=1, max_length=255)
+    payload: dict
+    message_id: str = Field(min_length=1, max_length=255)
+    status: str = Field(default="pending", min_length=1, max_length=32)
+
 
 class PlacementCommandPayload(BaseModel):
     placement_id: UUID

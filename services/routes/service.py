@@ -1,19 +1,21 @@
 from datetime import datetime, timedelta, timezone
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.config import get_settings
+from services.nodes.agent.repository import NodeTransportOutboxRepository
+from services.nodes.agent.schemas import AgentSubjects, OutboxEnqueueItem, UpstreamChangedPayload
 from services.nodes.repository import VpnNodeRepository
+from services.nodes.schemas import NodeUpstreamUpdate
 from services.routes.exceptions import RouteCooldownActiveError
 from services.routes.policy import DEFAULT_WARMUP_STAGES
 from services.routes.repository import RouteRepository, TransportProfileRepository
 from services.routes.schemas import (
     RouteCreateData,
     RouteCreateIn,
-    RouteEntryUpdate,
-    RouteHealthAction,
+    RouteFieldsUpdate,
     RouteHealthStatus,
     RouteHealthUpdateIn,
     RouteOut,
@@ -50,6 +52,15 @@ class RouteService:
         self.node_repository = VpnNodeRepository(session)
         self.transport_repository = TransportProfileRepository(session)
         self.route_repository = RouteRepository(session)
+        self.outbox_repository = NodeTransportOutboxRepository(session)
+        nats_cfg = self.settings.nats
+        self._subjects = AgentSubjects(
+            command_prefix=nats_cfg.js_command_subject_prefix,
+            result_prefix=nats_cfg.js_result_subject_prefix,
+            snapshot_prefix=nats_cfg.js_snapshot_subject_prefix,
+            heartbeat_prefix=nats_cfg.js_heartbeat_subject_prefix,
+            sync_report_prefix=nats_cfg.js_sync_report_subject_prefix,
+        )
 
     async def create_transport_profile(
             self,
@@ -193,42 +204,87 @@ class RouteService:
             update_payload = RouteReactivationUpdate(
                 **create_payload.model_dump(),
             )
-            updated = await self.route_repository.update_by_id(
+            result = await self.route_repository.update_by_id(
                 existing.id,
                 update_payload.model_dump(),
             )
-            if not updated:
+            if not result:
                 raise HTTPException(status_code=500, detail="Failed to create route")
-            return build_route_out(updated)
+        else:
+            result = await self.route_repository.create(create_payload.model_dump())
 
-        created = await self.route_repository.create(create_payload.model_dump())
-        return build_route_out(created)
+        if payload.entry_node_id is not None:
+            await self._sync_entry_upstream(
+                entry_node_id=payload.entry_node_id,
+                backend_node_id=payload.node_id,
+                backend_node=node,
+            )
+        return build_route_out(result)
 
     async def update_route(self, route_id: UUID, payload: RouteUpdateIn) -> RouteOut:
         route = await self.route_repository.get_by_id(route_id)
         if not route or not route.is_active:
             raise HTTPException(status_code=404, detail="Route not found")
 
-        if "entry_node_id" not in payload.model_fields_set:
+        if not payload.model_fields_set:
             return build_route_out(route)
 
-        if payload.entry_node_id is not None:
-            entry_node = await self.node_repository.get_by_id(payload.entry_node_id)
-            if not entry_node:
-                raise HTTPException(status_code=404, detail="Entry node not found")
-            if normalized_node_role(entry_node) != RouteNodeRole.whitelist_entry:
+        update = RouteFieldsUpdate()
+        loaded_backend_node = None
+
+        if "name" in payload.model_fields_set:
+            existing = await self.route_repository.get_one_by(name=payload.name)
+            if existing and existing.is_active and existing.id != route.id:
+                raise HTTPException(status_code=409, detail="Route name already exists")
+            update.name = payload.name
+
+        if "node_id" in payload.model_fields_set:
+            loaded_backend_node = await self.node_repository.get_by_id(payload.node_id)
+            if not loaded_backend_node:
+                raise HTTPException(status_code=404, detail="Node not found")
+            if normalized_node_role(loaded_backend_node) != RouteNodeRole.backend:
                 raise HTTPException(
                     status_code=422,
-                    detail="Route entry node must have role=whitelist_entry",
+                    detail="Route backend node must have role=backend",
                 )
+            update.node_id = payload.node_id
 
-        update = RouteEntryUpdate(
-            entry_node_id=payload.entry_node_id,
-            updated_at=datetime.now(timezone.utc),
+        if "entry_node_id" in payload.model_fields_set:
+            if payload.entry_node_id is not None:
+                entry_node = await self.node_repository.get_by_id(payload.entry_node_id)
+                if not entry_node:
+                    raise HTTPException(status_code=404, detail="Entry node not found")
+                if normalized_node_role(entry_node) != RouteNodeRole.whitelist_entry:
+                    raise HTTPException(
+                        status_code=422,
+                        detail="Route entry node must have role=whitelist_entry",
+                    )
+            update.entry_node_id = payload.entry_node_id
+
+        if "base_weight" in payload.model_fields_set:
+            update.base_weight = payload.base_weight
+            if int(route.effective_weight) == int(route.base_weight):
+                update.effective_weight = payload.base_weight
+
+        if not update.model_fields_set:
+            return build_route_out(route)
+
+        update.updated_at = datetime.now(timezone.utc)
+        updated = await self.route_repository.update_by_id(
+            route.id, update.model_dump(exclude_unset=True),
         )
-        updated = await self.route_repository.update_by_id(route.id, update.model_dump())
         if not updated:
             raise HTTPException(status_code=500, detail="Failed to update route")
+
+        resolved_entry = update.entry_node_id if "entry_node_id" in update.model_fields_set else getattr(route, "entry_node_id", None)
+        resolved_backend = update.node_id if "node_id" in update.model_fields_set else route.node_id
+        if resolved_entry is not None:
+            await self._sync_entry_upstream(
+                entry_node_id=UUID(str(resolved_entry)),
+                backend_node_id=UUID(str(resolved_backend)),
+                backend_node=loaded_backend_node,
+            )
+
         return build_route_out(updated)
 
     async def list_routes(
@@ -325,6 +381,56 @@ class RouteService:
             advanced=advanced,
             finalized=finalized,
         )
+
+    async def _sync_entry_upstream(
+            self,
+            *,
+            entry_node_id: UUID,
+            backend_node_id: UUID,
+            backend_node=None,
+    ) -> None:
+        entry_node = await self.node_repository.get_by_id(entry_node_id)
+        if not entry_node:
+            return
+
+        current_upstream = getattr(entry_node, "upstream_node_id", None)
+        if current_upstream is not None:
+            current_upstream = UUID(str(current_upstream))
+        if current_upstream == backend_node_id:
+            return
+
+        now = datetime.now(timezone.utc)
+        node_update = NodeUpstreamUpdate(
+            upstream_node_id=backend_node_id,
+            updated_at=now,
+        )
+        await self.node_repository.update_by_id(
+            entry_node_id,
+            node_update.model_dump(),
+        )
+
+        if backend_node is None:
+            backend_node = await self.node_repository.get_by_id(backend_node_id)
+        if not backend_node:
+            return
+
+        event = UpstreamChangedPayload(
+            event_id=str(uuid4()),
+            node_id=str(entry_node_id),
+            emitted_at=now,
+            upstream_node_id=str(backend_node_id),
+            upstream_public_domain=str(backend_node.public_domain),
+            upstream_reality_ip=getattr(backend_node, "reality_ip", None),
+        )
+        outbox_item = OutboxEnqueueItem(
+            node_id=entry_node_id,
+            event_type="upstream_changed",
+            aggregate_id=backend_node_id,
+            subject=self._subjects.upstream_changed(str(entry_node_id)),
+            payload=event.model_dump(mode="json"),
+            message_id=f"upstream-changed:{entry_node_id}:{backend_node_id}:{now.isoformat()}",
+        )
+        await self.outbox_repository.enqueue_many([outbox_item.model_dump()])
 
     def _build_route_out(
             self,
