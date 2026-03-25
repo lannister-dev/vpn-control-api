@@ -44,6 +44,7 @@ class AdminNodeUpdateIn(BaseModel):
     region: str | None = None
     public_domain: str | None = None
     reality_ip: str | None = None
+    upstream_node_id: UUID | None = None
     capacity: int | None = Field(default=None, ge=1, le=10000)
     is_enabled: bool | None = None
     is_draining: bool | None = None
@@ -64,6 +65,7 @@ class VpnNodeOut(BaseModel):
     is_enabled: bool
     is_draining: bool
     capacity: int
+    upstream_node_id: UUID | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

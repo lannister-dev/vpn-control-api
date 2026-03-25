@@ -32,6 +32,7 @@ class VpnNode(Base):
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"), nullable=False)
     is_draining: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"), nullable=False)
     capacity: Mapped[int] = mapped_column(Integer, default=100, server_default=text("100"), nullable=False)
+    upstream_node_id: Mapped[UUID | None] = mapped_column(ForeignKey("vpn_node.id"), nullable=True, index=True)
 
     assignments: Mapped[list["KeyAssignment"]] = relationship(back_populates="node")
     agent_state: Mapped["NodeAgentState"] = relationship(back_populates="node")

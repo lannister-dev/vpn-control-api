@@ -53,6 +53,9 @@ class AdminStatusService:
             reality_ip_raw = getattr(node, "reality_ip", None)
             reality_ip = reality_ip_raw if isinstance(reality_ip_raw, str) else None
 
+            upstream_raw = getattr(node, "upstream_node_id", None)
+            upstream_node_id = upstream_raw if upstream_raw is not None else None
+
             nodes.append(
                 AdminNodeStatusOut(
                     id=node.id,
@@ -61,6 +64,7 @@ class AdminStatusService:
                     region=node.region,
                     public_domain=node.public_domain,
                     reality_ip=reality_ip,
+                    upstream_node_id=upstream_node_id,
                     is_enabled=node.is_enabled,
                     is_draining=node.is_draining,
                     capacity=node.capacity,

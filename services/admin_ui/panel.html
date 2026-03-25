@@ -1759,7 +1759,7 @@
                 <div class="mini-kpi"><div class="mini-kpi-label">Маршруты</div><div class="mini-kpi-value">${nodeRoutes.length}</div></div>
                 ${isEntry ? "" : `<div class="mini-kpi"><div class="mini-kpi-label">Плейсменты</div><div class="mini-kpi-value">${nodePlacementsCount}</div></div>`}
               </div>
-              ${isEntry && entryRoutes.length ? `<div style="margin-top:8px"><div class="muted" style="font-size:11px;margin-bottom:4px">Upstream бэкенды</div>${entryRoutes.map((r) => { const bName = nodeNameById(r.node_id) || shortId(r.node_id); return '<div style="font-size:12px;margin-bottom:2px">' + esc(r.name) + ' → <strong>' + esc(bName) + '</strong></div>'; }).join("")}</div>` : ""}
+              ${isEntry ? `<div style="margin-top:8px"><div class="muted" style="font-size:11px;margin-bottom:4px">Upstream</div>${n.upstream_node_id ? (() => { const ub = ((state.status && state.status.nodes) || []).find((x) => x.id === n.upstream_node_id); const ubName = ub ? ub.name : shortId(n.upstream_node_id); const ubGeo = ub ? nodeGeo(ub.region) : null; return '<div style="font-size:12px"><strong>' + esc(ubName) + '</strong>' + (ubGeo ? ' <span class="muted">' + esc(ubGeo.short) + '</span>' : '') + '</div>'; })() : '<div class="muted" style="font-size:12px">Не назначен</div>'}${entryRoutes.length ? '<div class="muted" style="font-size:11px;margin-top:4px;margin-bottom:2px">Маршруты через entry</div>' + entryRoutes.map((r) => { const bName = nodeNameById(r.node_id) || shortId(r.node_id); return '<div style="font-size:12px;margin-bottom:2px">' + esc(r.name) + ' → <strong>' + esc(bName) + '</strong></div>'; }).join("") : ""}</div>` : ""}
               <div style="margin-top:8px"><div class="muted" style="font-size:11px;margin-bottom:4px">Последний probe</div>${(() => {
                 const np = latestProbeForNode(n.id);
                 if (!np) return '<div class="empty" style="font-size:12px">Нет probe-данных</div>';
@@ -1773,7 +1773,7 @@
               <div class="form-group"><label class="form-label">Region</label><input id="edit-region" class="input" value="${esc(n.region || "")}" /></div>
               <div class="form-group"><label class="form-label">Public domain</label><input id="edit-public-domain" class="input" value="${esc(n.public_domain || "")}" /></div>
               <div class="form-group"><label class="form-label">Reality IP</label><input id="edit-reality-ip" class="input" value="${esc(n.reality_ip || "")}" /></div>
-              ${isEntry ? "" : `<div class="form-group"><label class="form-label">Capacity</label><input id="edit-capacity" class="input" type="number" min="1" max="10000" value="${n.capacity || ""}" /></div>`}
+              ${isEntry ? `<div class="form-group"><label class="form-label">Upstream бэкенд</label><select id="edit-upstream" class="select"><option value="">— нет —</option>${((state.status && state.status.nodes) || []).filter((b) => b.role === "backend" && b.is_active !== false).map((b) => { const g = nodeGeo(b.region); return '<option value="' + b.id + '"' + (n.upstream_node_id === b.id ? ' selected' : '') + '>' + esc(b.name) + ' (' + esc(g.short) + ')</option>'; }).join("")}</select></div>` : `<div class="form-group"><label class="form-label">Capacity</label><input id="edit-capacity" class="input" type="number" min="1" max="10000" value="${n.capacity || ""}" /></div>`}
             </div>
             <div class="form-section"><div class="form-section-title">Действия</div>
               <div class="actions">
@@ -1797,12 +1797,15 @@
           const publicDomain = document.getElementById("edit-public-domain").value;
           const realityIp = document.getElementById("edit-reality-ip").value;
           const capacityEl = document.getElementById("edit-capacity");
+          const upstreamEl = document.getElementById("edit-upstream");
           const capacity = capacityEl ? capacityEl.value : "";
+          const upstream = upstreamEl ? upstreamEl.value : "";
           if (role !== (n.role || "backend")) body.role = role;
           if (region !== (n.region || "")) body.region = region;
           if (publicDomain !== (n.public_domain || "")) body.public_domain = publicDomain;
           if (realityIp !== (n.reality_ip || "")) body.reality_ip = realityIp || null;
           if (capacity !== "" && Number(capacity) !== n.capacity) body.capacity = Number(capacity);
+          if (upstreamEl && upstream !== (n.upstream_node_id || "")) body.upstream_node_id = upstream || null;
           if (!Object.keys(body).length) { notify("Нет изменений", false); return; }
           closeModal();
           runAction(`Update node config ${n.id}`, () => req(`/api/v1/agent/nodes/${encodeURIComponent(n.id)}`, { method: "PATCH", body })).then(() => refreshAll()).catch(() => {});
@@ -1966,7 +1969,7 @@
             const heartbeatCol = isEntryNode
               ? (nodeProbe ? `${nodeProbe.is_reachable ? chip("ok", "OK") : chip("bad", "FAIL")}${nodeProbe.latency_ms != null ? `<div class="mono muted" style="font-size:10px;margin-top:2px">${nodeProbe.latency_ms}ms</div>` : ""}` : `<span class="muted">no probe</span>`)
               : `<span title="${esc(fmtDate(n.last_seen_at))}">${relTime(n.last_seen_at)}</span>${probeLine}`;
-            const loadCol = isEntryNode ? `<span class="muted">—</span>` : capacityBar(n.placements_backend, n.capacity);
+            const loadCol = isEntryNode ? (n.upstream_node_id ? `<span class="muted" style="font-size:11px">→ ${esc(nodeNameById(n.upstream_node_id) || shortId(n.upstream_node_id))}</span>` : `<span class="muted" style="font-size:11px">upstream —</span>`) : capacityBar(n.placements_backend, n.capacity);
             return `<tr><td><strong>${esc(n.name)}</strong> ${chip(nodeRoleClass(n.role), nodeRoleLabel(n.role))}<div>${uuidCell(n.id)}</div>${n.public_domain ? `<div class="mono muted" style="font-size:11px">${esc(n.public_domain)}</div>` : ""}${n.reality_ip ? `<div class="mono muted" style="font-size:11px">reality: ${esc(n.reality_ip)}</div>` : ""}</td><td><div class="geo"><span class="flag">${esc(g.flag)}</span>${esc(g.country)}</div><div class="mono muted">${esc(g.regionText)}</div></td><td>${healthCol}</td><td>${n.is_draining ? chip("warn", "Draining") : (!n.is_enabled ? chip("bad", "Отключен") : chip("ok", "Активен"))}${routingHint}</td><td>${loadCol}</td><td>${heartbeatCol}</td><td><div class="actions"><button class="btn-mini node-action" data-action="drain" data-id="${esc(n.id)}">Drain</button><button class="btn-mini node-action" data-action="enable" data-id="${esc(n.id)}">Enable</button><button class="btn-mini node-config" data-id="${esc(n.id)}">Настройки</button></div></td></tr>`;
           }).join("")
           : `<tr><td colspan="7" class="empty">Нет серверов по текущим фильтрам.</td></tr>`;

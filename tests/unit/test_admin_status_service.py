@@ -16,6 +16,7 @@ def _node(*, enabled: bool, draining: bool, role: str = "backend"):
     n.role = role
     n.region = "fi"
     n.public_domain = "prod.example.com"
+    n.upstream_node_id = None
     n.is_active = True
     n.is_enabled = enabled
     n.is_draining = draining
