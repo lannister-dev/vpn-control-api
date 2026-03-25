@@ -312,7 +312,10 @@ class NodeAgentRuntime:
     async def _ensure_topology(self) -> None:
         await self._nats.ensure_stream(
             name=self._config.js_command_stream,
-            subjects=[f"{self._config.js_command_subject_prefix}.*.commands"],
+            subjects=[
+                f"{self._config.js_command_subject_prefix}.*.commands",
+                f"{self._config.js_command_subject_prefix}.*.upstream",
+            ],
         )
         await self._nats.ensure_stream(
             name=self._config.js_result_stream,

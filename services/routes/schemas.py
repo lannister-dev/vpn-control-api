@@ -81,14 +81,21 @@ class TransportProfileOut(BaseModel):
 
 
 class RouteUpdateIn(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    node_id: UUID | None = None
     entry_node_id: UUID | None = None
+    base_weight: int | None = Field(default=None, ge=0, le=100)
 
     model_config = ConfigDict(extra="forbid")
 
 
-class RouteEntryUpdate(BaseModel):
-    entry_node_id: UUID | None
-    updated_at: datetime
+class RouteFieldsUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    node_id: UUID | None = None
+    entry_node_id: UUID | None = None
+    base_weight: int | None = Field(default=None, ge=0, le=100)
+    effective_weight: int | None = Field(default=None, ge=0, le=100)
+    updated_at: datetime | None = None
 
 
 class RouteCreateIn(BaseModel):
