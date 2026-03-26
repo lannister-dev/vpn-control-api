@@ -182,6 +182,18 @@ class TransportBuildResult(BaseModel):
     model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
 
 
+class SubscriptionUserInfo(BaseModel):
+    upload: int = 0
+    download: int = 0
+    total: int = 0
+    expire: int = 0
+
+    model_config = ConfigDict(frozen=True)
+
+    def to_header(self) -> str:
+        return f"upload={self.upload}; download={self.download}; total={self.total}; expire={self.expire}"
+
+
 class SubscriptionPublicSuccessResponse(BaseModel):
     metric_result: str
     status_code: int
