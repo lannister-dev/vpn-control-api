@@ -1772,8 +1772,8 @@
             <div class="form-section"><div class="form-section-title">Конфигурация</div>
               <div class="form-group"><label class="form-label">Role</label><select id="edit-role" class="select"><option value="backend"${n.role === "backend" ? " selected" : ""}>backend</option><option value="whitelist_entry"${n.role === "whitelist_entry" ? " selected" : ""}>whitelist_entry</option><option value="gateway"${n.role === "gateway" ? " selected" : ""}>gateway</option></select></div>
               <div class="form-group"><label class="form-label">Region</label><input id="edit-region" class="input" value="${esc(n.region || "")}" /></div>
-              <div class="form-group"><label class="form-label">Public domain</label><input id="edit-public-domain" class="input" value="${esc(n.public_domain || "")}" /></div>
-              <div class="form-group"><label class="form-label">Reality IP</label><input id="edit-reality-ip" class="input" value="${esc(n.reality_ip || "")}" /></div>
+              ${isEntry ? "" : `<div class="form-group" id="fg-public-domain"><label class="form-label">Public domain</label><input id="edit-public-domain" class="input" value="${esc(n.public_domain || "")}" /></div>`}
+              <div class="form-group"><label class="form-label">${isEntry ? "Адрес (IP)" : "Reality IP"}</label><input id="edit-reality-ip" class="input" value="${esc(n.reality_ip || "")}" placeholder="${isEntry ? "IP-адрес entry ноды" : ""}" /></div>
               ${isEntry ? `<div class="form-group"><label class="form-label">Upstream бэкенд</label><select id="edit-upstream" class="select"><option value="">— нет —</option>${((state.status && state.status.nodes) || []).filter((b) => b.role === "backend" && b.is_active !== false).map((b) => { const g = nodeGeo(b.region); return '<option value="' + b.id + '"' + (n.upstream_node_id === b.id ? ' selected' : '') + '>' + esc(b.name) + ' (' + esc(g.short) + ')</option>'; }).join("")}</select></div>` : `<div class="form-group"><label class="form-label">Capacity</label><input id="edit-capacity" class="input" type="number" min="1" max="10000" value="${n.capacity || ""}" /></div>`}
             </div>
             <div class="form-section"><div class="form-section-title">Действия</div>
@@ -3025,7 +3025,7 @@
               <td>${chip(resetCls, resetLabels[p.reset_strategy] || p.reset_strategy)}</td>
               <td><span class="stat-inline"><strong>${esc(p.max_devices)}</strong> dev</span></td>
               <td><span class="mono">${esc(p.duration_days)}</span> дн.</td>
-              <td>${p.is_active ? chip("ok", "active") : chip("bad", "inactive")}</td>
+              <td>${p.whitelist_enabled ? chip("info", "WL") : ""} ${p.is_active ? chip("ok", "active") : chip("bad", "inactive")}</td>
               <td><div class="actions"><button class="btn-mini plan-edit-btn" data-plan-id="${esc(p.id)}">Edit</button></div></td>
             </tr>`;
           }).join("")
@@ -3061,6 +3061,9 @@
                   <div class="form-group"><label class="form-label">Длительность (дни)</label><input class="input mono" id="plan-duration" type="number" min="1" max="3650" value="30" /></div>
                 </div>
               </div>
+              <div class="form-section"><div class="form-section-title">Whitelist</div>
+                <div class="form-group"><label class="form-label" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="plan-wl" /> Whitelist-маршруты (entry ноды)</label></div>
+              </div>
             </div>
             <div class="modal-actions">
               <button class="btn btn-ghost" data-confirm="cancel">Отмена</button>
@@ -3076,7 +3079,7 @@
           const trafficVal = parseFloat(document.getElementById("plan-traffic").value) || 0;
           const unit = document.getElementById("plan-traffic-unit").value;
           const traffic_limit_bytes = unit === "gb" ? Math.round(trafficVal * 1024 * 1024 * 1024) : Math.round(trafficVal * 1024 * 1024);
-          const payload = { name, description: document.getElementById("plan-desc").value.trim() || null, traffic_limit_bytes, reset_strategy: document.getElementById("plan-reset").value, max_devices: parseInt(document.getElementById("plan-devices").value) || 5, duration_days: parseInt(document.getElementById("plan-duration").value) || 30 };
+          const payload = { name, description: document.getElementById("plan-desc").value.trim() || null, traffic_limit_bytes, reset_strategy: document.getElementById("plan-reset").value, max_devices: parseInt(document.getElementById("plan-devices").value) || 5, duration_days: parseInt(document.getElementById("plan-duration").value) || 30, whitelist_enabled: document.getElementById("plan-wl").checked };
           cleanup();
           runAction("Create plan", () => req("/api/v1/plans", { method: "POST", body: payload })).then(() => loadPlans()).catch(() => {});
         });
@@ -3119,6 +3122,9 @@
                 </div>
                 <div class="form-group"><label class="muted" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="plan-e-active" ${plan.is_active ? "checked" : ""} /> Активен</label></div>
               </div>
+              <div class="form-section"><div class="form-section-title">Whitelist</div>
+                <div class="form-group"><label class="form-label" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="plan-e-wl" ${plan.whitelist_enabled ? "checked" : ""} /> Whitelist-маршруты (entry ноды)</label></div>
+              </div>
               <div class="danger-zone"><div class="danger-zone-title">Опасная зона</div>
                 <button class="btn btn-danger" data-confirm="deactivate" style="width:auto;padding:8px 16px">Деактивировать план</button>
               </div>
@@ -3135,7 +3141,7 @@
           const trafficVal = parseFloat(document.getElementById("plan-e-traffic").value) || 0;
           const unit = document.getElementById("plan-e-traffic-unit").value;
           const traffic_limit_bytes = unit === "gb" ? Math.round(trafficVal * 1024 * 1024 * 1024) : Math.round(trafficVal * 1024 * 1024);
-          const payload = { name: document.getElementById("plan-e-name").value.trim() || null, description: document.getElementById("plan-e-desc").value.trim() || null, traffic_limit_bytes, reset_strategy: document.getElementById("plan-e-reset").value, max_devices: parseInt(document.getElementById("plan-e-devices").value) || 5, duration_days: parseInt(document.getElementById("plan-e-duration").value) || 30, is_active: document.getElementById("plan-e-active").checked };
+          const payload = { name: document.getElementById("plan-e-name").value.trim() || null, description: document.getElementById("plan-e-desc").value.trim() || null, traffic_limit_bytes, reset_strategy: document.getElementById("plan-e-reset").value, max_devices: parseInt(document.getElementById("plan-e-devices").value) || 5, duration_days: parseInt(document.getElementById("plan-e-duration").value) || 30, is_active: document.getElementById("plan-e-active").checked, whitelist_enabled: document.getElementById("plan-e-wl").checked };
           cleanup();
           runAction("Update plan", () => req(`/api/v1/plans/${encodeURIComponent(planId)}`, { method: "PATCH", body: payload })).then(() => loadPlans()).catch(() => {});
         });

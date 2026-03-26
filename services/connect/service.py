@@ -470,7 +470,7 @@ class ConnectService:
         visible_node = public_node or backend_node
         if security == "reality" and network == "tcp":
             if public_node is not None:
-                return public_node.public_domain or ""
+                return public_node.public_domain or public_node.reality_ip or ""
             return self._resolve_reality_host(visible_node)
         return self._resolve_ws_public_host(
             visible_node,

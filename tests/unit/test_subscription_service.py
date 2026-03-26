@@ -1127,3 +1127,116 @@ async def test_subscription_returns_existing_target_placement_even_when_not_sync
     assert preferred_backend_id == backend.id
     assert placement.id == pending.id
     assert allowed_backend_ids == {backend.id}
+
+
+@pytest.mark.asyncio
+async def test_build_payload_excludes_entry_routes_when_plan_has_no_whitelist(service):
+    service.settings.subscriptions.response_cache_ttl_sec = 0
+    service._enforce_rate_limit = AsyncMock()
+
+    plan = MagicMock()
+    plan.whitelist_enabled = False
+    sub = _make_sub(preferred_region="fi")
+    sub.plan = plan
+
+    service.subscription_repository.get_by_any_token_hash.return_value = sub
+    service._resolve_device_bundle_for_request = AsyncMock(
+        return_value=_make_bundle("reality")
+    )
+
+    node = _make_node(reality_ip="198.51.100.10", region="fi")
+    node.id = uuid4()
+    route = MagicMock()
+    route.id = uuid4()
+    route.health_status = "healthy"
+    route.effective_weight = 100
+    tp = _make_transport_profile()
+
+    async def _build_transport(*, subscription, key, max_routes):
+        return TransportBuildResult(
+            key=key,
+            routes=(
+                ResolvedSubscriptionRoute(
+                    route_id=uuid4(),
+                    backend_node_id=node.id,
+                    vpn_key_id=key.vpn_key_id,
+                    vpn_transport=key.transport,
+                    client_id=key.client_id,
+                    transport_security="reality",
+                    transport_network="tcp",
+                    country_code="FI",
+                    country_name="Finland",
+                    display_name="Finland",
+                    preferred_backend=True,
+                    selection_rank=0,
+                    uri="vless://fi-direct#Finland",
+                    route=route,
+                    node=node,
+                    transport_profile=tp,
+                ),
+            ),
+            placement_signature="reality:1",
+            diagnostic_reason=None,
+        )
+
+    service._build_transport_routes = AsyncMock(side_effect=_build_transport)
+    payload, etag, _ = await service.build_payload(raw_token="tok", hwid="hwid-1")
+
+    assert "fi-direct" in payload
+
+
+@pytest.mark.asyncio
+async def test_build_payload_includes_entry_routes_when_plan_whitelist_enabled(service):
+    service.settings.subscriptions.response_cache_ttl_sec = 0
+    service._enforce_rate_limit = AsyncMock()
+
+    plan = MagicMock()
+    plan.whitelist_enabled = True
+    sub = _make_sub(preferred_region="fi")
+    sub.plan = plan
+
+    service.subscription_repository.get_by_any_token_hash.return_value = sub
+    service._resolve_device_bundle_for_request = AsyncMock(
+        return_value=_make_bundle("reality")
+    )
+
+    node = _make_node(reality_ip="198.51.100.10", region="fi")
+    node.id = uuid4()
+    route = MagicMock()
+    route.id = uuid4()
+    route.health_status = "healthy"
+    route.effective_weight = 100
+    tp = _make_transport_profile()
+
+    async def _build_transport(*, subscription, key, max_routes):
+        return TransportBuildResult(
+            key=key,
+            routes=(
+                ResolvedSubscriptionRoute(
+                    route_id=uuid4(),
+                    backend_node_id=node.id,
+                    vpn_key_id=key.vpn_key_id,
+                    vpn_transport=key.transport,
+                    client_id=key.client_id,
+                    transport_security="reality",
+                    transport_network="tcp",
+                    country_code="FI",
+                    country_name="Finland",
+                    display_name="Finland WL",
+                    is_entry_route=True,
+                    preferred_backend=True,
+                    selection_rank=0,
+                    uri="vless://fi-wl#Finland%20WL",
+                    route=route,
+                    node=node,
+                    transport_profile=tp,
+                ),
+            ),
+            placement_signature="reality:1",
+            diagnostic_reason=None,
+        )
+
+    service._build_transport_routes = AsyncMock(side_effect=_build_transport)
+    payload, etag, _ = await service.build_payload(raw_token="tok", hwid="hwid-1")
+
+    assert "fi-wl" in payload
