@@ -138,6 +138,25 @@ async def test_build_route_uri_uses_entry_node_host(async_session):
 
 
 @pytest.mark.asyncio
+async def test_build_route_uri_entry_node_falls_back_to_reality_ip(async_session):
+    svc = ConnectService(async_session, _redis())
+    svc.settings.edge.public_domain = ""
+    backend = _node(public_domain="", reality_ip=None)
+    entry = _node(role="whitelist_entry", public_domain="", reality_ip="198.51.100.20")
+    tp = _transport_profile(network="tcp", security="reality", port=443)
+
+    uri = svc._build_route_uri(
+        client_id="cid",
+        backend_node=backend,
+        public_node=entry,
+        transport_profile=tp,
+    )
+
+    assert uri is not None
+    assert "@198.51.100.20:" in uri
+
+
+@pytest.mark.asyncio
 async def test_node_without_public_host_excluded_from_candidates(async_session):
     svc = ConnectService(async_session, _redis())
     svc.settings.edge.public_domain = ""
