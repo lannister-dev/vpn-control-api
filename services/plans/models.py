@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, String, Integer, text
+from sqlalchemy import BigInteger, Boolean, String, Integer, text
 from sqlalchemy.orm import mapped_column, Mapped
 
 from shared.database.base_model import Base
@@ -23,4 +23,7 @@ class Plan(Base):
     )
     sort_order: Mapped[int] = mapped_column(
         Integer, default=0, server_default=text("0"), nullable=False
+    )
+    whitelist_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), nullable=False
     )

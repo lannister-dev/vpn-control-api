@@ -645,6 +645,11 @@ class SubscriptionService:
             )
             entry_nodes_by_id = await self._entry_nodes_by_id(route_rows=route_rows)
 
+        whitelist_enabled = bool(
+            getattr(subscription, "plan", None)
+            and getattr(subscription.plan, "whitelist_enabled", False)
+        )
+
         resolved_routes: list[ResolvedSubscriptionRoute] = []
         seen_uris: set[str] = set()
         seen_logical_keys: set[tuple] = set()
@@ -654,6 +659,9 @@ class SubscriptionService:
                 continue
             entry_node_id = self._route_entry_node_id(route)
             entry_node = entry_nodes_by_id.get(entry_node_id) if entry_node_id is not None else None
+
+            if entry_node is not None and not whitelist_enabled:
+                continue
 
             transport_security = transport_profile.security
             transport_network = transport_profile.network
