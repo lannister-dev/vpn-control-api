@@ -362,31 +362,38 @@ class NodeAgentRuntime:
 
             published = 0
             for row in rows:
-                payload = PlacementCommandPayload.model_validate(row.payload)
-                state = await state_repo.get_or_create(node_id=payload.node_id)
                 emitted_at = datetime.now(timezone.utc)
-                event = PlacementCommandEvent(
-                    node_id=str(payload.node_id),
-                    emitted_at=emitted_at,
-                    snapshot_id=state.last_snapshot_id,
-                    epoch=state.current_epoch,
-                    event_id=row.message_id,
-                    placement_id=str(payload.placement_id),
-                    key_id=str(payload.key_id),
-                    op_version=payload.op_version,
-                    desired_state=payload.desired_state,
-                    backend_node_id=str(payload.backend_node_id),
-                    protocol=payload.protocol,
-                    transport=payload.transport,
-                    client_id=payload.client_id,
-                    is_revoked=payload.is_revoked,
-                    valid_until=payload.valid_until,
-                    updated_at=payload.updated_at,
-                )
+                command_payload: PlacementCommandPayload | None = None
+
+                if row.event_type == "upstream_changed":
+                    publish_payload = row.payload
+                else:
+                    command_payload = PlacementCommandPayload.model_validate(row.payload)
+                    state = await state_repo.get_or_create(node_id=command_payload.node_id)
+                    event = PlacementCommandEvent(
+                        node_id=str(command_payload.node_id),
+                        emitted_at=emitted_at,
+                        snapshot_id=state.last_snapshot_id,
+                        epoch=state.current_epoch,
+                        event_id=row.message_id,
+                        placement_id=str(command_payload.placement_id),
+                        key_id=str(command_payload.key_id),
+                        op_version=command_payload.op_version,
+                        desired_state=command_payload.desired_state,
+                        backend_node_id=str(command_payload.backend_node_id),
+                        protocol=command_payload.protocol,
+                        transport=command_payload.transport,
+                        client_id=command_payload.client_id,
+                        is_revoked=command_payload.is_revoked,
+                        valid_until=command_payload.valid_until,
+                        updated_at=command_payload.updated_at,
+                    )
+                    publish_payload = event.model_dump(mode="json")
+
                 try:
                     await self._nats.publish_jetstream(
                         subject=row.subject,
-                        payload=event.model_dump(mode="json"),
+                        payload=publish_payload,
                         msg_id=row.message_id,
                     )
                 except Exception as exc:
@@ -404,11 +411,12 @@ class NodeAgentRuntime:
                     continue
 
                 await outbox_repo.mark_published(outbox_id=row.id, published_at=emitted_at)
-                await state_repo.touch_command(
-                    node_id=payload.node_id,
-                    message_id=row.message_id,
-                    at=emitted_at,
-                )
+                if command_payload is not None:
+                    await state_repo.touch_command(
+                        node_id=command_payload.node_id,
+                        message_id=row.message_id,
+                        at=emitted_at,
+                    )
                 published += 1
 
             if session.has_pending_writes():
