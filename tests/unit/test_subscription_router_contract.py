@@ -24,6 +24,7 @@ def _adapter() -> SubscriptionPublicAdapter:
         happ_profile_web_page_url="https://example.com/profile",
         happ_provider_id="provider-id-1",
         happ_routing="happ://routing/custom",
+        happ_color_profile='{"buttonColor":"#D96C3FFF","backgroundColors":["#07171EFF","#0D2A33FF"]}',
     )
 
 
@@ -56,6 +57,7 @@ async def test_get_subscription_config_success_headers_and_payload():
     assert out.headers["profile-web-page-url"] == "https://example.com/profile"
     assert out.headers["providerid"] == "provider-id-1"
     assert out.headers["routing"] == "happ://routing/custom"
+    assert out.headers["color-profile"] == '{"buttonColor":"#D96C3FFF","backgroundColors":["#07171EFF","#0D2A33FF"]}'
     service.build_payload.assert_awaited_once_with(
         raw_token="tok",
         hwid="hwid-1",

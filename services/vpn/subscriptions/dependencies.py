@@ -12,4 +12,6 @@ def get_subscription_public_adapter() -> SubscriptionPublicAdapter:
         happ_profile_web_page_url=settings.subscriptions.happ_profile_web_page_url,
         happ_provider_id=settings.subscriptions.happ_provider_id,
         happ_routing=settings.subscriptions.happ_routing,
+        happ_hide_settings=settings.subscriptions.happ_hide_settings,
+        happ_color_profile=settings.subscriptions.happ_color_profile,
     )
