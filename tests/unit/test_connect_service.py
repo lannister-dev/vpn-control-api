@@ -136,7 +136,7 @@ async def test_build_route_uri_uses_entry_node_host(async_session):
     )
 
     assert uri is not None
-    assert "@198.51.100.20:" in uri
+    assert "@entry.example.com:" in uri
 
 
 @pytest.mark.asyncio
