@@ -70,7 +70,7 @@ async def get_subscription_config(
         hwid = request.headers.get(adapter.hwid_header)
         user_agent = request.headers.get("user-agent")
 
-        payload, etag, not_modified = await service.build_payload(
+        payload, etag, not_modified, user_info = await service.build_payload(
             raw_token=token,
             hwid=hwid,
             user_agent=user_agent,
@@ -80,6 +80,7 @@ async def get_subscription_config(
             etag=etag,
             payload=payload,
             not_modified=not_modified,
+            user_info=user_info,
         )
         SUBSCRIPTION_REQUEST_TOTAL.labels(result=public_response.metric_result).inc()
         if public_response.payload is None:

@@ -15,6 +15,7 @@ from services.vpn.subscriptions.exceptions import (
 from services.vpn.subscriptions.schemas import (
     SubscriptionPublicErrorResponse,
     SubscriptionPublicSuccessResponse,
+    SubscriptionUserInfo,
 )
 
 
@@ -48,8 +49,9 @@ class SubscriptionPublicAdapter:
             payload: str,
             etag: str,
             not_modified: bool,
+            user_info: SubscriptionUserInfo | None = None,
     ) -> SubscriptionPublicSuccessResponse:
-        headers = self._build_headers(etag=etag)
+        headers = self._build_headers(etag=etag, user_info=user_info)
         if not_modified:
             return SubscriptionPublicSuccessResponse(
                 metric_result="not_modified",
@@ -137,6 +139,7 @@ class SubscriptionPublicAdapter:
             self,
             *,
             etag: str,
+            user_info: SubscriptionUserInfo | None = None,
     ) -> dict[str, str]:
         vary_parts = ["If-None-Match", "User-Agent"]
         if self._hwid_header:
@@ -149,6 +152,8 @@ class SubscriptionPublicAdapter:
             "profile-update-interval": str(self._happ_profile_update_interval_hours),
             "Vary": ", ".join(vary_parts),
         }
+        if user_info is not None:
+            headers["subscription-userinfo"] = user_info.to_header()
         if self._happ_support_url:
             headers["support-url"] = self._happ_support_url
         if self._happ_profile_web_page_url:

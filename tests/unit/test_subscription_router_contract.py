@@ -30,7 +30,7 @@ def _adapter() -> SubscriptionPublicAdapter:
 @pytest.mark.asyncio
 async def test_get_subscription_config_success_headers_and_payload():
     service = SimpleNamespace(
-        build_payload=AsyncMock(return_value=("vless://one\nvless://two", "etag123", False))
+        build_payload=AsyncMock(return_value=("vless://one\nvless://two", "etag123", False, None))
     )
     request = _request_with_headers(
         {
@@ -67,7 +67,7 @@ async def test_get_subscription_config_success_headers_and_payload():
 @pytest.mark.asyncio
 async def test_get_subscription_config_not_modified_returns_304():
     service = SimpleNamespace(
-        build_payload=AsyncMock(return_value=("", "etag123", True))
+        build_payload=AsyncMock(return_value=("", "etag123", True, None))
     )
     request = _request_with_headers({"if-none-match": "etag123"})
 
