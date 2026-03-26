@@ -13,5 +13,6 @@ def get_subscription_public_adapter() -> SubscriptionPublicAdapter:
         happ_provider_id=settings.subscriptions.happ_provider_id,
         happ_routing=settings.subscriptions.happ_routing,
         happ_hide_settings=settings.subscriptions.happ_hide_settings,
+        happ_always_hwid_enable=settings.subscriptions.happ_always_hwid_enable,
         happ_color_profile=settings.subscriptions.happ_color_profile,
     )

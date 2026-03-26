@@ -69,18 +69,22 @@ async def get_subscription_config(
     try:
         hwid = request.headers.get(adapter.hwid_header)
         user_agent = request.headers.get("user-agent")
+        if_none_match = request.headers.get("if-none-match")
+        if adapter.should_disable_not_modified(user_agent=user_agent):
+            if_none_match = None
 
         payload, etag, not_modified, user_info = await service.build_payload(
             raw_token=token,
             hwid=hwid,
             user_agent=user_agent,
-            if_none_match=request.headers.get("if-none-match"),
+            if_none_match=if_none_match,
         )
         public_response = adapter.build_success_response(
             etag=etag,
             payload=payload,
             not_modified=not_modified,
             user_info=user_info,
+            user_agent=user_agent,
         )
         SUBSCRIPTION_REQUEST_TOTAL.labels(result=public_response.metric_result).inc()
         if public_response.payload is None:

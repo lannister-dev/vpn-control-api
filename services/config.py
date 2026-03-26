@@ -85,6 +85,7 @@ class SubscriptionsConfig:
     happ_provider_id: str = ""
     happ_routing: str = ""
     happ_hide_settings: bool = False
+    happ_always_hwid_enable: bool = False
     happ_color_profile: str = DEFAULT_HAPP_COLOR_PROFILE
 
 
@@ -301,6 +302,7 @@ def get_settings() -> Settings:
         happ_provider_id=env.str("SUBSCRIPTIONS_HAPP_PROVIDER_ID", default=""),
         happ_routing=env.str("SUBSCRIPTIONS_HAPP_ROUTING", default=""),
         happ_hide_settings=env.bool("SUBSCRIPTIONS_HAPP_HIDE_SETTINGS", default=False),
+        happ_always_hwid_enable=env.bool("SUBSCRIPTIONS_HAPP_ALWAYS_HWID_ENABLE", default=False),
         happ_color_profile=env.str("SUBSCRIPTIONS_HAPP_COLOR_PROFILE", default="").strip() or DEFAULT_HAPP_COLOR_PROFILE,
     )
 

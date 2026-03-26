@@ -24,6 +24,8 @@ def _adapter() -> SubscriptionPublicAdapter:
         happ_profile_web_page_url="https://example.com/profile",
         happ_provider_id="provider-id-1",
         happ_routing="happ://routing/custom",
+        happ_hide_settings=True,
+        happ_always_hwid_enable=True,
         happ_color_profile='{"buttonColor":"#D96C3FFF","backgroundColors":["#07171EFF","#0D2A33FF"]}',
     )
 
@@ -49,7 +51,7 @@ async def test_get_subscription_config_success_headers_and_payload():
     )
 
     assert out.status_code == 200
-    assert out.body.decode() == "vless://one\nvless://two"
+    assert out.body.decode() == "#hide-settings: 1\n#subscription-always-hwid-enable: 1\nvless://one\nvless://two"
     assert out.headers["etag"] == "etag123"
     assert out.headers["profile-title"] == "My VPN"
     assert out.headers["profile-update-interval"] == "24"
@@ -57,12 +59,13 @@ async def test_get_subscription_config_success_headers_and_payload():
     assert out.headers["profile-web-page-url"] == "https://example.com/profile"
     assert out.headers["providerid"] == "provider-id-1"
     assert out.headers["routing"] == "happ://routing/custom"
+    assert out.headers["subscription-always-hwid-enable"] == "1"
     assert out.headers["color-profile"] == '{"buttonColor":"#D96C3FFF","backgroundColors":["#07171EFF","#0D2A33FF"]}'
     service.build_payload.assert_awaited_once_with(
         raw_token="tok",
         hwid="hwid-1",
         user_agent="Happ/1.0",
-        if_none_match="old-etag",
+        if_none_match=None,
     )
 
 
