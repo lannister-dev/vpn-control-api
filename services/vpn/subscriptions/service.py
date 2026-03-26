@@ -1187,6 +1187,8 @@ class SubscriptionService:
         security = transport_profile.security
         visible_node = public_node or backend_node
         if security == "reality" and network == "tcp":
+            if public_node is not None:
+                return public_node.public_domain or public_node.reality_ip or ""
             return visible_node.reality_ip
         return self._resolve_ws_public_host(
             visible_node,
