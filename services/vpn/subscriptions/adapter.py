@@ -33,6 +33,7 @@ class SubscriptionPublicAdapter:
             happ_provider_id: str,
             happ_routing: str,
             happ_hide_settings: bool = False,
+            happ_always_hwid_enable: bool = False,
             happ_color_profile: str = "",
     ):
         self._hwid_header = hwid_header.strip()
@@ -43,6 +44,7 @@ class SubscriptionPublicAdapter:
         self._happ_provider_id = happ_provider_id.strip()
         self._happ_routing = happ_routing.strip()
         self._happ_hide_settings = bool(happ_hide_settings)
+        self._happ_always_hwid_enable = bool(happ_always_hwid_enable)
         color_profile = happ_color_profile.strip()
         self._happ_color_profile = (
             json.dumps(json.loads(color_profile), separators=(",", ":"))
@@ -54,6 +56,16 @@ class SubscriptionPublicAdapter:
     def hwid_header(self) -> str:
         return self._hwid_header
 
+    def should_disable_not_modified(self, *, user_agent: str | None) -> bool:
+        if not self._is_happ_user_agent(user_agent):
+            return False
+        return (
+            self._happ_hide_settings
+            or self._happ_always_hwid_enable
+            or bool(self._happ_color_profile)
+            or bool(self._happ_provider_id)
+        )
+
     def build_success_response(
             self,
             *,
@@ -61,6 +73,7 @@ class SubscriptionPublicAdapter:
             etag: str,
             not_modified: bool,
             user_info: SubscriptionUserInfo | None = None,
+            user_agent: str | None = None,
     ) -> SubscriptionPublicSuccessResponse:
         headers = self._build_headers(etag=etag, user_info=user_info)
         if not_modified:
@@ -73,7 +86,7 @@ class SubscriptionPublicAdapter:
         return SubscriptionPublicSuccessResponse(
             metric_result="success",
             status_code=status.HTTP_200_OK,
-            payload=payload,
+            payload=self._build_payload_body(payload=payload, user_agent=user_agent),
             headers=headers,
         )
 
@@ -175,6 +188,28 @@ class SubscriptionPublicAdapter:
             headers["routing"] = self._happ_routing
         if self._happ_hide_settings:
             headers["hide-settings"] = "true"
+        if self._happ_always_hwid_enable:
+            headers["subscription-always-hwid-enable"] = "1"
         if self._happ_color_profile:
             headers["color-profile"] = self._happ_color_profile
         return headers
+
+    def _build_payload_body(self, *, payload: str, user_agent: str | None) -> str:
+        if not self._is_happ_user_agent(user_agent):
+            return payload
+        directives: list[str] = []
+        if self._happ_hide_settings:
+            directives.append("#hide-settings: 1")
+        if self._happ_always_hwid_enable:
+            directives.append("#subscription-always-hwid-enable: 1")
+        if not directives:
+            return payload
+        if not payload:
+            return "\n".join(directives)
+        return "\n".join([*directives, payload])
+
+    @staticmethod
+    def _is_happ_user_agent(user_agent: str | None) -> bool:
+        if not user_agent:
+            return False
+        return user_agent.strip().lower().startswith("happ/")

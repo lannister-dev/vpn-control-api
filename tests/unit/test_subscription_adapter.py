@@ -15,6 +15,8 @@ def _adapter() -> SubscriptionPublicAdapter:
         happ_profile_web_page_url="https://example.com/profile",
         happ_provider_id="provider-id-1",
         happ_routing="happ://routing/custom",
+        happ_hide_settings=True,
+        happ_always_hwid_enable=True,
         happ_color_profile='{"buttonColor":"#D96C3FFF","backgroundColors":["#07171EFF","#0D2A33FF"]}',
     )
 
@@ -24,11 +26,11 @@ def test_build_success_response_contains_contract_fields():
         etag="abc123",
         payload="vless://a\n\nvless://b",
         not_modified=False,
+        user_agent="Happ/1.0",
     )
 
     assert response.metric_result == "success"
     assert response.status_code == 200
-    assert response.payload == "vless://a\n\nvless://b"
     assert response.headers["ETag"] == "abc123"
     assert response.headers["profile-title"] == "My VPN"
     assert response.headers["profile-update-interval"] == "24"
@@ -36,7 +38,9 @@ def test_build_success_response_contains_contract_fields():
     assert response.headers["profile-web-page-url"] == "https://example.com/profile"
     assert response.headers["providerid"] == "provider-id-1"
     assert response.headers["routing"] == "happ://routing/custom"
+    assert response.headers["subscription-always-hwid-enable"] == "1"
     assert response.headers["color-profile"] == '{"buttonColor":"#D96C3FFF","backgroundColors":["#07171EFF","#0D2A33FF"]}'
+    assert response.payload == "#hide-settings: 1\n#subscription-always-hwid-enable: 1\nvless://a\n\nvless://b"
     assert response.headers["Vary"] == "If-None-Match, User-Agent, x-hwid"
 
 
@@ -45,11 +49,17 @@ def test_build_success_response_not_modified_has_no_payload():
         etag="abc123",
         payload="",
         not_modified=True,
+        user_agent="Happ/1.0",
     )
 
     assert response.metric_result == "not_modified"
     assert response.status_code == 304
     assert response.payload is None
+
+
+def test_should_disable_not_modified_for_happ_when_app_management_enabled():
+    assert _adapter().should_disable_not_modified(user_agent="Happ/1.0") is True
+    assert _adapter().should_disable_not_modified(user_agent="OtherClient/1.0") is False
 
 
 def test_map_subscription_error_not_found():
