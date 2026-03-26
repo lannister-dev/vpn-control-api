@@ -431,7 +431,7 @@ async def test_build_payload_uses_cached_payload_without_db_lookup(service):
         {"etag": "etag-cached", "payload": "vless://cached"}
     )
 
-    payload, etag, not_modified = await service.build_payload(raw_token="tok")
+    payload, etag, not_modified, _ = await service.build_payload(raw_token="tok")
 
     assert payload == "vless://cached"
     assert etag == "etag-cached"
@@ -447,7 +447,7 @@ async def test_build_payload_uses_cached_etag_for_304_without_db_lookup(service)
         {"etag": "etag-cached", "payload": "vless://cached"}
     )
 
-    payload, etag, not_modified = await service.build_payload(
+    payload, etag, not_modified, _ = await service.build_payload(
         raw_token="tok",
         if_none_match="etag-cached",
     )
@@ -469,7 +469,7 @@ async def test_build_payload_waits_on_lock_contention_and_uses_wait_hit_cache(se
     service.redis.client.set.return_value = None
 
     with patch("services.vpn.subscriptions.service.asyncio.sleep", new=AsyncMock()):
-        payload, etag, not_modified = await service.build_payload(raw_token="tok")
+        payload, etag, not_modified, _ = await service.build_payload(raw_token="tok")
 
     assert payload == "vless://waited"
     assert etag == "etag-wait"
@@ -619,7 +619,7 @@ async def test_build_payload_merges_multiple_transports(service):
 
     service._build_transport_routes = AsyncMock(side_effect=_build_transport)
 
-    payload, etag, not_modified = await service.build_payload(raw_token="tok", hwid="hwid-1")
+    payload, etag, not_modified, user_info = await service.build_payload(raw_token="tok", hwid="hwid-1")
 
     lines = payload.splitlines()
     assert len(lines) == 3
@@ -691,7 +691,7 @@ async def test_build_payload_keeps_available_transport_when_second_pending(servi
 
     service._build_transport_routes = AsyncMock(side_effect=_build_transport)
 
-    payload, _, _ = await service.build_payload(raw_token="tok", hwid="hwid-1")
+    payload, _, _, _ = await service.build_payload(raw_token="tok", hwid="hwid-1")
 
     assert payload == "vless://fr-reality#France%20Reality"
 
@@ -1180,7 +1180,7 @@ async def test_build_payload_excludes_entry_routes_when_plan_has_no_whitelist(se
         )
 
     service._build_transport_routes = AsyncMock(side_effect=_build_transport)
-    payload, etag, _ = await service.build_payload(raw_token="tok", hwid="hwid-1")
+    payload, etag, _, _ = await service.build_payload(raw_token="tok", hwid="hwid-1")
 
     assert "fi-direct" in payload
 
@@ -1237,6 +1237,53 @@ async def test_build_payload_includes_entry_routes_when_plan_whitelist_enabled(s
         )
 
     service._build_transport_routes = AsyncMock(side_effect=_build_transport)
-    payload, etag, _ = await service.build_payload(raw_token="tok", hwid="hwid-1")
+    payload, etag, _, _ = await service.build_payload(raw_token="tok", hwid="hwid-1")
 
     assert "fi-wl" in payload
+
+
+@pytest.mark.asyncio
+async def test_build_payload_closed_subscription_returns_empty_with_user_info(service):
+    service.settings.subscriptions.response_cache_ttl_sec = 0
+    service._enforce_rate_limit = AsyncMock()
+
+    sub = _make_sub(is_active=False)
+    sub.used_traffic_bytes = 1024
+    sub.plan = MagicMock()
+    sub.plan.traffic_limit_bytes = 10737418240
+    sub.expires_at = datetime(2025, 6, 1, tzinfo=timezone.utc)
+
+    service.subscription_repository.get_by_any_token_hash.return_value = sub
+
+    payload, etag, not_modified, user_info = await service.build_payload(raw_token="tok")
+
+    assert payload == ""
+    assert etag == ""
+    assert not not_modified
+    assert user_info is not None
+    assert user_info.download == 1024
+    assert user_info.total == 10737418240
+    assert user_info.expire == int(sub.expires_at.timestamp())
+
+
+@pytest.mark.asyncio
+async def test_build_payload_expired_subscription_returns_empty_with_user_info(service):
+    service.settings.subscriptions.response_cache_ttl_sec = 0
+    service._enforce_rate_limit = AsyncMock()
+
+    sub = _make_sub(
+        is_active=True,
+        expires_at=datetime(2020, 1, 1, tzinfo=timezone.utc),
+    )
+    sub.used_traffic_bytes = 500
+    sub.plan = None
+
+    service.subscription_repository.get_by_any_token_hash.return_value = sub
+
+    payload, etag, not_modified, user_info = await service.build_payload(raw_token="tok")
+
+    assert payload == ""
+    assert user_info is not None
+    assert user_info.download == 500
+    assert user_info.total == 0
+    assert user_info.expire == int(sub.expires_at.timestamp())

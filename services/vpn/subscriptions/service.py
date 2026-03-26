@@ -72,6 +72,7 @@ from services.vpn.subscriptions.schemas import (
     ResolvedSubscriptionRoute,
     SubscriptionOut,
     SubscriptionRotateOut,
+    SubscriptionUserInfo,
     TransportBuildResult,
 )
 from services.vpn.subscriptions.utils import SubscriptionUtils
@@ -419,7 +420,7 @@ class SubscriptionService:
             hwid: str | None = None,
             user_agent: str | None = None,
             if_none_match: str | None = None,
-    ) -> tuple[str, str, bool]:
+    ) -> tuple[str, str, bool, SubscriptionUserInfo | None]:
         t0 = time.perf_counter()
 
         token_hash = SubscriptionUtils.hash(raw_token)
@@ -432,9 +433,9 @@ class SubscriptionService:
             SUBSCRIPTION_CACHE_TOTAL.labels(result=cache_result).inc()
             if cached_etag:
                 if if_none_match and if_none_match == cached_etag:
-                    return "", cached_etag, True
+                    return "", cached_etag, True, None
                 if cached_payload is not None:
-                    return cached_payload, cached_etag, False
+                    return cached_payload, cached_etag, False, None
             lock_acquired = await self._acquire_payload_build_lock(lock_key)
             SUBSCRIPTION_CACHE_TOTAL.labels(
                 result="lock_acquired" if lock_acquired else "lock_contended"
@@ -444,14 +445,18 @@ class SubscriptionService:
                 SUBSCRIPTION_CACHE_TOTAL.labels(result=waited_result).inc()
                 if waited_etag:
                     if if_none_match and if_none_match == waited_etag:
-                        return "", waited_etag, True
+                        return "", waited_etag, True, None
                     if waited_payload is not None:
-                        return waited_payload, waited_etag, False
+                        return waited_payload, waited_etag, False, None
         await self._enforce_rate_limit(token_hash)
         try:
             subscription = await self.subscription_repository.get_by_any_token_hash(token_hash)
             if not subscription:
                 raise SubscriptionNotFound("subscription")
+
+            if self._is_subscription_closed(subscription):
+                user_info = self._build_user_info(subscription)
+                return "", "", False, user_info
 
             self._validate_subscription(subscription, token_hash)
 
@@ -531,15 +536,40 @@ class SubscriptionService:
                     result="write_ok" if write_ok else "write_error"
                 ).inc()
 
+            user_info = self._build_user_info(subscription)
+
             SUBSCRIPTION_BUILD_DURATION.observe(time.perf_counter() - t0)
 
             if if_none_match and if_none_match == etag:
-                return "", etag, True
+                return "", etag, True, user_info
 
-            return payload, etag, False
+            return payload, etag, False, user_info
         finally:
             if lock_acquired:
                 await self._release_payload_build_lock(lock_key)
+
+    def _build_user_info(self, subscription) -> SubscriptionUserInfo:
+        plan = getattr(subscription, "plan", None)
+        traffic_limit = int(getattr(plan, "traffic_limit_bytes", 0) or 0)
+        used = int(getattr(subscription, "used_traffic_bytes", 0) or 0)
+
+        expire_ts = 0
+        if subscription.expires_at:
+            expire_ts = int(subscription.expires_at.timestamp())
+
+        return SubscriptionUserInfo(
+            upload=0,
+            download=used,
+            total=traffic_limit,
+            expire=expire_ts,
+        )
+
+    def _is_subscription_closed(self, subscription) -> bool:
+        if not subscription.is_active:
+            return True
+        if subscription.expires_at and subscription.expires_at <= datetime.now(timezone.utc):
+            return True
+        return False
 
     def _validate_subscription(self, subscription, token_hash: str) -> None:
         now = datetime.now(timezone.utc)
