@@ -106,6 +106,7 @@ def _ingestion_service() -> ProbeIngestionService:
         route_block_cooldown_hours=6,
     )
     service.node_repository.list_public.return_value = []
+    service.probe_repository.count_consecutive_route_failures = AsyncMock(return_value=1)
     return service
 
 
@@ -362,6 +363,7 @@ async def test_report_success(async_session):
     svc.route_repository.get_active_detailed_by_id.return_value = (route, node, transport_profile, None)
     svc.probe_repository.create.return_value = created
     svc.probe_repository.get_latest_for_route.side_effect = [None, created]
+    svc.probe_repository.count_consecutive_route_failures = AsyncMock(return_value=1)
     svc.route_repository.get_by_id.return_value = route
 
     out = await svc.report(
@@ -416,6 +418,7 @@ async def test_report_blocks_routes_on_latest_failure(async_session):
     svc.route_repository.get_active_detailed_by_id.return_value = (route, node, transport_profile, None)
     svc.probe_repository.get_latest_for_route.side_effect = [None, created]
     svc.probe_repository.create.return_value = created
+    svc.probe_repository.count_consecutive_route_failures = AsyncMock(return_value=4)
     svc.route_repository.get_by_id.return_value = route
     svc.route_repository.update_by_id = AsyncMock(return_value=route)
 
@@ -682,6 +685,7 @@ async def test_report_alert_not_sent_without_status_transition(async_session):
     svc.route_repository.get_active_detailed_by_id.return_value = (route, node, transport_profile, None)
     svc.probe_repository.get_latest_for_route.side_effect = [previous, created]
     svc.probe_repository.create.return_value = created
+    svc.probe_repository.count_consecutive_route_failures = AsyncMock(return_value=1)
     svc.route_repository.get_by_id.return_value = route
 
     await svc.report(

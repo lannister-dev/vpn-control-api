@@ -199,24 +199,14 @@ class ConnectService:
                 preferred_region=preferred_region,
             )
             candidate_nodes = []
-        backend_ids_with_entry_routes = set(
-            await self.route_repository.list_backend_ids_with_entry_routes(
-                key_transport=key_transport,
-            )
-        )
         candidate_nodes = [
             node
             for node in candidate_nodes
-            if self._node_has_required_public_host(
-                node=node,
-                key_transport=key_transport,
-                allow_entry_route=self._as_uuid(str(node.id)) in backend_ids_with_entry_routes,
-            )
+            if self._node_has_required_public_host(node=node)
         ]
         if not candidate_nodes and not placements_by_backend:
             fallback = await self._select_backend(
                 preferred_region=preferred_region,
-                key_transport=key_transport,
             )
             candidate_nodes = [fallback]
 
@@ -312,22 +302,12 @@ class ConnectService:
             self,
             *,
             preferred_region: str | None,
-            key_transport: str | None = None,
     ) -> VpnNode:
         candidates = await self.routing_service.select_nodes(
             preferred_region=preferred_region,
         )
-        backend_ids_with_entry_routes = set(
-            await self.route_repository.list_backend_ids_with_entry_routes(
-                key_transport=key_transport,
-            )
-        )
         for candidate in candidates:
-            if self._node_has_required_public_host(
-                node=candidate,
-                key_transport=key_transport,
-                allow_entry_route=self._as_uuid(str(candidate.id)) in backend_ids_with_entry_routes,
-            ):
+            if self._node_has_required_public_host(node=candidate):
                 return candidate
         raise HTTPException(status_code=503, detail="No eligible node available")
 
@@ -497,21 +477,7 @@ class ConnectService:
             prefer_node_domain=public_node is not None,
         )
 
-    def _node_has_required_public_host(
-            self,
-            *,
-            node: VpnNode,
-            key_transport: str | None,
-            allow_entry_route: bool = False,
-    ) -> bool:
-        if allow_entry_route:
-            return True
-        if key_transport == VpnTransport.reality.value:
-            return bool(self._resolve_reality_host(node))
-        if key_transport == VpnTransport.tcp.value:
-            return False
-        if key_transport == VpnTransport.ws.value:
-            return bool(self._resolve_ws_public_host(node))
+    def _node_has_required_public_host(self, *, node: VpnNode) -> bool:
         return bool(self._resolve_reality_host(node) or self._resolve_ws_public_host(node))
 
     @staticmethod
