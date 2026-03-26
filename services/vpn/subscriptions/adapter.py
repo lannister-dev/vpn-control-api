@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from fastapi import status
 
 from services.vpn.subscriptions.exceptions import (
@@ -30,6 +32,8 @@ class SubscriptionPublicAdapter:
             happ_profile_web_page_url: str,
             happ_provider_id: str,
             happ_routing: str,
+            happ_hide_settings: bool = False,
+            happ_color_profile: str = "",
     ):
         self._hwid_header = hwid_header.strip()
         self._happ_profile_title = happ_profile_title.strip() or "VPN"
@@ -38,6 +42,13 @@ class SubscriptionPublicAdapter:
         self._happ_profile_web_page_url = happ_profile_web_page_url.strip()
         self._happ_provider_id = happ_provider_id.strip()
         self._happ_routing = happ_routing.strip()
+        self._happ_hide_settings = bool(happ_hide_settings)
+        color_profile = happ_color_profile.strip()
+        self._happ_color_profile = (
+            json.dumps(json.loads(color_profile), separators=(",", ":"))
+            if color_profile
+            else ""
+        )
 
     @property
     def hwid_header(self) -> str:
@@ -162,4 +173,8 @@ class SubscriptionPublicAdapter:
             headers["providerid"] = self._happ_provider_id
         if self._happ_routing:
             headers["routing"] = self._happ_routing
+        if self._happ_hide_settings:
+            headers["hide-settings"] = "true"
+        if self._happ_color_profile:
+            headers["color-profile"] = self._happ_color_profile
         return headers

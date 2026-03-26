@@ -15,6 +15,7 @@ def _adapter() -> SubscriptionPublicAdapter:
         happ_profile_web_page_url="https://example.com/profile",
         happ_provider_id="provider-id-1",
         happ_routing="happ://routing/custom",
+        happ_color_profile='{"buttonColor":"#D96C3FFF","backgroundColors":["#07171EFF","#0D2A33FF"]}',
     )
 
 
@@ -35,6 +36,7 @@ def test_build_success_response_contains_contract_fields():
     assert response.headers["profile-web-page-url"] == "https://example.com/profile"
     assert response.headers["providerid"] == "provider-id-1"
     assert response.headers["routing"] == "happ://routing/custom"
+    assert response.headers["color-profile"] == '{"buttonColor":"#D96C3FFF","backgroundColors":["#07171EFF","#0D2A33FF"]}'
     assert response.headers["Vary"] == "If-None-Match, User-Agent, x-hwid"
 
 

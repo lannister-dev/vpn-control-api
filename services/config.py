@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from functools import lru_cache
 from environs import Env
+from services.vpn.subscriptions.constants import DEFAULT_HAPP_COLOR_PROFILE
 
 
 @dataclass
@@ -83,6 +84,8 @@ class SubscriptionsConfig:
     happ_profile_web_page_url: str = ""
     happ_provider_id: str = ""
     happ_routing: str = ""
+    happ_hide_settings: bool = False
+    happ_color_profile: str = DEFAULT_HAPP_COLOR_PROFILE
 
 
 @dataclass
@@ -297,6 +300,8 @@ def get_settings() -> Settings:
         happ_profile_web_page_url=env.str("SUBSCRIPTIONS_HAPP_PROFILE_WEB_PAGE_URL", default=""),
         happ_provider_id=env.str("SUBSCRIPTIONS_HAPP_PROVIDER_ID", default=""),
         happ_routing=env.str("SUBSCRIPTIONS_HAPP_ROUTING", default=""),
+        happ_hide_settings=env.bool("SUBSCRIPTIONS_HAPP_HIDE_SETTINGS", default=False),
+        happ_color_profile=env.str("SUBSCRIPTIONS_HAPP_COLOR_PROFILE", default="").strip() or DEFAULT_HAPP_COLOR_PROFILE,
     )
 
     node_agent = NodeAgentConfig(
