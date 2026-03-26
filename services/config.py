@@ -127,6 +127,9 @@ class ProbeConfig:
     cleanup_tick_sec: int = 3600
     auto_route_health_enabled: bool = True
     route_block_cooldown_hours: int = 6
+    route_suspected_after_failures: int = 2
+    route_degraded_after_failures: int = 3
+    route_block_after_failures: int = 4
     auto_drain_migrate_enabled: bool = False
     auto_drain_tick_sec: int = 120
     auto_drain_source: str | None = None
@@ -344,6 +347,9 @@ def get_settings() -> Settings:
         cleanup_tick_sec=max(300, env.int("PROBE_CLEANUP_TICK_SEC", default=3600)),
         auto_route_health_enabled=env.bool("PROBE_AUTO_ROUTE_HEALTH_ENABLED", default=True),
         route_block_cooldown_hours=env.int("PROBE_ROUTE_BLOCK_COOLDOWN_HOURS", default=6),
+        route_suspected_after_failures=max(1, env.int("PROBE_ROUTE_SUSPECTED_AFTER_FAILURES", default=2)),
+        route_degraded_after_failures=max(2, env.int("PROBE_ROUTE_DEGRADED_AFTER_FAILURES", default=3)),
+        route_block_after_failures=max(3, env.int("PROBE_ROUTE_BLOCK_AFTER_FAILURES", default=4)),
         auto_drain_migrate_enabled=env.bool("PROBE_AUTO_DRAIN_MIGRATE_ENABLED", default=False),
         auto_drain_tick_sec=env.int("PROBE_AUTO_DRAIN_TICK_SEC", default=120),
         auto_drain_source=env.str("PROBE_AUTO_DRAIN_SOURCE", default=""),
