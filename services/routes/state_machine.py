@@ -97,12 +97,13 @@ def resolve_probe_block(
         *,
         route,
         checked_at: datetime,
-        cooldown_hours: int,
+        cooldown_hours: int = 0,
 ) -> RouteStateResolution:
+    cooldown_until = checked_at + timedelta(hours=cooldown_hours) if cooldown_hours > 0 else None
     return RouteStateResolution(
         health_status=RouteHealthStatus.blocked,
         effective_weight=0,
-        cooldown_until=checked_at + timedelta(hours=cooldown_hours),
+        cooldown_until=cooldown_until,
         warmup_stage=None,
         warmup_started_at=None,
     )

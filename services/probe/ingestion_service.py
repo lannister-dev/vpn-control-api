@@ -12,7 +12,7 @@ from services.config import get_settings
 from services.nodes.repository import VpnNodeRepository
 from services.placements.repository import UserPlacementRepository
 from services.routes.repository import RouteRepository
-from services.routes.schemas import RouteStateUpdate
+from services.routes.schemas import RouteHealthStatus, RouteStateResolution, RouteStateUpdate
 from services.routes.state_machine import resolve_probe_block, resolve_probe_recover
 from services.probe.repository import ProbeSignalRepository
 from services.probe.schemas import (
@@ -49,6 +49,9 @@ class ProbeIngestionService:
             retention_days: int,
             auto_route_health_enabled: bool,
             route_block_cooldown_hours: int,
+            route_suspected_after_failures: int = 2,
+            route_degraded_after_failures: int = 3,
+            route_block_after_failures: int = 4,
     ):
         self.node_repository = node_repository
         self.probe_repository = probe_repository
@@ -62,6 +65,9 @@ class ProbeIngestionService:
         self.retention_days = retention_days
         self.auto_route_health_enabled = auto_route_health_enabled
         self.route_block_cooldown_hours = max(1, route_block_cooldown_hours)
+        self.route_suspected_after_failures = max(1, route_suspected_after_failures)
+        self.route_degraded_after_failures = max(2, route_degraded_after_failures)
+        self.route_block_after_failures = max(3, route_block_after_failures)
 
     async def report(self, payload: ProbeReportIn) -> ProbeReportOut:
         node = await self.node_repository.get_by_id(payload.node_id)
@@ -256,46 +262,96 @@ class ProbeIngestionService:
 
         checked_at = self._to_utc(signal.checked_at)
         if signal.is_reachable:
-            await self._recover_routes_after_probe(routes=[route], checked_at=checked_at)
+            await self._recover_route_after_probe(route=route, checked_at=checked_at)
             return
-        await self._block_routes_after_probe(routes=[route], checked_at=checked_at)
+        await self._degrade_route_after_probe(route=route, checked_at=checked_at)
 
-    async def _block_routes_after_probe(self, *, routes: list, checked_at: datetime) -> None:
-        for route in routes:
+    async def _degrade_route_after_probe(self, *, route, checked_at: datetime) -> None:
+        status = str(route.health_status)
+        if status in {RouteHealthStatus.blocked.value, RouteHealthStatus.warming_up.value}:
+            return
+
+        consecutive = await self.probe_repository.count_consecutive_route_failures(
+            route_id=route.id,
+            limit=self.route_block_after_failures + 2,
+        )
+        logger_probe.info(
+            "probe_route_health_consecutive_failures",
+            route_id=str(route.id),
+            consecutive=consecutive,
+            thresholds=f"{self.route_suspected_after_failures}/{self.route_degraded_after_failures}/{self.route_block_after_failures}",
+        )
+
+        if consecutive >= self.route_block_after_failures:
             next_state = resolve_probe_block(
                 route=route,
                 checked_at=checked_at,
-                cooldown_hours=self.route_block_cooldown_hours,
+                cooldown_hours=0,
             )
-            updated_state = RouteStateUpdate(
+        elif consecutive >= self.route_degraded_after_failures:
+            if status == RouteHealthStatus.degraded.value:
+                return
+            next_state = RouteStateResolution(
+                health_status=RouteHealthStatus.degraded,
+                effective_weight=max(1, int(route.base_weight) // 2),
+                cooldown_until=None,
+                warmup_stage=None,
+                warmup_started_at=None,
+            )
+        elif consecutive >= self.route_suspected_after_failures:
+            if status == RouteHealthStatus.suspected.value:
+                return
+            next_state = RouteStateResolution(
+                health_status=RouteHealthStatus.suspected,
+                effective_weight=max(1, int(route.base_weight) // 3),
+                cooldown_until=None,
+                warmup_stage=None,
+                warmup_started_at=None,
+            )
+        else:
+            return
+
+        await self.route_repository.update_by_id(
+            item_id=route.id,
+            data=RouteStateUpdate(
                 health_status=next_state.health_status,
                 effective_weight=next_state.effective_weight,
                 cooldown_until=next_state.cooldown_until,
                 warmup_stage=next_state.warmup_stage,
                 warmup_started_at=next_state.warmup_started_at,
                 updated_at=datetime.now(timezone.utc),
-            )
+            ).model_dump(),
+        )
+
+    async def _recover_route_after_probe(self, *, route, checked_at: datetime) -> None:
+        status = str(route.health_status)
+        if status in {RouteHealthStatus.suspected.value, RouteHealthStatus.degraded.value}:
             await self.route_repository.update_by_id(
                 item_id=route.id,
-                data=updated_state.model_dump(),
+                data=RouteStateUpdate(
+                    health_status=RouteHealthStatus.healthy,
+                    effective_weight=int(route.base_weight),
+                    cooldown_until=None,
+                    warmup_stage=None,
+                    warmup_started_at=None,
+                    updated_at=datetime.now(timezone.utc),
+                ).model_dump(),
             )
-
-    async def _recover_routes_after_probe(self, *, routes: list, checked_at: datetime) -> None:
-        for route in routes:
+            return
+        if status == RouteHealthStatus.blocked.value:
             next_state = resolve_probe_recover(route=route, checked_at=checked_at)
             if next_state is None:
-                continue
-            updated_state = RouteStateUpdate(
-                health_status=next_state.health_status,
-                effective_weight=next_state.effective_weight,
-                cooldown_until=next_state.cooldown_until,
-                warmup_stage=next_state.warmup_stage,
-                warmup_started_at=next_state.warmup_started_at,
-                updated_at=datetime.now(timezone.utc),
-            )
+                return
             await self.route_repository.update_by_id(
                 item_id=route.id,
-                data=updated_state.model_dump(),
+                data=RouteStateUpdate(
+                    health_status=next_state.health_status,
+                    effective_weight=next_state.effective_weight,
+                    cooldown_until=next_state.cooldown_until,
+                    warmup_stage=next_state.warmup_stage,
+                    warmup_started_at=next_state.warmup_started_at,
+                    updated_at=datetime.now(timezone.utc),
+                ).model_dump(),
             )
 
     @staticmethod
@@ -532,4 +588,7 @@ def get_probe_ingestion_service(
         retention_days=probe_settings.retention_days,
         auto_route_health_enabled=probe_settings.auto_route_health_enabled,
         route_block_cooldown_hours=probe_settings.route_block_cooldown_hours,
+        route_suspected_after_failures=probe_settings.route_suspected_after_failures,
+        route_degraded_after_failures=probe_settings.route_degraded_after_failures,
+        route_block_after_failures=probe_settings.route_block_after_failures,
     )
