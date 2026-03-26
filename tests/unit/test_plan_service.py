@@ -21,6 +21,7 @@ def _make_plan(
     duration_days: int = 30,
     sort_order: int = 0,
     is_active: bool = True,
+    whitelist_enabled: bool = False,
 ):
     return SimpleNamespace(
         id=uuid4(),
@@ -32,6 +33,7 @@ def _make_plan(
         duration_days=duration_days,
         sort_order=sort_order,
         is_active=is_active,
+        whitelist_enabled=whitelist_enabled,
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )

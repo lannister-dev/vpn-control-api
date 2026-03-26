@@ -20,6 +20,7 @@ class PlanCreateIn(BaseModel):
     max_devices: int = Field(default=5, ge=1, le=100)
     duration_days: int = Field(default=30, ge=1, le=3650)
     sort_order: int = Field(default=0, ge=0)
+    whitelist_enabled: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -33,6 +34,7 @@ class PlanUpdateIn(BaseModel):
     duration_days: int | None = Field(default=None, ge=1, le=3650)
     sort_order: int | None = Field(default=None, ge=0)
     is_active: bool | None = None
+    whitelist_enabled: bool | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -46,6 +48,7 @@ class PlanOut(BaseModel):
     max_devices: int
     duration_days: int
     sort_order: int
+    whitelist_enabled: bool
     is_active: bool
     created_at: datetime
     updated_at: datetime
