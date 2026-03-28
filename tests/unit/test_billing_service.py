@@ -9,13 +9,14 @@ from uuid import uuid4
 import pytest
 
 from services.billing.exceptions import (
+    DeviceSlotLimitExceeded,
     OrderExpired,
     OrderNotFound,
     PlanNotPurchasable,
     ProviderError,
     WebhookVerificationFailed,
 )
-from services.billing.schemas import BalanceCreditIn, OrderCreateIn, PaymentProviderEnum
+from services.billing.schemas import BalanceCreditIn, OrderCreateIn, OrderTypeEnum, PaymentProviderEnum
 from services.billing.service import BillingService
 
 
@@ -30,19 +31,31 @@ def _make_user(*, balance: Decimal = Decimal("100.00")):
     )
 
 
-def _make_plan(*, name: str = "Pro", price_rub: Decimal = Decimal("299.00"), is_active: bool = True):
+def _make_plan(
+    *,
+    name: str = "Pro",
+    price_rub: Decimal = Decimal("299.00"),
+    is_active: bool = True,
+    included_devices: int = 1,
+    device_price_rub: Decimal = Decimal("79.00"),
+    max_devices: int = 5,
+):
     return SimpleNamespace(
         id=uuid4(),
         name=name,
         description=None,
         traffic_limit_bytes=10737418240,
         reset_strategy="MONTH",
-        max_devices=5,
+        max_devices=max_devices,
+        included_devices=included_devices,
         duration_days=30,
         sort_order=0,
         is_active=is_active,
         whitelist_enabled=False,
         price_rub=price_rub,
+        device_price_rub=device_price_rub,
+        device_price_stars=None,
+        price_stars=None,
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
@@ -56,6 +69,9 @@ def _make_order(
     amount_rub: Decimal = Decimal("299.00"),
     provider: str = "crypto",
     external_id: str = "crypto_abc123",
+    order_type: str = "plan_purchase",
+    device_slots_qty: int = 0,
+    subscription_id=None,
 ):
     return SimpleNamespace(
         id=uuid4(),
@@ -70,14 +86,16 @@ def _make_order(
         paid_at=None,
         completed_at=None,
         expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
-        subscription_id=None,
+        subscription_id=subscription_id,
+        order_type=order_type,
+        device_slots_qty=device_slots_qty,
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
         is_active=True,
     )
 
 
-def _make_subscription(*, user_id=None, plan_id=None, expires_at=None):
+def _make_subscription(*, user_id=None, plan_id=None, expires_at=None, paid_device_slots=0):
     return SimpleNamespace(
         id=uuid4(),
         user_id=user_id or uuid4(),
@@ -86,6 +104,7 @@ def _make_subscription(*, user_id=None, plan_id=None, expires_at=None):
         is_active=True,
         expires_at=expires_at or (datetime.now(timezone.utc) + timedelta(days=15)),
         max_devices=5,
+        paid_device_slots=paid_device_slots,
     )
 
 
@@ -316,7 +335,7 @@ class TestAutoPurchase:
         service._lock_user = AsyncMock(return_value=user)
         service._update_user_balance = AsyncMock()
         service._record_transaction = AsyncMock()
-        service._find_active_subscription = AsyncMock(return_value=None)
+        service.sub_repo.find_active_subscription = AsyncMock(return_value=None)
 
         new_sub = _make_subscription(user_id=user.id, plan_id=plan.id)
         service.sub_repo.create.return_value = new_sub
@@ -341,7 +360,7 @@ class TestAutoPurchase:
         service._lock_user = AsyncMock(return_value=user)
         service._update_user_balance = AsyncMock()
         service._record_transaction = AsyncMock()
-        service._find_active_subscription = AsyncMock(return_value=existing_sub)
+        service.sub_repo.find_active_subscription = AsyncMock(return_value=existing_sub)
         service.sub_repo.update_by_id.return_value = existing_sub
         service.order_repo.update_by_id.return_value = order
 
@@ -397,3 +416,126 @@ class TestListOperations:
         service.tx_repo.list_by_user.return_value = (txs, 1)
         result = await service.list_transactions(uuid4())
         assert result.total == 1
+
+
+# ── device slots ─────────────────────────────────────────────
+
+
+class TestDeviceSlots:
+    async def test_create_device_slot_order(self, service):
+        user = _make_user()
+        plan = _make_plan(max_devices=5, included_devices=1, device_price_rub=Decimal("79.00"))
+        sub = _make_subscription(user_id=user.id, plan_id=plan.id, paid_device_slots=0)
+
+        service.user_repo.get_by_id.return_value = user
+        service.sub_repo.get_by_id.return_value = sub
+        service.plan_repo.get_by_id.return_value = plan
+
+        order = _make_order(
+            user_id=user.id,
+            order_type="device_slots",
+            device_slots_qty=2,
+            amount_rub=Decimal("158.00"),
+            subscription_id=sub.id,
+        )
+        service.order_repo.create.return_value = order
+        service.order_repo.update_by_id.return_value = order
+        service.order_repo.get_by_id.return_value = order
+
+        with patch.object(
+            BillingService,
+            "_get_provider",
+            return_value=AsyncMock(
+                create_payment=AsyncMock(
+                    return_value=SimpleNamespace(
+                        external_id="crypto_test",
+                        payment_url="https://pay.example.com",
+                        provider_meta=None,
+                    )
+                )
+            ),
+        ):
+            result = await service.create_order(
+                OrderCreateIn(
+                    user_id=user.id,
+                    provider=PaymentProviderEnum.CRYPTO,
+                    order_type=OrderTypeEnum.DEVICE_SLOTS,
+                    device_slots_qty=2,
+                    subscription_id=sub.id,
+                )
+            )
+
+        assert result.id == order.id
+        service.order_repo.create.assert_awaited_once()
+
+    async def test_device_slot_order_exceeds_limit(self, service):
+        user = _make_user()
+        plan = _make_plan(max_devices=3, included_devices=1, device_price_rub=Decimal("79.00"))
+        sub = _make_subscription(user_id=user.id, plan_id=plan.id, paid_device_slots=1)
+
+        service.user_repo.get_by_id.return_value = user
+        service.sub_repo.get_by_id.return_value = sub
+        service.plan_repo.get_by_id.return_value = plan
+
+        with pytest.raises(DeviceSlotLimitExceeded):
+            await service.create_order(
+                OrderCreateIn(
+                    user_id=user.id,
+                    provider=PaymentProviderEnum.CRYPTO,
+                    order_type=OrderTypeEnum.DEVICE_SLOTS,
+                    device_slots_qty=5,
+                    subscription_id=sub.id,
+                )
+            )
+
+    async def test_fulfill_device_slots(self, service, async_session):
+        user = _make_user(balance=Decimal("158.00"))
+        sub = _make_subscription(user_id=user.id, paid_device_slots=1)
+        order = _make_order(
+            user_id=user.id,
+            order_type="device_slots",
+            device_slots_qty=2,
+            amount_rub=Decimal("158.00"),
+            subscription_id=sub.id,
+        )
+
+        service._lock_user = AsyncMock(return_value=user)
+        service._update_user_balance = AsyncMock()
+        service._record_transaction = AsyncMock()
+        service.sub_repo.get_by_id.return_value = sub
+        service.sub_repo.update_by_id.return_value = sub
+
+        await service._fulfill_device_slots(user, order, datetime.now(timezone.utc))
+
+        service._update_user_balance.assert_awaited_once()
+        service._record_transaction.assert_awaited_once()
+        service.sub_repo.update_by_id.assert_awaited_once()
+        update_args = service.sub_repo.update_by_id.call_args[0][1]
+        assert update_args["paid_device_slots"] == 3  # 1 existing + 2 new
+
+    async def test_auto_purchase_with_extra_devices(self, service, async_session):
+        user = _make_user(balance=Decimal("457.00"))
+        plan = _make_plan(price_rub=Decimal("299.00"), device_price_rub=Decimal("79.00"))
+        order = _make_order(
+            user_id=user.id,
+            plan_id=plan.id,
+            device_slots_qty=2,
+            amount_rub=Decimal("457.00"),
+        )
+        now = datetime.now(timezone.utc)
+
+        service._lock_user = AsyncMock(return_value=user)
+        service._update_user_balance = AsyncMock()
+        service._record_transaction = AsyncMock()
+        service.sub_repo.find_active_subscription = AsyncMock(return_value=None)
+
+        new_sub = _make_subscription(user_id=user.id, plan_id=plan.id)
+        service.sub_repo.create.return_value = new_sub
+        service.order_repo.update_by_id.return_value = order
+
+        await service._auto_purchase(user, plan, order, now)
+
+        service.sub_repo.create.assert_awaited_once()
+        create_args = service.sub_repo.create.call_args[0][0]
+        assert create_args["paid_device_slots"] == 2
+        assert create_args["max_devices"] == 3  # included(1) + extra(2)

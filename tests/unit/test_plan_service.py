@@ -19,12 +19,15 @@ def _make_plan(
     traffic_limit_bytes: int = 0,
     reset_strategy: str = "NO_RESET",
     max_devices: int = 5,
+    included_devices: int = 1,
     duration_days: int = 30,
     sort_order: int = 0,
     is_active: bool = True,
     whitelist_enabled: bool = False,
     price_rub: Decimal = Decimal("0"),
+    device_price_rub: Decimal = Decimal("0"),
     price_stars: int | None = None,
+    device_price_stars: int | None = None,
 ):
     return SimpleNamespace(
         id=uuid4(),
@@ -33,12 +36,15 @@ def _make_plan(
         traffic_limit_bytes=traffic_limit_bytes,
         reset_strategy=reset_strategy,
         max_devices=max_devices,
+        included_devices=included_devices,
         duration_days=duration_days,
         sort_order=sort_order,
         is_active=is_active,
         whitelist_enabled=whitelist_enabled,
         price_rub=price_rub,
+        device_price_rub=device_price_rub,
         price_stars=price_stars,
+        device_price_stars=device_price_stars,
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
@@ -123,6 +129,16 @@ class TestPlanServiceDelete:
         service.repo.get_by_id.return_value = None
         with pytest.raises(PlanNotFound):
             await service.delete_plan(uuid4())
+
+
+class TestPlanServiceValidation:
+    def test_included_devices_le_max_devices(self):
+        with pytest.raises(ValueError, match="included_devices must be <= max_devices"):
+            PlanCreateIn(name="Bad", max_devices=3, included_devices=5)
+
+    def test_included_devices_valid(self):
+        plan = PlanCreateIn(name="OK", max_devices=5, included_devices=3)
+        assert plan.included_devices == 3
 
 
 class TestPlanServiceList:
