@@ -65,6 +65,11 @@ class AdminConfig:
 
 
 @dataclass
+class BotApiConfig:
+    api_key_hash: str
+
+
+@dataclass
 class ProfilesVpnConfig:
     allow_empty_registry_on_startup: bool = False
 
@@ -188,6 +193,20 @@ class TransportConfig:
 
 
 @dataclass
+class BillingConfig:
+    crypto_api_url: str = "https://api.cryptocloud.plus/v2"
+    crypto_api_key: str = ""
+    crypto_shop_id: str = ""
+    crypto_webhook_secret: str = ""
+    stars_bot_token: str = ""
+    platega_api_url: str = ""
+    platega_shop_id: str = ""
+    platega_api_key: str = ""
+    platega_webhook_secret: str = ""
+    order_ttl_minutes: int = 30
+
+
+@dataclass
 class AdminAuthConfig:
     enabled: bool = False
     session_secret: str = ""
@@ -210,6 +229,7 @@ class Settings:
     redis: RedisConfig
     nats: NatsConfig
     admin: AdminConfig
+    bot_api: BotApiConfig
     docs: DocsConfig
     profiles_vpn: ProfilesVpnConfig
     subscriptions: SubscriptionsConfig
@@ -222,6 +242,7 @@ class Settings:
     transport: TransportConfig
     admin_auth: AdminAuthConfig
     vpn_key: VpnKeyConfig
+    billing: BillingConfig
 
 
 @lru_cache
@@ -277,6 +298,8 @@ def get_settings() -> Settings:
         bootstrap_token_hash=env.str("BOOTSTRAP_TOKEN_HASH"),
         probe_token_hash= env.str("PROBE_TOKEN_HASH"),
     )
+
+    bot_api = BotApiConfig(api_key_hash=env.str("BOT_API_KEY_HASH", default=""))
 
     docs = DocsConfig(
         username=env.str("DOCS_USERNAME", default="admin"),
@@ -409,6 +432,19 @@ def get_settings() -> Settings:
         expiration_batch_size=max(1, env.int("VPN_KEY_EXPIRATION_BATCH_SIZE", default=500)),
     )
 
+    billing = BillingConfig(
+        crypto_api_url=env.str("BILLING_CRYPTO_API_URL", default="https://api.cryptocloud.plus/v2"),
+        crypto_api_key=env.str("BILLING_CRYPTO_API_KEY", default=""),
+        crypto_shop_id=env.str("BILLING_CRYPTO_SHOP_ID", default=""),
+        crypto_webhook_secret=env.str("BILLING_CRYPTO_WEBHOOK_SECRET", default=""),
+        stars_bot_token=env.str("BILLING_STARS_BOT_TOKEN", default=""),
+        platega_api_url=env.str("BILLING_PLATEGA_API_URL", default=""),
+        platega_shop_id=env.str("BILLING_PLATEGA_SHOP_ID", default=""),
+        platega_api_key=env.str("BILLING_PLATEGA_API_KEY", default=""),
+        platega_webhook_secret=env.str("BILLING_PLATEGA_WEBHOOK_SECRET", default=""),
+        order_ttl_minutes=max(1, env.int("BILLING_ORDER_TTL_MINUTES", default=30)),
+    )
+
     _tg_allowed_raw = env.str("ADMIN_TELEGRAM_ALLOWED_IDS", default="")
     _tg_allowed = tuple(
         int(x.strip()) for x in _tg_allowed_raw.split(",") if x.strip().isdigit()
@@ -434,6 +470,7 @@ def get_settings() -> Settings:
         redis=redis,
         nats=nats,
         admin=admin,
+        bot_api=bot_api,
         docs=docs,
         profiles_vpn=profiles_vpn,
         subscriptions=subscriptions,
@@ -446,4 +483,5 @@ def get_settings() -> Settings:
         transport=transport,
         admin_auth=admin_auth,
         vpn_key=vpn_key,
+        billing=billing,
     )

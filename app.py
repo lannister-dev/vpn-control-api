@@ -43,6 +43,8 @@ from services.vpn.keys.router import router as vpn_router
 from services.plans.router import router as plans_router
 from services.users.router import router as users_router
 from services.vpn.subscriptions.router import router as subscriptions_router
+from services.billing.router import router as billing_router
+from services.bot_api.router import router as bot_api_router
 
 
 log = StructuredLogger(logging.getLogger("vpn-control-api"))
@@ -129,6 +131,8 @@ api_router.include_router(vpn_router)
 api_router.include_router(plans_router)
 api_router.include_router(users_router)
 api_router.include_router(subscriptions_router)
+api_router.include_router(billing_router)
+api_router.include_router(bot_api_router)
 
 app.include_router(api_router)
 
