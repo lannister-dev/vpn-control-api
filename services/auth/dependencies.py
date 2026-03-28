@@ -272,7 +272,7 @@ async def bot_auth(
         AUTH_ATTEMPT_TOTAL.labels(type="bot", result="failure").inc()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid bot token | len={len(raw_token)} expected={expected_hash[:12]} provided={provided_hash[:12]}",
+            detail="Invalid bot token",
         )
 
     AUTH_ATTEMPT_TOTAL.labels(type="bot", result="success").inc()
