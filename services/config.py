@@ -299,7 +299,7 @@ def get_settings() -> Settings:
         probe_token_hash= env.str("PROBE_TOKEN_HASH"),
     )
 
-    bot_api = BotApiConfig(api_key_hash=env.str("BOT_API_KEY_HASH"))
+    bot_api = BotApiConfig(api_key_hash=env.str("BOT_API_KEY_HASH", default=""))
 
     docs = DocsConfig(
         username=env.str("DOCS_USERNAME", default="admin"),
