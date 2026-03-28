@@ -13,12 +13,14 @@ from services.bot_api.router import (
     bot_issue_subscription_link,
     bot_list_devices,
     bot_list_plans,
+    bot_purchase_device_slots,
     bot_revoke_device,
     bot_sync_session,
 )
 from services.bot_api.schemas import (
     BotAction,
     BotDashboardState,
+    BotDeviceSlotPurchaseIn,
     BotDevicesOut,
     BotOrderActionOut,
     BotOrderCreateIn,
@@ -210,3 +212,35 @@ async def test_bot_issue_subscription_link_contract():
 
     assert out == out_expected
     service.issue_subscription_link.assert_awaited_once_with(telegram_id=42)
+
+
+@pytest.mark.asyncio
+async def test_bot_purchase_device_slots_contract():
+    payload = BotDeviceSlotPurchaseIn(qty=2, provider=PaymentProviderEnum.CRYPTO)
+    order = BotOrderOut.model_validate(
+        {
+            "id": str(uuid4()),
+            "user_id": str(uuid4()),
+            "plan_id": None,
+            "amount_rub": "158",
+            "provider": "crypto",
+            "status": "pending",
+            "external_id": "ext-ds-1",
+            "payment_url": "https://pay.example/ds",
+            "paid_at": None,
+            "completed_at": None,
+            "expires_at": "2026-03-28T01:00:00Z",
+            "subscription_id": None,
+            "order_type": "device_slots",
+            "device_slots_qty": 2,
+            "created_at": "2026-03-28T00:00:00Z",
+            "updated_at": "2026-03-28T00:00:00Z",
+        }
+    )
+    out_expected = BotOrderActionOut(order=order, session=_session_out())
+    service = SimpleNamespace(purchase_device_slots=AsyncMock(return_value=out_expected))
+
+    out = await bot_purchase_device_slots(telegram_id=42, payload=payload, service=service)
+
+    assert out == out_expected
+    service.purchase_device_slots.assert_awaited_once_with(telegram_id=42, payload=payload)

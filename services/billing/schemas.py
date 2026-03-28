@@ -25,19 +25,28 @@ class TransactionType(str, Enum):
     PURCHASE = "purchase"
     MANUAL_CREDIT = "manual_credit"
     REFUND = "refund"
+    DEVICE_SLOT_PURCHASE = "device_slot_purchase"
+
+
+class OrderTypeEnum(str, Enum):
+    PLAN_PURCHASE = "plan_purchase"
+    DEVICE_SLOTS = "device_slots"
 
 
 # ── Order I/O ─────────────────────────────────────────────────
 
 class OrderCreateIn(BaseModel):
     user_id: UUID
-    plan_id: UUID
+    plan_id: UUID | None = None
     provider: PaymentProviderEnum
+    order_type: OrderTypeEnum = OrderTypeEnum.PLAN_PURCHASE
+    device_slots_qty: int = 0
+    subscription_id: UUID | None = None
 
 
 class OrderInternalCreate(BaseModel):
     user_id: UUID
-    plan_id: UUID
+    plan_id: UUID | None = None
     amount_rub: Decimal
     provider: str
     status: str = OrderStatus.PENDING
@@ -45,6 +54,8 @@ class OrderInternalCreate(BaseModel):
     payment_url: str | None = None
     provider_meta: str | None = None
     expires_at: datetime | None = None
+    order_type: str = "plan_purchase"
+    device_slots_qty: int = 0
 
 
 class OrderInternalUpdate(BaseModel):
@@ -79,6 +90,8 @@ class OrderOut(BaseModel):
     completed_at: datetime | None
     expires_at: datetime | None
     subscription_id: UUID | None
+    order_type: str = "plan_purchase"
+    device_slots_qty: int = 0
     created_at: datetime
     updated_at: datetime
 

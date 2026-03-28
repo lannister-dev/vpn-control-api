@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.admin_status.service import AdminStatusService
 from services.billing.repository import OrderRepository
-from services.billing.schemas import OrderCreateIn, OrderOut
+from services.billing.schemas import OrderCreateIn, OrderOut, OrderTypeEnum
 from services.billing.service import BillingService
 from services.plans.repository import PlanRepository
 from services.plans.schemas import PlanOut
@@ -28,6 +28,7 @@ from .schemas import (
     BotDashboardState,
     BotDeviceOut,
     BotDevicesOut,
+    BotDeviceSlotPurchaseIn,
     BotOrderActionOut,
     BotOrderCreateIn,
     BotOrderHistoryItemOut,
@@ -84,8 +85,14 @@ class BotApiService:
 
     async def create_order(self, *, telegram_id: int, payload: BotOrderCreateIn) -> BotOrderActionOut:
         user = await self._require_user_by_telegram_id(telegram_id)
+        extra = getattr(payload, "extra_devices", 0) or 0
         order = await self.billing_service.create_order(
-            OrderCreateIn(user_id=user.id, plan_id=payload.plan_id, provider=payload.provider)
+            OrderCreateIn(
+                user_id=user.id,
+                plan_id=payload.plan_id,
+                provider=payload.provider,
+                device_slots_qty=extra,
+            )
         )
         session = await self._build_session(user=user, forced_pending_order=order)
         return BotOrderActionOut(order=BotOrderOut.model_validate(order), session=session)
@@ -96,6 +103,25 @@ class BotApiService:
         if order.user_id != user.id:
             raise HTTPException(status_code=404, detail="Order not found")
         session = await self._build_session(user=user, forced_pending_order=order if order.status == "pending" else None)
+        return BotOrderActionOut(order=BotOrderOut.model_validate(order), session=session)
+
+    async def purchase_device_slots(
+        self, *, telegram_id: int, payload: BotDeviceSlotPurchaseIn,
+    ) -> BotOrderActionOut:
+        user = await self._require_user_by_telegram_id(telegram_id)
+        subscription = await self._current_subscription(user.id)
+        if subscription is None:
+            raise HTTPException(status_code=404, detail="Active subscription not found")
+        order = await self.billing_service.create_order(
+            OrderCreateIn(
+                user_id=user.id,
+                provider=payload.provider,
+                order_type=OrderTypeEnum.DEVICE_SLOTS,
+                device_slots_qty=payload.qty,
+                subscription_id=subscription.id,
+            )
+        )
+        session = await self._build_session(user=user, forced_pending_order=order)
         return BotOrderActionOut(order=BotOrderOut.model_validate(order), session=session)
 
     async def list_devices(self, *, telegram_id: int) -> BotDevicesOut:
@@ -162,6 +188,8 @@ class BotApiService:
                 amount_rub=row.amount_rub,
                 provider=row.provider,
                 status=row.status,
+                order_type=getattr(row, "order_type", "plan_purchase"),
+                device_slots_qty=getattr(row, "device_slots_qty", 0),
                 paid_at=row.paid_at,
                 completed_at=row.completed_at,
                 created_at=row.created_at,
@@ -269,6 +297,20 @@ class BotApiService:
         plan = await self.plan_repository.get_by_id(subscription.plan_id) if subscription.plan_id else None
         active_devices = await self.subscription_service.list_devices(subscription.id, active_only=True)
 
+        paid_slots = getattr(subscription, "paid_device_slots", 0) or 0
+        if plan is not None:
+            included = getattr(plan, "included_devices", 1)
+            effective_limit = included + paid_slots
+            max_purchasable = plan.max_devices - included - paid_slots
+            device_price_rub = getattr(plan, "device_price_rub", 0)
+            device_price_stars = getattr(plan, "device_price_stars", None)
+        else:
+            included = 1
+            effective_limit = subscription.max_devices
+            max_purchasable = 0
+            device_price_rub = 0
+            device_price_stars = None
+
         return BotSubscriptionSummaryOut(
             id=subscription.id,
             plan_id=subscription.plan_id,
@@ -279,7 +321,12 @@ class BotApiService:
             preferred_region=subscription.preferred_region,
             hwid_enabled=subscription.hwid_enabled,
             device_count=len(active_devices),
-            device_limit=subscription.max_devices,
+            device_limit=effective_limit,
+            paid_device_slots=paid_slots,
+            included_devices=included,
+            max_purchasable_slots=max(max_purchasable, 0),
+            device_price_rub=device_price_rub,
+            device_price_stars=device_price_stars,
             used_traffic_bytes=subscription.used_traffic_bytes,
             lifetime_used_traffic_bytes=subscription.lifetime_used_traffic_bytes,
             traffic_limit_bytes=(plan.traffic_limit_bytes if plan is not None else None),
@@ -387,6 +434,8 @@ class BotApiService:
                     BotAction.RENEW,
                 ]
             )
+            if subscription is not None and subscription.max_purchasable_slots > 0:
+                actions.append(BotAction.BUY_DEVICE_SLOTS)
             return actions
         actions.extend([BotAction.RENEW, BotAction.OPEN_PAYMENT])
         return actions

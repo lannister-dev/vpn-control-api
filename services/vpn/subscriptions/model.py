@@ -21,6 +21,9 @@ class Subscription(Base):
     root_vpn_key_id: Mapped[UUID | None] = mapped_column(ForeignKey("vpn_key.id"), nullable=True)
     hwid_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     max_devices: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    paid_device_slots: Mapped[int] = mapped_column(
+        Integer, default=0, server_default=text("0"), nullable=False
+    )
 
     used_traffic_bytes: Mapped[int] = mapped_column(
         BigInteger, nullable=False, default=0, server_default=text("0"),

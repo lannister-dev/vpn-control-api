@@ -204,6 +204,7 @@ class SubscriptionService:
             preferred_region=sub.preferred_region,
             hwid_enabled=sub.hwid_enabled,
             max_devices=sub.max_devices,
+            paid_device_slots=getattr(sub, "paid_device_slots", 0),
             used_traffic_bytes=getattr(sub, "used_traffic_bytes", 0),
             lifetime_used_traffic_bytes=getattr(sub, "lifetime_used_traffic_bytes", 0),
             last_traffic_reset_at=getattr(sub, "last_traffic_reset_at", None),
@@ -1347,9 +1348,17 @@ class SubscriptionService:
                 now=now,
             )
 
-        max_devices = subscription.max_devices or self.settings.subscriptions.max_devices_default
+        plan = subscription.plan if hasattr(subscription, 'plan') else None
+        if plan is None and subscription.plan_id:
+            from services.plans.repository import PlanRepository
+            plan_repo = PlanRepository(self.session)
+            plan = await plan_repo.get_by_id(subscription.plan_id)
+        if plan:
+            effective_limit = plan.included_devices + (subscription.paid_device_slots or 0)
+        else:
+            effective_limit = subscription.max_devices or self.settings.subscriptions.max_devices_default
         current = await self.device_repository.count_active_for_subscription(subscription.id)
-        if current >= max_devices:
+        if current >= effective_limit:
             raise SubscriptionDeviceLimitReached()
 
         valid_until = subscription.expires_at

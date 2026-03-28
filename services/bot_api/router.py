@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends
 from services.auth.dependencies import bot_auth
 
 from .schemas import (
+    BotDeviceSlotPurchaseIn,
     BotDevicesOut,
     BotOrderActionOut,
     BotOrderCreateIn,
@@ -20,6 +21,31 @@ from .schemas import (
 from .service import BotApiService, get_bot_api_service
 
 router = APIRouter(prefix="/bot", tags=["Bot"], dependencies=[Depends(bot_auth)])
+
+
+# ── TEMPORARY debug endpoint — remove after fixing auth ──
+from fastapi import Request as _Req
+from services.auth.utils import AuthUtils as _AU
+from services.config import get_settings as _gs
+import os as _os
+
+
+@router.get("/debug-auth", dependencies=[])       # no auth
+async def _debug_auth(_req: _Req):
+    s = _gs()
+    expected = s.bot_api.api_key_hash
+    env_raw = _os.environ.get("BOT_API_KEY_HASH", "<NOT SET>")
+    auth = _req.headers.get("authorization", "")
+    token = auth.replace("Bearer ", "") if auth.startswith("Bearer ") else ""
+    provided = _AU.hash_admin_api_key(token) if token else "<no token>"
+    return {
+        "expected_hash_first12": expected[:12] if expected else "<empty>",
+        "expected_len": len(expected),
+        "env_raw_first12": env_raw[:12],
+        "provided_hash_first12": provided[:12] if token else "<no token>",
+        "token_len": len(token),
+        "match": expected == provided if token else False,
+    }
 
 
 @router.post(
@@ -123,6 +149,19 @@ async def bot_revoke_device(
     service: BotApiService = Depends(get_bot_api_service),
 ):
     return await service.revoke_device(telegram_id=telegram_id, device_id=device_id)
+
+
+@router.post(
+    "/users/{telegram_id}/device-slots",
+    response_model=BotOrderActionOut,
+    summary="Purchase additional device slots for Telegram bot user",
+)
+async def bot_purchase_device_slots(
+    telegram_id: int,
+    payload: BotDeviceSlotPurchaseIn,
+    service: BotApiService = Depends(get_bot_api_service),
+):
+    return await service.purchase_device_slots(telegram_id=telegram_id, payload=payload)
 
 
 @router.post(

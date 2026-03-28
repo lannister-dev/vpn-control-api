@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Index, Numeric, String, Text, text
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, Numeric, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from shared.database.base_model import Base
@@ -37,12 +37,19 @@ class PaymentOrder(Base):
     subscription_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("subscription.id", ondelete="SET NULL"), nullable=True
     )
+    order_type: Mapped[str] = mapped_column(
+        String(24), default="plan_purchase", server_default=text("'plan_purchase'"), nullable=False
+    )
+    device_slots_qty: Mapped[int] = mapped_column(
+        Integer, default=0, server_default=text("0"), nullable=False
+    )
 
     __table_args__ = (
         Index("ix_payment_order_user_id", "user_id"),
         Index("ix_payment_order_status", "status"),
         Index("ix_payment_order_provider", "provider"),
         Index("ix_payment_order_expires_at", "expires_at"),
+        Index("ix_payment_order_order_type", "order_type"),
     )
 
 

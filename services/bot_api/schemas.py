@@ -34,6 +34,7 @@ class BotAction(str, Enum):
     RENEW = "renew"
     CHECK_PAYMENT = "check_payment"
     OPEN_HELP = "open_help"
+    BUY_DEVICE_SLOTS = "buy_device_slots"
 
 
 class BotSessionSyncIn(BaseModel):
@@ -46,6 +47,7 @@ class BotSessionSyncIn(BaseModel):
 class BotOrderCreateIn(BaseModel):
     plan_id: UUID
     provider: PaymentProviderEnum
+    extra_devices: int = Field(default=0, ge=0)
 
 
 class BotStarsConfirmIn(BaseModel):
@@ -79,11 +81,14 @@ class BotPlanOut(BaseModel):
     traffic_limit_bytes: int
     reset_strategy: str
     max_devices: int
+    included_devices: int = 1
     duration_days: int
     sort_order: int
     whitelist_enabled: bool
     price_rub: Decimal
+    device_price_rub: Decimal = Decimal("0")
     price_stars: int | None = None
+    device_price_stars: int | None = None
     is_active: bool
     is_current: bool = False
     created_at: datetime
@@ -126,6 +131,11 @@ class BotSubscriptionSummaryOut(BaseModel):
     hwid_enabled: bool
     device_count: int = 0
     device_limit: int | None = None
+    paid_device_slots: int = 0
+    included_devices: int = 1
+    max_purchasable_slots: int = 0
+    device_price_rub: Decimal = Decimal("0")
+    device_price_stars: int | None = None
     used_traffic_bytes: int = 0
     lifetime_used_traffic_bytes: int = 0
     traffic_limit_bytes: int | None = None
@@ -173,12 +183,19 @@ class BotSubscriptionLinkOut(BaseModel):
     session: BotSessionOut
 
 
+class BotDeviceSlotPurchaseIn(BaseModel):
+    qty: int = Field(ge=1)
+    provider: PaymentProviderEnum
+
+
 class BotOrderHistoryItemOut(BaseModel):
     id: UUID
     plan_name: str | None = None
     amount_rub: Decimal
     provider: str
     status: str
+    order_type: str = "plan_purchase"
+    device_slots_qty: int = 0
     paid_at: datetime | None
     completed_at: datetime | None
     created_at: datetime

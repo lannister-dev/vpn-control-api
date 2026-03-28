@@ -11,6 +11,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.billing.exceptions import (
+    DeviceSlotLimitExceeded,
     InsufficientBalance,
     OrderAlreadyProcessed,
     OrderExpired,
@@ -85,19 +86,28 @@ class BillingService:
         if not user:
             raise OrderNotFound("User not found")
 
+        order_type = getattr(data, "order_type", None)
+        if order_type and order_type.value == "device_slots":
+            return await self._create_device_slot_order(user, data)
+
         plan = await self.plan_repo.get_by_id(data.plan_id)
         if not plan or not plan.is_active:
             raise PlanNotPurchasable("Plan is not available")
         if plan.price_rub <= 0:
             raise PlanNotPurchasable("Plan has no price set")
 
-        amount_rub = plan.price_rub
+        extra_devices = getattr(data, "device_slots_qty", 0) or 0
+        device_price = getattr(plan, "device_price_rub", Decimal("0")) or Decimal("0")
+        amount_rub = plan.price_rub + extra_devices * device_price
         expires_at = datetime.now(timezone.utc) + timedelta(
             minutes=self.settings.order_ttl_minutes
         )
 
+        description = f"Plan: {plan.name}"
+        if extra_devices > 0:
+            description += f" + {extra_devices} device(s)"
+
         if data.provider.value == "stars":
-            # Stars — no external API; bot handles sendInvoice directly
             external_id = f"stars_{uuid4().hex}"
             payment_url = None
             provider_meta = None
@@ -107,7 +117,7 @@ class BillingService:
                 result = await provider.create_payment(
                     order_id=str(data.user_id),
                     amount_rub=float(amount_rub),
-                    description=f"Plan: {plan.name}",
+                    description=description,
                 )
             except Exception as exc:
                 raise ProviderError(f"Provider error: {exc}") from exc
@@ -125,6 +135,8 @@ class BillingService:
                 payment_url=payment_url,
                 provider_meta=provider_meta,
                 expires_at=expires_at,
+                order_type="plan_purchase",
+                device_slots_qty=extra_devices,
             ).model_dump()
         )
 
@@ -136,6 +148,85 @@ class BillingService:
             amount=str(amount_rub),
         )
         return OrderOut.model_validate(order)
+
+    async def _create_device_slot_order(self, data: OrderCreateIn) -> OrderOut:
+        if not data.subscription_id:
+            raise OrderNotFound("subscription_id is required for device_slots order")
+        sub = await self.sub_repo.get_by_id(data.subscription_id)
+        if not sub or not sub.is_active:
+            raise OrderNotFound("Active subscription not found")
+
+        plan = await self.plan_repo.get_by_id(sub.plan_id) if sub.plan_id else None
+        if not plan:
+            raise PlanNotPurchasable("Subscription has no plan")
+
+        qty = data.device_slots_qty
+        included = getattr(plan, "included_devices", 1)
+        paid = getattr(sub, "paid_device_slots", 0)
+        max_allowed = plan.max_devices - included - paid
+        if qty > max_allowed:
+            raise DeviceSlotLimitExceeded(
+                f"Cannot add {qty} slots, max purchasable: {max_allowed}"
+            )
+
+        device_price = getattr(plan, "device_price_rub", Decimal("0")) or Decimal("0")
+        if device_price <= 0:
+            raise PlanNotPurchasable("Plan has no device price set")
+
+        amount_rub = qty * device_price
+        expires_at = datetime.now(timezone.utc) + timedelta(
+            minutes=self.settings.order_ttl_minutes
+        )
+        description = f"{qty} device slot(s) for {plan.name}"
+
+        if data.provider.value == "stars":
+            external_id = f"stars_{uuid4().hex}"
+            payment_url = None
+            provider_meta = None
+        else:
+            provider = self._get_provider(data.provider.value)
+            try:
+                result = await provider.create_payment(
+                    order_id=str(data.user_id),
+                    amount_rub=float(amount_rub),
+                    description=description,
+                )
+            except Exception as exc:
+                raise ProviderError(f"Provider error: {exc}") from exc
+            external_id = result.external_id
+            payment_url = result.payment_url
+            provider_meta = result.provider_meta
+
+        order = await self.order_repo.create(
+            OrderInternalCreate(
+                user_id=data.user_id,
+                plan_id=None,
+                amount_rub=amount_rub,
+                provider=data.provider.value,
+                external_id=external_id,
+                payment_url=payment_url,
+                provider_meta=provider_meta,
+                expires_at=expires_at,
+                order_type="device_slots",
+                device_slots_qty=qty,
+            ).model_dump()
+        )
+        # Store subscription_id on order
+        await self.order_repo.update_by_id(
+            order.id,
+            OrderInternalUpdate(subscription_id=data.subscription_id).model_dump(exclude_none=True),
+        )
+
+        BILLING_ORDER_TOTAL.labels(provider=data.provider.value, status="pending").inc()
+        log.info(
+            "device_slot_order_created",
+            order_id=str(order.id),
+            qty=qty,
+            amount=str(amount_rub),
+        )
+        # Re-fetch to include subscription_id
+        refreshed = await self.order_repo.get_by_id(order.id)
+        return OrderOut.model_validate(refreshed)
 
     async def get_order(self, order_id: UUID) -> OrderOut:
         order = await self.order_repo.get_by_id(order_id)
@@ -242,7 +333,9 @@ class BillingService:
         )
         BILLING_BALANCE_OPERATION_TOTAL.labels(type="payment").inc()
 
-        if order.plan_id:
+        if getattr(order, "order_type", "plan_purchase") == "device_slots":
+            await self._fulfill_device_slots(user, order, now)
+        elif order.plan_id:
             plan = await self.plan_repo.get_by_id(order.plan_id)
             if plan and plan.is_active and plan.price_rub > 0:
                 await self._auto_purchase(user, plan, order, now)
@@ -327,34 +420,47 @@ class BillingService:
 
     async def _auto_purchase(self, user: User, plan, order: PaymentOrder, now: datetime) -> None:
         """Debit balance and create or extend a subscription."""
+        extra_devices = getattr(order, "device_slots_qty", 0) or 0
+        device_price = getattr(plan, "device_price_rub", Decimal("0")) or Decimal("0")
+        total_price = plan.price_rub + extra_devices * device_price
+
         # Re-read balance after lock
         user = await self._lock_user(user.id)
-        if not user or user.balance < plan.price_rub:
+        if not user or user.balance < total_price:
             log.warning(
                 "auto_purchase_insufficient_balance",
                 user_id=str(user.id if user else order.user_id),
             )
             return
 
-        new_balance = user.balance - plan.price_rub
+        new_balance = user.balance - total_price
         await self._update_user_balance(user.id, new_balance)
+
+        desc = f"Purchase plan: {plan.name}"
+        if extra_devices > 0:
+            desc += f" + {extra_devices} device slot(s)"
         await self._record_transaction(
             user_id=user.id,
-            amount=-plan.price_rub,
+            amount=-total_price,
             balance_after=new_balance,
             tx_type="purchase",
             order_id=order.id,
-            description=f"Purchase plan: {plan.name}",
+            description=desc,
         )
         BILLING_BALANCE_OPERATION_TOTAL.labels(type="purchase").inc()
 
         # Try to extend existing active subscription with same plan
-        existing = await self._find_active_subscription(user.id, plan.id)
+        existing = await self.sub_repo.find_active_subscription(user.id, plan.id)
         if existing:
             new_expires = (existing.expires_at or now) + timedelta(days=plan.duration_days)
+            update_data = SubscriptionInternalUpdate(
+                expires_at=new_expires, is_active=True,
+            )
+            if extra_devices > 0:
+                update_data.paid_device_slots = (getattr(existing, "paid_device_slots", 0) or 0) + extra_devices
             await self.sub_repo.update_by_id(
                 existing.id,
-                SubscriptionInternalUpdate(expires_at=new_expires, is_active=True).model_dump(exclude_none=True),
+                update_data.model_dump(exclude_none=True),
             )
             await self.order_repo.update_by_id(
                 order.id,
@@ -370,6 +476,7 @@ class BillingService:
             raw_token = SubscriptionUtils.generate()
             token_hash = SubscriptionUtils.hash(raw_token)
             expires_at = now + timedelta(days=plan.duration_days)
+            included = getattr(plan, "included_devices", 1)
 
             sub = await self.sub_repo.create(
                 SubscriptionInternalCreate(
@@ -379,7 +486,8 @@ class BillingService:
                     is_active=True,
                     expires_at=expires_at,
                     hwid_enabled=True,
-                    max_devices=plan.max_devices,
+                    max_devices=included + extra_devices,
+                    paid_device_slots=extra_devices,
                 ).model_dump()
             )
             await self.order_repo.update_by_id(
@@ -392,18 +500,42 @@ class BillingService:
                 expires_at=str(expires_at),
             )
 
-    async def _find_active_subscription(self, user_id: UUID, plan_id: UUID):
-        """Find an active subscription for the same user+plan."""
-        from services.vpn.subscriptions.model import Subscription
-
-        result = await self.session.execute(
-            select(Subscription).where(
-                Subscription.user_id == user_id,
-                Subscription.plan_id == plan_id,
-                Subscription.is_active == True,
+    async def _fulfill_device_slots(self, user: User, order: PaymentOrder, now: datetime) -> None:
+        """Debit balance and add device slots to subscription."""
+        user = await self._lock_user(user.id)
+        if not user or user.balance < order.amount_rub:
+            log.warning(
+                "device_slots_insufficient_balance",
+                user_id=str(user.id if user else order.user_id),
             )
+            return
+
+        new_balance = user.balance - order.amount_rub
+        await self._update_user_balance(user.id, new_balance)
+        await self._record_transaction(
+            user_id=user.id,
+            amount=-order.amount_rub,
+            balance_after=new_balance,
+            tx_type="device_slot_purchase",
+            order_id=order.id,
+            description=f"Purchase {order.device_slots_qty} device slot(s)",
         )
-        return result.scalar_one_or_none()
+        BILLING_BALANCE_OPERATION_TOTAL.labels(type="device_slot_purchase").inc()
+
+        if order.subscription_id:
+            sub = await self.sub_repo.get_by_id(order.subscription_id)
+            if sub:
+                new_paid = (getattr(sub, "paid_device_slots", 0) or 0) + order.device_slots_qty
+                await self.sub_repo.update_by_id(
+                    sub.id,
+                    SubscriptionInternalUpdate(paid_device_slots=new_paid).model_dump(exclude_none=True),
+                )
+                log.info(
+                    "device_slots_added",
+                    subscription_id=str(sub.id),
+                    qty=order.device_slots_qty,
+                    total_paid=new_paid,
+                )
 
 
 def get_billing_service(

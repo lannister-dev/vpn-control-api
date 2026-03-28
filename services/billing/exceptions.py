@@ -24,3 +24,7 @@ class WebhookVerificationFailed(Exception):
 
 class OrderExpired(Exception):
     """Payment order has expired."""
+
+
+class DeviceSlotLimitExceeded(Exception):
+    """Requested device slots exceed max_devices limit."""
