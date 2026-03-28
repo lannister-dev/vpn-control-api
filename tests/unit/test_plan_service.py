@@ -24,6 +24,7 @@ def _make_plan(
     is_active: bool = True,
     whitelist_enabled: bool = False,
     price_rub: Decimal = Decimal("0"),
+    price_stars: int | None = None,
 ):
     return SimpleNamespace(
         id=uuid4(),
@@ -37,6 +38,7 @@ def _make_plan(
         is_active=is_active,
         whitelist_enabled=whitelist_enabled,
         price_rub=price_rub,
+        price_stars=price_stars,
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
