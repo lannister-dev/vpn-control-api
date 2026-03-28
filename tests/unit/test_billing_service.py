@@ -335,7 +335,7 @@ class TestAutoPurchase:
         service._lock_user = AsyncMock(return_value=user)
         service._update_user_balance = AsyncMock()
         service._record_transaction = AsyncMock()
-        service._find_active_subscription = AsyncMock(return_value=None)
+        service.sub_repo.find_active_subscription = AsyncMock(return_value=None)
 
         new_sub = _make_subscription(user_id=user.id, plan_id=plan.id)
         service.sub_repo.create.return_value = new_sub
@@ -360,7 +360,7 @@ class TestAutoPurchase:
         service._lock_user = AsyncMock(return_value=user)
         service._update_user_balance = AsyncMock()
         service._record_transaction = AsyncMock()
-        service._find_active_subscription = AsyncMock(return_value=existing_sub)
+        service.sub_repo.find_active_subscription = AsyncMock(return_value=existing_sub)
         service.sub_repo.update_by_id.return_value = existing_sub
         service.order_repo.update_by_id.return_value = order
 
@@ -527,7 +527,7 @@ class TestDeviceSlots:
         service._lock_user = AsyncMock(return_value=user)
         service._update_user_balance = AsyncMock()
         service._record_transaction = AsyncMock()
-        service._find_active_subscription = AsyncMock(return_value=None)
+        service.sub_repo.find_active_subscription = AsyncMock(return_value=None)
 
         new_sub = _make_subscription(user_id=user.id, plan_id=plan.id)
         service.sub_repo.create.return_value = new_sub

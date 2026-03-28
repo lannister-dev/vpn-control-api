@@ -88,7 +88,7 @@ class BillingService:
 
         order_type = getattr(data, "order_type", None)
         if order_type and order_type.value == "device_slots":
-            return await self._create_device_slot_order(user, data)
+            return await self._create_device_slot_order(data)
 
         plan = await self.plan_repo.get_by_id(data.plan_id)
         if not plan or not plan.is_active:
