@@ -239,3 +239,40 @@ async def probe_auth(
         )
 
     AUTH_ATTEMPT_TOTAL.labels(type="probe", result="success").inc()
+
+
+bot_bearer = HTTPBearer(auto_error=False)
+
+
+async def bot_auth(
+        credentials: HTTPAuthorizationCredentials | None = Security(bot_bearer),
+) -> None:
+    """
+    Validates Telegram bot access to bot-facing endpoints.
+    """
+    if not credentials:
+        AUTH_ATTEMPT_TOTAL.labels(type="bot", result="failure").inc()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing Authorization header",
+        )
+
+    if credentials.scheme.lower() != "bearer":
+        AUTH_ATTEMPT_TOTAL.labels(type="bot", result="failure").inc()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authorization scheme",
+        )
+
+    raw_token = credentials.credentials
+    expected_hash = get_settings().bot_api.api_key_hash
+    provided_hash = AuthUtils.hash_admin_api_key(raw_token)
+
+    if not expected_hash or not secrets.compare_digest(provided_hash, expected_hash):
+        AUTH_ATTEMPT_TOTAL.labels(type="bot", result="failure").inc()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid bot token",
+        )
+
+    AUTH_ATTEMPT_TOTAL.labels(type="bot", result="success").inc()

@@ -3011,16 +3011,18 @@
       }
 
       function renderPlans() {
-        refs.plansHead.innerHTML = `<tr><th>Название</th><th>Описание</th><th>Трафик</th><th>Сброс</th><th>Макс. устройств</th><th>Длительность</th><th>Статус</th><th>Действия</th></tr>`;
+        refs.plansHead.innerHTML = `<tr><th>Название</th><th>Описание</th><th>Цена</th><th>Трафик</th><th>Сброс</th><th>Макс. устройств</th><th>Длительность</th><th>Статус</th><th>Действия</th></tr>`;
         refs.plansBody.innerHTML = state.plans.length
           ? state.plans.map((p) => {
             const trafficDisplay = p.traffic_limit_bytes && p.traffic_limit_bytes > 0
               ? `<span class="mono" style="font-weight:600">${fmtTrafficLimit(p.traffic_limit_bytes)}</span>`
               : chip("ok", "Unlimited");
             const resetCls = resetColors[p.reset_strategy] || "muted";
+            const priceDisplay = p.price_rub > 0 ? `<span class="mono" style="font-weight:600">${Number(p.price_rub).toFixed(2)} ₽</span>` : `<span class="muted">—</span>`;
             return `<tr>
               <td><strong>${esc(p.name)}</strong></td>
               <td><span class="muted" style="font-size:11px;max-width:200px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.description || "-")}</span></td>
+              <td>${priceDisplay}</td>
               <td>${trafficDisplay}</td>
               <td>${chip(resetCls, resetLabels[p.reset_strategy] || p.reset_strategy)}</td>
               <td><span class="stat-inline"><strong>${esc(p.max_devices)}</strong> dev</span></td>
@@ -3029,7 +3031,7 @@
               <td><div class="actions"><button class="btn-mini plan-edit-btn" data-plan-id="${esc(p.id)}">Edit</button></div></td>
             </tr>`;
           }).join("")
-          : `<tr><td colspan="8"><div class="empty-state"><div class="empty-state-icon">$</div><div class="empty-state-title">Нет тарифных планов</div><div class="empty-state-desc">Создайте первый тарифный план</div></div></td></tr>`;
+          : `<tr><td colspan="9"><div class="empty-state"><div class="empty-state-icon">$</div><div class="empty-state-title">Нет тарифных планов</div><div class="empty-state-desc">Создайте первый тарифный план</div></div></td></tr>`;
       }
 
       refs.plansReload.addEventListener("click", () => loadPlans().catch((e) => notify("Ошибка: " + e.message, true)));
@@ -3061,6 +3063,9 @@
                   <div class="form-group"><label class="form-label">Длительность (дни)</label><input class="input mono" id="plan-duration" type="number" min="1" max="3650" value="30" /></div>
                 </div>
               </div>
+              <div class="form-section"><div class="form-section-title">Цена</div>
+                <div class="form-group"><label class="form-label">Цена (руб.)</label><input class="input mono" id="plan-price" type="number" min="0" step="0.01" value="0" /></div>
+              </div>
               <div class="form-section"><div class="form-section-title">Whitelist</div>
                 <div class="form-group"><label class="form-label" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="plan-wl" /> Whitelist-маршруты (entry ноды)</label></div>
               </div>
@@ -3079,7 +3084,7 @@
           const trafficVal = parseFloat(document.getElementById("plan-traffic").value) || 0;
           const unit = document.getElementById("plan-traffic-unit").value;
           const traffic_limit_bytes = unit === "gb" ? Math.round(trafficVal * 1024 * 1024 * 1024) : Math.round(trafficVal * 1024 * 1024);
-          const payload = { name, description: document.getElementById("plan-desc").value.trim() || null, traffic_limit_bytes, reset_strategy: document.getElementById("plan-reset").value, max_devices: parseInt(document.getElementById("plan-devices").value) || 5, duration_days: parseInt(document.getElementById("plan-duration").value) || 30, whitelist_enabled: document.getElementById("plan-wl").checked };
+          const payload = { name, description: document.getElementById("plan-desc").value.trim() || null, traffic_limit_bytes, reset_strategy: document.getElementById("plan-reset").value, max_devices: parseInt(document.getElementById("plan-devices").value) || 5, duration_days: parseInt(document.getElementById("plan-duration").value) || 30, whitelist_enabled: document.getElementById("plan-wl").checked, price_rub: parseFloat(document.getElementById("plan-price").value) || 0 };
           cleanup();
           runAction("Create plan", () => req("/api/v1/plans", { method: "POST", body: payload })).then(() => loadPlans()).catch(() => {});
         });
@@ -3122,6 +3127,9 @@
                 </div>
                 <div class="form-group"><label class="muted" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="plan-e-active" ${plan.is_active ? "checked" : ""} /> Активен</label></div>
               </div>
+              <div class="form-section"><div class="form-section-title">Цена</div>
+                <div class="form-group"><label class="form-label">Цена (руб.)</label><input class="input mono" id="plan-e-price" type="number" min="0" step="0.01" value="${plan.price_rub || 0}" /></div>
+              </div>
               <div class="form-section"><div class="form-section-title">Whitelist</div>
                 <div class="form-group"><label class="form-label" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="plan-e-wl" ${plan.whitelist_enabled ? "checked" : ""} /> Whitelist-маршруты (entry ноды)</label></div>
               </div>
@@ -3141,7 +3149,7 @@
           const trafficVal = parseFloat(document.getElementById("plan-e-traffic").value) || 0;
           const unit = document.getElementById("plan-e-traffic-unit").value;
           const traffic_limit_bytes = unit === "gb" ? Math.round(trafficVal * 1024 * 1024 * 1024) : Math.round(trafficVal * 1024 * 1024);
-          const payload = { name: document.getElementById("plan-e-name").value.trim() || null, description: document.getElementById("plan-e-desc").value.trim() || null, traffic_limit_bytes, reset_strategy: document.getElementById("plan-e-reset").value, max_devices: parseInt(document.getElementById("plan-e-devices").value) || 5, duration_days: parseInt(document.getElementById("plan-e-duration").value) || 30, is_active: document.getElementById("plan-e-active").checked, whitelist_enabled: document.getElementById("plan-e-wl").checked };
+          const payload = { name: document.getElementById("plan-e-name").value.trim() || null, description: document.getElementById("plan-e-desc").value.trim() || null, traffic_limit_bytes, reset_strategy: document.getElementById("plan-e-reset").value, max_devices: parseInt(document.getElementById("plan-e-devices").value) || 5, duration_days: parseInt(document.getElementById("plan-e-duration").value) || 30, is_active: document.getElementById("plan-e-active").checked, whitelist_enabled: document.getElementById("plan-e-wl").checked, price_rub: parseFloat(document.getElementById("plan-e-price").value) || 0 };
           cleanup();
           runAction("Update plan", () => req(`/api/v1/plans/${encodeURIComponent(planId)}`, { method: "PATCH", body: payload })).then(() => loadPlans()).catch(() => {});
         });

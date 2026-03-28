@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from enum import Enum
 from uuid import UUID
 
@@ -21,6 +22,8 @@ class PlanCreateIn(BaseModel):
     duration_days: int = Field(default=30, ge=1, le=3650)
     sort_order: int = Field(default=0, ge=0)
     whitelist_enabled: bool = False
+    price_rub: Decimal = Field(default=Decimal("0"), ge=0)
+    price_stars: int | None = Field(default=None, ge=1)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -35,6 +38,8 @@ class PlanUpdateIn(BaseModel):
     sort_order: int | None = Field(default=None, ge=0)
     is_active: bool | None = None
     whitelist_enabled: bool | None = None
+    price_rub: Decimal | None = Field(default=None, ge=0)
+    price_stars: int | None = Field(default=None, ge=1)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -49,6 +54,8 @@ class PlanOut(BaseModel):
     duration_days: int
     sort_order: int
     whitelist_enabled: bool
+    price_rub: Decimal
+    price_stars: int | None
     is_active: bool
     created_at: datetime
     updated_at: datetime
