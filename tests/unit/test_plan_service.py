@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -22,6 +23,7 @@ def _make_plan(
     sort_order: int = 0,
     is_active: bool = True,
     whitelist_enabled: bool = False,
+    price_rub: Decimal = Decimal("0"),
 ):
     return SimpleNamespace(
         id=uuid4(),
@@ -34,6 +36,7 @@ def _make_plan(
         sort_order=sort_order,
         is_active=is_active,
         whitelist_enabled=whitelist_enabled,
+        price_rub=price_rub,
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
