@@ -58,10 +58,10 @@ class UserOut(BaseModel):
     username: str | None
     balance: Decimal
     is_active: bool
-    tag: str | None
-    description: str | None
-    terms_accepted: bool
-    terms_accepted_at: datetime | None
+    tag: str | None = None
+    description: str | None = None
+    terms_accepted: bool = False
+    terms_accepted_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
