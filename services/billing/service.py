@@ -11,12 +11,14 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.billing.exceptions import (
+    ActiveSubscriptionExists,
     DeviceSlotLimitExceeded,
     OrderExpired,
     OrderNotFound,
     PlanNotPurchasable,
     ProviderError,
     TrialAlreadyUsed,
+    TrialUnavailable,
     WebhookVerificationFailed,
 )
 from services.billing.models import BalanceTransaction, PaymentOrder
@@ -119,6 +121,10 @@ class BillingService:
             )
             if already_used:
                 raise TrialAlreadyUsed("Free trial already used")
+            if await self._has_live_subscription(data.user_id):
+                raise TrialUnavailable("Free trial is unavailable while an active subscription exists")
+            if await self.order_repo.has_completed_paid_order(data.user_id):
+                raise TrialUnavailable("Free trial is unavailable after a paid purchase")
             return await self._create_free_order(user, plan, data)
 
         extra_devices = getattr(data, "device_slots_qty", 0) or 0
@@ -482,6 +488,14 @@ class BillingService:
     async def _find_active_subscription_for_plan(self, user_id: UUID, plan_id: UUID):
         subscriptions = await self.sub_repo.list_by_user_id(user_id, active_only=True)
         return next((sub for sub in subscriptions if sub.plan_id == plan_id), None)
+
+    async def _has_live_subscription(self, user_id: UUID) -> bool:
+        now = datetime.now(timezone.utc)
+        subscriptions = await self.sub_repo.list_by_user_id(user_id, active_only=True)
+        for sub in subscriptions:
+            if sub.expires_at is None or sub.expires_at > now:
+                return True
+        return False
 
     async def _auto_purchase_free(self, user: User, plan, order: PaymentOrder, now: datetime) -> None:
         """Create subscription for a free plan without any balance operations."""

@@ -32,3 +32,11 @@ class DeviceSlotLimitExceeded(Exception):
 
 class TrialAlreadyUsed(Exception):
     """User has already used the free trial for this plan."""
+
+
+class ActiveSubscriptionExists(Exception):
+    """User already has a live subscription, so trial cannot be activated."""
+
+
+class TrialUnavailable(Exception):
+    """Free trial is unavailable for this user."""
