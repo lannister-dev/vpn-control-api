@@ -443,6 +443,8 @@ class BotApiService:
             device_price_rub = 0
             device_price_stars = None
 
+        can_renew = bool(plan is not None and getattr(plan, "price_rub", 0) > 0)
+
         return BotSubscriptionSummaryOut(
             id=subscription.id,
             plan_id=subscription.plan_id,
@@ -459,6 +461,7 @@ class BotApiService:
             max_purchasable_slots=max(max_purchasable, 0),
             device_price_rub=device_price_rub,
             device_price_stars=device_price_stars,
+            can_renew=can_renew,
             used_traffic_bytes=subscription.used_traffic_bytes,
             lifetime_used_traffic_bytes=subscription.lifetime_used_traffic_bytes,
             traffic_limit_bytes=(plan.traffic_limit_bytes if plan is not None else None),

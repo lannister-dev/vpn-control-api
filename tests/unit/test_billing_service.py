@@ -116,6 +116,7 @@ def service(async_session):
     svc.user_repo = AsyncMock()
     svc.plan_repo = AsyncMock()
     svc.sub_repo = AsyncMock()
+    svc.sub_repo.list_by_user_id = AsyncMock(return_value=[])
     svc.settings = SimpleNamespace(order_ttl_minutes=30)
     return svc
 
@@ -335,7 +336,7 @@ class TestAutoPurchase:
         service._lock_user = AsyncMock(return_value=user)
         service._update_user_balance = AsyncMock()
         service._record_transaction = AsyncMock()
-        service.sub_repo.find_active_subscription = AsyncMock(return_value=None)
+        service.sub_repo.list_by_user_id = AsyncMock(return_value=[])
 
         new_sub = _make_subscription(user_id=user.id, plan_id=plan.id)
         service.sub_repo.create.return_value = new_sub
@@ -360,7 +361,7 @@ class TestAutoPurchase:
         service._lock_user = AsyncMock(return_value=user)
         service._update_user_balance = AsyncMock()
         service._record_transaction = AsyncMock()
-        service.sub_repo.find_active_subscription = AsyncMock(return_value=existing_sub)
+        service.sub_repo.list_by_user_id = AsyncMock(return_value=[existing_sub])
         service.sub_repo.update_by_id.return_value = existing_sub
         service.order_repo.update_by_id.return_value = order
 
@@ -527,7 +528,7 @@ class TestDeviceSlots:
         service._lock_user = AsyncMock(return_value=user)
         service._update_user_balance = AsyncMock()
         service._record_transaction = AsyncMock()
-        service.sub_repo.find_active_subscription = AsyncMock(return_value=None)
+        service.sub_repo.list_by_user_id = AsyncMock(return_value=[])
 
         new_sub = _make_subscription(user_id=user.id, plan_id=plan.id)
         service.sub_repo.create.return_value = new_sub

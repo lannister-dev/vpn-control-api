@@ -479,9 +479,13 @@ class BillingService:
             ).model_dump()
         )
 
+    async def _find_active_subscription_for_plan(self, user_id: UUID, plan_id: UUID):
+        subscriptions = await self.sub_repo.list_by_user_id(user_id, active_only=True)
+        return next((sub for sub in subscriptions if sub.plan_id == plan_id), None)
+
     async def _auto_purchase_free(self, user: User, plan, order: PaymentOrder, now: datetime) -> None:
         """Create subscription for a free plan without any balance operations."""
-        existing = await self.sub_repo.find_active_subscription(user.id, plan.id)
+        existing = await self._find_active_subscription_for_plan(user.id, plan.id)
         if existing:
             new_expires = (existing.expires_at or now) + timedelta(days=plan.duration_days)
             await self.sub_repo.update_by_id(
@@ -555,7 +559,7 @@ class BillingService:
             if existing and (existing.user_id != user.id or existing.plan_id != plan.id):
                 existing = None
         if existing is None:
-            existing = await self.sub_repo.find_active_subscription(user.id, plan.id)
+            existing = await self._find_active_subscription_for_plan(user.id, plan.id)
 
         if existing:
             base_expires = existing.expires_at if existing.expires_at and existing.expires_at > now else now

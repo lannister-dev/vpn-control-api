@@ -97,6 +97,7 @@ class BotPlanOut(BaseModel):
     device_price_stars: int | None = None
     is_active: bool
     is_current: bool = False
+    can_renew: bool = True
     created_at: datetime
     updated_at: datetime
 
@@ -143,6 +144,7 @@ class BotSubscriptionSummaryOut(BaseModel):
     max_purchasable_slots: int = 0
     device_price_rub: Decimal = Decimal("0")
     device_price_stars: int | None = None
+    can_renew: bool = True
     used_traffic_bytes: int = 0
     lifetime_used_traffic_bytes: int = 0
     traffic_limit_bytes: int | None = None
