@@ -73,6 +73,18 @@ async def bot_list_plans(
 
 
 @router.post(
+    "/users/session/accept-terms",
+    response_model=BotSessionOut,
+    summary="Accept terms for Telegram user and get updated dashboard snapshot",
+)
+async def bot_accept_terms(
+    payload: BotSessionSyncIn,
+    service: BotApiService = Depends(get_bot_api_service),
+):
+    return await service.accept_terms(payload)
+
+
+@router.post(
     "/users/{telegram_id}/orders",
     response_model=BotOrderActionOut,
     summary="Create payment order for Telegram bot user",

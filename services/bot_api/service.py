@@ -64,6 +64,18 @@ class BotApiService:
         user, is_new_user = await self._ensure_user(payload)
         return await self._build_session(user=user, is_new_user=is_new_user)
 
+    async def accept_terms(self, payload: BotSessionSyncIn) -> BotSessionOut:
+        user, is_new_user = await self._ensure_user(payload)
+        if not user.terms_accepted:
+            user = await self.user_service.update_user(
+                user.id,
+                UserUpdateIn(
+                    terms_accepted=True,
+                    terms_accepted_at=datetime.now(timezone.utc),
+                ),
+            )
+        return await self._build_session(user=user, is_new_user=is_new_user)
+
     async def list_plans(self, *, telegram_id: int | None = None) -> BotPlanListOut:
         current_plan_id: UUID | None = None
         used_trial_plan_ids: list[UUID] = []
@@ -268,10 +280,17 @@ class BotApiService:
             return updated, False
         return UserOut.model_validate(existing), False
 
-    async def _require_user_by_telegram_id(self, telegram_id: int) -> UserOut:
+    async def _require_user_by_telegram_id(
+        self,
+        telegram_id: int,
+        *,
+        require_terms: bool = True,
+    ) -> UserOut:
         user = await self.user_repository.get_by_telegram_id(telegram_id)
         if user is None:
             raise HTTPException(status_code=404, detail="User not found")
+        if require_terms and not user.terms_accepted:
+            raise HTTPException(status_code=403, detail="Terms not accepted")
         return UserOut.model_validate(user)
 
     async def _build_session(
@@ -301,10 +320,14 @@ class BotApiService:
             subscription=subscription,
             pending_order=BotOrderOut.model_validate(pending_order) if pending_order is not None else None,
             service=service,
-            available_actions=self._available_actions(
-                state=state,
-                subscription=subscription,
-                pending_order=pending_order,
+            available_actions=(
+                []
+                if not user.terms_accepted
+                else self._available_actions(
+                    state=state,
+                    subscription=subscription,
+                    pending_order=pending_order,
+                )
             ),
         )
 
@@ -496,4 +519,3 @@ def get_bot_api_service(
     redis: RedisClient = Depends(get_redis_client),
 ) -> BotApiService:
     return BotApiService(session, redis)
-

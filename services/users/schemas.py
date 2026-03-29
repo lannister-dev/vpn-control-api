@@ -10,6 +10,8 @@ class UserCreateIn(BaseModel):
     username: str | None = None
     tag: str | None = None
     description: str | None = None
+    terms_accepted: bool = False
+    terms_accepted_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -20,6 +22,8 @@ class UserInternalCreate(BaseModel):
     balance: Decimal = Decimal("0")
     tag: str | None = None
     description: str | None = None
+    terms_accepted: bool = False
+    terms_accepted_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -30,6 +34,8 @@ class UserUpdateIn(BaseModel):
     is_active: bool | None = None
     tag: str | None = None
     description: str | None = None
+    terms_accepted: bool | None = None
+    terms_accepted_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -40,6 +46,8 @@ class UserInternalUpdate(BaseModel):
     is_active: bool | None = None
     tag: str | None = None
     description: str | None = None
+    terms_accepted: bool | None = None
+    terms_accepted_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -50,8 +58,10 @@ class UserOut(BaseModel):
     username: str | None
     balance: Decimal
     is_active: bool
-    tag: str | None
-    description: str | None
+    tag: str | None = None
+    description: str | None = None
+    terms_accepted: bool = False
+    terms_accepted_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
