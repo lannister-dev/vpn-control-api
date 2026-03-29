@@ -39,6 +39,16 @@ class OrderRepository(BaseRepository[PaymentOrder]):
         ).scalars().all()
         return list(rows), total
 
+    async def has_completed_order_for_plan(self, user_id: UUID, plan_id: UUID) -> bool:
+        result = await self.session.execute(
+            select(func.count(PaymentOrder.id)).where(
+                PaymentOrder.user_id == user_id,
+                PaymentOrder.plan_id == plan_id,
+                PaymentOrder.status.in_(("paid", "completed")),
+            )
+        )
+        return (result.scalar() or 0) > 0
+
     async def list_by_status(self, status: str) -> list[PaymentOrder]:
         result = await self.session.execute(
             select(PaymentOrder).where(PaymentOrder.status == status)

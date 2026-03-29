@@ -10,6 +10,7 @@ class PaymentProviderEnum(str, Enum):
     CRYPTO = "crypto"
     STARS = "stars"
     PLATEGA = "platega"
+    FREE = "free"
 
 
 class OrderStatus(str, Enum):

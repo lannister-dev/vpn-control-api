@@ -12,12 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.billing.exceptions import (
     DeviceSlotLimitExceeded,
-    InsufficientBalance,
-    OrderAlreadyProcessed,
     OrderExpired,
     OrderNotFound,
     PlanNotPurchasable,
     ProviderError,
+    TrialAlreadyUsed,
     WebhookVerificationFailed,
 )
 from services.billing.models import BalanceTransaction, PaymentOrder
@@ -93,8 +92,21 @@ class BillingService:
         plan = await self.plan_repo.get_by_id(data.plan_id)
         if not plan or not plan.is_active:
             raise PlanNotPurchasable("Plan is not available")
-        if plan.price_rub <= 0:
-            raise PlanNotPurchasable("Plan has no price set")
+
+        is_free = plan.price_rub <= 0
+
+        if is_free and data.provider.value != "free":
+            raise PlanNotPurchasable("Free plan requires provider='free'")
+        if not is_free and data.provider.value == "free":
+            raise PlanNotPurchasable("Paid plan cannot use provider='free'")
+
+        if is_free:
+            already_used = await self.order_repo.has_completed_order_for_plan(
+                data.user_id, plan.id,
+            )
+            if already_used:
+                raise TrialAlreadyUsed("Free trial already used")
+            return await self._create_free_order(user, plan, data)
 
         extra_devices = getattr(data, "device_slots_qty", 0) or 0
         device_price = getattr(plan, "device_price_rub", Decimal("0")) or Decimal("0")
@@ -148,6 +160,41 @@ class BillingService:
             amount=str(amount_rub),
         )
         return OrderOut.model_validate(order)
+
+    async def _create_free_order(self, user: User, plan, data: OrderCreateIn) -> OrderOut:
+        """Create and immediately fulfill a free plan order."""
+        now = datetime.now(timezone.utc)
+        order = await self.order_repo.create(
+            OrderInternalCreate(
+                user_id=data.user_id,
+                plan_id=plan.id,
+                amount_rub=Decimal("0"),
+                provider="free",
+                status="paid",
+                external_id=f"free_{uuid4().hex}",
+                payment_url=None,
+                order_type="plan_purchase",
+                device_slots_qty=0,
+            ).model_dump()
+        )
+
+        # Auto-purchase subscription (no balance operations needed)
+        await self._auto_purchase_free(user, plan, order, now)
+
+        await self.order_repo.update_by_id(
+            order.id,
+            OrderInternalUpdate(
+                status="completed",
+                paid_at=now,
+                completed_at=now,
+            ).model_dump(exclude_none=True),
+        )
+
+        BILLING_ORDER_TOTAL.labels(provider="free", status="completed").inc()
+        log.info("free_order_completed", order_id=str(order.id), plan=plan.name)
+
+        refreshed = await self.order_repo.get_by_id(order.id)
+        return OrderOut.model_validate(refreshed)
 
     async def _create_device_slot_order(self, data: OrderCreateIn) -> OrderOut:
         if not data.subscription_id:
@@ -417,6 +464,44 @@ class BillingService:
                 description=description,
             ).model_dump()
         )
+
+    async def _auto_purchase_free(self, user: User, plan, order: PaymentOrder, now: datetime) -> None:
+        """Create subscription for a free plan without any balance operations."""
+        existing = await self.sub_repo.find_active_subscription(user.id, plan.id)
+        if existing:
+            new_expires = (existing.expires_at or now) + timedelta(days=plan.duration_days)
+            await self.sub_repo.update_by_id(
+                existing.id,
+                SubscriptionInternalUpdate(expires_at=new_expires, is_active=True).model_dump(exclude_none=True),
+            )
+            await self.order_repo.update_by_id(
+                order.id,
+                OrderInternalUpdate(subscription_id=existing.id).model_dump(exclude_none=True),
+            )
+            log.info("free_subscription_extended", subscription_id=str(existing.id))
+        else:
+            raw_token = SubscriptionUtils.generate()
+            token_hash = SubscriptionUtils.hash(raw_token)
+            expires_at = now + timedelta(days=plan.duration_days)
+            included = getattr(plan, "included_devices", 1)
+
+            sub = await self.sub_repo.create(
+                SubscriptionInternalCreate(
+                    user_id=user.id,
+                    plan_id=plan.id,
+                    token_hash=token_hash,
+                    is_active=True,
+                    expires_at=expires_at,
+                    hwid_enabled=True,
+                    max_devices=included,
+                    paid_device_slots=0,
+                ).model_dump()
+            )
+            await self.order_repo.update_by_id(
+                order.id,
+                OrderInternalUpdate(subscription_id=sub.id).model_dump(exclude_none=True),
+            )
+            log.info("free_subscription_created", subscription_id=str(sub.id), expires_at=str(expires_at))
 
     async def _auto_purchase(self, user: User, plan, order: PaymentOrder, now: datetime) -> None:
         """Debit balance and create or extend a subscription."""
