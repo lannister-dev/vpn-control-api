@@ -63,6 +63,8 @@ class BotUserOut(BaseModel):
     is_active: bool
     tag: str | None = None
     description: str | None = None
+    terms_accepted: bool
+    terms_accepted_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -205,4 +207,3 @@ class BotOrderHistoryItemOut(BaseModel):
 class BotOrderHistoryOut(BaseModel):
     items: list[BotOrderHistoryItemOut]
     total: int
-
