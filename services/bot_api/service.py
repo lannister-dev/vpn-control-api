@@ -81,6 +81,7 @@ class BotApiService:
     async def list_plans(self, *, telegram_id: int | None = None) -> BotPlanListOut:
         current_plan_id: UUID | None = None
         used_trial_plan_ids: list[UUID] = []
+        hide_free_plans = False
         user = None
         if telegram_id is not None:
             user = await self.user_repository.get_by_telegram_id(telegram_id)
@@ -88,10 +89,15 @@ class BotApiService:
                 subscription = await self._current_subscription(user.id)
                 if subscription is not None:
                     current_plan_id = subscription.plan_id
+                    if subscription.is_active and (subscription.expires_at is None or subscription.expires_at > datetime.now(timezone.utc)):
+                        hide_free_plans = True
 
         rows, total = await self.plan_repository.list_all(active_only=True)
 
         if user is not None:
+            if not hide_free_plans:
+                hide_free_plans = await self.order_repository.has_completed_paid_order(user.id)
+            filtered_rows = []
             for plan in rows:
                 if plan.price_rub <= 0:
                     used = await self.order_repository.has_completed_order_for_plan(
@@ -99,6 +105,11 @@ class BotApiService:
                     )
                     if used:
                         used_trial_plan_ids.append(plan.id)
+                    if used or hide_free_plans:
+                        continue
+                filtered_rows.append(plan)
+            rows = filtered_rows
+            total = len(rows)
 
         items = [
             BotPlanOut(
@@ -115,7 +126,7 @@ class BotApiService:
         )
 
     async def create_order(self, *, telegram_id: int, payload: BotOrderCreateIn) -> BotOrderActionOut:
-        from services.billing.exceptions import TrialAlreadyUsed
+        from services.billing.exceptions import ActiveSubscriptionExists, PlanNotPurchasable, TrialAlreadyUsed, TrialUnavailable
         user = await self._require_user_by_telegram_id(telegram_id)
         extra = getattr(payload, "extra_devices", 0) or 0
         try:
@@ -129,6 +140,10 @@ class BotApiService:
             )
         except TrialAlreadyUsed:
             raise HTTPException(status_code=409, detail="Trial already used")
+        except (ActiveSubscriptionExists, TrialUnavailable):
+            raise HTTPException(status_code=409, detail="Trial unavailable")
+        except PlanNotPurchasable as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         session = await self._build_session(
             user=user,
             forced_pending_order=order if order.status == "pending" else None,

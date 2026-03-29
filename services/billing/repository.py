@@ -48,6 +48,15 @@ class OrderRepository(BaseRepository[PaymentOrder]):
             )
         )
         return (result.scalar() or 0) > 0
+    async def has_completed_paid_order(self, user_id: UUID) -> bool:
+        result = await self.session.execute(
+            select(func.count(PaymentOrder.id)).where(
+                PaymentOrder.user_id == user_id,
+                PaymentOrder.status.in_(("paid", "completed")),
+                PaymentOrder.amount_rub > 0,
+            )
+        )
+        return (result.scalar() or 0) > 0
 
     async def list_by_status(self, status: str) -> list[PaymentOrder]:
         result = await self.session.execute(
