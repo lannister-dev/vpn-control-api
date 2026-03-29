@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.admin_status.service import AdminStatusService
 from services.billing.repository import OrderRepository
-from services.billing.schemas import OrderCreateIn, OrderOut, OrderTypeEnum
+from services.billing.schemas import OrderCreateIn, OrderOut, OrderTypeEnum, PaymentProviderEnum
 from services.billing.service import BillingService
 from services.plans.repository import PlanRepository
 from services.plans.schemas import PlanOut
@@ -35,6 +35,8 @@ from .schemas import (
     BotOrderHistoryOut,
     BotOrderOut,
     BotPlanListOut,
+    BotRenewOfferOut,
+    BotRenewOrderIn,
     BotUserOut,
     BotPlanOut,
     BotServiceHealth,
@@ -139,6 +141,89 @@ class BotApiService:
         if order.user_id != user.id:
             raise HTTPException(status_code=404, detail="Order not found")
         session = await self._build_session(user=user, forced_pending_order=order if order.status == "pending" else None)
+        return BotOrderActionOut(order=BotOrderOut.model_validate(order), session=session)
+
+    async def get_renew_offer(self, *, telegram_id: int) -> BotRenewOfferOut:
+        user = await self._require_user_by_telegram_id(telegram_id)
+        subscription = await self._current_subscription(user.id)
+        if subscription is None or subscription.plan_id is None:
+            raise HTTPException(status_code=404, detail="Subscription not found")
+
+        status = self._classify_subscription(subscription)
+        if status not in {
+            BotDashboardState.ACTIVE,
+            BotDashboardState.EXPIRING,
+            BotDashboardState.EXPIRED,
+            BotDashboardState.INACTIVE,
+        }:
+            raise HTTPException(status_code=409, detail="Subscription cannot be renewed")
+
+        plan = await self.plan_repository.get_by_id(subscription.plan_id)
+        if plan is None:
+            raise HTTPException(status_code=404, detail="Plan not found")
+
+        now = datetime.now(timezone.utc)
+        current_expires_at = subscription.expires_at
+        if current_expires_at and current_expires_at > now:
+            renewed_expires_at = current_expires_at + timedelta(days=plan.duration_days)
+        else:
+            renewed_expires_at = now + timedelta(days=plan.duration_days)
+
+        providers = [
+            PaymentProviderEnum.PLATEGA,
+            PaymentProviderEnum.CRYPTO,
+        ]
+        if getattr(plan, "price_stars", None):
+            providers.append(PaymentProviderEnum.STARS)
+
+        return BotRenewOfferOut(
+            subscription_id=subscription.id,
+            plan_id=plan.id,
+            plan_name=plan.name,
+            status=status,
+            duration_days=plan.duration_days,
+            price_rub=plan.price_rub,
+            price_stars=getattr(plan, "price_stars", None),
+            current_expires_at=current_expires_at,
+            renewed_expires_at=renewed_expires_at,
+            providers=providers,
+            is_reactivation=status in {BotDashboardState.EXPIRED, BotDashboardState.INACTIVE},
+        )
+
+    async def create_renew_order(self, *, telegram_id: int, payload: BotRenewOrderIn) -> BotOrderActionOut:
+        user = await self._require_user_by_telegram_id(telegram_id)
+        subscription = await self._current_subscription(user.id)
+        if subscription is None or subscription.plan_id is None:
+            raise HTTPException(status_code=404, detail="Subscription not found")
+
+        status = self._classify_subscription(subscription)
+        if status not in {
+            BotDashboardState.ACTIVE,
+            BotDashboardState.EXPIRING,
+            BotDashboardState.EXPIRED,
+            BotDashboardState.INACTIVE,
+        }:
+            raise HTTPException(status_code=409, detail="Subscription cannot be renewed")
+
+        plan = await self.plan_repository.get_by_id(subscription.plan_id)
+        if plan is None:
+            raise HTTPException(status_code=404, detail="Plan not found")
+        if payload.provider == PaymentProviderEnum.STARS and not getattr(plan, "price_stars", None):
+            raise HTTPException(status_code=400, detail="Stars not available for current plan")
+
+        order = await self.billing_service.create_order(
+            OrderCreateIn(
+                user_id=user.id,
+                plan_id=subscription.plan_id,
+                provider=payload.provider,
+                order_type=OrderTypeEnum.SUBSCRIPTION_RENEWAL,
+                subscription_id=subscription.id,
+            )
+        )
+        session = await self._build_session(
+            user=user,
+            forced_pending_order=order if order.status == "pending" else None,
+        )
         return BotOrderActionOut(order=BotOrderOut.model_validate(order), session=session)
 
     async def purchase_device_slots(

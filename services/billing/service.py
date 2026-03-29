@@ -90,7 +90,20 @@ class BillingService:
             return await self._create_device_slot_order(data)
 
         plan = await self.plan_repo.get_by_id(data.plan_id)
-        if not plan or not plan.is_active:
+        if not plan:
+            raise PlanNotPurchasable("Plan is not available")
+
+        renewal_subscription = None
+        if data.subscription_id is not None:
+            renewal_subscription = await self.sub_repo.get_by_id(data.subscription_id)
+            if (
+                renewal_subscription is None
+                or renewal_subscription.user_id != data.user_id
+                or renewal_subscription.plan_id != data.plan_id
+            ):
+                raise PlanNotPurchasable("Renewal target is not available")
+
+        if not plan.is_active and renewal_subscription is None:
             raise PlanNotPurchasable("Plan is not available")
 
         is_free = plan.price_rub <= 0
@@ -147,7 +160,8 @@ class BillingService:
                 payment_url=payment_url,
                 provider_meta=provider_meta,
                 expires_at=expires_at,
-                order_type="plan_purchase",
+                subscription_id=data.subscription_id,
+                order_type=data.order_type.value,
                 device_slots_qty=extra_devices,
             ).model_dump()
         )
@@ -534,10 +548,18 @@ class BillingService:
         )
         BILLING_BALANCE_OPERATION_TOTAL.labels(type="purchase").inc()
 
-        # Try to extend existing active subscription with same plan
-        existing = await self.sub_repo.find_active_subscription(user.id, plan.id)
+        # Renewal should extend the current subscription even if it expired or was deactivated.
+        existing = None
+        if getattr(order, "order_type", "plan_purchase") == "subscription_renewal" and order.subscription_id:
+            existing = await self.sub_repo.get_by_id(order.subscription_id)
+            if existing and (existing.user_id != user.id or existing.plan_id != plan.id):
+                existing = None
+        if existing is None:
+            existing = await self.sub_repo.find_active_subscription(user.id, plan.id)
+
         if existing:
-            new_expires = (existing.expires_at or now) + timedelta(days=plan.duration_days)
+            base_expires = existing.expires_at if existing.expires_at and existing.expires_at > now else now
+            new_expires = base_expires + timedelta(days=plan.duration_days)
             update_data = SubscriptionInternalUpdate(
                 expires_at=new_expires, is_active=True,
             )
