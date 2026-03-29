@@ -31,6 +31,7 @@ class TransactionType(str, Enum):
 
 class OrderTypeEnum(str, Enum):
     PLAN_PURCHASE = "plan_purchase"
+    SUBSCRIPTION_RENEWAL = "subscription_renewal"
     DEVICE_SLOTS = "device_slots"
 
 
@@ -55,6 +56,7 @@ class OrderInternalCreate(BaseModel):
     payment_url: str | None = None
     provider_meta: str | None = None
     expires_at: datetime | None = None
+    subscription_id: UUID | None = None
     order_type: str = "plan_purchase"
     device_slots_qty: int = 0
 

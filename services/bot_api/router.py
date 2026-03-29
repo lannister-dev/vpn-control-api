@@ -13,6 +13,8 @@ from .schemas import (
     BotOrderCreateIn,
     BotOrderHistoryOut,
     BotPlanListOut,
+    BotRenewOfferOut,
+    BotRenewOrderIn,
     BotSessionOut,
     BotSessionSyncIn,
     BotStarsConfirmIn,
@@ -22,30 +24,6 @@ from .service import BotApiService, get_bot_api_service
 
 router = APIRouter(prefix="/bot", tags=["Bot"], dependencies=[Depends(bot_auth)])
 
-
-# ── TEMPORARY debug endpoint — remove after fixing auth ──
-from fastapi import Request as _Req
-from services.auth.utils import AuthUtils as _AU
-from services.config import get_settings as _gs
-import os as _os
-
-
-@router.get("/debug-auth", dependencies=[])       # no auth
-async def _debug_auth(_req: _Req):
-    s = _gs()
-    expected = s.bot_api.api_key_hash
-    env_raw = _os.environ.get("BOT_API_KEY_HASH", "<NOT SET>")
-    auth = _req.headers.get("authorization", "")
-    token = auth.replace("Bearer ", "") if auth.startswith("Bearer ") else ""
-    provided = _AU.hash_admin_api_key(token) if token else "<no token>"
-    return {
-        "expected_hash_first12": expected[:12] if expected else "<empty>",
-        "expected_len": len(expected),
-        "env_raw_first12": env_raw[:12],
-        "provided_hash_first12": provided[:12] if token else "<no token>",
-        "token_len": len(token),
-        "match": expected == provided if token else False,
-    }
 
 
 @router.post(
@@ -124,6 +102,31 @@ async def bot_confirm_stars(
     return await service.confirm_stars_payment(
         telegram_id=telegram_id, order_id=order_id, payload=payload,
     )
+
+
+@router.get(
+    "/users/{telegram_id}/renew-offer",
+    response_model=BotRenewOfferOut,
+    summary="Get renewal offer for current Telegram bot subscription",
+)
+async def bot_get_renew_offer(
+    telegram_id: int,
+    service: BotApiService = Depends(get_bot_api_service),
+):
+    return await service.get_renew_offer(telegram_id=telegram_id)
+
+
+@router.post(
+    "/users/{telegram_id}/renew",
+    response_model=BotOrderActionOut,
+    summary="Create renewal order for current Telegram bot subscription",
+)
+async def bot_create_renew_order(
+    telegram_id: int,
+    payload: BotRenewOrderIn,
+    service: BotApiService = Depends(get_bot_api_service),
+):
+    return await service.create_renew_order(telegram_id=telegram_id, payload=payload)
 
 
 @router.get(

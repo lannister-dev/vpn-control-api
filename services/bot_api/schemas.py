@@ -55,6 +55,10 @@ class BotStarsConfirmIn(BaseModel):
     total_amount: int = Field(ge=1)
 
 
+class BotRenewOrderIn(BaseModel):
+    provider: PaymentProviderEnum
+
+
 class BotUserOut(BaseModel):
     id: UUID
     telegram_id: int
@@ -161,6 +165,20 @@ class BotSessionOut(BaseModel):
 class BotOrderActionOut(BaseModel):
     order: BotOrderOut
     session: BotSessionOut
+
+
+class BotRenewOfferOut(BaseModel):
+    subscription_id: UUID
+    plan_id: UUID
+    plan_name: str
+    status: BotDashboardState
+    duration_days: int
+    price_rub: Decimal
+    price_stars: int | None = None
+    current_expires_at: datetime | None = None
+    renewed_expires_at: datetime
+    providers: list[PaymentProviderEnum] = Field(default_factory=list)
+    is_reactivation: bool = False
 
 
 class BotDeviceOut(BaseModel):
