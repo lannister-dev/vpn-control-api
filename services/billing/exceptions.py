@@ -28,3 +28,7 @@ class OrderExpired(Exception):
 
 class DeviceSlotLimitExceeded(Exception):
     """Requested device slots exceed max_devices limit."""
+
+
+class TrialAlreadyUsed(Exception):
+    """User has already used the free trial for this plan."""

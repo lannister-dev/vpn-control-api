@@ -99,6 +99,7 @@ class BotPlanListOut(BaseModel):
     items: list[BotPlanOut]
     total: int
     current_plan_id: UUID | None = None
+    used_trial_plan_ids: list[UUID] = []
 
 
 class BotOrderOut(BaseModel):

@@ -66,6 +66,8 @@ class BotApiService:
 
     async def list_plans(self, *, telegram_id: int | None = None) -> BotPlanListOut:
         current_plan_id: UUID | None = None
+        used_trial_plan_ids: list[UUID] = []
+        user = None
         if telegram_id is not None:
             user = await self.user_repository.get_by_telegram_id(telegram_id)
             if user is not None:
@@ -74,6 +76,16 @@ class BotApiService:
                     current_plan_id = subscription.plan_id
 
         rows, total = await self.plan_repository.list_all(active_only=True)
+
+        if user is not None:
+            for plan in rows:
+                if plan.price_rub <= 0:
+                    used = await self.order_repository.has_completed_order_for_plan(
+                        user.id, plan.id,
+                    )
+                    if used:
+                        used_trial_plan_ids.append(plan.id)
+
         items = [
             BotPlanOut(
                 **PlanOut.model_validate(plan).model_dump(),
@@ -81,20 +93,32 @@ class BotApiService:
             )
             for plan in rows
         ]
-        return BotPlanListOut(items=items, total=total, current_plan_id=current_plan_id)
+        return BotPlanListOut(
+            items=items,
+            total=total,
+            current_plan_id=current_plan_id,
+            used_trial_plan_ids=used_trial_plan_ids,
+        )
 
     async def create_order(self, *, telegram_id: int, payload: BotOrderCreateIn) -> BotOrderActionOut:
+        from services.billing.exceptions import TrialAlreadyUsed
         user = await self._require_user_by_telegram_id(telegram_id)
         extra = getattr(payload, "extra_devices", 0) or 0
-        order = await self.billing_service.create_order(
-            OrderCreateIn(
-                user_id=user.id,
-                plan_id=payload.plan_id,
-                provider=payload.provider,
-                device_slots_qty=extra,
+        try:
+            order = await self.billing_service.create_order(
+                OrderCreateIn(
+                    user_id=user.id,
+                    plan_id=payload.plan_id,
+                    provider=payload.provider,
+                    device_slots_qty=extra,
+                )
             )
+        except TrialAlreadyUsed:
+            raise HTTPException(status_code=409, detail="Trial already used")
+        session = await self._build_session(
+            user=user,
+            forced_pending_order=order if order.status == "pending" else None,
         )
-        session = await self._build_session(user=user, forced_pending_order=order)
         return BotOrderActionOut(order=BotOrderOut.model_validate(order), session=session)
 
     async def get_order(self, *, telegram_id: int, order_id: UUID) -> BotOrderActionOut:
