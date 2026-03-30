@@ -64,6 +64,11 @@ class BotTopUpCreateIn(BaseModel):
     provider: PaymentProviderEnum
 
 
+class BotOrderUpdateIn(BaseModel):
+    telegram_chat_id: int | None = None
+    telegram_message_id: int | None = Field(default=None, ge=1)
+
+
 class BotUserOut(BaseModel):
     id: UUID
     telegram_id: int
