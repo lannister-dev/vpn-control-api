@@ -34,6 +34,7 @@ class OrderTypeEnum(str, Enum):
     PLAN_PURCHASE = "plan_purchase"
     SUBSCRIPTION_RENEWAL = "subscription_renewal"
     DEVICE_SLOTS = "device_slots"
+    TOP_UP = "top_up"
 
 
 # ── Order I/O ─────────────────────────────────────────────────
@@ -41,6 +42,7 @@ class OrderTypeEnum(str, Enum):
 class OrderCreateIn(BaseModel):
     user_id: UUID
     plan_id: UUID | None = None
+    amount_rub: Decimal | None = None
     provider: PaymentProviderEnum
     order_type: OrderTypeEnum = OrderTypeEnum.PLAN_PURCHASE
     device_slots_qty: int = 0

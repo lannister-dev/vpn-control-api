@@ -92,6 +92,8 @@ class BillingService:
         order_type = getattr(data, "order_type", None)
         if order_type and order_type.value == "device_slots":
             return await self._create_device_slot_order(data)
+        if order_type and order_type.value == "top_up":
+            return await self._create_top_up_order(user, data)
 
         plan = await self.plan_repo.get_by_id(data.plan_id)
         if not plan:
@@ -226,6 +228,59 @@ class BillingService:
 
         refreshed = await self.order_repo.get_by_id(order.id)
         return OrderOut.model_validate(refreshed)
+
+    async def _create_top_up_order(self, user: User, data: OrderCreateIn) -> OrderOut:
+        amount_rub = getattr(data, "amount_rub", None)
+        if amount_rub is None or amount_rub <= 0:
+            raise PlanNotPurchasable("Top up amount must be greater than zero")
+
+        expires_at = datetime.now(timezone.utc) + timedelta(
+            minutes=self.settings.order_ttl_minutes
+        )
+        description = f"Balance top-up for user {user.id}"
+
+        if data.provider.value == "stars":
+            external_id = f"stars_{uuid4().hex}"
+            payment_url = None
+            provider_meta = None
+        else:
+            provider = self._get_provider(data.provider.value)
+            try:
+                result = await provider.create_payment(
+                    order_id=str(data.user_id),
+                    amount_rub=float(amount_rub),
+                    description=description,
+                )
+            except Exception as exc:
+                raise ProviderError(f"Provider error: {exc}") from exc
+            external_id = result.external_id
+            payment_url = result.payment_url
+            provider_meta = result.provider_meta
+
+        order = await self.order_repo.create(
+            OrderInternalCreate(
+                user_id=data.user_id,
+                plan_id=None,
+                amount_rub=amount_rub,
+                provider=data.provider.value,
+                external_id=external_id,
+                payment_url=payment_url,
+                provider_meta=provider_meta,
+                expires_at=expires_at,
+                subscription_id=None,
+                order_type="top_up",
+                device_slots_qty=0,
+            ).model_dump()
+        )
+
+        BILLING_ORDER_TOTAL.labels(provider=data.provider.value, status="pending").inc()
+        log.info(
+            "top_up_order_created",
+            order_id=str(order.id),
+            provider=data.provider.value,
+            amount=str(amount_rub),
+        )
+        return OrderOut.model_validate(order)
 
     async def _create_device_slot_order(self, data: OrderCreateIn) -> OrderOut:
         if not data.subscription_id:

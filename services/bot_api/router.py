@@ -19,6 +19,7 @@ from .schemas import (
     BotSessionSyncIn,
     BotStarsConfirmIn,
     BotSubscriptionLinkOut,
+    BotTopUpCreateIn,
 )
 from .service import BotApiService, get_bot_api_service
 
@@ -177,6 +178,19 @@ async def bot_purchase_device_slots(
     service: BotApiService = Depends(get_bot_api_service),
 ):
     return await service.purchase_device_slots(telegram_id=telegram_id, payload=payload)
+
+
+@router.post(
+    "/users/{telegram_id}/top-up",
+    response_model=BotOrderActionOut,
+    summary="Create balance top-up order for Telegram bot user",
+)
+async def bot_create_top_up_order(
+    telegram_id: int,
+    payload: BotTopUpCreateIn,
+    service: BotApiService = Depends(get_bot_api_service),
+):
+    return await service.create_top_up_order(telegram_id=telegram_id, payload=payload)
 
 
 @router.post(

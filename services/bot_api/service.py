@@ -36,6 +36,7 @@ from .schemas import (
     BotPlanListOut,
     BotRenewOfferOut,
     BotRenewOrderIn,
+    BotTopUpCreateIn,
     BotUserOut,
     BotPlanOut,
     BotServiceHealth,
@@ -250,6 +251,22 @@ class BotApiService:
             user=user,
             forced_pending_order=order if order.status == "pending" else None,
         )
+        return BotOrderActionOut(order=BotOrderOut.model_validate(order), session=session)
+
+    async def create_top_up_order(self, *, telegram_id: int, payload: BotTopUpCreateIn) -> BotOrderActionOut:
+        user = await self._require_user_by_telegram_id(telegram_id)
+        try:
+            order = await self.billing_service.create_order(
+                OrderCreateIn(
+                    user_id=user.id,
+                    provider=payload.provider,
+                    amount_rub=payload.amount,
+                    order_type=OrderTypeEnum.TOP_UP,
+                )
+            )
+        except ProviderError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        session = await self._build_session(user=user, forced_pending_order=order if order.status == "pending" else None)
         return BotOrderActionOut(order=BotOrderOut.model_validate(order), session=session)
 
     async def purchase_device_slots(

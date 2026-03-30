@@ -46,6 +46,8 @@ class TelegramBotNotifyService:
 
     @staticmethod
     def _payment_completed_text(order_type: str) -> str:
+        if order_type == "top_up":
+            return "✅ Оплата подтверждена. Баланс пополнен."
         if order_type == "device_slots":
             return "✅ Оплата подтверждена. Дополнительное устройство добавлено."
         if order_type == "subscription_renewal":

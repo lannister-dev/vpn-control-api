@@ -59,6 +59,11 @@ class BotRenewOrderIn(BaseModel):
     provider: PaymentProviderEnum
 
 
+class BotTopUpCreateIn(BaseModel):
+    amount: Decimal = Field(gt=0, le=Decimal("99999999.99"))
+    provider: PaymentProviderEnum
+
+
 class BotUserOut(BaseModel):
     id: UUID
     telegram_id: int
@@ -122,6 +127,8 @@ class BotOrderOut(BaseModel):
     completed_at: datetime | None
     expires_at: datetime | None
     subscription_id: UUID | None
+    order_type: str = "plan_purchase"
+    device_slots_qty: int = 0
     created_at: datetime
     updated_at: datetime
 
