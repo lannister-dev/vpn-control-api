@@ -26,6 +26,7 @@ from services.billing.providers.base import PaymentProvider
 from services.billing.providers.crypto import CryptoProvider
 from services.billing.providers.platega import PlategaProvider
 from services.billing.repository import OrderRepository, TransactionRepository
+from services.bot_notifications.service import TelegramBotNotifyService
 from services.billing.schemas import (
     BalanceCreditIn,
     BalanceOut,
@@ -70,6 +71,7 @@ class BillingService:
         self.plan_repo = PlanRepository(session)
         self.sub_repo = SubscriptionRepository(session)
         self.settings = get_settings().billing
+        self.notify_service = TelegramBotNotifyService()
 
     # ── Provider factory ──────────────────────────────────────
 
@@ -137,6 +139,15 @@ class BillingService:
         description = f"Plan: {plan.name}"
         if extra_devices > 0:
             description += f" + {extra_devices} device(s)"
+
+        if data.provider.value == "balance":
+            return await self._create_balance_plan_order(
+                user=user,
+                plan=plan,
+                data=data,
+                amount_rub=amount_rub,
+                extra_devices=extra_devices,
+            )
 
         if data.provider.value == "stars":
             external_id = f"stars_{uuid4().hex}"
@@ -246,6 +257,14 @@ class BillingService:
         )
         description = f"{qty} device slot(s) for {plan.name}"
 
+        if data.provider.value == "balance":
+            return await self._create_balance_device_slot_order(
+                user_id=data.user_id,
+                subscription_id=data.subscription_id,
+                qty=qty,
+                amount_rub=amount_rub,
+            )
+
         if data.provider.value == "stars":
             external_id = f"stars_{uuid4().hex}"
             payment_url = None
@@ -292,6 +311,78 @@ class BillingService:
             amount=str(amount_rub),
         )
         # Re-fetch to include subscription_id
+        refreshed = await self.order_repo.get_by_id(order.id)
+        return OrderOut.model_validate(refreshed)
+
+    async def _create_balance_plan_order(
+        self,
+        *,
+        user: User,
+        plan,
+        data: OrderCreateIn,
+        amount_rub: Decimal,
+        extra_devices: int,
+    ) -> OrderOut:
+        now = datetime.now(timezone.utc)
+        order = await self.order_repo.create(
+            OrderInternalCreate(
+                user_id=data.user_id,
+                plan_id=data.plan_id,
+                amount_rub=amount_rub,
+                provider="balance",
+                status="paid",
+                external_id=f"balance_{uuid4().hex}",
+                payment_url=None,
+                provider_meta=None,
+                expires_at=None,
+                subscription_id=data.subscription_id,
+                order_type=data.order_type.value,
+                device_slots_qty=extra_devices,
+            ).model_dump()
+        )
+        await self._auto_purchase(user, plan, order, now, strict_balance=True)
+        await self.order_repo.update_by_id(
+            order.id,
+            OrderInternalUpdate(status="completed", paid_at=now, completed_at=now).model_dump(exclude_none=True),
+        )
+        BILLING_ORDER_TOTAL.labels(provider="balance", status="completed").inc()
+        refreshed = await self.order_repo.get_by_id(order.id)
+        return OrderOut.model_validate(refreshed)
+
+    async def _create_balance_device_slot_order(
+        self,
+        *,
+        user_id: UUID,
+        subscription_id: UUID,
+        qty: int,
+        amount_rub: Decimal,
+    ) -> OrderOut:
+        now = datetime.now(timezone.utc)
+        order = await self.order_repo.create(
+            OrderInternalCreate(
+                user_id=user_id,
+                plan_id=None,
+                amount_rub=amount_rub,
+                provider="balance",
+                status="paid",
+                external_id=f"balance_{uuid4().hex}",
+                payment_url=None,
+                provider_meta=None,
+                expires_at=None,
+                subscription_id=subscription_id,
+                order_type="device_slots",
+                device_slots_qty=qty,
+            ).model_dump()
+        )
+        user = await self.user_repo.get_by_id(user_id)
+        if not user:
+            raise OrderNotFound("User not found")
+        await self._fulfill_device_slots(user, order, now, strict_balance=True)
+        await self.order_repo.update_by_id(
+            order.id,
+            OrderInternalUpdate(status="completed", paid_at=now, completed_at=now).model_dump(exclude_none=True),
+        )
+        BILLING_ORDER_TOTAL.labels(provider="balance", status="completed").inc()
         refreshed = await self.order_repo.get_by_id(order.id)
         return OrderOut.model_validate(refreshed)
 
@@ -412,6 +503,11 @@ class BillingService:
             OrderInternalUpdate(status="completed", completed_at=now).model_dump(exclude_none=True),
         )
         BILLING_ORDER_TOTAL.labels(provider=provider_name, status="completed").inc()
+        if provider_name != "stars":
+            await self.notify_service.send_payment_completed(
+                chat_id=user.telegram_id,
+                order_type=getattr(order, "order_type", "plan_purchase"),
+            )
         log.info("fulfill_completed", order_id=str(order.id))
 
     # ── Balance operations ────────────────────────────────────
@@ -535,7 +631,15 @@ class BillingService:
             )
             log.info("free_subscription_created", subscription_id=str(sub.id), expires_at=str(expires_at))
 
-    async def _auto_purchase(self, user: User, plan, order: PaymentOrder, now: datetime) -> None:
+    async def _auto_purchase(
+        self,
+        user: User,
+        plan,
+        order: PaymentOrder,
+        now: datetime,
+        *,
+        strict_balance: bool = False,
+    ) -> None:
         """Debit balance and create or extend a subscription."""
         extra_devices = getattr(order, "device_slots_qty", 0) or 0
         device_price = getattr(plan, "device_price_rub", Decimal("0")) or Decimal("0")
@@ -548,6 +652,8 @@ class BillingService:
                 "auto_purchase_insufficient_balance",
                 user_id=str(user.id if user else order.user_id),
             )
+            if strict_balance:
+                raise InsufficientBalance("Insufficient balance")
             return
 
         new_balance = user.balance - total_price
@@ -625,7 +731,14 @@ class BillingService:
                 expires_at=str(expires_at),
             )
 
-    async def _fulfill_device_slots(self, user: User, order: PaymentOrder, now: datetime) -> None:
+    async def _fulfill_device_slots(
+        self,
+        user: User,
+        order: PaymentOrder,
+        now: datetime,
+        *,
+        strict_balance: bool = False,
+    ) -> None:
         """Debit balance and add device slots to subscription."""
         user = await self._lock_user(user.id)
         if not user or user.balance < order.amount_rub:
@@ -633,6 +746,8 @@ class BillingService:
                 "device_slots_insufficient_balance",
                 user_id=str(user.id if user else order.user_id),
             )
+            if strict_balance:
+                raise InsufficientBalance("Insufficient balance")
             return
 
         new_balance = user.balance - order.amount_rub

@@ -42,6 +42,8 @@ async def create_order(
         return await service.create_order(data)
     except PlanNotPurchasable as e:
         raise HTTPException(status_code=422, detail=str(e))
+    except InsufficientBalance as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except ProviderError as e:
         raise HTTPException(status_code=502, detail=str(e))
     except OrderNotFound as e:

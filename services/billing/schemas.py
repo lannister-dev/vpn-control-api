@@ -10,6 +10,7 @@ class PaymentProviderEnum(str, Enum):
     CRYPTO = "crypto"
     STARS = "stars"
     PLATEGA = "platega"
+    BALANCE = "balance"
     FREE = "free"
 
 

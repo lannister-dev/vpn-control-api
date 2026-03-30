@@ -16,7 +16,6 @@ from services.plans.schemas import PlanOut
 from services.users.repository import UserRepository
 from services.users.schemas import UserCreateIn, UserOut, UserUpdateIn
 from services.users.service import UserService
-from services.vpn.subscriptions.exceptions import SubscriptionNotFound
 from services.vpn.subscriptions.repository import SubscriptionDeviceRepository, SubscriptionRepository
 from services.vpn.subscriptions.schemas import SubscriptionDeviceOut, SubscriptionOut
 from services.vpn.subscriptions.service import SubscriptionService
@@ -47,6 +46,7 @@ from .schemas import (
     BotSubscriptionLinkOut,
     BotSubscriptionSummaryOut,
 )
+from ..billing.exceptions import InsufficientBalance, ProviderError
 
 
 class BotApiService:
@@ -126,7 +126,7 @@ class BotApiService:
         )
 
     async def create_order(self, *, telegram_id: int, payload: BotOrderCreateIn) -> BotOrderActionOut:
-        from services.billing.exceptions import ActiveSubscriptionExists, PlanNotPurchasable, TrialAlreadyUsed, TrialUnavailable
+        from services.billing.exceptions import ActiveSubscriptionExists, InsufficientBalance, PlanNotPurchasable, ProviderError, TrialAlreadyUsed, TrialUnavailable
         user = await self._require_user_by_telegram_id(telegram_id)
         extra = getattr(payload, "extra_devices", 0) or 0
         try:
@@ -142,8 +142,12 @@ class BotApiService:
             raise HTTPException(status_code=409, detail="Trial already used")
         except (ActiveSubscriptionExists, TrialUnavailable):
             raise HTTPException(status_code=409, detail="Trial unavailable")
+        except InsufficientBalance as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except PlanNotPurchasable as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except ProviderError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         session = await self._build_session(
             user=user,
             forced_pending_order=order if order.status == "pending" else None,
@@ -188,6 +192,8 @@ class BotApiService:
             PaymentProviderEnum.PLATEGA,
             PaymentProviderEnum.CRYPTO,
         ]
+        if user.balance >= plan.price_rub:
+            providers.append(PaymentProviderEnum.BALANCE)
         if getattr(plan, "price_stars", None):
             providers.append(PaymentProviderEnum.STARS)
 
@@ -226,15 +232,20 @@ class BotApiService:
         if payload.provider == PaymentProviderEnum.STARS and not getattr(plan, "price_stars", None):
             raise HTTPException(status_code=400, detail="Stars not available for current plan")
 
-        order = await self.billing_service.create_order(
-            OrderCreateIn(
-                user_id=user.id,
-                plan_id=subscription.plan_id,
-                provider=payload.provider,
-                order_type=OrderTypeEnum.SUBSCRIPTION_RENEWAL,
-                subscription_id=subscription.id,
+        try:
+            order = await self.billing_service.create_order(
+                OrderCreateIn(
+                    user_id=user.id,
+                    plan_id=subscription.plan_id,
+                    provider=payload.provider,
+                    order_type=OrderTypeEnum.SUBSCRIPTION_RENEWAL,
+                    subscription_id=subscription.id,
+                )
             )
-        )
+        except InsufficientBalance as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ProviderError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         session = await self._build_session(
             user=user,
             forced_pending_order=order if order.status == "pending" else None,
@@ -248,16 +259,21 @@ class BotApiService:
         subscription = await self._current_subscription(user.id)
         if subscription is None:
             raise HTTPException(status_code=404, detail="Active subscription not found")
-        order = await self.billing_service.create_order(
-            OrderCreateIn(
-                user_id=user.id,
-                provider=payload.provider,
-                order_type=OrderTypeEnum.DEVICE_SLOTS,
-                device_slots_qty=payload.qty,
-                subscription_id=subscription.id,
+        try:
+            order = await self.billing_service.create_order(
+                OrderCreateIn(
+                    user_id=user.id,
+                    provider=payload.provider,
+                    order_type=OrderTypeEnum.DEVICE_SLOTS,
+                    device_slots_qty=payload.qty,
+                    subscription_id=subscription.id,
+                )
             )
-        )
-        session = await self._build_session(user=user, forced_pending_order=order)
+        except InsufficientBalance as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ProviderError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        session = await self._build_session(user=user, forced_pending_order=order if order.status == "pending" else None)
         return BotOrderActionOut(order=BotOrderOut.model_validate(order), session=session)
 
     async def list_devices(self, *, telegram_id: int) -> BotDevicesOut:
