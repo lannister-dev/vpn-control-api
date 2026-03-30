@@ -8,6 +8,7 @@ from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.admin_status.service import AdminStatusService
+from services.config import get_settings
 from services.billing.repository import OrderRepository
 from services.billing.schemas import OrderCreateIn, OrderOut, OrderTypeEnum, PaymentProviderEnum
 from services.billing.service import BillingService
@@ -63,6 +64,7 @@ class BotApiService:
         self.billing_service = BillingService(session)
         self.subscription_service = SubscriptionService(session, redis)
         self.admin_status_service = AdminStatusService(session)
+        self.settings = get_settings()
 
     async def sync_session(self, payload: BotSessionSyncIn) -> BotSessionOut:
         user, is_new_user = await self._ensure_user(payload)
@@ -95,6 +97,10 @@ class BotApiService:
                         hide_free_plans = True
 
         rows, total = await self.plan_repository.list_all(active_only=True)
+        hidden_plan_name = self.settings.migration.gift_plan_name if self.settings.migration.enabled else ""
+        if hidden_plan_name:
+            rows = [plan for plan in rows if plan.name != hidden_plan_name]
+            total = len(rows)
 
         if user is not None:
             if not hide_free_plans:
@@ -150,6 +156,43 @@ class BotApiService:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except ProviderError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
+        session = await self._build_session(
+            user=user,
+            forced_pending_order=order if order.status == "pending" else None,
+        )
+        return BotOrderActionOut(order=BotOrderOut.model_validate(order), session=session)
+
+    async def claim_migration_gift(self, *, telegram_id: int) -> BotOrderActionOut:
+        from services.billing.exceptions import (
+            ActiveSubscriptionExists,
+            PlanNotPurchasable,
+            TrialAlreadyUsed,
+            TrialUnavailable,
+        )
+
+        if not self.settings.migration.enabled or not self.settings.migration.gift_plan_name:
+            raise HTTPException(status_code=404, detail="Migration gift is unavailable")
+
+        user = await self._require_user_by_telegram_id(telegram_id)
+        plan = await self.plan_repository.get_by_name(self.settings.migration.gift_plan_name)
+        if plan is None or not plan.is_active or plan.price_rub > 0:
+            raise HTTPException(status_code=404, detail="Migration gift plan not found")
+
+        try:
+            order = await self.billing_service.create_order(
+                OrderCreateIn(
+                    user_id=user.id,
+                    plan_id=plan.id,
+                    provider=PaymentProviderEnum.FREE,
+                )
+            )
+        except TrialAlreadyUsed:
+            raise HTTPException(status_code=409, detail="Gift already claimed")
+        except (ActiveSubscriptionExists, TrialUnavailable) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except PlanNotPurchasable as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
         session = await self._build_session(
             user=user,
             forced_pending_order=order if order.status == "pending" else None,

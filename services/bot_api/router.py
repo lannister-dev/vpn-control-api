@@ -213,6 +213,18 @@ async def bot_create_top_up_order(
 
 
 @router.post(
+    "/users/{telegram_id}/campaigns/migrate/claim",
+    response_model=BotOrderActionOut,
+    summary="Claim migration gift for Telegram bot user",
+)
+async def bot_claim_migration_gift(
+    telegram_id: int,
+    service: BotApiService = Depends(get_bot_api_service),
+):
+    return await service.claim_migration_gift(telegram_id=telegram_id)
+
+
+@router.post(
     "/users/{telegram_id}/subscription-link",
     response_model=BotSubscriptionLinkOut,
     summary="Rotate and issue a fresh subscription link for Telegram bot user",
