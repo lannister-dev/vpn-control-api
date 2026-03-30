@@ -50,6 +50,11 @@ class TelegramBotNotifyService:
         order_type: str,
         pending_message: tuple[int, int] | None = None,
     ) -> bool:
+        if order_type == "top_up":
+            return await self.send_message(
+                chat_id=chat_id,
+                text=self._payment_completed_text(order_type),
+            )
         text = self._payment_completed_text(order_type)
         reply_markup = self._payment_completed_markup(order_type)
         if pending_message:
@@ -67,10 +72,26 @@ class TelegramBotNotifyService:
             reply_markup=reply_markup,
         )
 
+    async def replace_pending_with_wallet(
+        self,
+        *,
+        chat_id: int,
+        balance_rub: str,
+        pending_message: tuple[int, int] | None,
+    ) -> bool:
+        if not pending_message:
+            return False
+        return await self.edit_message(
+            chat_id=pending_message[0],
+            message_id=pending_message[1],
+            text=self._wallet_text(balance_rub),
+            reply_markup=self._wallet_markup(),
+        )
+
     @staticmethod
     def _payment_completed_text(order_type: str) -> str:
         if order_type == "top_up":
-            return "✅ Оплата подтверждена.\n\nБаланс пополнен."
+            return "✅ Оплата подтверждена."
         if order_type == "device_slots":
             return "✅ Оплата подтверждена.\n\nДополнительное устройство добавлено."
         if order_type == "subscription_renewal":
@@ -79,14 +100,7 @@ class TelegramBotNotifyService:
 
     @staticmethod
     def _payment_completed_markup(order_type: str) -> dict[str, object]:
-        if order_type == "top_up":
-            buttons = [
-                [
-                    {"text": "💰 Баланс", "callback_data": "wallet:open"},
-                    {"text": "🏠 Меню", "callback_data": "start:main_menu"},
-                ]
-            ]
-        elif order_type == "device_slots":
+        if order_type == "device_slots":
             buttons = [
                 [
                     {"text": "📱 Устройства", "callback_data": "devices:open"},
@@ -99,6 +113,26 @@ class TelegramBotNotifyService:
                 [{"text": "🏠 Меню", "callback_data": "start:main_menu"}],
             ]
         return {"inline_keyboard": buttons}
+
+    @staticmethod
+    def _wallet_text(balance_rub: str) -> str:
+        return (
+            f"💰 Баланс: {balance_rub}\n\n"
+            "Средства списываются автоматически при оплате тарифа.\n"
+            "Если на балансе достаточно средств, оплата пройдёт мгновенно."
+        )
+
+    @staticmethod
+    def _wallet_markup() -> dict[str, object]:
+        return {
+            "inline_keyboard": [
+                [{"text": "💳 Пополнить", "callback_data": "wallet:top_up"}],
+                [
+                    {"text": "📋 История", "callback_data": "payment:history"},
+                    {"text": "🏠 Меню", "callback_data": "start:main_menu"},
+                ],
+            ]
+        }
 
     async def edit_message(
         self,
