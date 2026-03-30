@@ -36,28 +36,119 @@ class TelegramBotNotifyService:
         }
         if reply_markup:
             payload["reply_markup"] = reply_markup
-        return await asyncio.to_thread(self._post_telegram_message, token, payload)
+        return await asyncio.to_thread(
+            self._post_telegram_request,
+            token,
+            "sendMessage",
+            payload,
+        )
 
-    async def send_payment_completed(self, *, chat_id: int, order_type: str) -> bool:
+    async def send_payment_completed(
+        self,
+        *,
+        chat_id: int,
+        order_type: str,
+        pending_message: tuple[int, int] | None = None,
+    ) -> bool:
+        text = self._payment_completed_text(order_type)
+        reply_markup = self._payment_completed_markup(order_type)
+        if pending_message:
+            edited = await self.edit_message(
+                chat_id=pending_message[0],
+                message_id=pending_message[1],
+                text=text,
+                reply_markup=reply_markup,
+            )
+            if edited:
+                return True
         return await self.send_message(
             chat_id=chat_id,
-            text=self._payment_completed_text(order_type),
+            text=text,
+            reply_markup=reply_markup,
         )
 
     @staticmethod
     def _payment_completed_text(order_type: str) -> str:
         if order_type == "top_up":
-            return "✅ Оплата подтверждена. Баланс пополнен."
+            return "✅ Оплата подтверждена.\n\nБаланс пополнен."
         if order_type == "device_slots":
-            return "✅ Оплата подтверждена. Дополнительное устройство добавлено."
+            return "✅ Оплата подтверждена.\n\nДополнительное устройство добавлено."
         if order_type == "subscription_renewal":
-            return "✅ Оплата подтверждена. Подписка продлена."
-        return "✅ Оплата подтверждена. Подписка активирована."
+            return "✅ Оплата подтверждена.\n\nПодписка продлена."
+        return "✅ Оплата подтверждена.\n\nПодписка активирована."
 
     @staticmethod
-    def _post_telegram_message(token: str, payload: dict) -> bool:
+    def _payment_completed_markup(order_type: str) -> dict[str, object]:
+        if order_type == "top_up":
+            buttons = [
+                [
+                    {"text": "💰 Баланс", "callback_data": "wallet:open"},
+                    {"text": "🏠 Меню", "callback_data": "start:main_menu"},
+                ]
+            ]
+        elif order_type == "device_slots":
+            buttons = [
+                [
+                    {"text": "📱 Устройства", "callback_data": "devices:open"},
+                    {"text": "🏠 Меню", "callback_data": "start:main_menu"},
+                ]
+            ]
+        else:
+            buttons = [
+                [{"text": "🚀 VPN", "callback_data": "connect:open"}],
+                [{"text": "🏠 Меню", "callback_data": "start:main_menu"}],
+            ]
+        return {"inline_keyboard": buttons}
+
+    async def edit_message(
+        self,
+        *,
+        chat_id: int,
+        message_id: int,
+        text: str,
+        reply_markup: dict | None = None,
+    ) -> bool:
+        if not self.config.enabled:
+            return False
+        token = (self.config.bot_token or "").strip()
+        if not token:
+            log.info("bot_notify_skipped_no_token", chat_id=str(chat_id))
+            return False
+
+        payload: dict[str, object] = {
+            "chat_id": str(chat_id),
+            "message_id": message_id,
+            "text": text,
+            "disable_web_page_preview": True,
+        }
+        if reply_markup:
+            payload["reply_markup"] = reply_markup
+        edited = await asyncio.to_thread(
+            self._post_telegram_request,
+            token,
+            "editMessageText",
+            payload,
+        )
+        if edited:
+            return True
+        caption_payload = {
+            "chat_id": str(chat_id),
+            "message_id": message_id,
+            "caption": text,
+        }
+        if reply_markup:
+            caption_payload["reply_markup"] = reply_markup
+        return await asyncio.to_thread(
+            self._post_telegram_request,
+            token,
+            "editMessageCaption",
+            caption_payload,
+        )
+
+    @staticmethod
+    def _post_telegram_request(token: str, method: str, payload: dict) -> bool:
         req = request.Request(
-            url=f"https://api.telegram.org/bot{token}/sendMessage",
+            url=f"https://api.telegram.org/bot{token}/{method}",
             data=json.dumps(payload).encode("utf-8"),
             headers={"Content-Type": "application/json"},
             method="POST",

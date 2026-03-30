@@ -12,6 +12,7 @@ from .schemas import (
     BotOrderActionOut,
     BotOrderCreateIn,
     BotOrderHistoryOut,
+    BotOrderUpdateIn,
     BotPlanListOut,
     BotRenewOfferOut,
     BotRenewOrderIn,
@@ -87,6 +88,24 @@ async def bot_get_order(
     service: BotApiService = Depends(get_bot_api_service),
 ):
     return await service.get_order(telegram_id=telegram_id, order_id=order_id)
+
+
+@router.patch(
+    "/users/{telegram_id}/orders/{order_id}",
+    summary="Update Telegram bot order metadata",
+)
+async def bot_update_order(
+    telegram_id: int,
+    order_id: UUID,
+    payload: BotOrderUpdateIn,
+    service: BotApiService = Depends(get_bot_api_service),
+):
+    await service.update_order_metadata(
+        telegram_id=telegram_id,
+        order_id=order_id,
+        payload=payload,
+    )
+    return {"ok": True}
 
 
 @router.post(

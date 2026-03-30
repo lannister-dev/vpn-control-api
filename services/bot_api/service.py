@@ -32,6 +32,7 @@ from .schemas import (
     BotOrderCreateIn,
     BotOrderHistoryItemOut,
     BotOrderHistoryOut,
+    BotOrderUpdateIn,
     BotOrderOut,
     BotPlanListOut,
     BotRenewOfferOut,
@@ -162,6 +163,23 @@ class BotApiService:
             raise HTTPException(status_code=404, detail="Order not found")
         session = await self._build_session(user=user, forced_pending_order=order if order.status == "pending" else None)
         return BotOrderActionOut(order=BotOrderOut.model_validate(order), session=session)
+
+    async def update_order_metadata(
+        self,
+        *,
+        telegram_id: int,
+        order_id: UUID,
+        payload: BotOrderUpdateIn,
+    ) -> None:
+        user = await self._require_user_by_telegram_id(telegram_id)
+        order = await self.billing_service.get_order(order_id)
+        if order.user_id != user.id:
+            raise HTTPException(status_code=404, detail="Order not found")
+        await self.billing_service.update_order_metadata(
+            order_id=order.id,
+            telegram_chat_id=payload.telegram_chat_id,
+            telegram_message_id=payload.telegram_message_id,
+        )
 
     async def get_renew_offer(self, *, telegram_id: int) -> BotRenewOfferOut:
         user = await self._require_user_by_telegram_id(telegram_id)

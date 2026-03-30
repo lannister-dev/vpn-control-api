@@ -63,6 +63,8 @@ _PROVIDERS: dict[str, type[PaymentProvider]] = {
 
 
 class BillingService:
+    _TELEGRAM_PENDING_MESSAGE_KEY = "_telegram_pending_message"
+
     def __init__(self, session: AsyncSession):
         self.session = session
         self.order_repo = OrderRepository(session)
@@ -72,6 +74,45 @@ class BillingService:
         self.sub_repo = SubscriptionRepository(session)
         self.settings = get_settings().billing
         self.notify_service = TelegramBotNotifyService()
+
+    @staticmethod
+    def _meta_dict(raw: str | None) -> dict[str, object]:
+        if not raw:
+            return {}
+        try:
+            data = json.loads(raw)
+        except Exception:
+            return {"_raw_provider_meta": raw}
+        if isinstance(data, dict):
+            return data
+        return {"_raw_provider_meta": data}
+
+    @classmethod
+    def _merge_meta(cls, existing_raw: str | None, patch: dict[str, object]) -> str:
+        data = cls._meta_dict(existing_raw)
+        data.update(patch)
+        return json.dumps(data, default=str)
+
+    @classmethod
+    def _merge_meta_strings(cls, existing_raw: str | None, patch_raw: str | None) -> str | None:
+        if not existing_raw and not patch_raw:
+            return None
+        data = cls._meta_dict(existing_raw)
+        if patch_raw:
+            data.update(cls._meta_dict(patch_raw))
+        return json.dumps(data, default=str)
+
+    @classmethod
+    def _pending_message_binding(cls, raw: str | None) -> tuple[int, int] | None:
+        data = cls._meta_dict(raw)
+        binding = data.get(cls._TELEGRAM_PENDING_MESSAGE_KEY)
+        if not isinstance(binding, dict):
+            return None
+        chat_id = binding.get("chat_id")
+        message_id = binding.get("message_id")
+        if isinstance(chat_id, int) and isinstance(message_id, int):
+            return chat_id, message_id
+        return None
 
     # ── Provider factory ──────────────────────────────────────
 
@@ -447,6 +488,31 @@ class BillingService:
             raise OrderNotFound(f"Order {order_id} not found")
         return OrderOut.model_validate(order)
 
+    async def update_order_metadata(
+        self,
+        *,
+        order_id: UUID,
+        telegram_chat_id: int | None = None,
+        telegram_message_id: int | None = None,
+    ) -> None:
+        order = await self.order_repo.get_by_id(order_id)
+        if not order:
+            raise OrderNotFound(f"Order {order_id} not found")
+        patch: dict[str, object] = {}
+        if telegram_chat_id is not None and telegram_message_id is not None:
+            patch[self._TELEGRAM_PENDING_MESSAGE_KEY] = {
+                "chat_id": int(telegram_chat_id),
+                "message_id": int(telegram_message_id),
+            }
+        if not patch:
+            return
+        await self.order_repo.update_by_id(
+            order.id,
+            OrderInternalUpdate(
+                provider_meta=self._merge_meta(order.provider_meta, patch),
+            ).model_dump(exclude_none=True),
+        )
+
     async def list_user_orders(
         self, user_id: UUID, *, limit: int = 50, offset: int = 0
     ) -> OrderListOut:
@@ -520,7 +586,7 @@ class BillingService:
             OrderInternalUpdate(
                 status="paid",
                 paid_at=now,
-                provider_meta=provider_meta or order.provider_meta,
+                provider_meta=self._merge_meta_strings(order.provider_meta, provider_meta),
             ).model_dump(exclude_none=True),
         )
 
@@ -559,9 +625,13 @@ class BillingService:
         )
         BILLING_ORDER_TOTAL.labels(provider=provider_name, status="completed").inc()
         if provider_name != "stars":
+            updated_order = await self.order_repo.get_by_id(order.id)
             await self.notify_service.send_payment_completed(
                 chat_id=user.telegram_id,
                 order_type=getattr(order, "order_type", "plan_purchase"),
+                pending_message=self._pending_message_binding(
+                    getattr(updated_order, "provider_meta", None),
+                ),
             )
         log.info("fulfill_completed", order_id=str(order.id))
 
