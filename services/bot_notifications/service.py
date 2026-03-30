@@ -33,6 +33,7 @@ class TelegramBotNotifyService:
             "chat_id": str(chat_id),
             "text": text,
             "disable_web_page_preview": True,
+            "parse_mode": "HTML",
         }
         if reply_markup:
             payload["reply_markup"] = reply_markup
@@ -75,7 +76,6 @@ class TelegramBotNotifyService:
     async def replace_pending_with_wallet(
         self,
         *,
-        chat_id: int,
         balance_rub: str,
         pending_message: tuple[int, int] | None,
     ) -> bool:
@@ -116,11 +116,7 @@ class TelegramBotNotifyService:
 
     @staticmethod
     def _wallet_text(balance_rub: str) -> str:
-        return (
-            f"💰 Баланс: {balance_rub}\n\n"
-            "Средства списываются автоматически при оплате тарифа.\n"
-            "Если на балансе достаточно средств, оплата пройдёт мгновенно."
-        )
+        return f"💰 <b>Баланс: {balance_rub}</b>"
 
     @staticmethod
     def _wallet_markup() -> dict[str, object]:
@@ -154,6 +150,7 @@ class TelegramBotNotifyService:
             "message_id": message_id,
             "text": text,
             "disable_web_page_preview": True,
+            "parse_mode": "HTML",
         }
         if reply_markup:
             payload["reply_markup"] = reply_markup
@@ -169,6 +166,7 @@ class TelegramBotNotifyService:
             "chat_id": str(chat_id),
             "message_id": message_id,
             "caption": text,
+            "parse_mode": "HTML",
         }
         if reply_markup:
             caption_payload["reply_markup"] = reply_markup

@@ -214,6 +214,12 @@ class BillingConfig:
 
 
 @dataclass
+class MigrationConfig:
+    enabled: bool = False
+    gift_plan_name: str = ""
+
+
+@dataclass
 class AdminAuthConfig:
     enabled: bool = False
     session_secret: str = ""
@@ -251,6 +257,7 @@ class Settings:
     admin_auth: AdminAuthConfig
     vpn_key: VpnKeyConfig
     billing: BillingConfig
+    migration: MigrationConfig
 
 
 @lru_cache
@@ -462,6 +469,11 @@ def get_settings() -> Settings:
         order_ttl_minutes=max(1, env.int("BILLING_ORDER_TTL_MINUTES", default=30)),
     )
 
+    migration = MigrationConfig(
+        enabled=env.bool("MIGRATION_ENABLED", default=False),
+        gift_plan_name=env.str("MIGRATION_GIFT_PLAN_NAME", default="").strip(),
+    )
+
     _tg_allowed_raw = env.str("ADMIN_TELEGRAM_ALLOWED_IDS", default="")
     _tg_allowed = tuple(
         int(x.strip()) for x in _tg_allowed_raw.split(",") if x.strip().isdigit()
@@ -502,4 +514,5 @@ def get_settings() -> Settings:
         admin_auth=admin_auth,
         vpn_key=vpn_key,
         billing=billing,
+        migration=migration,
     )
