@@ -11,7 +11,6 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.billing.exceptions import (
-    ActiveSubscriptionExists,
     DeviceSlotLimitExceeded,
     OrderExpired,
     OrderNotFound,
@@ -19,7 +18,7 @@ from services.billing.exceptions import (
     ProviderError,
     TrialAlreadyUsed,
     TrialUnavailable,
-    WebhookVerificationFailed,
+    WebhookVerificationFailed, InsufficientBalance,
 )
 from services.billing.models import BalanceTransaction, PaymentOrder
 from services.billing.providers.base import PaymentProvider
@@ -113,6 +112,13 @@ class BillingService:
         if isinstance(chat_id, int) and isinstance(message_id, int):
             return chat_id, message_id
         return None
+
+    @staticmethod
+    def _format_rub_short(amount: Decimal) -> str:
+        normalized = amount.quantize(Decimal("0.01"))
+        if normalized == normalized.to_integral():
+            return f"{int(normalized)} ₽"
+        return f"{normalized} ₽"
 
     # ── Provider factory ──────────────────────────────────────
 
@@ -626,13 +632,21 @@ class BillingService:
         BILLING_ORDER_TOTAL.labels(provider=provider_name, status="completed").inc()
         if provider_name != "stars":
             updated_order = await self.order_repo.get_by_id(order.id)
+            pending_message = self._pending_message_binding(
+                getattr(updated_order, "provider_meta", None),
+            )
+            order_type = getattr(order, "order_type", "plan_purchase")
             await self.notify_service.send_payment_completed(
                 chat_id=user.telegram_id,
-                order_type=getattr(order, "order_type", "plan_purchase"),
-                pending_message=self._pending_message_binding(
-                    getattr(updated_order, "provider_meta", None),
-                ),
+                order_type=order_type,
+                pending_message=None if order_type == "top_up" else pending_message,
             )
+            if order_type == "top_up":
+                await self.notify_service.replace_pending_with_wallet(
+                    chat_id=user.telegram_id,
+                    balance_rub=self._format_rub_short(new_balance),
+                    pending_message=pending_message,
+                )
         log.info("fulfill_completed", order_id=str(order.id))
 
     # ── Balance operations ────────────────────────────────────
