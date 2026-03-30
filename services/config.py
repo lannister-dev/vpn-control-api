@@ -121,6 +121,13 @@ class AlertsConfig:
 
 
 @dataclass
+class BotNotificationsConfig:
+    enabled: bool = False
+    bot_token: str = ""
+    timeout_sec: int = 5
+
+
+@dataclass
 class ProbeConfig:
     target_port: int = 443
     synthetic_reality_client_id: str | None = None
@@ -235,6 +242,7 @@ class Settings:
     subscriptions: SubscriptionsConfig
     node_agent: NodeAgentConfig
     alerts: AlertsConfig
+    bot_notifications: BotNotificationsConfig
     probe: ProbeConfig
     routes: RoutesConfig
     edge: EdgeConfig
@@ -362,6 +370,15 @@ def get_settings() -> Settings:
         telegram_timeout_sec=env.int("ALERTS_TELEGRAM_TIMEOUT_SEC", default=5),
     )
 
+    bot_notifications_token = env.str("BOT_NOTIFICATIONS_TOKEN", default="").strip()
+    if not bot_notifications_token:
+        bot_notifications_token = env.str("BILLING_STARS_BOT_TOKEN", default="").strip()
+    bot_notifications = BotNotificationsConfig(
+        enabled=env.bool("BOT_NOTIFICATIONS_ENABLED", default=bool(bot_notifications_token)),
+        bot_token=bot_notifications_token,
+        timeout_sec=env.int("BOT_NOTIFICATIONS_TIMEOUT_SEC", default=5),
+    )
+
     probe = ProbeConfig(
         target_port=env.int("PROBE_TARGET_PORT", default=443),
         synthetic_reality_client_id=env.str("PROBE_SYNTHETIC_REALITY_CLIENT_ID", default=""),
@@ -476,6 +493,7 @@ def get_settings() -> Settings:
         subscriptions=subscriptions,
         node_agent=node_agent,
         alerts=alerts,
+        bot_notifications=bot_notifications,
         probe=probe,
         routes=routes,
         edge=edge,
