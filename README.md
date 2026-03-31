@@ -16,7 +16,8 @@ pytest -q
 ```
 
 Docker build note:
-- If Docker Hub starts returning `429 Too Many Requests` on `python:3.10*`, build with mirrored base images via `--build-arg PYTHON_BUILD_IMAGE=... --build-arg PYTHON_RUNTIME_IMAGE=...` instead of editing the `Dockerfile`.
+- Default base images are `python:3.10` / `python:3.10-slim`.
+- If Docker Hub starts returning `429 Too Many Requests` on `python:3.10*`, or if you need an internal registry, override them with `--build-arg PYTHON_BUILD_IMAGE=... --build-arg PYTHON_RUNTIME_IMAGE=...` instead of editing the `Dockerfile`.
 
 Config notes:
 - Use `PROBE_TARGET_PORT` (legacy `DEFAULT_TARGET_PORT` is still supported for backward compatibility).

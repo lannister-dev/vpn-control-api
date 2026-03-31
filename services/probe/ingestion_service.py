@@ -337,7 +337,7 @@ class ProbeIngestionService:
 
     async def _degrade_route_after_probe(self, *, route, checked_at: datetime) -> None:
         status = str(route.health_status)
-        if status in {RouteHealthStatus.blocked.value, RouteHealthStatus.warming_up.value}:
+        if status == RouteHealthStatus.blocked.value:
             return
 
         consecutive = await self.probe_repository.count_consecutive_route_failures(
