@@ -170,6 +170,7 @@ class VpnNodeService:
             payload: NodeHeartbeatIn,
     ) -> None:
         now = datetime.now(timezone.utc)
+        effective_is_healthy = self._effective_heartbeat_health(payload)
         existing_state = await self.node_agent_state_repository.get_one_by(node_id=node.id)
         existing_details = self._normalize_details(
             existing_state.details if existing_state is not None else None
@@ -180,10 +181,10 @@ class VpnNodeService:
         )
         heartbeat_meta = self._next_heartbeat_meta(
             base_details=existing_details,
-            is_healthy=payload.is_healthy,
+            is_healthy=effective_is_healthy,
         )
         should_drain = (
-            not payload.is_healthy
+            not effective_is_healthy
             and not node.is_draining
             and heartbeat_meta.consecutive_unhealthy >= self.heartbeat_unhealthy_drain_threshold
         )
@@ -202,7 +203,7 @@ class VpnNodeService:
                 consecutive_unhealthy=heartbeat_meta.consecutive_unhealthy,
             )
         should_undrain = (
-            payload.is_healthy
+            effective_is_healthy
             and node.is_draining
             and node.is_active
             and node.is_enabled
@@ -231,7 +232,7 @@ class VpnNodeService:
         state = NodeAgentStateCreate(
             node_id=node.id,
             agent_version=payload.agent_version,
-            is_healthy=payload.is_healthy,
+            is_healthy=effective_is_healthy,
             last_seen_at=now,
             last_sync_at=None,
             details=details_data,
@@ -335,6 +336,10 @@ class VpnNodeService:
         if existing_full_resync_completed != payload.full_resync_completed:
             return False
         return True
+
+    @staticmethod
+    def _effective_heartbeat_health(payload: NodeHeartbeatIn) -> bool:
+        return bool(payload.is_healthy and payload.details.runtime.ready)
 
     @classmethod
     def _next_heartbeat_meta(
