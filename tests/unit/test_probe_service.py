@@ -442,6 +442,60 @@ async def test_report_blocks_routes_on_latest_failure(async_session):
 
 
 @pytest.mark.asyncio
+async def test_report_blocks_warming_up_route_on_repeated_failures(async_session):
+    svc = _ingestion_service()
+    svc.node_repository = AsyncMock()
+    svc.probe_repository = AsyncMock()
+    svc.route_repository = AsyncMock()
+    svc.alert_service = AsyncMock()
+
+    node = _node()
+    transport_profile = _transport_profile()
+    route = _route(node_id=node.id, transport_profile_id=transport_profile.id, health_status="warming_up")
+    checked_at = datetime.now(timezone.utc)
+    created = _probe(is_reachable=False, checked_at=checked_at, route_id=route.id)
+    created.node_id = node.id
+    created.transport_profile_id = transport_profile.id
+    created.transport_kind = "reality"
+    created.probe_kind = "synthetic_vpn"
+    created.target_host = node.reality_ip
+    created.target_port = 443
+    created.error_phase = "tunnel_http"
+    created.source = "ru-probe-1"
+    created.latency_ms = None
+    created.error = "tls eof"
+    created.details = {}
+    created.created_at = datetime.now(timezone.utc)
+    route.base_weight = 50
+
+    svc.node_repository.get_by_id.return_value = node
+    svc.route_repository.get_active_detailed_by_id.return_value = (route, node, transport_profile, None)
+    svc.probe_repository.get_latest_for_route.side_effect = [None, created]
+    svc.probe_repository.create.return_value = created
+    svc.probe_repository.count_consecutive_route_failures = AsyncMock(return_value=5)
+    svc.route_repository.get_by_id.return_value = route
+    svc.route_repository.update_by_id = AsyncMock(return_value=route)
+
+    await svc.report(
+        ProbeReportIn(
+            node_id=node.id,
+            route_id=route.id,
+            source="ru-probe-1",
+            probe_kind="synthetic_vpn",
+            is_reachable=False,
+            error="tls eof",
+            error_phase="tunnel_http",
+        )
+    )
+
+    svc.route_repository.update_by_id.assert_awaited_once()
+    kwargs = svc.route_repository.update_by_id.await_args.kwargs
+    assert kwargs["item_id"] == route.id
+    assert kwargs["data"]["health_status"] == "blocked"
+    assert kwargs["data"]["effective_weight"] == 0
+
+
+@pytest.mark.asyncio
 async def test_report_recovers_blocked_route_after_cooldown(async_session):
     svc = _ingestion_service()
     svc.node_repository = AsyncMock()
