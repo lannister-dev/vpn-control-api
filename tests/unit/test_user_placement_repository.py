@@ -202,3 +202,34 @@ async def test_bulk_migrate_backend_mixed_move_and_merge(async_session):
     assert migrated == 2
     assert target_ids == [src_a.id, existing_b.id]
     assert async_session.execute.await_count == 5
+
+
+@pytest.mark.asyncio
+async def test_upsert_set_pending_updates_updated_at_on_conflict(async_session):
+    repo = UserPlacementRepository(async_session)
+
+    placement = MagicMock()
+    placement.id = uuid4()
+    repo.get_by_key_and_backend = AsyncMock(return_value=placement)
+
+    key_id = uuid4()
+    backend_node_id = uuid4()
+
+    out = await repo.upsert_set_pending(
+        key_id=key_id,
+        backend_node_id=backend_node_id,
+        desired_state="active",
+        sticky_until=None,
+        last_migration_reason="probe_synthetic_self_heal",
+    )
+
+    assert out is placement
+    async_session.execute.assert_awaited_once()
+    stmt = async_session.execute.await_args.args[0]
+    stmt_sql = str(stmt)
+    assert "updated_at" in stmt_sql
+    repo.get_by_key_and_backend.assert_awaited_once_with(
+        key_id=key_id,
+        backend_node_id=backend_node_id,
+        active_only=True,
+    )

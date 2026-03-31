@@ -153,6 +153,7 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
                 "sticky_until": sticky_until,
                 "last_migration_reason": last_migration_reason,
                 "is_active": True,
+                "updated_at": func.now(),
             },
         )
         await self.session.execute(stmt)
