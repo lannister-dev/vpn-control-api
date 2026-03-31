@@ -103,14 +103,14 @@ class TelegramBotNotifyService:
         if order_type == "device_slots":
             buttons = [
                 [
-                    {"text": "📱 Устройства", "callback_data": "devices:open"},
-                    {"text": "🏠 Меню", "callback_data": "start:main_menu"},
+                    {"text": "📱 Устройства", "callback_data": "devices:open::"},
+                    {"text": "🏠 Меню", "callback_data": "start:main_menu::"},
                 ]
             ]
         else:
             buttons = [
-                [{"text": "🚀 VPN", "callback_data": "connect:open"}],
-                [{"text": "🏠 Меню", "callback_data": "start:main_menu"}],
+                [{"text": "🚀 VPN", "callback_data": "connect:open::"}],
+                [{"text": "🏠 Меню", "callback_data": "start:main_menu::"}],
             ]
         return {"inline_keyboard": buttons}
 
@@ -122,10 +122,10 @@ class TelegramBotNotifyService:
     def _wallet_markup() -> dict[str, object]:
         return {
             "inline_keyboard": [
-                [{"text": "💳 Пополнить", "callback_data": "wallet:top_up"}],
+                [{"text": "💳 Пополнить", "callback_data": "wallet:top_up::"}],
                 [
-                    {"text": "📋 История", "callback_data": "payment:history"},
-                    {"text": "🏠 Меню", "callback_data": "start:main_menu"},
+                    {"text": "📋 История", "callback_data": "payment:history::"},
+                    {"text": "🏠 Меню", "callback_data": "start:main_menu::"},
                 ],
             ]
         }
