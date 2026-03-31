@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import cast
 
 from fastapi import Depends
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -80,6 +80,47 @@ class ProbeSignalRepository(BaseRepository[ProbeSignal]):
             self.model.is_active.is_(True),
             self.model.node_id == node_id,
             self.model.route_id.is_(None),
+        )
+        if source:
+            stmt = stmt.where(self.model.source == source)
+        stmt = stmt.order_by(self.model.checked_at.desc(), self.model.created_at.desc()).limit(limit)
+        res = await self.session.execute(stmt)
+        return list(res.scalars().all())
+
+    async def get_latest_for_backend_node(
+            self,
+            *,
+            node_id: UUID,
+            source: str | None = None,
+    ) -> ProbeSignal | None:
+        stmt = select(self.model).where(
+            self.model.is_active.is_(True),
+            self.model.node_id == node_id,
+            or_(
+                self.model.route_id.is_(None),
+                self.model.probe_kind == "synthetic_vpn",
+            ),
+        )
+        if source:
+            stmt = stmt.where(self.model.source == source)
+        stmt = stmt.order_by(self.model.checked_at.desc(), self.model.created_at.desc()).limit(1)
+        res = await self.session.execute(stmt)
+        return res.scalar_one_or_none()
+
+    async def list_recent_for_backend_node(
+            self,
+            *,
+            limit: int,
+            node_id: UUID,
+            source: str | None = None,
+    ) -> list[ProbeSignal]:
+        stmt = select(self.model).where(
+            self.model.is_active.is_(True),
+            self.model.node_id == node_id,
+            or_(
+                self.model.route_id.is_(None),
+                self.model.probe_kind == "synthetic_vpn",
+            ),
         )
         if source:
             stmt = stmt.where(self.model.source == source)

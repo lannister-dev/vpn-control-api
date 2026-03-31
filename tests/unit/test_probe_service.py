@@ -758,7 +758,7 @@ async def test_report_alert_not_sent_without_status_transition(async_session):
 
 
 @pytest.mark.asyncio
-async def test_report_requeues_synthetic_probe_placement_after_consecutive_failures(async_session):
+async def test_report_requeues_backend_inventory_after_consecutive_synthetic_failures(async_session):
     svc = _ingestion_service()
     svc.node_repository = AsyncMock()
     svc.probe_repository = AsyncMock()
@@ -802,9 +802,6 @@ async def test_report_requeues_synthetic_probe_placement_after_consecutive_failu
     placement.last_migration_reason = None
     placement.sticky_until = None
 
-    refreshed = MagicMock()
-    refreshed.id = placement.id
-
     svc.node_repository.get_by_id.return_value = node
     svc.route_repository.get_active_detailed_by_id.return_value = (route, node, transport_profile, None)
     svc.probe_repository.get_latest_for_route.side_effect = [None, created]
@@ -813,7 +810,8 @@ async def test_report_requeues_synthetic_probe_placement_after_consecutive_failu
     svc.route_repository.get_by_id.return_value = route
     svc.key_repository.list_by_client_ids.return_value = [key]
     svc.placement_repository.list_by_key_id.return_value = [placement]
-    svc.placement_repository.upsert_set_pending.return_value = refreshed
+    other_placement_id = uuid4()
+    svc.placement_repository.set_pending_for_backend.return_value = [placement.id, other_placement_id]
 
     await svc.report(
         ProbeReportIn(
@@ -827,14 +825,14 @@ async def test_report_requeues_synthetic_probe_placement_after_consecutive_failu
         )
     )
 
-    svc.placement_repository.upsert_set_pending.assert_awaited_once_with(
-        key_id=key.id,
-        backend_node_id=node.id,
-        desired_state="active",
-        sticky_until=None,
-        last_migration_reason="probe_synthetic_self_heal",
+    svc.placement_repository.set_pending_for_backend.assert_awaited_once()
+    kwargs = svc.placement_repository.set_pending_for_backend.await_args.kwargs
+    assert kwargs["backend_node_id"] == node.id
+    assert kwargs["last_migration_reason"] == "probe_synthetic_self_heal"
+    assert isinstance(kwargs["updated_at"], datetime)
+    svc.placement_transport.enqueue_for_placement_ids.assert_awaited_once_with(
+        [placement.id, other_placement_id]
     )
-    svc.placement_transport.enqueue_for_placement_ids.assert_awaited_once_with([placement.id])
 
 
 @pytest.mark.asyncio
@@ -903,7 +901,7 @@ async def test_report_skips_synthetic_requeue_during_self_heal_cooldown(async_se
         )
     )
 
-    svc.placement_repository.upsert_set_pending.assert_not_awaited()
+    svc.placement_repository.set_pending_for_backend.assert_not_awaited()
     svc.placement_transport.enqueue_for_placement_ids.assert_not_awaited()
 
 
@@ -928,7 +926,7 @@ async def test_drain_and_migrate_requires_recent_failure(async_session):
 
     source = _node(role="backend")
     svc.node_repository.get_by_id.return_value = source
-    svc.probe_repository.get_latest_for_node.return_value = None
+    svc.probe_repository.get_latest_for_backend_node.return_value = None
 
     with pytest.raises(HTTPException) as exc:
         await svc.drain_and_migrate_backend(
@@ -950,7 +948,7 @@ async def test_drain_and_migrate_rejects_healthy_latest(async_session):
     source = _node(role="backend")
     latest = _probe(is_reachable=True, checked_at=datetime.now(timezone.utc))
     svc.node_repository.get_by_id.return_value = source
-    svc.probe_repository.get_latest_for_node.return_value = latest
+    svc.probe_repository.get_latest_for_backend_node.return_value = latest
 
     with pytest.raises(HTTPException) as exc:
         await svc.drain_and_migrate_backend(
@@ -973,7 +971,7 @@ async def test_drain_and_migrate_rejects_stale_failure(async_session):
     stale = datetime.now(timezone.utc) - timedelta(seconds=3600)
     latest = _probe(is_reachable=False, checked_at=stale)
     svc.node_repository.get_by_id.return_value = source
-    svc.probe_repository.get_latest_for_node.return_value = latest
+    svc.probe_repository.get_latest_for_backend_node.return_value = latest
 
     with pytest.raises(HTTPException) as exc:
         await svc.drain_and_migrate_backend(
@@ -998,8 +996,8 @@ async def test_drain_and_migrate_rejects_insufficient_consecutive_failures(async
     older_fail = _probe(is_reachable=False, checked_at=datetime.now(timezone.utc) - timedelta(seconds=20))
     older_ok = _probe(is_reachable=True, checked_at=datetime.now(timezone.utc) - timedelta(seconds=40))
     svc.node_repository.get_by_id.return_value = source
-    svc.probe_repository.get_latest_for_node.return_value = latest
-    svc.probe_repository.list_recent_for_node.return_value = [latest, older_fail, older_ok]
+    svc.probe_repository.get_latest_for_backend_node.return_value = latest
+    svc.probe_repository.list_recent_for_backend_node.return_value = [latest, older_fail, older_ok]
 
     with pytest.raises(HTTPException) as exc:
         await svc.drain_and_migrate_backend(
@@ -1028,8 +1026,8 @@ async def test_drain_and_migrate_success(async_session):
     migration.migrated_count = 3
 
     svc.node_repository.get_by_id.return_value = source
-    svc.probe_repository.get_latest_for_node.return_value = latest
-    svc.probe_repository.list_recent_for_node.return_value = [latest]
+    svc.probe_repository.get_latest_for_backend_node.return_value = latest
+    svc.probe_repository.list_recent_for_backend_node.return_value = [latest]
     svc.placement_service.migrate_backend.return_value = migration
 
     out = await svc.drain_and_migrate_backend(
@@ -1073,7 +1071,7 @@ async def test_auto_drain_and_migrate_backends_dry_run(async_session):
             return ok_latest
         return None
 
-    svc.probe_repository.get_latest_for_node.side_effect = _latest_side_effect
+    svc.probe_repository.get_latest_for_backend_node.side_effect = _latest_side_effect
 
     out = await svc.auto_drain_and_migrate_backends(
         ProbeAutoDrainMigrateIn(
@@ -1102,7 +1100,7 @@ async def test_auto_drain_and_migrate_backends_executes(async_session):
     backend_fail = _node(role="backend")
     svc.node_repository.list.return_value = [backend_fail]
     fail_latest = _probe(is_reachable=False, checked_at=datetime.now(timezone.utc))
-    svc.probe_repository.get_latest_for_node.return_value = fail_latest
+    svc.probe_repository.get_latest_for_backend_node.return_value = fail_latest
 
     svc.drain_and_migrate_backend = AsyncMock(
         return_value=ProbeDrainMigrateOut(
@@ -1141,7 +1139,7 @@ async def test_auto_drain_reverts_is_draining_on_migration_failure(async_session
     svc.node_repository.list.return_value = [backend_fail]
     svc.node_repository.get_by_id.return_value = backend_fail
     fail_latest = _probe(is_reachable=False, checked_at=datetime.now(timezone.utc))
-    svc.probe_repository.get_latest_for_node.return_value = fail_latest
+    svc.probe_repository.get_latest_for_backend_node.return_value = fail_latest
     svc.placement_service.migrate_backend.side_effect = HTTPException(status_code=409, detail="No target backend available")
 
     out = await svc.auto_drain_and_migrate_backends(
