@@ -96,6 +96,7 @@ def _ingestion_service() -> ProbeIngestionService:
         probe_repository=AsyncMock(),
         route_repository=AsyncMock(),
         placement_repository=AsyncMock(),
+        placement_transport=AsyncMock(),
         key_repository=AsyncMock(),
         alert_service=AsyncMock(),
         target_port=443,
@@ -301,7 +302,7 @@ async def test_list_targets_includes_probe_client_id_when_special_key_is_synced(
 
 
 @pytest.mark.asyncio
-async def test_list_targets_omits_probe_client_id_when_special_key_not_synced(async_session):
+async def test_list_targets_keeps_probe_client_id_when_special_key_is_pending(async_session):
     svc = _ingestion_service()
     svc.route_repository = AsyncMock()
     svc.key_repository = AsyncMock()
@@ -328,7 +329,7 @@ async def test_list_targets_omits_probe_client_id_when_special_key_not_synced(as
     out = await svc.list_targets()
 
     assert len(out) == 1
-    assert out[0].probe_client_id is None
+    assert out[0].probe_client_id == "probe-reality-cid"
 
 
 @pytest.mark.asyncio
@@ -700,6 +701,156 @@ async def test_report_alert_not_sent_without_status_transition(async_session):
     )
 
     svc.alert_service.send_probe_status_change.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_report_requeues_synthetic_probe_placement_after_consecutive_failures(async_session):
+    svc = _ingestion_service()
+    svc.node_repository = AsyncMock()
+    svc.probe_repository = AsyncMock()
+    svc.route_repository = AsyncMock()
+    svc.key_repository = AsyncMock()
+    svc.placement_repository = AsyncMock()
+    svc.placement_transport = AsyncMock()
+    svc.alert_service = AsyncMock()
+    svc.synthetic_probe_client_ids = ProbeSyntheticClientIds(reality="probe-reality-cid")
+
+    node = _node()
+    transport_profile = _transport_profile()
+    route = _route(node_id=node.id, transport_profile_id=transport_profile.id)
+    created = _probe(
+        is_reachable=False,
+        checked_at=datetime.now(timezone.utc),
+        route_id=route.id,
+    )
+    created.node_id = node.id
+    created.transport_profile_id = transport_profile.id
+    created.transport_kind = "reality"
+    created.probe_kind = "synthetic_vpn"
+    created.target_host = node.reality_ip
+    created.target_port = 443
+    created.error_phase = "tunnel_http"
+    created.source = "ru-probe-1"
+    created.latency_ms = None
+    created.error = "tls eof"
+    created.details = {}
+    created.created_at = datetime.now(timezone.utc)
+
+    key = MagicMock()
+    key.id = uuid4()
+    key.client_id = "probe-reality-cid"
+    key.transport = "reality"
+
+    placement = MagicMock()
+    placement.id = uuid4()
+    placement.backend_node_id = node.id
+    placement.updated_at = datetime.now(timezone.utc) - timedelta(minutes=10)
+    placement.last_migration_reason = None
+    placement.sticky_until = None
+
+    refreshed = MagicMock()
+    refreshed.id = placement.id
+
+    svc.node_repository.get_by_id.return_value = node
+    svc.route_repository.get_active_detailed_by_id.return_value = (route, node, transport_profile, None)
+    svc.probe_repository.get_latest_for_route.side_effect = [None, created]
+    svc.probe_repository.create.return_value = created
+    svc.probe_repository.count_consecutive_route_failures = AsyncMock(return_value=3)
+    svc.route_repository.get_by_id.return_value = route
+    svc.key_repository.list_by_client_ids.return_value = [key]
+    svc.placement_repository.list_by_key_id.return_value = [placement]
+    svc.placement_repository.upsert_set_pending.return_value = refreshed
+
+    await svc.report(
+        ProbeReportIn(
+            node_id=node.id,
+            route_id=route.id,
+            source="ru-probe-1",
+            probe_kind="synthetic_vpn",
+            is_reachable=False,
+            error="tls eof",
+            error_phase="tunnel_http",
+        )
+    )
+
+    svc.placement_repository.upsert_set_pending.assert_awaited_once_with(
+        key_id=key.id,
+        backend_node_id=node.id,
+        desired_state="active",
+        sticky_until=None,
+        last_migration_reason="probe_synthetic_self_heal",
+    )
+    svc.placement_transport.enqueue_for_placement_ids.assert_awaited_once_with([placement.id])
+
+
+@pytest.mark.asyncio
+async def test_report_skips_synthetic_requeue_during_self_heal_cooldown(async_session):
+    svc = _ingestion_service()
+    svc.node_repository = AsyncMock()
+    svc.probe_repository = AsyncMock()
+    svc.route_repository = AsyncMock()
+    svc.key_repository = AsyncMock()
+    svc.placement_repository = AsyncMock()
+    svc.placement_transport = AsyncMock()
+    svc.alert_service = AsyncMock()
+    svc.synthetic_probe_client_ids = ProbeSyntheticClientIds(reality="probe-reality-cid")
+
+    node = _node()
+    transport_profile = _transport_profile()
+    route = _route(node_id=node.id, transport_profile_id=transport_profile.id)
+    created = _probe(
+        is_reachable=False,
+        checked_at=datetime.now(timezone.utc),
+        route_id=route.id,
+    )
+    created.node_id = node.id
+    created.transport_profile_id = transport_profile.id
+    created.transport_kind = "reality"
+    created.probe_kind = "synthetic_vpn"
+    created.target_host = node.reality_ip
+    created.target_port = 443
+    created.error_phase = "tunnel_http"
+    created.source = "ru-probe-1"
+    created.latency_ms = None
+    created.error = "tls eof"
+    created.details = {}
+    created.created_at = datetime.now(timezone.utc)
+
+    key = MagicMock()
+    key.id = uuid4()
+    key.client_id = "probe-reality-cid"
+    key.transport = "reality"
+
+    placement = MagicMock()
+    placement.id = uuid4()
+    placement.backend_node_id = node.id
+    placement.updated_at = datetime.now(timezone.utc)
+    placement.last_migration_reason = "probe_synthetic_self_heal"
+    placement.sticky_until = None
+
+    svc.node_repository.get_by_id.return_value = node
+    svc.route_repository.get_active_detailed_by_id.return_value = (route, node, transport_profile, None)
+    svc.probe_repository.get_latest_for_route.side_effect = [None, created]
+    svc.probe_repository.create.return_value = created
+    svc.probe_repository.count_consecutive_route_failures = AsyncMock(return_value=3)
+    svc.route_repository.get_by_id.return_value = route
+    svc.key_repository.list_by_client_ids.return_value = [key]
+    svc.placement_repository.list_by_key_id.return_value = [placement]
+
+    await svc.report(
+        ProbeReportIn(
+            node_id=node.id,
+            route_id=route.id,
+            source="ru-probe-1",
+            probe_kind="synthetic_vpn",
+            is_reachable=False,
+            error="tls eof",
+            error_phase="tunnel_http",
+        )
+    )
+
+    svc.placement_repository.upsert_set_pending.assert_not_awaited()
+    svc.placement_transport.enqueue_for_placement_ids.assert_not_awaited()
 
 
 @pytest.mark.asyncio

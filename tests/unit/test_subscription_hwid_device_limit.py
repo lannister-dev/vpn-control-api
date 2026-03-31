@@ -51,6 +51,9 @@ def _sub(*, hwid_enabled=True, max_devices=None):
     s.updated_at = datetime(2024, 1, 1, tzinfo=timezone.utc)
     s.hwid_enabled = hwid_enabled
     s.max_devices = max_devices
+    s.plan_id = None
+    s.plan = None
+    s.paid_device_slots = 0
     return s
 
 

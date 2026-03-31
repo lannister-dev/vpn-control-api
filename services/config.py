@@ -65,6 +65,11 @@ class AdminConfig:
 
 
 @dataclass
+class BotApiConfig:
+    api_key_hash: str
+
+
+@dataclass
 class ProfilesVpnConfig:
     allow_empty_registry_on_startup: bool = False
 
@@ -113,6 +118,13 @@ class AlertsConfig:
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
     telegram_timeout_sec: int = 5
+
+
+@dataclass
+class BotNotificationsConfig:
+    enabled: bool = False
+    bot_token: str = ""
+    timeout_sec: int = 5
 
 
 @dataclass
@@ -188,6 +200,26 @@ class TransportConfig:
 
 
 @dataclass
+class BillingConfig:
+    crypto_api_url: str = "https://api.cryptocloud.plus/v2"
+    crypto_api_key: str = ""
+    crypto_shop_id: str = ""
+    crypto_webhook_secret: str = ""
+    stars_bot_token: str = ""
+    platega_api_url: str = ""
+    platega_shop_id: str = ""
+    platega_api_key: str = ""
+    platega_webhook_secret: str = ""
+    order_ttl_minutes: int = 30
+
+
+@dataclass
+class MigrationConfig:
+    enabled: bool = False
+    gift_plan_name: str = ""
+
+
+@dataclass
 class AdminAuthConfig:
     enabled: bool = False
     session_secret: str = ""
@@ -210,11 +242,13 @@ class Settings:
     redis: RedisConfig
     nats: NatsConfig
     admin: AdminConfig
+    bot_api: BotApiConfig
     docs: DocsConfig
     profiles_vpn: ProfilesVpnConfig
     subscriptions: SubscriptionsConfig
     node_agent: NodeAgentConfig
     alerts: AlertsConfig
+    bot_notifications: BotNotificationsConfig
     probe: ProbeConfig
     routes: RoutesConfig
     edge: EdgeConfig
@@ -222,6 +256,8 @@ class Settings:
     transport: TransportConfig
     admin_auth: AdminAuthConfig
     vpn_key: VpnKeyConfig
+    billing: BillingConfig
+    migration: MigrationConfig
 
 
 @lru_cache
@@ -277,6 +313,8 @@ def get_settings() -> Settings:
         bootstrap_token_hash=env.str("BOOTSTRAP_TOKEN_HASH"),
         probe_token_hash= env.str("PROBE_TOKEN_HASH"),
     )
+
+    bot_api = BotApiConfig(api_key_hash=env.str("BOT_API_KEY_HASH", default=""))
 
     docs = DocsConfig(
         username=env.str("DOCS_USERNAME", default="admin"),
@@ -337,6 +375,15 @@ def get_settings() -> Settings:
         telegram_bot_token=env.str("ALERTS_TELEGRAM_BOT_TOKEN", default="").strip(),
         telegram_chat_id=env.str("ALERTS_TELEGRAM_CHAT_ID", default="").strip(),
         telegram_timeout_sec=env.int("ALERTS_TELEGRAM_TIMEOUT_SEC", default=5),
+    )
+
+    bot_notifications_token = env.str("BOT_NOTIFICATIONS_TOKEN", default="").strip()
+    if not bot_notifications_token:
+        bot_notifications_token = env.str("BILLING_STARS_BOT_TOKEN", default="").strip()
+    bot_notifications = BotNotificationsConfig(
+        enabled=env.bool("BOT_NOTIFICATIONS_ENABLED", default=bool(bot_notifications_token)),
+        bot_token=bot_notifications_token,
+        timeout_sec=env.int("BOT_NOTIFICATIONS_TIMEOUT_SEC", default=5),
     )
 
     probe = ProbeConfig(
@@ -409,6 +456,24 @@ def get_settings() -> Settings:
         expiration_batch_size=max(1, env.int("VPN_KEY_EXPIRATION_BATCH_SIZE", default=500)),
     )
 
+    billing = BillingConfig(
+        crypto_api_url=env.str("BILLING_CRYPTO_API_URL", default="https://api.cryptocloud.plus/v2"),
+        crypto_api_key=env.str("BILLING_CRYPTO_API_KEY", default=""),
+        crypto_shop_id=env.str("BILLING_CRYPTO_SHOP_ID", default=""),
+        crypto_webhook_secret=env.str("BILLING_CRYPTO_WEBHOOK_SECRET", default=""),
+        stars_bot_token=env.str("BILLING_STARS_BOT_TOKEN", default=""),
+        platega_api_url=env.str("BILLING_PLATEGA_API_URL", default=""),
+        platega_shop_id=env.str("BILLING_PLATEGA_SHOP_ID", default=""),
+        platega_api_key=env.str("BILLING_PLATEGA_API_KEY", default=""),
+        platega_webhook_secret=env.str("BILLING_PLATEGA_WEBHOOK_SECRET", default=""),
+        order_ttl_minutes=max(1, env.int("BILLING_ORDER_TTL_MINUTES", default=30)),
+    )
+
+    migration = MigrationConfig(
+        enabled=env.bool("MIGRATION_ENABLED", default=False),
+        gift_plan_name=env.str("MIGRATION_GIFT_PLAN_NAME", default="").strip(),
+    )
+
     _tg_allowed_raw = env.str("ADMIN_TELEGRAM_ALLOWED_IDS", default="")
     _tg_allowed = tuple(
         int(x.strip()) for x in _tg_allowed_raw.split(",") if x.strip().isdigit()
@@ -434,11 +499,13 @@ def get_settings() -> Settings:
         redis=redis,
         nats=nats,
         admin=admin,
+        bot_api=bot_api,
         docs=docs,
         profiles_vpn=profiles_vpn,
         subscriptions=subscriptions,
         node_agent=node_agent,
         alerts=alerts,
+        bot_notifications=bot_notifications,
         probe=probe,
         routes=routes,
         edge=edge,
@@ -446,4 +513,6 @@ def get_settings() -> Settings:
         transport=transport,
         admin_auth=admin_auth,
         vpn_key=vpn_key,
+        billing=billing,
+        migration=migration,
     )

@@ -26,6 +26,7 @@ class SubscriptionInternalCreate(BaseModel):
     preferred_region: str | None = Field(default=None, max_length=16)
     hwid_enabled: bool = True
     max_devices: int | None = Field(default=None, gt=0, le=100)
+    paid_device_slots: int = 0
 
 
 class SubscriptionInternalUpdate(BaseModel):
@@ -36,6 +37,7 @@ class SubscriptionInternalUpdate(BaseModel):
     preferred_region: str | None = Field(default=None, max_length=16)
     hwid_enabled: bool | None = None
     max_devices: int | None = Field(default=None, gt=0, le=100)
+    paid_device_slots: int | None = None
     updated_at: datetime | None = None
 
 
@@ -59,6 +61,7 @@ class SubscriptionOut(BaseModel):
     preferred_region: str | None
     hwid_enabled: bool
     max_devices: int | None
+    paid_device_slots: int = 0
     used_traffic_bytes: int = 0
     lifetime_used_traffic_bytes: int = 0
     last_traffic_reset_at: datetime | None = None

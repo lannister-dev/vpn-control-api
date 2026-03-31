@@ -120,3 +120,22 @@ PROFILE_REGISTRY_RELOAD_TOTAL = Counter(
     "Profile registry reload attempts",
     ["result"],
 )
+
+# ── Billing ───────────────────────────────────────────────────
+BILLING_ORDER_TOTAL = Counter(
+    "billing_order_total",
+    "Billing order lifecycle events",
+    ["provider", "status"],
+)
+
+BILLING_PAYMENT_AMOUNT_RUB_TOTAL = Counter(
+    "billing_payment_amount_rub_total",
+    "Total payment amount received in RUB",
+    ["provider"],
+)
+
+BILLING_BALANCE_OPERATION_TOTAL = Counter(
+    "billing_balance_operation_total",
+    "Balance operations by type",
+    ["type"],
+)

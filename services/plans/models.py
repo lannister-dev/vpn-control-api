@@ -1,4 +1,6 @@
-from sqlalchemy import BigInteger, Boolean, String, Integer, text
+from decimal import Decimal
+
+from sqlalchemy import BigInteger, Boolean, Numeric, String, Integer, text
 from sqlalchemy.orm import mapped_column, Mapped
 
 from shared.database.base_model import Base
@@ -26,4 +28,19 @@ class Plan(Base):
     )
     whitelist_enabled: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false"), nullable=False
+    )
+    included_devices: Mapped[int] = mapped_column(
+        Integer, default=1, server_default=text("1"), nullable=False
+    )
+    price_rub: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2), default=0, server_default=text("0"), nullable=False
+    )
+    device_price_rub: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2), default=0, server_default=text("0"), nullable=False
+    )
+    price_stars: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None,
+    )
+    device_price_stars: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None,
     )

@@ -83,6 +83,16 @@ class SubscriptionRepository(BaseRepository[Subscription]):
         sub.is_active = False
         await self.session.flush()
 
+    async def find_active_subscription(self, user_id: UUID, plan_id: UUID):
+        result = await self.session.execute(
+            select(self.model).where(
+                self.model.user_id == user_id,
+                self.model.plan_id == plan_id,
+                self.model.is_active.is_(True),
+            )
+        )
+        return result.scalar_one_or_none()
+
 
 class SubscriptionDeviceRepository(BaseRepository[SubscriptionDevice]):
     def __init__(self, session: AsyncSession):
@@ -221,3 +231,4 @@ class SubscriptionDeviceKeyRepository(BaseRepository[SubscriptionDeviceKey]):
         )
         res = await self.session.execute(stmt)
         return list(res.scalars().all())
+
