@@ -372,14 +372,14 @@ def get_settings() -> Settings:
 
     alerts = AlertsConfig(
         telegram_enabled=env.bool("ALERTS_TELEGRAM_ENABLED", default=False),
-        telegram_bot_token=env.str("ALERTS_TELEGRAM_BOT_TOKEN", default="").strip(),
-        telegram_chat_id=env.str("ALERTS_TELEGRAM_CHAT_ID", default="").strip(),
+        telegram_bot_token=env.str("ALERTS_TELEGRAM_BOT_TOKEN", default=""),
+        telegram_chat_id=env.str("ALERTS_TELEGRAM_CHAT_ID", default=""),
         telegram_timeout_sec=env.int("ALERTS_TELEGRAM_TIMEOUT_SEC", default=5),
     )
 
-    bot_notifications_token = env.str("BOT_NOTIFICATIONS_TOKEN", default="").strip()
+    bot_notifications_token = env.str("BOT_NOTIFICATIONS_TOKEN", default="")
     if not bot_notifications_token:
-        bot_notifications_token = env.str("BILLING_STARS_BOT_TOKEN", default="").strip()
+        bot_notifications_token = env.str("BILLING_STARS_BOT_TOKEN", default="")
     bot_notifications = BotNotificationsConfig(
         enabled=env.bool("BOT_NOTIFICATIONS_ENABLED", default=bool(bot_notifications_token)),
         bot_token=bot_notifications_token,

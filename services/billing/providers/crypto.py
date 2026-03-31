@@ -90,14 +90,16 @@ class CryptoProvider(BaseApiClient, PaymentProvider):
         except jwt.InvalidTokenError as exc:
             raise WebhookVerificationFailed(f"Invalid postback token: {exc}")
 
+        invoice_info = body.get("invoice_info") or {}
+        invoice_uuid = invoice_info.get("uuid") or body.get("uuid") or body.get("invoice_uuid")
         invoice_id = body.get("invoice_id")
-        if not invoice_id:
+        if not invoice_uuid and not invoice_id:
             raise WebhookVerificationFailed("Missing invoice_id in postback")
 
         external_id = (
-            str(invoice_id)
-            if str(invoice_id).startswith("INV-")
-            else f"INV-{invoice_id}"
+            str(invoice_uuid)
+            if invoice_uuid
+            else (str(invoice_id) if str(invoice_id).startswith("INV-") else f"INV-{invoice_id}")
         )
 
         return WebhookResult(

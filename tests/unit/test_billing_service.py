@@ -214,7 +214,7 @@ class TestProcessWebhook:
             amount_rub=Decimal("299.00"),
         )
 
-        service.order_repo.lock_by_external_id.return_value = order
+        service.order_repo.get_by_external_id.return_value = order
         service.order_repo.update_by_id.return_value = order
         service.plan_repo.get_by_id.return_value = plan
 
@@ -246,7 +246,7 @@ class TestProcessWebhook:
 
     async def test_webhook_idempotency_skip(self, service):
         order = _make_order(status="completed")
-        service.order_repo.lock_by_external_id.return_value = order
+        service.order_repo.get_by_external_id.return_value = order
 
         mock_provider = AsyncMock()
         mock_provider.verify_webhook.return_value = SimpleNamespace(
@@ -264,7 +264,7 @@ class TestProcessWebhook:
 
     async def test_webhook_expired_order(self, service):
         order = _make_order(status="expired")
-        service.order_repo.lock_by_external_id.return_value = order
+        service.order_repo.get_by_external_id.return_value = order
 
         mock_provider = AsyncMock()
         mock_provider.verify_webhook.return_value = SimpleNamespace(
@@ -279,7 +279,7 @@ class TestProcessWebhook:
                 await service.process_webhook("crypto", request)
 
     async def test_webhook_order_not_found(self, service):
-        service.order_repo.lock_by_external_id.return_value = None
+        service.order_repo.get_by_external_id.return_value = None
 
         mock_provider = AsyncMock()
         mock_provider.verify_webhook.return_value = SimpleNamespace(
