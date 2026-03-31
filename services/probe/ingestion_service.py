@@ -337,6 +337,7 @@ class ProbeIngestionService:
 
     async def _degrade_route_after_probe(self, *, route, checked_at: datetime) -> None:
         status = str(route.health_status)
+
         if status == RouteHealthStatus.blocked.value:
             return
 
