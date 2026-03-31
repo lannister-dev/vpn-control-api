@@ -541,7 +541,7 @@ class BillingService:
         except Exception as exc:
             raise WebhookVerificationFailed(f"Verification error: {exc}") from exc
 
-        order = await self.order_repo.get_by_external_id(webhook.external_id)
+        order = await self.order_repo.lock_by_external_id(webhook.external_id)
         if not order:
             log.warning("webhook_order_not_found", external_id=webhook.external_id)
             raise OrderNotFound(f"Order not found for external_id={webhook.external_id}")
@@ -557,7 +557,7 @@ class BillingService:
         telegram_payment_charge_id: str,
         total_amount: int,
     ) -> None:
-        order = await self.order_repo.get_by_id(order_id)
+        order = await self.order_repo.lock_by_id(order_id)
         if not order:
             raise OrderNotFound(f"Order {order_id} not found")
         if order.provider != "stars":
