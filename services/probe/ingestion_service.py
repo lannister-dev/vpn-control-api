@@ -11,6 +11,7 @@ from services.alerts.service import AlertService, get_alert_service
 from services.config import get_settings
 from services.nodes.repository import VpnNodeRepository
 from services.placements.repository import UserPlacementRepository
+from services.placements.transport import NodeAgentPlacementTransport
 from services.routes.repository import RouteRepository
 from services.routes.schemas import RouteHealthStatus, RouteStateResolution, RouteStateUpdate
 from services.routes.state_machine import resolve_probe_block, resolve_probe_recover
@@ -34,6 +35,9 @@ logger_probe = StructuredLogger(logging.getLogger("probe-ingestion-service"))
 
 
 class ProbeIngestionService:
+    _SYNTHETIC_REPAIR_REASON = "probe_synthetic_self_heal"
+    _SYNTHETIC_REPAIR_COOLDOWN_SEC = 300
+
     def __init__(
             self,
             *,
@@ -41,6 +45,7 @@ class ProbeIngestionService:
             probe_repository: ProbeSignalRepository,
             route_repository: RouteRepository,
             placement_repository: UserPlacementRepository,
+            placement_transport: NodeAgentPlacementTransport,
             key_repository: VpnKeyRepository,
             alert_service: AlertService,
             target_port: int,
@@ -57,6 +62,7 @@ class ProbeIngestionService:
         self.probe_repository = probe_repository
         self.route_repository = route_repository
         self.placement_repository = placement_repository
+        self.placement_transport = placement_transport
         self.key_repository = key_repository
         self.alert_service = alert_service
         self.target_port = target_port
@@ -129,6 +135,10 @@ class ProbeIngestionService:
                 source=payload.source,
                 previous=previous,
                 current=row,
+            )
+            await self._maybe_trigger_synthetic_self_heal(
+                node=node,
+                signal=row,
             )
             await self._apply_route_health_policy(
                 node=node,
@@ -265,6 +275,65 @@ class ProbeIngestionService:
             await self._recover_route_after_probe(route=route, checked_at=checked_at)
             return
         await self._degrade_route_after_probe(route=route, checked_at=checked_at)
+
+    async def _maybe_trigger_synthetic_self_heal(self, *, node, signal) -> None:
+        if signal.is_reachable or signal.route_id is None or signal.probe_kind != "synthetic_vpn":
+            return
+
+        transport_kind = signal.transport_kind
+        configured_by_transport = self.synthetic_probe_client_ids.configured_transports()
+        if transport_kind not in configured_by_transport:
+            return
+
+        consecutive = await self.probe_repository.count_consecutive_route_failures(
+            route_id=signal.route_id,
+            limit=self.route_block_after_failures + 2,
+        )
+        if consecutive < self.route_suspected_after_failures:
+            return
+
+        client_id = configured_by_transport[transport_kind]
+        keys = await self.key_repository.list_by_client_ids(
+            client_ids=[client_id],
+            active_only=True,
+        )
+        key = next((item for item in keys if item.client_id == client_id), None)
+        if key is None:
+            return
+
+        placements = await self.placement_repository.list_by_key_id(
+            key_id=key.id,
+            active_only=True,
+            desired_state="active",
+        )
+        placement = next((item for item in placements if item.backend_node_id == node.id), None)
+        if placement is None:
+            return
+
+        updated_at = self._to_utc_or_none(getattr(placement, "updated_at", None))
+        if (
+            getattr(placement, "last_migration_reason", None) == self._SYNTHETIC_REPAIR_REASON
+            and updated_at is not None
+            and (datetime.now(timezone.utc) - updated_at).total_seconds() < self._SYNTHETIC_REPAIR_COOLDOWN_SEC
+        ):
+            return
+
+        refreshed = await self.placement_repository.upsert_set_pending(
+            key_id=key.id,
+            backend_node_id=node.id,
+            desired_state="active",
+            sticky_until=getattr(placement, "sticky_until", None),
+            last_migration_reason=self._SYNTHETIC_REPAIR_REASON,
+        )
+        await self.placement_transport.enqueue_for_placement_ids([refreshed.id])
+        logger_probe.warning(
+            "probe_synthetic_self_heal_requeued",
+            node_id=str(node.id),
+            route_id=str(signal.route_id),
+            transport_kind=transport_kind,
+            placement_id=str(refreshed.id),
+            failures=consecutive,
+        )
 
     async def _degrade_route_after_probe(self, *, route, checked_at: datetime) -> None:
         status = str(route.health_status)
@@ -536,10 +605,16 @@ class ProbeIngestionService:
             for placement in placements:
                 if placement.backend_node_id not in expected_backend_ids:
                     continue
-                if not self._is_placement_synced(placement):
-                    continue
                 resolved[(placement.backend_node_id, transport_kind)] = client_id
         return resolved
+
+    @staticmethod
+    def _to_utc_or_none(value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
 
     @staticmethod
     def _transport_kind_for_profile(transport_profile) -> str | None:
@@ -550,15 +625,6 @@ class ProbeIngestionService:
         if security == "tls" and network == "ws":
             return "ws"
         return None
-
-    @staticmethod
-    def _is_placement_synced(placement) -> bool:
-        if not isinstance(placement.op_version, int):
-            return False
-        applied_version = placement.applied_version
-        if not isinstance(applied_version, int):
-            applied_version = placement.op_version
-        return placement.applied_state == "applied" and applied_version == placement.op_version
 
     @staticmethod
     def _matches_target_role(*, node, role: ProbeTargetRole) -> bool:
@@ -577,6 +643,7 @@ def get_probe_ingestion_service(
         probe_repository=ProbeSignalRepository(session),
         route_repository=RouteRepository(session),
         placement_repository=UserPlacementRepository(session),
+        placement_transport=NodeAgentPlacementTransport(session),
         key_repository=VpnKeyRepository(session),
         alert_service=alert_service,
         target_port=probe_settings.target_port,
