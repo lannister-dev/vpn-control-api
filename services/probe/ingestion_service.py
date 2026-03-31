@@ -318,20 +318,20 @@ class ProbeIngestionService:
         ):
             return
 
-        refreshed = await self.placement_repository.upsert_set_pending(
-            key_id=key.id,
+        placement_ids = await self.placement_repository.set_pending_for_backend(
             backend_node_id=node.id,
-            desired_state="active",
-            sticky_until=getattr(placement, "sticky_until", None),
             last_migration_reason=self._SYNTHETIC_REPAIR_REASON,
+            updated_at=datetime.now(timezone.utc),
         )
-        await self.placement_transport.enqueue_for_placement_ids([refreshed.id])
+        if not placement_ids:
+            return
+        await self.placement_transport.enqueue_for_placement_ids(placement_ids)
         logger_probe.warning(
-            "probe_synthetic_self_heal_requeued",
+            "probe_synthetic_self_heal_backend_requeued",
             node_id=str(node.id),
             route_id=str(signal.route_id),
             transport_kind=transport_kind,
-            placement_id=str(refreshed.id),
+            placements=len(placement_ids),
             failures=consecutive,
         )
 

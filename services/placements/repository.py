@@ -207,6 +207,29 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
             return 0
         return int(rowcount)
 
+    async def set_pending_for_backend(
+        self,
+        *,
+        backend_node_id: UUID,
+        last_migration_reason: str | None,
+        updated_at: datetime,
+    ) -> list[UUID]:
+        result = await self.session.execute(
+            sa_update(self.model)
+            .where(
+                self.model.backend_node_id == backend_node_id,
+                self.model.is_active.is_(True),
+            )
+            .values(
+                applied_state="pending",
+                op_version=self.model.op_version + 1,
+                last_migration_reason=last_migration_reason,
+                updated_at=updated_at,
+            )
+            .returning(self.model.id)
+        )
+        return list(result.scalars().all())
+
     async def apply_backend_report(
         self,
         *,
