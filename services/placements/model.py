@@ -10,7 +10,7 @@ from shared.database.base_model import Base
 class UserPlacement(Base):
     __tablename__ = "user_placement"
 
-    key_id: Mapped[UUID] = mapped_column(ForeignKey("vpn_key.id"), nullable=False)
+    key_id: Mapped[UUID] = mapped_column(ForeignKey("vpn_key.id", ondelete="CASCADE"), nullable=False)
     backend_node_id: Mapped[UUID] = mapped_column(ForeignKey("vpn_node.id"), nullable=False)
 
     desired_state: Mapped[str] = mapped_column(

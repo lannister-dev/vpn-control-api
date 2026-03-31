@@ -11,7 +11,7 @@ from shared.database.base_model import Base
 class VpnKey(Base):
     __tablename__ = "vpn_key"
 
-    user_id: Mapped[UUID] = mapped_column(ForeignKey("user.id"))
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"))
     protocol: Mapped[str] = mapped_column(String(length=16))  # vless
     transport: Mapped[str] = mapped_column(String(length=16))  # ws / xhttp / reality
     client_id: Mapped[str] = mapped_column(String(length=36), unique=True, nullable=False)
@@ -45,7 +45,7 @@ class VpnKey(Base):
 class KeyAssignment(Base):
     __tablename__ = "key_assignment"
 
-    key_id: Mapped[UUID] = mapped_column(ForeignKey("vpn_key.id"))
+    key_id: Mapped[UUID] = mapped_column(ForeignKey("vpn_key.id", ondelete="CASCADE"))
     node_id: Mapped[UUID] = mapped_column(ForeignKey("vpn_node.id"))
     desired_state: Mapped[str] = mapped_column(String(length=16))
     applied_state: Mapped[str] = mapped_column(
