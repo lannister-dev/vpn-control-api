@@ -84,7 +84,7 @@ class SubscriptionsConfig:
     response_max_payload_bytes: int = 32768
     public_base_url: str = ""
     happ_profile_title: str = "VPN"
-    happ_profile_update_interval_hours: int = 24
+    happ_profile_update_interval_hours: int = 1
     happ_support_url: str = ""
     happ_profile_web_page_url: str = ""
     happ_provider_id: str = ""
@@ -336,7 +336,7 @@ def get_settings() -> Settings:
         response_max_payload_bytes=env.int("SUBSCRIPTIONS_RESPONSE_MAX_PAYLOAD_BYTES", default=32768),
         public_base_url=env.str("SUBSCRIPTIONS_PUBLIC_BASE_URL", default=""),
         happ_profile_title=env.str("SUBSCRIPTIONS_HAPP_PROFILE_TITLE", default="VPN"),
-        happ_profile_update_interval_hours=env.int("SUBSCRIPTIONS_HAPP_PROFILE_UPDATE_INTERVAL_HOURS", default=24),
+        happ_profile_update_interval_hours=env.int("SUBSCRIPTIONS_HAPP_PROFILE_UPDATE_INTERVAL_HOURS", default=1),
         happ_support_url=env.str("SUBSCRIPTIONS_HAPP_SUPPORT_URL", default=""),
         happ_profile_web_page_url=env.str("SUBSCRIPTIONS_HAPP_PROFILE_WEB_PAGE_URL", default=""),
         happ_provider_id=env.str("SUBSCRIPTIONS_HAPP_PROVIDER_ID", default=""),
