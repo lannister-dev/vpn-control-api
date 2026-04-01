@@ -92,6 +92,8 @@ class SubscriptionsConfig:
     happ_hide_settings: bool = False
     happ_always_hwid_enable: bool = False
     happ_color_profile: str = DEFAULT_HAPP_COLOR_PROFILE
+    happ_crypto_api_url: str = ""
+    happ_crypto_timeout_sec: float = 5.0
 
 
 @dataclass
@@ -342,6 +344,8 @@ def get_settings() -> Settings:
         happ_hide_settings=env.bool("SUBSCRIPTIONS_HAPP_HIDE_SETTINGS", default=False),
         happ_always_hwid_enable=env.bool("SUBSCRIPTIONS_HAPP_ALWAYS_HWID_ENABLE", default=False),
         happ_color_profile=env.str("SUBSCRIPTIONS_HAPP_COLOR_PROFILE", default="").strip() or DEFAULT_HAPP_COLOR_PROFILE,
+        happ_crypto_api_url=env.str("SUBSCRIPTIONS_HAPP_CRYPTO_API_URL"),
+        happ_crypto_timeout_sec=env.float("SUBSCRIPTIONS_HAPP_CRYPTO_TIMEOUT_SEC", default=5.0),
     )
 
     node_agent = NodeAgentConfig(

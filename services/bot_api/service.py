@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Iterable
 from uuid import UUID
 
+import httpx
 from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -50,6 +52,8 @@ from .schemas import (
     BotSubscriptionSummaryOut,
 )
 from ..billing.exceptions import InsufficientBalance, ProviderError
+
+log = logging.getLogger(__name__)
 
 
 class BotApiService:
@@ -440,8 +444,11 @@ class BotApiService:
             raise HTTPException(status_code=409, detail="Subscription is not active")
 
         rotated = await self.subscription_service.rotate_token(subscription.id)
+        subscription_url = await self._encrypt_subscription_url_for_happ(
+            rotated.subscription_url,
+        )
         session = await self._build_session(user=user)
-        return BotSubscriptionLinkOut(subscription_url=rotated.subscription_url, session=session)
+        return BotSubscriptionLinkOut(subscription_url=subscription_url, session=session)
 
     async def _ensure_user(self, payload: BotSessionSyncIn) -> tuple[UserOut, bool]:
         existing = await self.user_repository.get_by_telegram_id(payload.telegram_id)
@@ -709,6 +716,60 @@ class BotApiService:
             if normalized:
                 return normalized[:80]
         return f"Устройство {index}"
+
+    async def _encrypt_subscription_url_for_happ(self, subscription_url: str) -> str:
+        api_url = self.settings.subscriptions.happ_crypto_api_url.strip()
+        if not api_url or not subscription_url:
+            return subscription_url
+
+        timeout = max(1.0, float(self.settings.subscriptions.happ_crypto_timeout_sec))
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.post(
+                    api_url,
+                    json={"url": subscription_url},
+                    headers={"Content-Type": "application/json"},
+                )
+                response.raise_for_status()
+            return self._parse_happ_crypto_response(response)
+        except Exception:
+            log.exception("happ_link_encryption_failed")
+            return subscription_url
+
+    @classmethod
+    def _parse_happ_crypto_response(cls, response: httpx.Response) -> str:
+        text = response.text.strip()
+        if not text:
+            raise ValueError("Happ crypto API returned empty body")
+
+        value = text
+        content_type = response.headers.get("content-type", "").lower()
+        if "application/json" in content_type or text[:1] in {"{", "["}:
+            try:
+                value = cls._extract_happ_crypto_url(response.json())
+            except Exception:
+                value = text
+
+        value = value.strip()
+        if not value.startswith("happ://crypt5/"):
+            raise ValueError(f"Unexpected Happ crypto payload: {value[:64]}")
+        return value
+
+    @classmethod
+    def _extract_happ_crypto_url(cls, payload) -> str:
+        if isinstance(payload, str):
+            return payload
+        if isinstance(payload, dict):
+            for key in ("url", "encrypted_url", "encryptedUrl", "result", "data", "link"):
+                value = payload.get(key)
+                if value:
+                    return cls._extract_happ_crypto_url(value)
+        if isinstance(payload, list):
+            for item in payload:
+                value = cls._extract_happ_crypto_url(item)
+                if value:
+                    return value
+        raise ValueError("Unable to extract Happ crypto URL")
 
 
 def get_bot_api_service(
