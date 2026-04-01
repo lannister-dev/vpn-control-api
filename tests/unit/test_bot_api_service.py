@@ -107,6 +107,18 @@ def test_parse_happ_crypto_response_accepts_json_payload():
     assert out == "happ://crypt5/json-value"
 
 
+def test_parse_happ_crypto_response_accepts_encrypted_link_payload():
+    response = httpx.Response(
+        200,
+        json={"encrypted_link": "happ://crypt5/encrypted-link-value"},
+        headers={"content-type": "application/json"},
+    )
+
+    out = BotApiService._parse_happ_crypto_response(response)
+
+    assert out == "happ://crypt5/encrypted-link-value"
+
+
 @pytest.mark.asyncio
 async def test_encrypt_subscription_url_for_happ_falls_back_on_error(service):
     service.settings.subscriptions.happ_crypto_api_url = "https://crypto.happ.su/api-v2.php"

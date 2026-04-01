@@ -760,7 +760,16 @@ class BotApiService:
         if isinstance(payload, str):
             return payload
         if isinstance(payload, dict):
-            for key in ("url", "encrypted_url", "encryptedUrl", "result", "data", "link"):
+            for key in (
+                "url",
+                "encrypted_link",
+                "encryptedLink",
+                "encrypted_url",
+                "encryptedUrl",
+                "result",
+                "data",
+                "link",
+            ):
                 value = payload.get(key)
                 if value:
                     return cls._extract_happ_crypto_url(value)
