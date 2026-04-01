@@ -11,7 +11,7 @@ from shared.database.base_model import Base
 class TrafficUsage(Base):
     __tablename__ = "traffic_usage"
 
-    key_id: Mapped[UUID] = mapped_column(ForeignKey("vpn_key.id"), nullable=False)
+    key_id: Mapped[UUID] = mapped_column(ForeignKey("vpn_key.id", ondelete="CASCADE"), nullable=False)
     delta_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
     reported_total_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
 

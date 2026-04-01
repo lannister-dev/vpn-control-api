@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import datetime, timedelta, timezone
@@ -541,7 +542,7 @@ class BillingService:
         except Exception as exc:
             raise WebhookVerificationFailed(f"Verification error: {exc}") from exc
 
-        order = await self.order_repo.lock_by_external_id(webhook.external_id)
+        order = await self.order_repo.get_by_external_id(webhook.external_id)
         if not order:
             log.warning("webhook_order_not_found", external_id=webhook.external_id)
             raise OrderNotFound(f"Order not found for external_id={webhook.external_id}")
@@ -557,7 +558,7 @@ class BillingService:
         telegram_payment_charge_id: str,
         total_amount: int,
     ) -> None:
-        order = await self.order_repo.lock_by_id(order_id)
+        order = await self.order_repo.get_by_id(order_id)
         if not order:
             raise OrderNotFound(f"Order {order_id} not found")
         if order.provider != "stars":
@@ -636,17 +637,14 @@ class BillingService:
                 getattr(updated_order, "provider_meta", None),
             )
             order_type = getattr(order, "order_type", "plan_purchase")
-            await self.notify_service.send_payment_completed(
-                chat_id=user.telegram_id,
-                order_type=order_type,
-                pending_message=None if order_type == "top_up" else pending_message,
-            )
-            if order_type == "top_up":
-                await self.notify_service.replace_pending_with_wallet(
+            asyncio.create_task(
+                self._notify_order_fulfilled(
                     chat_id=user.telegram_id,
-                    balance_rub=self._format_rub_short(new_balance),
+                    order_type=order_type,
                     pending_message=pending_message,
+                    balance_rub=self._format_rub_short(new_balance),
                 )
+            )
         log.info("fulfill_completed", order_id=str(order.id))
 
     # ── Balance operations ────────────────────────────────────
@@ -723,6 +721,32 @@ class BillingService:
     async def _find_active_subscription_for_plan(self, user_id: UUID, plan_id: UUID):
         subscriptions = await self.sub_repo.list_by_user_id(user_id, active_only=True)
         return next((sub for sub in subscriptions if sub.plan_id == plan_id), None)
+
+    async def _notify_order_fulfilled(
+        self,
+        *,
+        chat_id: int,
+        order_type: str,
+        pending_message: tuple[int, int] | None,
+        balance_rub: str,
+    ):
+        try:
+            await self.notify_service.send_payment_completed(
+                chat_id=chat_id,
+                order_type=order_type,
+                pending_message=None if order_type == "top_up" else pending_message,
+            )
+            if order_type == "top_up":
+                await self.notify_service.replace_pending_with_wallet(
+                    balance_rub=balance_rub,
+                    pending_message=pending_message,
+                )
+        except Exception:
+            log.exception(
+                "notify_order_fulfilled_failed",
+                chat_id=str(chat_id),
+                order_type=order_type,
+            )
 
     async def _has_live_subscription(self, user_id: UUID) -> bool:
         now = datetime.now(timezone.utc)

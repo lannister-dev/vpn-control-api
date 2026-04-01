@@ -84,7 +84,7 @@ class SubscriptionsConfig:
     response_max_payload_bytes: int = 32768
     public_base_url: str = ""
     happ_profile_title: str = "VPN"
-    happ_profile_update_interval_hours: int = 24
+    happ_profile_update_interval_hours: int = 1
     happ_support_url: str = ""
     happ_profile_web_page_url: str = ""
     happ_provider_id: str = ""
@@ -92,6 +92,8 @@ class SubscriptionsConfig:
     happ_hide_settings: bool = False
     happ_always_hwid_enable: bool = False
     happ_color_profile: str = DEFAULT_HAPP_COLOR_PROFILE
+    happ_crypto_api_url: str = ""
+    happ_crypto_timeout_sec: float = 5.0
 
 
 @dataclass
@@ -334,7 +336,7 @@ def get_settings() -> Settings:
         response_max_payload_bytes=env.int("SUBSCRIPTIONS_RESPONSE_MAX_PAYLOAD_BYTES", default=32768),
         public_base_url=env.str("SUBSCRIPTIONS_PUBLIC_BASE_URL", default=""),
         happ_profile_title=env.str("SUBSCRIPTIONS_HAPP_PROFILE_TITLE", default="VPN"),
-        happ_profile_update_interval_hours=env.int("SUBSCRIPTIONS_HAPP_PROFILE_UPDATE_INTERVAL_HOURS", default=24),
+        happ_profile_update_interval_hours=env.int("SUBSCRIPTIONS_HAPP_PROFILE_UPDATE_INTERVAL_HOURS", default=1),
         happ_support_url=env.str("SUBSCRIPTIONS_HAPP_SUPPORT_URL", default=""),
         happ_profile_web_page_url=env.str("SUBSCRIPTIONS_HAPP_PROFILE_WEB_PAGE_URL", default=""),
         happ_provider_id=env.str("SUBSCRIPTIONS_HAPP_PROVIDER_ID", default=""),
@@ -342,6 +344,8 @@ def get_settings() -> Settings:
         happ_hide_settings=env.bool("SUBSCRIPTIONS_HAPP_HIDE_SETTINGS", default=False),
         happ_always_hwid_enable=env.bool("SUBSCRIPTIONS_HAPP_ALWAYS_HWID_ENABLE", default=False),
         happ_color_profile=env.str("SUBSCRIPTIONS_HAPP_COLOR_PROFILE", default="").strip() or DEFAULT_HAPP_COLOR_PROFILE,
+        happ_crypto_api_url=env.str("SUBSCRIPTIONS_HAPP_CRYPTO_API_URL", default=""),
+        happ_crypto_timeout_sec=env.float("SUBSCRIPTIONS_HAPP_CRYPTO_TIMEOUT_SEC", default=5.0),
     )
 
     node_agent = NodeAgentConfig(
@@ -372,14 +376,14 @@ def get_settings() -> Settings:
 
     alerts = AlertsConfig(
         telegram_enabled=env.bool("ALERTS_TELEGRAM_ENABLED", default=False),
-        telegram_bot_token=env.str("ALERTS_TELEGRAM_BOT_TOKEN", default="").strip(),
-        telegram_chat_id=env.str("ALERTS_TELEGRAM_CHAT_ID", default="").strip(),
+        telegram_bot_token=env.str("ALERTS_TELEGRAM_BOT_TOKEN", default=""),
+        telegram_chat_id=env.str("ALERTS_TELEGRAM_CHAT_ID", default=""),
         telegram_timeout_sec=env.int("ALERTS_TELEGRAM_TIMEOUT_SEC", default=5),
     )
 
-    bot_notifications_token = env.str("BOT_NOTIFICATIONS_TOKEN", default="").strip()
+    bot_notifications_token = env.str("BOT_NOTIFICATIONS_TOKEN", default="")
     if not bot_notifications_token:
-        bot_notifications_token = env.str("BILLING_STARS_BOT_TOKEN", default="").strip()
+        bot_notifications_token = env.str("BILLING_STARS_BOT_TOKEN", default="")
     bot_notifications = BotNotificationsConfig(
         enabled=env.bool("BOT_NOTIFICATIONS_ENABLED", default=bool(bot_notifications_token)),
         bot_token=bot_notifications_token,
