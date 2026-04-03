@@ -24,6 +24,7 @@ from services.billing.exceptions import (
 from services.billing.models import BalanceTransaction, PaymentOrder
 from services.billing.providers.base import PaymentProvider
 from services.billing.providers.crypto import CryptoProvider
+from services.billing.providers.freekassa import FreeKassaProvider
 from services.billing.providers.platega import PlategaProvider
 from services.billing.repository import OrderRepository, TransactionRepository
 from services.bot_notifications.service import TelegramBotNotifyService
@@ -58,6 +59,7 @@ log = StructuredLogger(logging.getLogger("billing"))
 
 _PROVIDERS: dict[str, type[PaymentProvider]] = {
     "crypto": CryptoProvider,
+    "freekassa": FreeKassaProvider,
     "platega": PlategaProvider,
 }
 
@@ -546,6 +548,13 @@ class BillingService:
         if not order:
             log.warning("webhook_order_not_found", external_id=webhook.external_id)
             raise OrderNotFound(f"Order not found for external_id={webhook.external_id}")
+        if webhook.amount_rub > 0:
+            order_amount = Decimal(str(order.amount_rub))
+            webhook_amount = Decimal(str(webhook.amount_rub))
+            if order_amount != webhook_amount:
+                raise WebhookVerificationFailed(
+                    f"Amount mismatch for external_id={webhook.external_id}"
+                )
 
         await self._fulfill_order(order, provider_name, provider_meta=webhook.provider_meta)
 
