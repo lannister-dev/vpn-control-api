@@ -293,6 +293,22 @@ class TestProcessWebhook:
             with pytest.raises(OrderNotFound):
                 await service.process_webhook("crypto", request)
 
+    async def test_webhook_amount_mismatch(self, service):
+        order = _make_order(amount_rub=Decimal("299.00"))
+        service.order_repo.get_by_external_id.return_value = order
+
+        mock_provider = AsyncMock()
+        mock_provider.verify_webhook.return_value = SimpleNamespace(
+            external_id=order.external_id,
+            amount_rub=199.0,
+            provider_meta=None,
+        )
+
+        request = MagicMock()
+        with patch.object(BillingService, "_get_provider", return_value=mock_provider):
+            with pytest.raises(WebhookVerificationFailed):
+                await service.process_webhook("freekassa", request)
+
 
 # ── balance operations ────────────────────────────────────────
 

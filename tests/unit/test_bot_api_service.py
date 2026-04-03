@@ -11,12 +11,14 @@ import pytest
 
 from services.bot_api.schemas import (
     BotAction,
+    BotOrderOut,
     BotServiceHealth,
     BotServiceStatusOut,
     BotSessionOut,
     BotUserOut,
 )
 from services.bot_api.schemas import BotDashboardState
+from services.billing.schemas import OrderOut, OrderTypeEnum, PaymentProviderEnum
 from services.bot_api.service import BotApiService
 
 
@@ -140,3 +142,37 @@ async def test_encrypt_subscription_url_for_happ_falls_back_on_error(service):
         bot_service_module.httpx.AsyncClient = original
 
     assert out == "https://example.com/sub/token"
+
+
+@pytest.mark.asyncio
+async def test_create_top_up_order_returns_amount_stars_for_stars_provider(service):
+    user_id = uuid4()
+    order = OrderOut(
+        id=uuid4(),
+        user_id=user_id,
+        plan_id=None,
+        amount_rub=Decimal("100"),
+        provider="stars",
+        status="pending",
+        external_id="stars_test",
+        payment_url=None,
+        paid_at=None,
+        completed_at=None,
+        expires_at=datetime.now(timezone.utc),
+        subscription_id=None,
+        order_type=OrderTypeEnum.TOP_UP.value,
+        device_slots_qty=0,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    service._require_user_by_telegram_id = AsyncMock(return_value=SimpleNamespace(id=user_id))
+    service.billing_service.create_order = AsyncMock(return_value=order)
+
+    out = await service.create_top_up_order(
+        telegram_id=42,
+        payload=SimpleNamespace(amount=Decimal("100"), provider=PaymentProviderEnum.STARS),
+    )
+
+    assert isinstance(out.order, BotOrderOut)
+    assert out.order.amount_stars == 56
+    service.billing_service.create_order.assert_awaited_once()
