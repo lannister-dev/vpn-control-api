@@ -207,6 +207,13 @@ class BillingConfig:
     crypto_api_key: str = ""
     crypto_shop_id: str = ""
     crypto_webhook_secret: str = ""
+    freekassa_api_url: str = "https://pay.fk.money/"
+    freekassa_shop_id: str = ""
+    freekassa_secret_word_1: str = ""
+    freekassa_secret_word_2: str = ""
+    freekassa_currency: str = "RUB"
+    freekassa_success_redirect_url: str = ""
+    freekassa_fail_redirect_url: str = ""
     stars_bot_token: str = ""
     platega_api_url: str = ""
     platega_shop_id: str = ""
@@ -465,6 +472,13 @@ def get_settings() -> Settings:
         crypto_api_key=env.str("BILLING_CRYPTO_API_KEY", default=""),
         crypto_shop_id=env.str("BILLING_CRYPTO_SHOP_ID", default=""),
         crypto_webhook_secret=env.str("BILLING_CRYPTO_WEBHOOK_SECRET", default=""),
+        freekassa_api_url=env.str("BILLING_FREEKASSA_API_URL", default="https://pay.fk.money/"),
+        freekassa_shop_id=env.str("BILLING_FREEKASSA_SHOP_ID", default=""),
+        freekassa_secret_word_1=env.str("BILLING_FREEKASSA_SECRET_WORD_1", default=""),
+        freekassa_secret_word_2=env.str("BILLING_FREEKASSA_SECRET_WORD_2", default=""),
+        freekassa_currency=env.str("BILLING_FREEKASSA_CURRENCY", default="RUB"),
+        freekassa_success_redirect_url=env.str("BILLING_FREEKASSA_SUCCESS_REDIRECT_URL", default=""),
+        freekassa_fail_redirect_url=env.str("BILLING_FREEKASSA_FAIL_REDIRECT_URL", default=""),
         stars_bot_token=env.str("BILLING_STARS_BOT_TOKEN", default=""),
         platega_api_url=env.str("BILLING_PLATEGA_API_URL", default=""),
         platega_shop_id=env.str("BILLING_PLATEGA_SHOP_ID", default=""),

@@ -1,11 +1,12 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import PlainTextResponse, RedirectResponse
 
 from services.auth.dependencies import admin_auth
+from services.billing.dependencies import _required_redirect
 from services.billing.exceptions import (
     InsufficientBalance,
-    OrderAlreadyProcessed,
     OrderExpired,
     OrderNotFound,
     PlanNotPurchasable,
@@ -21,6 +22,7 @@ from services.billing.schemas import (
     TransactionListOut,
 )
 from services.billing.service import BillingService, get_billing_service
+from services.config import get_settings
 
 router = APIRouter(prefix="/billing", tags=["Billing"])
 
@@ -121,6 +123,53 @@ async def webhook_platega(
         raise HTTPException(status_code=404, detail=str(e))
     except OrderExpired as e:
         raise HTTPException(status_code=410, detail=str(e))
+
+
+@router.api_route(
+    "/webhooks/freekassa",
+    methods=["GET", "POST"],
+    status_code=status.HTTP_200_OK,
+    summary="FreeKassa payment webhook",
+)
+async def webhook_freekassa(
+    request: Request,
+    service: BillingService = Depends(get_billing_service),
+):
+    try:
+        await service.process_webhook("freekassa", request)
+        return PlainTextResponse(content="YES", status_code=status.HTTP_200_OK)
+    except WebhookVerificationFailed as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except OrderNotFound as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except OrderExpired as e:
+        raise HTTPException(status_code=410, detail=str(e))
+
+
+@router.get(
+    "/freekassa/success",
+    status_code=status.HTTP_200_OK,
+    summary="FreeKassa success return URL",
+)
+async def freekassa_success():
+    cfg = get_settings().billing
+    return _required_redirect(
+        cfg.freekassa_success_redirect_url,
+        setting_name="BILLING_FREEKASSA_SUCCESS_REDIRECT_URL",
+    )
+
+
+@router.get(
+    "/freekassa/fail",
+    status_code=status.HTTP_200_OK,
+    summary="FreeKassa fail return URL",
+)
+async def freekassa_fail():
+    cfg = get_settings().billing
+    return _required_redirect(
+        cfg.freekassa_fail_redirect_url,
+        setting_name="BILLING_FREEKASSA_FAIL_REDIRECT_URL",
+    )
 
 
 # ── Balance (admin auth) ─────────────────────────────────────

@@ -124,6 +124,7 @@ class BotOrderOut(BaseModel):
     user_id: UUID
     plan_id: UUID | None
     amount_rub: Decimal
+    amount_stars: int | None = None
     provider: str
     status: str
     external_id: str
