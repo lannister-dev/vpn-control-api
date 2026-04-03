@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class PaymentProviderEnum(str, Enum):
     CRYPTO = "crypto"
+    FREEKASSA = "freekassa"
     STARS = "stars"
     PLATEGA = "platega"
     BALANCE = "balance"

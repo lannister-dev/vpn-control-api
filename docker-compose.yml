@@ -52,6 +52,9 @@ services:
         - "traefik.http.routers.vpn-control-api.rule=Host(`api.lannister-dev.ru`) && PathPrefix(`/api`)"
         - "traefik.http.routers.vpn-control-api.entrypoints=websecure"
         - "traefik.http.routers.vpn-control-api.service=vpn-control-api"
+        - "traefik.http.routers.vpn-control-api-apirelay.rule=Host(`api.apirelay.org`) && PathPrefix(`/api`)"
+        - "traefik.http.routers.vpn-control-api-apirelay.entrypoints=websecure"
+        - "traefik.http.routers.vpn-control-api-apirelay.service=vpn-control-api"
         - "traefik.http.services.vpn-control-api.loadbalancer.server.port=8000"
 
         # -------- Prometheus --------
