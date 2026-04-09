@@ -158,6 +158,10 @@ class ProbeConfig:
     auto_drain_max_nodes: int = 20
     auto_drain_target_backend_id: str | None = None
     auto_drain_last_migration_reason: str = "probe_auto_failure"
+    auto_undrain_enabled: bool = False
+    auto_undrain_source: str | None = None
+    auto_undrain_max_probe_age_sec: int = 600
+    auto_undrain_min_consecutive_successes: int = 2
 
 
 @dataclass
@@ -425,6 +429,10 @@ def get_settings() -> Settings:
         auto_drain_max_nodes=env.int("PROBE_AUTO_DRAIN_MAX_NODES", default=20),
         auto_drain_target_backend_id=env.str("PROBE_AUTO_DRAIN_TARGET_BACKEND_ID", default="").strip() or None,
         auto_drain_last_migration_reason=env.str("PROBE_AUTO_DRAIN_LAST_MIGRATION_REASON", default="probe_auto_failure"),
+        auto_undrain_enabled=env.bool("PROBE_AUTO_UNDRAIN_ENABLED", default=False),
+        auto_undrain_source=env.str("PROBE_AUTO_UNDRAIN_SOURCE", default="").strip() or None,
+        auto_undrain_max_probe_age_sec=env.int("PROBE_AUTO_UNDRAIN_MAX_PROBE_AGE_SEC", default=600),
+        auto_undrain_min_consecutive_successes=env.int("PROBE_AUTO_UNDRAIN_MIN_CONSECUTIVE_SUCCESSES", default=2),
     )
 
     routes = RoutesConfig(

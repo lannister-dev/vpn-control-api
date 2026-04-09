@@ -8,8 +8,8 @@ from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.nodes.models import VpnNode
-from services.nodes.repository import VpnNodeRepository
-from services.nodes.schemas import VpnNodeUpdate
+from services.nodes.repository import NodeAgentStateRepository, VpnNodeRepository
+from services.nodes.schemas import NodeHeartbeatMeta, VpnNodeUpdate
 from services.placements.service import UserPlacementService, get_user_placement_service
 from services.placements.schemas import PlacementMigrateBackendIn
 from services.probe.repository import ProbeSignalRepository
@@ -29,16 +29,20 @@ logger_probe = StructuredLogger(logging.getLogger("probe-drain-service"))
 
 
 class ProbeDrainService:
+    _PROBE_DRAIN_REASON_PREFIX = "probe_"
+
     def __init__(
             self,
             *,
             node_repository: VpnNodeRepository,
             probe_repository: ProbeSignalRepository,
             placement_service: UserPlacementService,
+            node_state_repository: NodeAgentStateRepository | None = None,
     ):
         self.node_repository = node_repository
         self.probe_repository = probe_repository
         self.placement_service = placement_service
+        self.node_state_repository = node_state_repository
 
     async def drain_and_migrate_backend(
             self,
@@ -60,11 +64,17 @@ class ProbeDrainService:
 
             source_was_draining = source_node.is_draining
             if not source_was_draining:
+                drained_at = datetime.now(timezone.utc)
                 await self.node_repository.update_by_id(
                     payload.source_backend_id,
                     VpnNodeUpdate(
                         is_draining=True,
                     ).model_dump(exclude_unset=True),
+                )
+                await self._set_probe_drain_reason(
+                    node_id=payload.source_backend_id,
+                    drain_reason=self._normalize_probe_drain_reason(payload.last_migration_reason),
+                    drained_at=drained_at,
                 )
 
             try:
@@ -83,6 +93,7 @@ class ProbeDrainService:
                             is_draining=False,
                         ).model_dump(exclude_unset=True),
                     )
+                    await self._clear_probe_drain_reason(node_id=payload.source_backend_id)
                 raise
             PROBE_ACTION_TOTAL.labels(action=action, result="success").inc()
             return ProbeDrainMigrateOut(
@@ -285,6 +296,59 @@ class ProbeDrainService:
                 )
         return latest
 
+    async def _set_probe_drain_reason(
+            self,
+            *,
+            node_id: UUID,
+            drain_reason: str,
+            drained_at: datetime,
+    ) -> None:
+        if self.node_state_repository is None:
+            return
+        state = await self.node_state_repository.get_one_by(node_id=node_id)
+        if state is None:
+            return
+        details = dict(state.details) if isinstance(state.details, dict) else {}
+        heartbeat_meta = self._load_heartbeat_meta(details)
+        heartbeat_meta.drain_reason = drain_reason
+        heartbeat_meta.drained_at = drained_at
+        details["heartbeat"] = heartbeat_meta.model_dump(mode="json", exclude_none=True)
+        await self.node_state_repository.update_by_node_id(node_id, {"details": details})
+
+    async def _clear_probe_drain_reason(self, *, node_id: UUID) -> None:
+        if self.node_state_repository is None:
+            return
+        state = await self.node_state_repository.get_one_by(node_id=node_id)
+        if state is None:
+            return
+        details = dict(state.details) if isinstance(state.details, dict) else {}
+        heartbeat_meta = self._load_heartbeat_meta(details)
+        changed = False
+        if heartbeat_meta.drain_reason is not None:
+            heartbeat_meta.drain_reason = None
+            changed = True
+        if heartbeat_meta.drained_at is not None:
+            heartbeat_meta.drained_at = None
+            changed = True
+        if not changed:
+            return
+        details["heartbeat"] = heartbeat_meta.model_dump(mode="json", exclude_none=True)
+        await self.node_state_repository.update_by_node_id(node_id, {"details": details})
+
+    def _normalize_probe_drain_reason(self, value: str | None) -> str:
+        normalized = (value or "").strip()
+        if normalized.startswith(self._PROBE_DRAIN_REASON_PREFIX):
+            return normalized
+        if normalized:
+            return f"{self._PROBE_DRAIN_REASON_PREFIX}{normalized}"
+        return "probe_failure"
+
+    @staticmethod
+    def _load_heartbeat_meta(details: dict) -> NodeHeartbeatMeta:
+        heartbeat_raw = details.get("heartbeat")
+        heartbeat_data = heartbeat_raw if isinstance(heartbeat_raw, dict) else {}
+        return NodeHeartbeatMeta.model_validate(heartbeat_data)
+
 
 def get_probe_drain_service(
         session: AsyncSession = Depends(AsyncDatabase.get_session),
@@ -294,4 +358,5 @@ def get_probe_drain_service(
         node_repository=VpnNodeRepository(session),
         probe_repository=ProbeSignalRepository(session),
         placement_service=placement_service,
+        node_state_repository=NodeAgentStateRepository(session),
     )

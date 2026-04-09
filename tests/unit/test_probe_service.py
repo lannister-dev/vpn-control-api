@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -116,6 +117,7 @@ def _drain_service() -> ProbeDrainService:
         node_repository=AsyncMock(),
         probe_repository=AsyncMock(),
         placement_service=AsyncMock(),
+        node_state_repository=AsyncMock(),
     )
 
 
@@ -1029,6 +1031,7 @@ async def test_drain_and_migrate_success(async_session):
     svc.probe_repository.get_latest_for_backend_node.return_value = latest
     svc.probe_repository.list_recent_for_backend_node.return_value = [latest]
     svc.placement_service.migrate_backend.return_value = migration
+    svc.node_state_repository.get_one_by.return_value = SimpleNamespace(details={"heartbeat": {}})
 
     out = await svc.drain_and_migrate_backend(
         ProbeDrainMigrateIn(
@@ -1045,6 +1048,9 @@ async def test_drain_and_migrate_success(async_session):
     assert out.probe_report_id == latest.id
     svc.node_repository.update_by_id.assert_awaited_once()
     svc.placement_service.migrate_backend.assert_awaited_once()
+    svc.node_state_repository.update_by_node_id.assert_awaited_once()
+    state_update = svc.node_state_repository.update_by_node_id.await_args.args[1]
+    assert state_update["details"]["heartbeat"]["drain_reason"] == "probe_failure"
 
 
 @pytest.mark.asyncio

@@ -8,7 +8,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from services.config import ProbeConfig, get_settings
-from services.nodes.repository import VpnNodeRepository
+from services.nodes.repository import NodeAgentStateRepository, VpnNodeRepository
 from services.placements.service import UserPlacementService
 from services.probe.drain_service import ProbeDrainService
 from services.probe.repository import ProbeSignalRepository
@@ -133,4 +133,5 @@ class ProbeAutoDrainReconciler:
             node_repository=VpnNodeRepository(session),
             probe_repository=ProbeSignalRepository(session),
             placement_service=UserPlacementService(session),
+            node_state_repository=NodeAgentStateRepository(session),
         )
