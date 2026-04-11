@@ -1,0 +1,37 @@
+# control-api — production
+#
+# Install:
+#   helm upgrade --install control-api chart/ \
+#     -n vpn-prod --create-namespace \
+#     -f chart/values/prod.yaml \
+#     --set image.tag=<TAG>
+
+replicaCount: 2
+
+envSecret: control-api-prod-env
+
+nodeSelector:
+  kind: prod
+
+resources:
+  limits:
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 128Mi
+
+ingress:
+  enabled: true
+  className: traefik
+  hosts:
+    - host: api.lannister-dev.ru
+      paths:
+        - path: /api
+          pathType: Prefix
+    - host: api.apirelay.org
+      paths:
+        - path: /api
+          pathType: Prefix
+
+serviceMonitor:
+  enabled: true
