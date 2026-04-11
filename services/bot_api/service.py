@@ -15,6 +15,7 @@ from services.config import get_settings
 from services.billing.repository import OrderRepository
 from services.billing.schemas import OrderCreateIn, OrderOut, OrderTypeEnum, PaymentProviderEnum
 from services.billing.service import BillingService
+from services.billing.utils import map_provider_error_to_http_status
 from services.plans.repository import PlanRepository
 from services.plans.schemas import PlanOut
 from services.referral.schemas import BotReferralInfoOut
@@ -170,7 +171,10 @@ class BotApiService:
         except PlanNotPurchasable as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except ProviderError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+            raise HTTPException(
+                status_code=map_provider_error_to_http_status(exc),
+                detail=str(exc),
+            ) from exc
         return await self._build_order_action(user=user, order=order, prefer_pending=True)
 
     async def claim_migration_gift(self, *, telegram_id: int) -> BotOrderActionOut:
@@ -312,7 +316,10 @@ class BotApiService:
         except InsufficientBalance as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except ProviderError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+            raise HTTPException(
+                status_code=map_provider_error_to_http_status(exc),
+                detail=str(exc),
+            ) from exc
         return await self._build_order_action(user=user, order=order, prefer_pending=True)
 
     async def create_top_up_order(self, *, telegram_id: int, payload: BotTopUpCreateIn) -> BotOrderActionOut:
@@ -328,7 +335,10 @@ class BotApiService:
                 )
             )
         except ProviderError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+            raise HTTPException(
+                status_code=map_provider_error_to_http_status(exc),
+                detail=str(exc),
+            ) from exc
         return await self._build_order_action(user=user, order=order, prefer_pending=True)
 
     async def purchase_device_slots(
@@ -352,7 +362,10 @@ class BotApiService:
         except InsufficientBalance as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except ProviderError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+            raise HTTPException(
+                status_code=map_provider_error_to_http_status(exc),
+                detail=str(exc),
+            ) from exc
         return await self._build_order_action(user=user, order=order, prefer_pending=True)
 
     async def list_devices(self, *, telegram_id: int) -> BotDevicesOut:
