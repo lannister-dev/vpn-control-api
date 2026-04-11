@@ -122,6 +122,12 @@ class NodePlacementAutoHealService:
 
             if node is not None and not node.is_draining:
                 await self.node_repository.update_by_id(node.id, {"is_draining": True})
+                await self._record_drain_reason(
+                    node_id=node.id,
+                    state=state,
+                    reason=self._DRAIN_REASON_UNHEALTHY_HEARTBEAT,
+                    now=now,
+                )
                 out.drained_nodes += 1
                 PLACEMENT_AUTO_HEAL_TOTAL.labels(action="drain", result="ok").inc()
 
@@ -185,7 +191,7 @@ class NodePlacementAutoHealService:
             heartbeat_meta = self._extract_heartbeat_meta(state)
             if has_placements:
                 drain_reason = self._extract_drain_reason(heartbeat_meta)
-                if drain_reason == self._DRAIN_REASON_UNHEALTHY_HEARTBEAT:
+                if drain_reason is None or drain_reason == self._DRAIN_REASON_UNHEALTHY_HEARTBEAT:
                     pass
                 elif self._is_probe_drain_reason(drain_reason):
                     recovered = await self._has_recent_probe_recovery(node_id=node.id, now=now)
@@ -334,6 +340,29 @@ class NodePlacementAutoHealService:
                 break
             consecutive_successes += 1
         return consecutive_successes >= self.probe_auto_undrain_min_consecutive_successes
+
+    async def _record_drain_reason(
+        self,
+        *,
+        node_id: UUID,
+        state: NodeAgentState | None,
+        reason: str,
+        now: datetime,
+    ) -> None:
+        heartbeat_meta = self._extract_heartbeat_meta(state)
+        if heartbeat_meta is None:
+            heartbeat_meta = NodeHeartbeatMeta()
+        heartbeat_meta.drain_reason = reason
+        heartbeat_meta.drained_at = now
+        details = dict(state.details) if state is not None and isinstance(state.details, dict) else {}
+        details[self._HEARTBEAT_DETAILS_KEY] = heartbeat_meta.model_dump(mode="json", exclude_none=True)
+        if state is not None:
+            await self.node_agent_state_repository.update_by_node_id(node_id, {"details": details})
+        logger.info(
+            "drain_reason_recorded",
+            node_id=str(node_id),
+            reason=reason,
+        )
 
     async def _clear_drain_reason(
         self,

@@ -207,7 +207,7 @@ class VpnNodeService:
             and node.is_draining
             and node.is_active
             and node.is_enabled
-            and heartbeat_meta.drain_reason == self._DRAIN_REASON_UNHEALTHY_HEARTBEAT
+            and heartbeat_meta.drain_reason in (self._DRAIN_REASON_UNHEALTHY_HEARTBEAT, None)
             and heartbeat_meta.consecutive_healthy >= self.heartbeat_healthy_undrain_threshold
         )
         if should_undrain:
