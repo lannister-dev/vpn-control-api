@@ -1,0 +1,59 @@
+# control-api default values
+
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  repository: harbor.lannister-dev.ru/vpn-service/control-api
+  tag: latest
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+replicaCount: 1
+
+# Secret containing all env vars (created by CI from Vault)
+envSecret: ""
+
+# Extra env vars (override or supplement envSecret)
+env: {}
+
+command:
+  - uvicorn
+  - app:app
+  - --host
+  - "0.0.0.0"
+  - --port
+  - "8000"
+  - --proxy-headers
+  - --forwarded-allow-ips=*
+
+service:
+  type: ClusterIP
+  port: 8000
+
+ingress:
+  enabled: false
+  className: traefik
+  hosts: []
+  #  - host: api.lannister-dev.ru
+  #    paths:
+  #      - path: /api
+  #        pathType: Prefix
+  tls: []
+
+nodeSelector: {}
+
+tolerations: []
+
+resources:
+  limits:
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 128Mi
+
+serviceMonitor:
+  enabled: false
+  path: /api/monitoring
+  interval: 30s

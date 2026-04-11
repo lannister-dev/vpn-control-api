@@ -1,0 +1,37 @@
+# control-api — dev environment
+#
+# Install:
+#   helm upgrade --install control-api-dev chart/ \
+#     -n vpn-dev --create-namespace \
+#     -f chart/values/dev.yaml \
+#     --set image.tag=<TAG>
+
+replicaCount: 1
+
+envSecret: control-api-dev-env
+
+nodeSelector:
+  kind: dev
+
+resources:
+  limits:
+    memory: 384Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+ingress:
+  enabled: true
+  className: traefik
+  hosts:
+    - host: dev.lannister-dev.ru
+      paths:
+        - path: /api
+          pathType: Prefix
+    - host: dev.apirelay.org
+      paths:
+        - path: /api
+          pathType: Prefix
+
+serviceMonitor:
+  enabled: true
