@@ -12,6 +12,7 @@ from services.billing.providers.base import (
     ProviderCreateResult,
     WebhookResult,
 )
+from services.billing.schemas import PlategaPaymentMethodEnum
 from services.config import get_settings
 from shared.api import BaseApiClient, HttpError
 
@@ -46,12 +47,13 @@ class PlategaProvider(BaseApiClient, PaymentProvider):
         order_id: str,
         amount_rub: float,
         description: str,
-        payment_method: int | None = None,
+        payment_method: PlategaPaymentMethodEnum | int | None = None,
     ) -> ProviderCreateResult:
         if payment_method is None or int(payment_method) <= 0:
             raise ProviderError("Platega payment_method is required")
+        payment_method_id = int(payment_method)
         payload = {
-            "paymentMethod": int(payment_method),
+            "paymentMethod": payment_method_id,
             "paymentDetails": {
                 "amount": self._normalize_amount(amount_rub),
                 "currency": "RUB",
@@ -83,7 +85,7 @@ class PlategaProvider(BaseApiClient, PaymentProvider):
             payment_url=payment_url,
             provider_meta=json.dumps(
                 {
-                    "payment_method": int(payment_method),
+                    "payment_method": payment_method_id,
                     "response": data,
                 },
                 default=str,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 from typing import Iterable
 from uuid import UUID
 
@@ -17,6 +17,8 @@ from services.billing.schemas import OrderCreateIn, OrderOut, OrderTypeEnum, Pay
 from services.billing.service import BillingService
 from services.plans.repository import PlanRepository
 from services.plans.schemas import PlanOut
+from services.referral.schemas import BotReferralInfoOut
+from services.referral.service import ReferralService
 from services.users.repository import UserRepository
 from services.users.schemas import UserCreateIn, UserOut, UserUpdateIn
 from services.users.service import UserService
@@ -25,7 +27,7 @@ from services.vpn.subscriptions.schemas import SubscriptionDeviceOut, Subscripti
 from services.vpn.subscriptions.service import SubscriptionService
 from shared.database.session import AsyncDatabase
 from shared.redis.client import RedisClient, get_redis_client
-
+from .constants import TOP_UP_STARS_RUB_RATE
 from .schemas import (
     BotAction,
     BotDashboardState,
@@ -52,14 +54,19 @@ from .schemas import (
     BotSubscriptionLinkOut,
     BotSubscriptionSummaryOut,
 )
+from .utils import (
+    build_available_payment_providers,
+    calculate_plan_order_amount_stars,
+    get_device_display_name,
+    parse_happ_crypto_response,
+    top_up_amount_stars,
+)
 from ..billing.exceptions import InsufficientBalance, ProviderError
 
 log = logging.getLogger(__name__)
 
 
 class BotApiService:
-    _TOP_UP_STARS_RUB_RATE = Decimal("1.8")
-
     def __init__(self, session: AsyncSession, redis: RedisClient):
         self.session = session
         self.user_repository = UserRepository(session)
@@ -164,11 +171,7 @@ class BotApiService:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except ProviderError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
-        session = await self._build_session(
-            user=user,
-            forced_pending_order=order if order.status == "pending" else None,
-        )
-        return BotOrderActionOut(order=await self._to_bot_order(order), session=session)
+        return await self._build_order_action(user=user, order=order, prefer_pending=True)
 
     async def claim_migration_gift(self, *, telegram_id: int) -> BotOrderActionOut:
         from services.billing.exceptions import (
@@ -201,19 +204,14 @@ class BotApiService:
         except PlanNotPurchasable as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-        session = await self._build_session(
-            user=user,
-            forced_pending_order=order if order.status == "pending" else None,
-        )
-        return BotOrderActionOut(order=await self._to_bot_order(order), session=session)
+        return await self._build_order_action(user=user, order=order, prefer_pending=True)
 
     async def get_order(self, *, telegram_id: int, order_id: UUID) -> BotOrderActionOut:
         user = await self._require_user_by_telegram_id(telegram_id)
         order = await self.billing_service.get_order(order_id)
         if order.user_id != user.id:
             raise HTTPException(status_code=404, detail="Order not found")
-        session = await self._build_session(user=user, forced_pending_order=order if order.status == "pending" else None)
-        return BotOrderActionOut(order=await self._to_bot_order(order), session=session)
+        return await self._build_order_action(user=user, order=order, prefer_pending=True)
 
     async def update_order_metadata(
         self,
@@ -258,19 +256,12 @@ class BotApiService:
         else:
             renewed_expires_at = now + timedelta(days=plan.duration_days)
 
-        providers = [
-            provider
-            for provider in (
-                PaymentProviderEnum.FREEKASSA,
-                PaymentProviderEnum.PLATEGA,
-                PaymentProviderEnum.CRYPTO,
-            )
-            if self._is_payment_provider_available(provider)
-        ]
-        if user.balance >= plan.price_rub:
-            providers.append(PaymentProviderEnum.BALANCE)
-        if getattr(plan, "price_stars", None):
-            providers.append(PaymentProviderEnum.STARS)
+        providers = build_available_payment_providers(
+            user_balance=user.balance,
+            plan_price_rub=plan.price_rub,
+            plan_price_stars=getattr(plan, "price_stars", None),
+            billing_settings=self.settings.billing,
+        )
 
         return BotRenewOfferOut(
             subscription_id=subscription.id,
@@ -322,11 +313,7 @@ class BotApiService:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except ProviderError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
-        session = await self._build_session(
-            user=user,
-            forced_pending_order=order if order.status == "pending" else None,
-        )
-        return BotOrderActionOut(order=await self._to_bot_order(order), session=session)
+        return await self._build_order_action(user=user, order=order, prefer_pending=True)
 
     async def create_top_up_order(self, *, telegram_id: int, payload: BotTopUpCreateIn) -> BotOrderActionOut:
         user = await self._require_user_by_telegram_id(telegram_id)
@@ -342,8 +329,7 @@ class BotApiService:
             )
         except ProviderError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
-        session = await self._build_session(user=user, forced_pending_order=order if order.status == "pending" else None)
-        return BotOrderActionOut(order=await self._to_bot_order(order), session=session)
+        return await self._build_order_action(user=user, order=order, prefer_pending=True)
 
     async def purchase_device_slots(
         self, *, telegram_id: int, payload: BotDeviceSlotPurchaseIn,
@@ -367,8 +353,7 @@ class BotApiService:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except ProviderError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
-        session = await self._build_session(user=user, forced_pending_order=order if order.status == "pending" else None)
-        return BotOrderActionOut(order=await self._to_bot_order(order), session=session)
+        return await self._build_order_action(user=user, order=order, prefer_pending=True)
 
     async def list_devices(self, *, telegram_id: int) -> BotDevicesOut:
         user = await self._require_user_by_telegram_id(telegram_id)
@@ -415,8 +400,7 @@ class BotApiService:
             total_amount=payload.total_amount,
         )
         updated_order = await self.billing_service.get_order(order_id)
-        session = await self._build_session(user=user)
-        return BotOrderActionOut(order=await self._to_bot_order(updated_order), session=session)
+        return await self._build_order_action(user=user, order=updated_order)
 
     async def list_user_orders(self, *, telegram_id: int) -> BotOrderHistoryOut:
         user = await self._require_user_by_telegram_id(telegram_id)
@@ -444,20 +428,17 @@ class BotApiService:
         ]
         return BotOrderHistoryOut(items=items, total=total)
 
-    async def get_referral_info(self, *, telegram_id: int) -> "BotReferralInfoOut":
-        from services.referral.schemas import BotReferralInfoOut
-        from services.referral.service import ReferralService
-
-        user = await self._require_user_by_telegram_id(telegram_id)
-        referral_service = ReferralService(self.session)
-        return await referral_service.get_referral_info(user)
+    async def get_referral_info(self, *, telegram_id: int) -> BotReferralInfoOut:
+        user = await self.user_repository.get_by_telegram_id(telegram_id)
+        if user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        return await ReferralService(self.session).get_referral_info(user)
 
     async def apply_referral(self, *, telegram_id: int, referral_code: str) -> dict:
-        from services.referral.service import ReferralService
-
-        user = await self._require_user_by_telegram_id(telegram_id)
-        referral_service = ReferralService(self.session)
-        await referral_service.apply_referral(user, referral_code)
+        user = await self.user_repository.get_by_telegram_id(telegram_id)
+        if user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        await ReferralService(self.session).apply_referral(user, referral_code)
         return {"ok": True}
 
     async def issue_subscription_link(self, *, telegram_id: int) -> BotSubscriptionLinkOut:
@@ -626,20 +607,24 @@ class BotApiService:
         rows, _ = await self.order_repository.list_by_user(user_id, limit=20, offset=0)
         return [OrderOut.model_validate(item) for item in rows]
 
-    @classmethod
-    def _top_up_amount_stars(cls, amount_rub: Decimal) -> int:
-        return int((amount_rub / cls._TOP_UP_STARS_RUB_RATE).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
-
     async def _resolve_order_amount_stars(self, order: OrderOut) -> int | None:
         if order.provider != PaymentProviderEnum.STARS.value:
             return None
 
         if order.order_type == OrderTypeEnum.TOP_UP.value:
-            return self._top_up_amount_stars(order.amount_rub)
+            return top_up_amount_stars(order.amount_rub, TOP_UP_STARS_RUB_RATE)
 
         if order.order_type == OrderTypeEnum.DEVICE_SLOTS.value:
-            subscription = await self.sub_repo.get_by_id(order.subscription_id) if order.subscription_id else None
-            plan = await self.plan_repository.get_by_id(subscription.plan_id) if subscription and subscription.plan_id else None
+            subscription = (
+                await self.subscription_repository.get_by_id(order.subscription_id)
+                if order.subscription_id
+                else None
+            )
+            plan = (
+                await self.plan_repository.get_by_id(subscription.plan_id)
+                if subscription and subscription.plan_id
+                else None
+            )
             device_price_stars = getattr(plan, "device_price_stars", None) if plan is not None else None
             if not device_price_stars:
                 return None
@@ -652,15 +637,8 @@ class BotApiService:
         if plan is None:
             return None
 
-        total = getattr(plan, "price_stars", None)
-        if total is None:
-            return None
-
         extra_devices = int(getattr(order, "device_slots_qty", 0) or 0)
-        device_price_stars = getattr(plan, "device_price_stars", None)
-        if extra_devices > 0 and device_price_stars:
-            total += int(device_price_stars) * extra_devices
-        return int(total)
+        return calculate_plan_order_amount_stars(plan, extra_devices=extra_devices)
 
     async def _to_bot_order(self, order: OrderOut) -> BotOrderOut:
         return BotOrderOut.model_validate(
@@ -668,6 +646,22 @@ class BotApiService:
                 **order.model_dump(),
                 "amount_stars": await self._resolve_order_amount_stars(order),
             }
+        )
+
+    async def _build_order_action(
+        self,
+        *,
+        user: UserOut,
+        order: OrderOut,
+        prefer_pending: bool = False,
+    ) -> BotOrderActionOut:
+        session = await self._build_session(
+            user=user,
+            forced_pending_order=order if prefer_pending and order.status == "pending" else None,
+        )
+        return BotOrderActionOut(
+            order=await self._to_bot_order(order),
+            session=session,
         )
 
     async def _build_service_status(self) -> BotServiceStatusOut:
@@ -770,7 +764,7 @@ class BotApiService:
             items.append(
                 BotDeviceOut(
                     id=device.id,
-                    display_name=BotApiService._device_name(device.user_agent, index),
+                    display_name=get_device_display_name(device.user_agent, index),
                     hwid_hash=device.hwid_hash,
                     user_agent=device.user_agent,
                     last_seen_at=device.last_seen_at,
@@ -780,14 +774,6 @@ class BotApiService:
                 )
             )
         return items
-
-    @staticmethod
-    def _device_name(user_agent: str | None, index: int) -> str:
-        if isinstance(user_agent, str):
-            normalized = user_agent.strip()
-            if normalized:
-                return normalized[:80]
-        return f"Устройство {index}"
 
     async def _encrypt_subscription_url_for_happ(self, subscription_url: str) -> str:
         api_url = self.settings.subscriptions.happ_crypto_api_url.strip()
@@ -803,79 +789,10 @@ class BotApiService:
                     headers={"Content-Type": "application/json"},
                 )
                 response.raise_for_status()
-            return self._parse_happ_crypto_response(response)
+            return parse_happ_crypto_response(response)
         except Exception:
             log.exception("happ_link_encryption_failed")
             return subscription_url
-
-    @classmethod
-    def _parse_happ_crypto_response(cls, response: httpx.Response) -> str:
-        text = response.text.strip()
-        if not text:
-            raise ValueError("Happ crypto API returned empty body")
-
-        value = text
-        content_type = response.headers.get("content-type", "").lower()
-        if "application/json" in content_type or text[:1] in {"{", "["}:
-            try:
-                value = cls._extract_happ_crypto_url(response.json())
-            except Exception:
-                value = text
-
-        value = value.strip()
-        if not value.startswith("happ://crypt5/"):
-            raise ValueError(f"Unexpected Happ crypto payload: {value[:64]}")
-        return value
-
-    @classmethod
-    def _extract_happ_crypto_url(cls, payload) -> str:
-        if isinstance(payload, str):
-            return payload
-        if isinstance(payload, dict):
-            for key in (
-                "url",
-                "encrypted_link",
-                "encryptedLink",
-                "encrypted_url",
-                "encryptedUrl",
-                "result",
-                "data",
-                "link",
-            ):
-                value = payload.get(key)
-                if value:
-                    return cls._extract_happ_crypto_url(value)
-        if isinstance(payload, list):
-            for item in payload:
-                value = cls._extract_happ_crypto_url(item)
-                if value:
-                    return value
-        raise ValueError("Unable to extract Happ crypto URL")
-
-    def _is_payment_provider_available(self, provider: PaymentProviderEnum) -> bool:
-        billing = self.settings.billing
-        if provider == PaymentProviderEnum.FREEKASSA:
-            return bool(
-                str(getattr(billing, "freekassa_shop_id", "")).strip()
-                and getattr(billing, "freekassa_secret_word_1", "")
-                and getattr(billing, "freekassa_secret_word_2", "")
-            )
-        if provider == PaymentProviderEnum.CRYPTO:
-            return bool(
-                getattr(billing, "crypto_api_key", "")
-                and getattr(billing, "crypto_shop_id", "")
-            )
-        if provider == PaymentProviderEnum.PLATEGA:
-            return bool(
-                getattr(billing, "platega_api_url", "")
-                and getattr(billing, "platega_shop_id", "")
-                and getattr(billing, "platega_api_key", "")
-            )
-        if provider == PaymentProviderEnum.STARS:
-            return bool(getattr(billing, "stars_bot_token", ""))
-        if provider == PaymentProviderEnum.BALANCE:
-            return True
-        return False
 
 
 def get_bot_api_service(
