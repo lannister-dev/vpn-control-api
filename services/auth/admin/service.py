@@ -121,7 +121,7 @@ class AdminAuthService:
             )
             return None
 
-        token_data = self._exchange_telegram_code(
+        token_data, exchange_error = self._exchange_telegram_code(
             code=code,
             redirect_uri=redirect_uri,
             code_verifier=code_verifier,
@@ -130,9 +130,17 @@ class AdminAuthService:
             token_url=settings.admin_auth.telegram_token_url,
         )
         if token_data is None:
+            detail = "reason=telegram_token_exchange_failed"
+            if exchange_error:
+                detail = f"{detail} error={exchange_error}"
+                logger.warning(
+                    "telegram oidc token exchange failed",
+                    error=exchange_error,
+                    ip=ip_address,
+                )
             await self.audit_repository.log_event(
                 action="login_failure",
-                detail="reason=telegram_token_exchange_failed",
+                detail=detail,
                 ip_address=ip_address,
             )
             return None
@@ -485,7 +493,7 @@ class AdminAuthService:
         client_id: str,
         client_secret: str,
         token_url: str,
-    ) -> dict | None:
+    ) -> tuple[dict | None, str | None]:
         body = urlencode(
             {
                 "grant_type": "authorization_code",
@@ -507,9 +515,23 @@ class AdminAuthService:
         )
         try:
             with urlopen(req, timeout=10) as resp:
-                return json.loads(resp.read().decode("utf-8"))
-        except (HTTPError, URLError, TimeoutError, ValueError):
-            return None
+                return json.loads(resp.read().decode("utf-8")), None
+        except HTTPError as exc:
+            response_body = ""
+            try:
+                response_body = exc.read().decode("utf-8", errors="replace")
+            except Exception:
+                response_body = ""
+            error_detail = f"http_{exc.code}"
+            if response_body:
+                error_detail = f"{error_detail}:{response_body[:200]}"
+            return None, error_detail
+        except URLError as exc:
+            return None, f"url_error:{exc.reason}"
+        except TimeoutError:
+            return None, "timeout"
+        except ValueError as exc:
+            return None, f"bad_json:{exc}"
 
     @staticmethod
     def _to_admin_role(role: AdminRole | str) -> AdminRole:

@@ -347,7 +347,7 @@ class TestAdminAuthService:
         mock_settings.return_value.admin_auth.telegram_jwks_url = "https://example/jwks.json"
         mock_settings.return_value.admin_auth.telegram_issuer = "https://oauth.telegram.org"
         mock_settings.return_value.admin_auth.telegram_allowed_ids = ()
-        service._exchange_telegram_code = MagicMock(return_value={"id_token": "jwt"})
+        service._exchange_telegram_code = MagicMock(return_value=({"id_token": "jwt"}, None))
         with patch("services.auth.admin.service.verify_telegram_oidc_id_token") as verify:
             verify.return_value = {"sub": "999", "preferred_username": "tg-user"}
             service.user_repository.get_by_telegram_id.return_value = None
@@ -359,6 +359,27 @@ class TestAdminAuthService:
                 code_verifier="verifier",
             )
             assert result is None
+
+    @patch("services.auth.admin.service.get_settings")
+    async def test_login_telegram_oidc_logs_exchange_error(self, mock_settings, service):
+        mock_settings.return_value.admin_auth.telegram_login_enabled = True
+        mock_settings.return_value.admin_auth.telegram_client_id = "client_id"
+        mock_settings.return_value.admin_auth.telegram_client_secret = "secret"
+        service._exchange_telegram_code = MagicMock(return_value=(None, 'http_400:{"error":"invalid_grant"}'))
+
+        result = await service.login_telegram_oidc(
+            code="code",
+            redirect_uri="https://admin.example/callback",
+            expected_nonce="nonce",
+            code_verifier="verifier",
+            ip_address="1.2.3.4",
+        )
+
+        assert result is None
+        service.audit_repository.log_event.assert_awaited_once()
+        assert service.audit_repository.log_event.await_args.kwargs["detail"] == (
+            'reason=telegram_token_exchange_failed error=http_400:{"error":"invalid_grant"}'
+        )
 
     @patch("services.auth.admin.service.urlopen")
     def test_exchange_telegram_code_uses_pkce_and_basic_auth(self, mock_urlopen):
@@ -374,7 +395,7 @@ class TestAdminAuthService:
 
         mock_urlopen.return_value = _Response()
 
-        result = AdminAuthService._exchange_telegram_code(
+        result, error = AdminAuthService._exchange_telegram_code(
             code="code123",
             redirect_uri="https://api.example/callback",
             code_verifier="verifier123",
@@ -384,6 +405,7 @@ class TestAdminAuthService:
         )
 
         assert result == {"id_token": "jwt"}
+        assert error is None
         req = mock_urlopen.call_args.args[0]
         body = parse_qs(req.data.decode("utf-8"))
         assert body["code"] == ["code123"]
@@ -392,6 +414,37 @@ class TestAdminAuthService:
         assert req.headers["Authorization"] == (
             "Basic " + base64.b64encode(b"client-id:client-secret").decode("ascii")
         )
+
+    @patch("services.auth.admin.service.urlopen")
+    def test_exchange_telegram_code_returns_http_error_body(self, mock_urlopen):
+        from urllib.error import HTTPError
+
+        class _Response:
+            def read(self):
+                return b'{"error":"invalid_grant"}'
+
+            def close(self):
+                return None
+
+        mock_urlopen.side_effect = HTTPError(
+            url="https://oauth.telegram.org/token",
+            code=400,
+            msg="Bad Request",
+            hdrs=None,
+            fp=_Response(),
+        )
+
+        result, error = AdminAuthService._exchange_telegram_code(
+            code="code123",
+            redirect_uri="https://api.example/callback",
+            code_verifier="verifier123",
+            client_id="client-id",
+            client_secret="client-secret",
+            token_url="https://oauth.telegram.org/token",
+        )
+
+        assert result is None
+        assert error == 'http_400:{"error":"invalid_grant"}'
 
 
 class TestAdminAuthRouter:
