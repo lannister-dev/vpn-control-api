@@ -22,6 +22,7 @@ from services.billing.schemas import (
     TransactionListOut,
 )
 from services.billing.service import BillingService, get_billing_service
+from services.billing.utils import map_provider_error_to_http_status
 from services.config import get_settings
 
 router = APIRouter(prefix="/billing", tags=["Billing"])
@@ -47,7 +48,7 @@ async def create_order(
     except InsufficientBalance as e:
         raise HTTPException(status_code=409, detail=str(e))
     except ProviderError as e:
-        raise HTTPException(status_code=502, detail=str(e))
+        raise HTTPException(status_code=map_provider_error_to_http_status(e), detail=str(e))
     except OrderNotFound as e:
         raise HTTPException(status_code=404, detail=str(e))
 

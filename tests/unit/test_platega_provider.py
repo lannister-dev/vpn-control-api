@@ -7,7 +7,6 @@ import pytest
 
 from services.billing.exceptions import WebhookVerificationFailed
 from services.billing.providers.platega import PlategaProvider
-from services.billing.schemas import PlategaPaymentMethodEnum
 
 
 def _settings():
@@ -51,7 +50,7 @@ async def test_create_payment_calls_platega_api(monkeypatch):
         order_id="user-42",
         amount_rub=299.0,
         description="Plan: Pro",
-        payment_method=PlategaPaymentMethodEnum.CRYPTO,
+        payment_method=2,
     )
 
     assert out.external_id == "txn-123"

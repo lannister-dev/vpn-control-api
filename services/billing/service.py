@@ -55,11 +55,10 @@ from shared.monitoring.metrics import (
 from shared.utils.logger import StructuredLogger
 
 log = StructuredLogger(logging.getLogger("billing"))
+TELEGRAM_PENDING_MESSAGE_META_KEY = "_telegram_pending_message"
 
 
 class BillingService:
-    _TELEGRAM_PENDING_MESSAGE_KEY = "_telegram_pending_message"
-
     def __init__(self, session: AsyncSession):
         self.session = session
         self.order_repo = OrderRepository(session)
@@ -100,7 +99,7 @@ class BillingService:
     @classmethod
     def _pending_message_binding(cls, raw: str | None) -> tuple[int, int] | None:
         data = cls._meta_dict(raw)
-        binding = data.get(cls._TELEGRAM_PENDING_MESSAGE_KEY)
+        binding = data.get(TELEGRAM_PENDING_MESSAGE_META_KEY)
         if not isinstance(binding, dict):
             return None
         chat_id = binding.get("chat_id")
@@ -207,6 +206,8 @@ class BillingService:
                     description=description,
                     payment_method=data.payment_method,
                 )
+            except ProviderError:
+                raise
             except Exception as exc:
                 raise ProviderError(f"Provider error: {exc}") from exc
             external_id = result.external_id
@@ -296,6 +297,8 @@ class BillingService:
                     description=description,
                     payment_method=data.payment_method,
                 )
+            except ProviderError:
+                raise
             except Exception as exc:
                 raise ProviderError(f"Provider error: {exc}") from exc
             external_id = result.external_id
@@ -378,6 +381,8 @@ class BillingService:
                     description=description,
                     payment_method=data.payment_method,
                 )
+            except ProviderError:
+                raise
             except Exception as exc:
                 raise ProviderError(f"Provider error: {exc}") from exc
             external_id = result.external_id
@@ -505,7 +510,7 @@ class BillingService:
             raise OrderNotFound(f"Order {order_id} not found")
         patch: dict[str, object] = {}
         if telegram_chat_id is not None and telegram_message_id is not None:
-            patch[self._TELEGRAM_PENDING_MESSAGE_KEY] = {
+            patch[TELEGRAM_PENDING_MESSAGE_META_KEY] = {
                 "chat_id": int(telegram_chat_id),
                 "message_id": int(telegram_message_id),
             }
