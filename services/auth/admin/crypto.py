@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import os
@@ -42,6 +43,15 @@ def hash_session_id(session_id: str) -> str:
 
 def generate_csrf_token() -> str:
     return secrets.token_hex(16)
+
+
+def generate_pkce_code_verifier() -> str:
+    return secrets.token_urlsafe(64)
+
+
+def generate_pkce_code_challenge(verifier: str) -> str:
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
 
 
 def verify_telegram_oidc_id_token(

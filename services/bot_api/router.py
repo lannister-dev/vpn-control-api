@@ -6,6 +6,8 @@ from fastapi import APIRouter, Depends
 
 from services.auth.dependencies import bot_auth
 
+from services.referral.schemas import BotReferralApplyIn, BotReferralInfoOut
+
 from .schemas import (
     BotDeviceSlotPurchaseIn,
     BotDevicesOut,
@@ -222,6 +224,49 @@ async def bot_claim_migration_gift(
     service: BotApiService = Depends(get_bot_api_service),
 ):
     return await service.claim_migration_gift(telegram_id=telegram_id)
+
+
+@router.get(
+    "/users/{telegram_id}/referral",
+    response_model=BotReferralInfoOut,
+    summary="Get referral info for Telegram bot user",
+)
+async def bot_get_referral_info(
+    telegram_id: int,
+    service: BotApiService = Depends(get_bot_api_service),
+):
+    return await service.get_referral_info(telegram_id=telegram_id)
+
+
+@router.post(
+    "/users/{telegram_id}/referral/apply",
+    summary="Apply referral code for Telegram bot user",
+)
+async def bot_apply_referral(
+    telegram_id: int,
+    payload: BotReferralApplyIn,
+    service: BotApiService = Depends(get_bot_api_service),
+):
+    from services.referral.exceptions import (
+        AlreadyReferred,
+        ReferralCodeNotFound,
+        ReferralNotEnabled,
+        SelfReferralNotAllowed,
+    )
+    from fastapi import HTTPException
+
+    try:
+        return await service.apply_referral(
+            telegram_id=telegram_id, referral_code=payload.referral_code,
+        )
+    except ReferralNotEnabled:
+        raise HTTPException(status_code=409, detail="Referral program is disabled")
+    except ReferralCodeNotFound:
+        raise HTTPException(status_code=404, detail="Referral code not found")
+    except SelfReferralNotAllowed:
+        raise HTTPException(status_code=409, detail="Cannot refer yourself")
+    except AlreadyReferred:
+        raise HTTPException(status_code=409, detail="Already referred")
 
 
 @router.post(

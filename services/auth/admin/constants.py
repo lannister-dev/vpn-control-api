@@ -24,5 +24,6 @@ CSRF_COOKIE_NAME = "admin_csrf"
 CSRF_HEADER_NAME = "x-csrf-token"
 TG_OIDC_STATE_COOKIE_NAME = "admin_tg_oidc_state"
 TG_OIDC_NONCE_COOKIE_NAME = "admin_tg_oidc_nonce"
+TG_OIDC_VERIFIER_COOKIE_NAME = "admin_tg_oidc_verifier"
 SESSION_ID_BYTES = 32
 SALT_BYTES = 16

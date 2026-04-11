@@ -13,19 +13,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.billing.exceptions import (
     DeviceSlotLimitExceeded,
+    InsufficientBalance,
     OrderExpired,
     OrderNotFound,
     PlanNotPurchasable,
     ProviderError,
     TrialAlreadyUsed,
     TrialUnavailable,
-    WebhookVerificationFailed, InsufficientBalance,
+    WebhookVerificationFailed,
 )
 from services.billing.models import BalanceTransaction, PaymentOrder
 from services.billing.providers.base import PaymentProvider
-from services.billing.providers.crypto import CryptoProvider
-from services.billing.providers.freekassa import FreeKassaProvider
-from services.billing.providers.platega import PlategaProvider
+from services.billing.providers.registry import PROVIDERS
 from services.billing.repository import OrderRepository, TransactionRepository
 from services.bot_notifications.service import TelegramBotNotifyService
 from services.billing.schemas import (
@@ -56,12 +55,6 @@ from shared.monitoring.metrics import (
 from shared.utils.logger import StructuredLogger
 
 log = StructuredLogger(logging.getLogger("billing"))
-
-_PROVIDERS: dict[str, type[PaymentProvider]] = {
-    "crypto": CryptoProvider,
-    "freekassa": FreeKassaProvider,
-    "platega": PlategaProvider,
-}
 
 
 class BillingService:
@@ -127,7 +120,7 @@ class BillingService:
 
     @staticmethod
     def _get_provider(name: str) -> PaymentProvider:
-        cls = _PROVIDERS.get(name)
+        cls = PROVIDERS.get(name)
         if cls is None:
             raise ProviderError(f"Unknown provider: {name}")
         return cls()
@@ -212,6 +205,7 @@ class BillingService:
                     order_id=str(data.user_id),
                     amount_rub=float(amount_rub),
                     description=description,
+                    payment_method=data.payment_method,
                 )
             except Exception as exc:
                 raise ProviderError(f"Provider error: {exc}") from exc
@@ -300,6 +294,7 @@ class BillingService:
                     order_id=str(data.user_id),
                     amount_rub=float(amount_rub),
                     description=description,
+                    payment_method=data.payment_method,
                 )
             except Exception as exc:
                 raise ProviderError(f"Provider error: {exc}") from exc
@@ -381,6 +376,7 @@ class BillingService:
                     order_id=str(data.user_id),
                     amount_rub=float(amount_rub),
                     description=description,
+                    payment_method=data.payment_method,
                 )
             except Exception as exc:
                 raise ProviderError(f"Provider error: {exc}") from exc
@@ -556,6 +552,23 @@ class BillingService:
                     f"Amount mismatch for external_id={webhook.external_id}"
                 )
 
+        if not getattr(webhook, "should_fulfill", True):
+            patch: dict[str, object] = {
+                "provider_meta": self._merge_meta_strings(order.provider_meta, webhook.provider_meta),
+            }
+            provider_status = str(getattr(webhook, "provider_status", "") or "").upper()
+            if provider_status == "CANCELED" and order.status == "pending":
+                patch["status"] = "expired"
+            await self.order_repo.update_by_id(order.id, OrderInternalUpdate(**patch).model_dump(exclude_none=True))
+            log.info(
+                "webhook_non_paid_event",
+                provider=provider_name,
+                order_id=str(order.id),
+                external_id=webhook.external_id,
+                provider_status=webhook.provider_status,
+            )
+            return
+
         await self._fulfill_order(order, provider_name, provider_meta=webhook.provider_meta)
 
     # ── Stars confirmation (called by bot after successful_payment) ──
@@ -640,12 +653,22 @@ class BillingService:
             OrderInternalUpdate(status="completed", completed_at=now).model_dump(exclude_none=True),
         )
         BILLING_ORDER_TOTAL.labels(provider=provider_name, status="completed").inc()
+
+        # Referral reward: trigger after first paid order (plan_purchase or renewal)
+        order_type = getattr(order, "order_type", "plan_purchase")
+        if order_type in ("plan_purchase", "subscription_renewal") and provider_name != "free":
+            try:
+                from services.referral.service import ReferralService
+                referral_service = ReferralService(self.session)
+                await referral_service.process_reward_if_eligible(order.user_id)
+            except Exception:
+                log.exception("referral_reward_failed", user_id=str(order.user_id))
+
         if provider_name != "stars":
             updated_order = await self.order_repo.get_by_id(order.id)
             pending_message = self._pending_message_binding(
                 getattr(updated_order, "provider_meta", None),
             )
-            order_type = getattr(order, "order_type", "plan_purchase")
             asyncio.create_task(
                 self._notify_order_fulfilled(
                     chat_id=user.telegram_id,

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import base64
+import json
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
 
 import pytest
@@ -10,15 +13,26 @@ import pytest
 from services.vpn.keys.models import VpnKey, KeyAssignment  # noqa: F401
 from services.nodes.models import VpnNode  # noqa: F401
 from services.users.models import User  # noqa: F401
-from services.auth.admin.constants import AdminRole, ROLE_HIERARCHY, SESSION_COOKIE_NAME
+from services.plans.models import Plan  # noqa: F401
+from services.auth.admin.constants import (
+    AdminRole,
+    ROLE_HIERARCHY,
+    SESSION_COOKIE_NAME,
+    TG_OIDC_NONCE_COOKIE_NAME,
+    TG_OIDC_STATE_COOKIE_NAME,
+    TG_OIDC_VERIFIER_COOKIE_NAME,
+)
 from services.auth.admin.crypto import (
     generate_csrf_token,
+    generate_pkce_code_challenge,
+    generate_pkce_code_verifier,
     generate_session_id,
     hash_password,
     hash_session_id,
     verify_password,
 )
 from services.auth.admin.rate_limit import InMemoryRateLimiter
+from services.auth.admin.router import login_telegram_start
 from services.auth.admin.schemas import (
     AdminUserCreateIn,
     AdminUserListOut,
@@ -73,6 +87,13 @@ class TestCrypto:
         t2 = generate_csrf_token()
         assert t1 != t2
         assert len(t1) == 32
+
+    def test_pkce_verifier_and_challenge(self):
+        verifier = generate_pkce_code_verifier()
+        challenge = generate_pkce_code_challenge(verifier)
+        assert verifier
+        assert challenge
+        assert "=" not in challenge
 
 
 # ---------------------------------------------------------------------------
@@ -314,6 +335,7 @@ class TestAdminAuthService:
             code="code",
             redirect_uri="https://admin.example/callback",
             expected_nonce="nonce",
+            code_verifier="verifier",
         )
         assert result is None
 
@@ -334,8 +356,66 @@ class TestAdminAuthService:
                 code="code",
                 redirect_uri="https://admin.example/callback",
                 expected_nonce="nonce",
+                code_verifier="verifier",
             )
             assert result is None
+
+    @patch("services.auth.admin.service.urlopen")
+    def test_exchange_telegram_code_uses_pkce_and_basic_auth(self, mock_urlopen):
+        class _Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return json.dumps({"id_token": "jwt"}).encode("utf-8")
+
+        mock_urlopen.return_value = _Response()
+
+        result = AdminAuthService._exchange_telegram_code(
+            code="code123",
+            redirect_uri="https://api.example/callback",
+            code_verifier="verifier123",
+            client_id="client-id",
+            client_secret="client-secret",
+            token_url="https://oauth.telegram.org/token",
+        )
+
+        assert result == {"id_token": "jwt"}
+        req = mock_urlopen.call_args.args[0]
+        body = parse_qs(req.data.decode("utf-8"))
+        assert body["code"] == ["code123"]
+        assert body["code_verifier"] == ["verifier123"]
+        assert "client_secret" not in body
+        assert req.headers["Authorization"] == (
+            "Basic " + base64.b64encode(b"client-id:client-secret").decode("ascii")
+        )
+
+
+class TestAdminAuthRouter:
+    @patch("services.auth.admin.router.get_settings")
+    async def test_login_telegram_start_sets_pkce(self, mock_settings):
+        mock_settings.return_value.admin_auth.telegram_login_enabled = True
+        mock_settings.return_value.admin_auth.telegram_client_id = "7010063753"
+        mock_settings.return_value.admin_auth.telegram_redirect_uri = "https://api.example/callback"
+        mock_settings.return_value.admin_auth.telegram_authorize_url = "https://oauth.telegram.org/auth"
+        mock_settings.return_value.admin_auth.session_cookie_secure = True
+
+        response = await login_telegram_start(request=MagicMock())
+
+        parsed = urlparse(response.headers["location"])
+        query = parse_qs(parsed.query)
+        assert query["client_id"] == ["7010063753"]
+        assert query["redirect_uri"] == ["https://api.example/callback"]
+        assert query["code_challenge_method"] == ["S256"]
+        assert query["code_challenge"]
+
+        set_cookie_headers = response.headers.getlist("set-cookie")
+        assert any(TG_OIDC_STATE_COOKIE_NAME in header for header in set_cookie_headers)
+        assert any(TG_OIDC_NONCE_COOKIE_NAME in header for header in set_cookie_headers)
+        assert any(TG_OIDC_VERIFIER_COOKIE_NAME in header for header in set_cookie_headers)
 
 
 # ---------------------------------------------------------------------------
