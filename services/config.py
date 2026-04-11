@@ -48,6 +48,7 @@ class NatsConfig:
     js_fetch_timeout_s: float = 1.0
     js_outbox_batch_size: int = 200
     js_outbox_poll_interval_s: float = 1.0
+    force_reconnect_after_s: float = 30.0
 
 
 @dataclass
