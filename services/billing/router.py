@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import PlainTextResponse, RedirectResponse
 
 from services.auth.dependencies import admin_auth
@@ -116,13 +116,39 @@ async def webhook_platega(
 ):
     try:
         await service.process_webhook("platega", request)
-        return {"status": "ok"}
+        return Response(status_code=status.HTTP_200_OK)
     except WebhookVerificationFailed as e:
         raise HTTPException(status_code=400, detail=str(e))
     except OrderNotFound as e:
         raise HTTPException(status_code=404, detail=str(e))
     except OrderExpired as e:
         raise HTTPException(status_code=410, detail=str(e))
+
+
+@router.get(
+    "/platega/success",
+    status_code=status.HTTP_200_OK,
+    summary="Platega success return URL",
+)
+async def platega_success():
+    cfg = get_settings().billing
+    return _required_redirect(
+        cfg.platega_success_redirect_url,
+        setting_name="BILLING_PLATEGA_SUCCESS_REDIRECT_URL",
+    )
+
+
+@router.get(
+    "/platega/fail",
+    status_code=status.HTTP_200_OK,
+    summary="Platega fail return URL",
+)
+async def platega_fail():
+    cfg = get_settings().billing
+    return _required_redirect(
+        cfg.platega_fail_redirect_url,
+        setting_name="BILLING_PLATEGA_FAIL_REDIRECT_URL",
+    )
 
 
 @router.api_route(

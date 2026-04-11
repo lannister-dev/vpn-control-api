@@ -151,6 +151,7 @@ class BotApiService:
                     plan_id=payload.plan_id,
                     provider=payload.provider,
                     device_slots_qty=extra,
+                    payment_method=getattr(payload, "payment_method", None),
                 )
             )
         except TrialAlreadyUsed:
@@ -314,6 +315,7 @@ class BotApiService:
                     provider=payload.provider,
                     order_type=OrderTypeEnum.SUBSCRIPTION_RENEWAL,
                     subscription_id=subscription.id,
+                    payment_method=getattr(payload, "payment_method", None),
                 )
             )
         except InsufficientBalance as exc:
@@ -335,6 +337,7 @@ class BotApiService:
                     provider=payload.provider,
                     amount_rub=payload.amount,
                     order_type=OrderTypeEnum.TOP_UP,
+                    payment_method=getattr(payload, "payment_method", None),
                 )
             )
         except ProviderError as exc:
@@ -357,6 +360,7 @@ class BotApiService:
                     order_type=OrderTypeEnum.DEVICE_SLOTS,
                     device_slots_qty=payload.qty,
                     subscription_id=subscription.id,
+                    payment_method=getattr(payload, "payment_method", None),
                 )
             )
         except InsufficientBalance as exc:
@@ -439,6 +443,22 @@ class BotApiService:
             for row in rows
         ]
         return BotOrderHistoryOut(items=items, total=total)
+
+    async def get_referral_info(self, *, telegram_id: int) -> "BotReferralInfoOut":
+        from services.referral.schemas import BotReferralInfoOut
+        from services.referral.service import ReferralService
+
+        user = await self._require_user_by_telegram_id(telegram_id)
+        referral_service = ReferralService(self.session)
+        return await referral_service.get_referral_info(user)
+
+    async def apply_referral(self, *, telegram_id: int, referral_code: str) -> dict:
+        from services.referral.service import ReferralService
+
+        user = await self._require_user_by_telegram_id(telegram_id)
+        referral_service = ReferralService(self.session)
+        await referral_service.apply_referral(user, referral_code)
+        return {"ok": True}
 
     async def issue_subscription_link(self, *, telegram_id: int) -> BotSubscriptionLinkOut:
         user = await self._require_user_by_telegram_id(telegram_id)

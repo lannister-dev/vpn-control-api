@@ -32,7 +32,12 @@ class FreeKassaProvider(PaymentProvider):
             raise ProviderError("FreeKassa secret word 1 not configured")
 
     async def create_payment(
-        self, *, order_id: str, amount_rub: float, description: str
+        self,
+        *,
+        order_id: str,
+        amount_rub: float,
+        description: str,
+        payment_method: int | None = None,
     ) -> ProviderCreateResult:
         external_id = f"fk_{uuid4().hex}"
         amount = self._format_amount(amount_rub)

@@ -13,10 +13,15 @@ from services.auth.admin.constants import (
     CSRF_COOKIE_NAME,
     TG_OIDC_NONCE_COOKIE_NAME,
     TG_OIDC_STATE_COOKIE_NAME,
+    TG_OIDC_VERIFIER_COOKIE_NAME,
     SESSION_COOKIE_NAME,
     AdminRole,
 )
-from services.auth.admin.crypto import hash_session_id
+from services.auth.admin.crypto import (
+    generate_pkce_code_challenge,
+    generate_pkce_code_verifier,
+    hash_session_id,
+)
 from services.auth.admin.dependencies import require_role, verify_csrf
 from services.auth.admin.models import AdminUser
 from services.auth.admin.rate_limit import login_rate_limiter
@@ -132,6 +137,8 @@ async def login_telegram_start(
     )
     state = token_urlsafe(24)
     nonce = token_urlsafe(24)
+    verifier = generate_pkce_code_verifier()
+    challenge = generate_pkce_code_challenge(verifier)
     auth_url = (
         f"{settings.admin_auth.telegram_authorize_url}?"
         + urlencode(
@@ -142,6 +149,8 @@ async def login_telegram_start(
                 "scope": "openid profile",
                 "state": state,
                 "nonce": nonce,
+                "code_challenge": challenge,
+                "code_challenge_method": "S256",
             }
         )
     )
@@ -158,6 +167,15 @@ async def login_telegram_start(
     response.set_cookie(
         TG_OIDC_NONCE_COOKIE_NAME,
         nonce,
+        httponly=True,
+        secure=settings.admin_auth.session_cookie_secure,
+        samesite="lax",
+        max_age=600,
+        path="/",
+    )
+    response.set_cookie(
+        TG_OIDC_VERIFIER_COOKIE_NAME,
+        verifier,
         httponly=True,
         secure=settings.admin_auth.session_cookie_secure,
         samesite="lax",
@@ -207,7 +225,8 @@ async def login_telegram_callback(
         )
     cookie_state = request.cookies.get(TG_OIDC_STATE_COOKIE_NAME)
     cookie_nonce = request.cookies.get(TG_OIDC_NONCE_COOKIE_NAME)
-    if not cookie_state or state != cookie_state or not cookie_nonce:
+    cookie_verifier = request.cookies.get(TG_OIDC_VERIFIER_COOKIE_NAME)
+    if not cookie_state or state != cookie_state or not cookie_nonce or not cookie_verifier:
         login_rate_limiter.record(ip)
         await service.audit_repository.log_event(
             action="login_failure",
@@ -225,6 +244,7 @@ async def login_telegram_callback(
         code=code,
         redirect_uri=redirect_uri,
         expected_nonce=cookie_nonce,
+        code_verifier=cookie_verifier,
         ip_address=ip,
         user_agent=request.headers.get("user-agent"),
     )
@@ -251,6 +271,7 @@ async def login_telegram_callback(
     )
     response.delete_cookie(TG_OIDC_STATE_COOKIE_NAME, path="/")
     response.delete_cookie(TG_OIDC_NONCE_COOKIE_NAME, path="/")
+    response.delete_cookie(TG_OIDC_VERIFIER_COOKIE_NAME, path="/")
     return response
 
 

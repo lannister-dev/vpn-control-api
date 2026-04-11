@@ -309,6 +309,31 @@ class TestProcessWebhook:
             with pytest.raises(WebhookVerificationFailed):
                 await service.process_webhook("freekassa", request)
 
+    async def test_webhook_canceled_event_does_not_fulfill_order(self, service):
+        order = _make_order(status="pending", provider="platega", external_id="txn-123")
+        service.order_repo.get_by_external_id.return_value = order
+        service._fulfill_order = AsyncMock()
+
+        mock_provider = AsyncMock()
+        mock_provider.verify_webhook.return_value = SimpleNamespace(
+            external_id="txn-123",
+            amount_rub=299.0,
+            provider_meta='{"status":"CANCELED"}',
+            should_fulfill=False,
+            provider_status="CANCELED",
+        )
+
+        request = MagicMock()
+        with patch.object(BillingService, "_get_provider", return_value=mock_provider):
+            await service.process_webhook("platega", request)
+
+        service._fulfill_order.assert_not_awaited()
+        service.order_repo.update_by_id.assert_awaited_once()
+        _, kwargs = service.order_repo.update_by_id.await_args
+        assert kwargs == {}
+        assert service.order_repo.update_by_id.await_args.args[0] == order.id
+        assert service.order_repo.update_by_id.await_args.args[1]["status"] == "expired"
+
 
 # ── balance operations ────────────────────────────────────────
 

@@ -219,10 +219,11 @@ class BillingConfig:
     freekassa_success_redirect_url: str = ""
     freekassa_fail_redirect_url: str = ""
     stars_bot_token: str = ""
-    platega_api_url: str = ""
+    platega_api_url: str = "https://app.platega.io"
     platega_shop_id: str = ""
     platega_api_key: str = ""
-    platega_webhook_secret: str = ""
+    platega_success_redirect_url: str = ""
+    platega_fail_redirect_url: str = ""
     order_ttl_minutes: int = 30
 
 
@@ -230,6 +231,14 @@ class BillingConfig:
 class MigrationConfig:
     enabled: bool = False
     gift_plan_name: str = ""
+
+
+@dataclass
+class ReferralConfig:
+    enabled: bool = True
+    reward_rub: int = 50
+    referred_reward_rub: int = 0
+    bot_username: str = ""
 
 
 @dataclass
@@ -271,6 +280,7 @@ class Settings:
     vpn_key: VpnKeyConfig
     billing: BillingConfig
     migration: MigrationConfig
+    referral: ReferralConfig
 
 
 @lru_cache
@@ -488,16 +498,24 @@ def get_settings() -> Settings:
         freekassa_success_redirect_url=env.str("BILLING_FREEKASSA_SUCCESS_REDIRECT_URL", default=""),
         freekassa_fail_redirect_url=env.str("BILLING_FREEKASSA_FAIL_REDIRECT_URL", default=""),
         stars_bot_token=env.str("BILLING_STARS_BOT_TOKEN", default=""),
-        platega_api_url=env.str("BILLING_PLATEGA_API_URL", default=""),
+        platega_api_url=env.str("BILLING_PLATEGA_API_URL", default="https://app.platega.io"),
         platega_shop_id=env.str("BILLING_PLATEGA_SHOP_ID", default=""),
         platega_api_key=env.str("BILLING_PLATEGA_API_KEY", default=""),
-        platega_webhook_secret=env.str("BILLING_PLATEGA_WEBHOOK_SECRET", default=""),
+        platega_success_redirect_url=env.str("BILLING_PLATEGA_SUCCESS_REDIRECT_URL", default=""),
+        platega_fail_redirect_url=env.str("BILLING_PLATEGA_FAIL_REDIRECT_URL", default=""),
         order_ttl_minutes=max(1, env.int("BILLING_ORDER_TTL_MINUTES", default=30)),
     )
 
     migration = MigrationConfig(
         enabled=env.bool("MIGRATION_ENABLED", default=False),
         gift_plan_name=env.str("MIGRATION_GIFT_PLAN_NAME", default="").strip(),
+    )
+
+    referral = ReferralConfig(
+        enabled=env.bool("REFERRAL_ENABLED", default=True),
+        reward_rub=env.int("REFERRAL_REWARD_RUB", default=50),
+        referred_reward_rub=env.int("REFERRAL_REFERRED_REWARD_RUB", default=0),
+        bot_username=env.str("REFERRAL_BOT_USERNAME", default="").strip(),
     )
 
     _tg_allowed_raw = env.str("ADMIN_TELEGRAM_ALLOWED_IDS", default="")
@@ -541,4 +559,5 @@ def get_settings() -> Settings:
         vpn_key=vpn_key,
         billing=billing,
         migration=migration,
+        referral=referral,
     )

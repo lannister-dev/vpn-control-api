@@ -5,7 +5,7 @@ from decimal import Decimal
 from enum import Enum
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from services.billing.schemas import PaymentProviderEnum
 
@@ -48,6 +48,12 @@ class BotOrderCreateIn(BaseModel):
     plan_id: UUID
     provider: PaymentProviderEnum
     extra_devices: int = Field(default=0, ge=0)
+    payment_method: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def validate_provider_requirements(self) -> "BotOrderCreateIn":
+        self.provider.validate_requirements(payment_method=self.payment_method)
+        return self
 
 
 class BotStarsConfirmIn(BaseModel):
@@ -57,11 +63,23 @@ class BotStarsConfirmIn(BaseModel):
 
 class BotRenewOrderIn(BaseModel):
     provider: PaymentProviderEnum
+    payment_method: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def validate_provider_requirements(self) -> "BotRenewOrderIn":
+        self.provider.validate_requirements(payment_method=self.payment_method)
+        return self
 
 
 class BotTopUpCreateIn(BaseModel):
     amount: Decimal = Field(gt=0, le=Decimal("99999999.99"))
     provider: PaymentProviderEnum
+    payment_method: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def validate_provider_requirements(self) -> "BotTopUpCreateIn":
+        self.provider.validate_requirements(payment_method=self.payment_method)
+        return self
 
 
 class BotOrderUpdateIn(BaseModel):
@@ -222,6 +240,12 @@ class BotSubscriptionLinkOut(BaseModel):
 class BotDeviceSlotPurchaseIn(BaseModel):
     qty: int = Field(ge=1)
     provider: PaymentProviderEnum
+    payment_method: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def validate_provider_requirements(self) -> "BotDeviceSlotPurchaseIn":
+        self.provider.validate_requirements(payment_method=self.payment_method)
+        return self
 
 
 class BotOrderHistoryItemOut(BaseModel):
