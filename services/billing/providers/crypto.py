@@ -41,7 +41,12 @@ class CryptoProvider(BaseApiClient, PaymentProvider):
         self.webhook_secret = cfg.crypto_webhook_secret
 
     async def create_payment(
-        self, *, order_id: str, amount_rub: float, description: str,
+        self,
+        *,
+        order_id: str,
+        amount_rub: float,
+        description: str,
+        payment_method: int | None = None,
     ) -> ProviderCreateResult:
         try:
             data = await self.post(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import base64
 import json
 from datetime import datetime, timedelta, timezone
 from typing import Literal
@@ -100,6 +101,7 @@ class AdminAuthService:
         code: str,
         redirect_uri: str,
         expected_nonce: str,
+        code_verifier: str,
         ip_address: str | None = None,
         user_agent: str | None = None,
     ) -> tuple[LoginOut, str] | None:
@@ -122,6 +124,7 @@ class AdminAuthService:
         token_data = self._exchange_telegram_code(
             code=code,
             redirect_uri=redirect_uri,
+            code_verifier=code_verifier,
             client_id=settings.admin_auth.telegram_client_id,
             client_secret=settings.admin_auth.telegram_client_secret,
             token_url=settings.admin_auth.telegram_token_url,
@@ -478,6 +481,7 @@ class AdminAuthService:
         *,
         code: str,
         redirect_uri: str,
+        code_verifier: str,
         client_id: str,
         client_secret: str,
         token_url: str,
@@ -488,13 +492,17 @@ class AdminAuthService:
                 "code": code,
                 "redirect_uri": redirect_uri,
                 "client_id": client_id,
-                "client_secret": client_secret,
+                "code_verifier": code_verifier,
             }
         ).encode("utf-8")
+        basic_auth = base64.b64encode(f"{client_id}:{client_secret}".encode("utf-8")).decode("ascii")
         req = Request(
             token_url,
             data=body,
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Authorization": f"Basic {basic_auth}",
+            },
             method="POST",
         )
         try:
