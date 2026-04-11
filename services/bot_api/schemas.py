@@ -8,6 +8,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from services.billing.schemas import PaymentProviderEnum, PlategaPaymentMethodEnum
+from services.billing.utils import validate_provider_payment_method
 
 
 class BotDashboardState(str, Enum):
@@ -52,7 +53,10 @@ class BotOrderCreateIn(BaseModel):
 
     @model_validator(mode="after")
     def validate_provider_requirements(self) -> "BotOrderCreateIn":
-        self.provider.validate_requirements(payment_method=self.payment_method)
+        validate_provider_payment_method(
+            self.provider,
+            payment_method=self.payment_method,
+        )
         return self
 
 
@@ -67,7 +71,10 @@ class BotRenewOrderIn(BaseModel):
 
     @model_validator(mode="after")
     def validate_provider_requirements(self) -> "BotRenewOrderIn":
-        self.provider.validate_requirements(payment_method=self.payment_method)
+        validate_provider_payment_method(
+            self.provider,
+            payment_method=self.payment_method,
+        )
         return self
 
 
@@ -78,7 +85,10 @@ class BotTopUpCreateIn(BaseModel):
 
     @model_validator(mode="after")
     def validate_provider_requirements(self) -> "BotTopUpCreateIn":
-        self.provider.validate_requirements(payment_method=self.payment_method)
+        validate_provider_payment_method(
+            self.provider,
+            payment_method=self.payment_method,
+        )
         return self
 
 
@@ -244,7 +254,10 @@ class BotDeviceSlotPurchaseIn(BaseModel):
 
     @model_validator(mode="after")
     def validate_provider_requirements(self) -> "BotDeviceSlotPurchaseIn":
-        self.provider.validate_requirements(payment_method=self.payment_method)
+        validate_provider_payment_method(
+            self.provider,
+            payment_method=self.payment_method,
+        )
         return self
 
 

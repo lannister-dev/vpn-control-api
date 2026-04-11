@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from services.billing.utils import validate_provider_payment_method
+
 
 class PaymentProviderEnum(str, Enum):
     CRYPTO = "crypto"
@@ -13,10 +15,6 @@ class PaymentProviderEnum(str, Enum):
     PLATEGA = "platega"
     BALANCE = "balance"
     FREE = "free"
-
-    def validate_requirements(self, *, payment_method: int | None = None):
-        if self is PaymentProviderEnum.PLATEGA and payment_method is None:
-            raise ValueError(f"payment_method is required for provider='{self.value}'")
 
 
 class PlategaPaymentMethodEnum(IntEnum):
@@ -61,7 +59,10 @@ class OrderCreateIn(BaseModel):
 
     @model_validator(mode="after")
     def validate_provider_requirements(self) -> "OrderCreateIn":
-        self.provider.validate_requirements(payment_method=self.payment_method)
+        validate_provider_payment_method(
+            self.provider,
+            payment_method=self.payment_method,
+        )
         return self
 
 
