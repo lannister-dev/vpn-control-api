@@ -29,7 +29,8 @@ jobs:
     runs-on: [self-hosted, dev]
     env:
       IMAGE_NAME: control-api
-      STACK_NAME: control-api-dev
+      NAMESPACE: vpn-dev
+      RELEASE_NAME: control-api-dev
     environment:
       name: development
     steps:
@@ -61,10 +62,33 @@ jobs:
           docker push "${IMAGE_REF_DEV}"
           DIGEST="$(docker inspect --format='{{index .RepoDigests 0}}' "${IMAGE_REF}" || true)"
           echo "image_digest=${DIGEST}" >> "$GITHUB_OUTPUT"
-      - name: Deploy stack
+      - name: Create namespace
+        run: kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
+      - name: Update env secret
         run: |
           set -Eeuo pipefail
-          docker stack deploy --with-registry-auth --prune -c docker-compose.dev.yml "${STACK_NAME}"
+          kubectl create secret generic control-api-dev-env \
+            --from-env-file=.env.dev \
+            -n "${NAMESPACE}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+      - name: Update Harbor pull secret
+        run: |
+          set -Eeuo pipefail
+          kubectl create secret docker-registry harbor-registry \
+            --docker-server="${HARBOR_URL}" \
+            --docker-username="${HARBOR_USERNAME}" \
+            --docker-password="${HARBOR_PASSWORD}" \
+            -n "${NAMESPACE}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+      - name: Deploy with Helm
+        run: |
+          set -Eeuo pipefail
+          helm upgrade --install "${RELEASE_NAME}" chart/ \
+            -n "${NAMESPACE}" \
+            -f chart/values/dev.yaml \
+            --set image.tag="${IMAGE_TAG}" \
+            --set "imagePullSecrets[0].name=harbor-registry" \
+            --wait --timeout 120s
       - name: Smoke checks
         id: smoke
         continue-on-error: true
@@ -84,11 +108,11 @@ jobs:
             sleep 5
           done
           curl -fsS "${BASE_URL}/api/v1/auth/admin/session" >/dev/null
-      - name: Rollback service on failed smoke
+      - name: Rollback on failed smoke
         if: steps.smoke.outcome == 'failure'
         run: |
           set -Eeuo pipefail
-          docker service update --rollback "${STACK_NAME}_control-api"
+          helm rollback "${RELEASE_NAME}" -n "${NAMESPACE}" --wait --timeout 120s
       - name: Fail job if smoke failed
         if: steps.smoke.outcome == 'failure'
         run: |
@@ -99,7 +123,8 @@ jobs:
         run: |
           {
             echo "## Dev Deploy Summary"
-            echo "- Stack: \`${STACK_NAME}\`"
+            echo "- Release: \`${RELEASE_NAME}\`"
+            echo "- Namespace: \`${NAMESPACE}\`"
             echo "- Image tag: \`${IMAGE_TAG}\`"
             echo "- Image ref: \`${IMAGE_REF}\`"
             echo "- Image digest: \`${{ steps.publish.outputs.image_digest }}\`"

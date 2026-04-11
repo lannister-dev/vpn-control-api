@@ -5,17 +5,23 @@ on:
     branches:
       - main
 
+concurrency:
+  group: control-api-prod-deploy
+  cancel-in-progress: false
+
 jobs:
   tests:
     uses: ./.github/workflows/tests.yml
 
   deploy:
     needs: tests
-    runs-on: [ self-hosted, prod ]
+    runs-on: [self-hosted, dev]
     environment:
       name: production
     env:
       IMAGE_NAME: control-api
+      NAMESPACE: vpn-prod
+      RELEASE_NAME: control-api
     steps:
       - uses: actions/checkout@v4
       - name: Prepare runtime
@@ -26,7 +32,8 @@ jobs:
       - name: Set image tag
         run: |
           set -Eeuo pipefail
-          echo "IMAGE_TAG=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          IMAGE_TAG="${GITHUB_SHA::7}"
+          echo "IMAGE_TAG=${IMAGE_TAG}" >> "$GITHUB_ENV"
       - name: Build image
         run: |
           set -Eeuo pipefail
@@ -39,10 +46,43 @@ jobs:
           set -Eeuo pipefail
           docker push "${HARBOR_URL}/${HARBOR_PROJECT}/${IMAGE_NAME}:${IMAGE_TAG}"
           docker push "${HARBOR_URL}/${HARBOR_PROJECT}/${IMAGE_NAME}:prod"
-      - name: Deploy Swarm
+      - name: Create namespace
+        run: kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
+      - name: Update env secret
         run: |
           set -Eeuo pipefail
-          docker stack deploy --with-registry-auth --prune -c docker-compose.yml control-api
+          kubectl create secret generic control-api-prod-env \
+            --from-env-file=.env.prod \
+            -n "${NAMESPACE}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+      - name: Update Harbor pull secret
+        run: |
+          set -Eeuo pipefail
+          kubectl create secret docker-registry harbor-registry \
+            --docker-server="${HARBOR_URL}" \
+            --docker-username="${HARBOR_USERNAME}" \
+            --docker-password="${HARBOR_PASSWORD}" \
+            -n "${NAMESPACE}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+      - name: Deploy with Helm
+        run: |
+          set -Eeuo pipefail
+          helm upgrade --install "${RELEASE_NAME}" chart/ \
+            -n "${NAMESPACE}" \
+            -f chart/values/prod.yaml \
+            --set image.tag="${IMAGE_TAG}" \
+            --set "imagePullSecrets[0].name=harbor-registry" \
+            --wait --timeout 120s
+      - name: Deployment summary
+        if: always()
+        run: |
+          {
+            echo "## Prod Deploy Summary"
+            echo "- Release: \`${RELEASE_NAME}\`"
+            echo "- Namespace: \`${NAMESPACE}\`"
+            echo "- Image tag: \`${IMAGE_TAG}\`"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Cleanup temporary env
         if: always()
         run: rm -f .env.prod
