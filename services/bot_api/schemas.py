@@ -7,7 +7,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from services.billing.schemas import PaymentProviderEnum
+from services.billing.schemas import PaymentProviderEnum, PlategaPaymentMethodEnum
 
 
 class BotDashboardState(str, Enum):
@@ -48,7 +48,7 @@ class BotOrderCreateIn(BaseModel):
     plan_id: UUID
     provider: PaymentProviderEnum
     extra_devices: int = Field(default=0, ge=0)
-    payment_method: int | None = Field(default=None, ge=1)
+    payment_method: PlategaPaymentMethodEnum | None = None
 
     @model_validator(mode="after")
     def validate_provider_requirements(self) -> "BotOrderCreateIn":
@@ -63,7 +63,7 @@ class BotStarsConfirmIn(BaseModel):
 
 class BotRenewOrderIn(BaseModel):
     provider: PaymentProviderEnum
-    payment_method: int | None = Field(default=None, ge=1)
+    payment_method: PlategaPaymentMethodEnum | None = None
 
     @model_validator(mode="after")
     def validate_provider_requirements(self) -> "BotRenewOrderIn":
@@ -74,7 +74,7 @@ class BotRenewOrderIn(BaseModel):
 class BotTopUpCreateIn(BaseModel):
     amount: Decimal = Field(gt=0, le=Decimal("99999999.99"))
     provider: PaymentProviderEnum
-    payment_method: int | None = Field(default=None, ge=1)
+    payment_method: PlategaPaymentMethodEnum | None = None
 
     @model_validator(mode="after")
     def validate_provider_requirements(self) -> "BotTopUpCreateIn":
@@ -240,7 +240,7 @@ class BotSubscriptionLinkOut(BaseModel):
 class BotDeviceSlotPurchaseIn(BaseModel):
     qty: int = Field(ge=1)
     provider: PaymentProviderEnum
-    payment_method: int | None = Field(default=None, ge=1)
+    payment_method: PlategaPaymentMethodEnum | None = None
 
     @model_validator(mode="after")
     def validate_provider_requirements(self) -> "BotDeviceSlotPurchaseIn":
