@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from enum import Enum
 
+from services.billing.exceptions import ProviderError
+
 
 def _provider_value(provider: str | Enum) -> str:
     if isinstance(provider, Enum):
@@ -43,3 +45,10 @@ def is_payment_provider_available(provider: str | Enum, billing: object) -> bool
     if provider_value == "balance":
         return True
     return False
+
+
+def map_provider_error_to_http_status(error: ProviderError) -> int:
+    upstream_status = error.upstream_status
+    if upstream_status is not None and 400 <= upstream_status < 500:
+        return 422
+    return 502

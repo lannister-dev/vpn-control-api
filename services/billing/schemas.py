@@ -18,8 +18,11 @@ class PaymentProviderEnum(str, Enum):
 
 
 class PlategaPaymentMethodEnum(IntEnum):
-    CRYPTO = 2
-    SBP = 14
+    SBP_QR = 2
+    ERIP = 3
+    CARD_ACQUIRING = 11
+    INTERNATIONAL = 12
+    CRYPTO = 13
 
 
 class OrderStatus(str, Enum):

@@ -60,7 +60,10 @@ class CryptoProvider(BaseApiClient, PaymentProvider):
             )
         except HttpError as exc:
             log.error("cryptocloud_create_failed status=%d body=%s", exc.status, exc.body)
-            raise ProviderError(f"CryptoCloud returned {exc.status}: {exc.body}") from exc
+            raise ProviderError(
+                f"CryptoCloud returned {exc.status}: {exc.body}",
+                upstream_status=exc.status,
+            ) from exc
 
         if data.get("status") != "success":
             raise ProviderError(f"CryptoCloud error: {data}")

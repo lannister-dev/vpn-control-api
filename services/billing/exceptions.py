@@ -17,6 +17,10 @@ class PlanNotPurchasable(Exception):
 class ProviderError(Exception):
     """Payment provider returned an error or is unavailable."""
 
+    def __init__(self, message: str, *, upstream_status: int | None = None):
+        super().__init__(message)
+        self.upstream_status = upstream_status
+
 
 class WebhookVerificationFailed(Exception):
     """Webhook signature verification failed."""

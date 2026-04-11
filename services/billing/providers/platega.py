@@ -69,7 +69,10 @@ class PlategaProvider(BaseApiClient, PaymentProvider):
         try:
             data = await self.post("/transaction/process", json=payload)
         except HttpError as exc:
-            raise ProviderError(f"Platega returned {exc.status}: {exc.body}") from exc
+            raise ProviderError(
+                f"Platega returned {exc.status}: {exc.body}",
+                upstream_status=exc.status,
+            ) from exc
 
         external_id = str(data.get("transactionId") or data.get("id") or "").strip()
         payment_url = str(
