@@ -62,6 +62,7 @@ class UserOut(BaseModel):
     description: str | None = None
     terms_accepted: bool = False
     terms_accepted_at: datetime | None = None
+    referral_code: str | None = None
     created_at: datetime
     updated_at: datetime
 

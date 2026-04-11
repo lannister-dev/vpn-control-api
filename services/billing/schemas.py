@@ -1,9 +1,11 @@
 from datetime import datetime
 from decimal import Decimal
-from enum import Enum
+from enum import Enum, IntEnum
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from services.billing.utils import validate_provider_payment_method
 
 
 class PaymentProviderEnum(str, Enum):
@@ -14,9 +16,10 @@ class PaymentProviderEnum(str, Enum):
     BALANCE = "balance"
     FREE = "free"
 
-    def validate_requirements(self, *, payment_method: int | None = None):
-        if self is PaymentProviderEnum.PLATEGA and payment_method is None:
-            raise ValueError(f"payment_method is required for provider='{self.value}'")
+
+class PlategaPaymentMethodEnum(IntEnum):
+    CRYPTO = 2
+    SBP = 14
 
 
 class OrderStatus(str, Enum):
@@ -52,11 +55,14 @@ class OrderCreateIn(BaseModel):
     order_type: OrderTypeEnum = OrderTypeEnum.PLAN_PURCHASE
     device_slots_qty: int = 0
     subscription_id: UUID | None = None
-    payment_method: int | None = Field(default=None, ge=1)
+    payment_method: PlategaPaymentMethodEnum | None = None
 
     @model_validator(mode="after")
     def validate_provider_requirements(self) -> "OrderCreateIn":
-        self.provider.validate_requirements(payment_method=self.payment_method)
+        validate_provider_payment_method(
+            self.provider,
+            payment_method=self.payment_method,
+        )
         return self
 
 

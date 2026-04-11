@@ -18,6 +18,7 @@ from services.bot_api.schemas import (
     BotUserOut,
 )
 from services.bot_api.schemas import BotDashboardState
+from services.bot_api.utils import parse_happ_crypto_response
 from services.billing.schemas import OrderOut, OrderTypeEnum, PaymentProviderEnum
 from services.bot_api.service import BotApiService
 
@@ -92,7 +93,7 @@ def test_parse_happ_crypto_response_accepts_plain_text_crypt5():
         headers={"content-type": "text/plain; charset=utf-8"},
     )
 
-    out = BotApiService._parse_happ_crypto_response(response)
+    out = parse_happ_crypto_response(response)
 
     assert out == "happ://crypt5/plain-text-value"
 
@@ -104,7 +105,7 @@ def test_parse_happ_crypto_response_accepts_json_payload():
         headers={"content-type": "application/json"},
     )
 
-    out = BotApiService._parse_happ_crypto_response(response)
+    out = parse_happ_crypto_response(response)
 
     assert out == "happ://crypt5/json-value"
 
@@ -116,7 +117,7 @@ def test_parse_happ_crypto_response_accepts_encrypted_link_payload():
         headers={"content-type": "application/json"},
     )
 
-    out = BotApiService._parse_happ_crypto_response(response)
+    out = parse_happ_crypto_response(response)
 
     assert out == "happ://crypt5/encrypted-link-value"
 
