@@ -12,6 +12,7 @@ class Subscription(Base):
 
     user_id: Mapped[UUID] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"), nullable=False)
     plan_id: Mapped[UUID | None] = mapped_column(ForeignKey("plan.id"), nullable=True)
+    token: Mapped[str | None] = mapped_column(String(64), nullable=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     prev_token_hash: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
     prev_token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

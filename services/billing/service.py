@@ -817,6 +817,7 @@ class BillingService:
                 SubscriptionInternalCreate(
                     user_id=user.id,
                     plan_id=plan.id,
+                    token=raw_token,
                     token_hash=token_hash,
                     is_active=True,
                     expires_at=expires_at,
@@ -913,6 +914,7 @@ class BillingService:
                 SubscriptionInternalCreate(
                     user_id=user.id,
                     plan_id=plan.id,
+                    token=raw_token,
                     token_hash=token_hash,
                     is_active=True,
                     expires_at=expires_at,

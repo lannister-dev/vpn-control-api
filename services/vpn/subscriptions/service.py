@@ -163,6 +163,7 @@ class SubscriptionService:
         internal = SubscriptionInternalCreate(
             user_id=data.user_id,
             plan_id=data.plan_id,
+            token=raw_token,
             token_hash=token_hash,
             is_active=True,
             expires_at=data.expires_at,
@@ -198,6 +199,7 @@ class SubscriptionService:
             user_id=sub.user_id,
             plan_id=sub.plan_id,
             plan_name=plan.name if plan else None,
+            token=getattr(sub, "token", None),
             is_active=sub.is_active,
             expires_at=sub.expires_at,
             profile_key=sub.profile_key,
@@ -239,6 +241,7 @@ class SubscriptionService:
         now = datetime.now(timezone.utc)
 
         data = SubscriptionInternalRotate(
+            token=new_raw,
             token_hash=new_hash,
             prev_token_hash=sub.token_hash,
             prev_token_expires_at=now + timedelta(seconds=grace_seconds),
@@ -433,10 +436,12 @@ class SubscriptionService:
             cached_payload, cached_etag, cache_result = await self._read_payload_cache(cache_key)
             SUBSCRIPTION_CACHE_TOTAL.labels(result=cache_result).inc()
             if cached_etag:
+                sub = await self.subscription_repository.get_by_any_token_hash(token_hash)
+                cache_user_info = self._build_user_info(sub) if sub else None
                 if if_none_match and if_none_match == cached_etag:
-                    return "", cached_etag, True, None
+                    return "", cached_etag, True, cache_user_info
                 if cached_payload is not None:
-                    return cached_payload, cached_etag, False, None
+                    return cached_payload, cached_etag, False, cache_user_info
             lock_acquired = await self._acquire_payload_build_lock(lock_key)
             SUBSCRIPTION_CACHE_TOTAL.labels(
                 result="lock_acquired" if lock_acquired else "lock_contended"
@@ -445,10 +450,12 @@ class SubscriptionService:
                 waited_payload, waited_etag, waited_result = await self._wait_for_cached_payload(cache_key)
                 SUBSCRIPTION_CACHE_TOTAL.labels(result=waited_result).inc()
                 if waited_etag:
+                    sub = await self.subscription_repository.get_by_any_token_hash(token_hash)
+                    wait_user_info = self._build_user_info(sub) if sub else None
                     if if_none_match and if_none_match == waited_etag:
-                        return "", waited_etag, True, None
+                        return "", waited_etag, True, wait_user_info
                     if waited_payload is not None:
-                        return waited_payload, waited_etag, False, None
+                        return waited_payload, waited_etag, False, wait_user_info
         await self._enforce_rate_limit(token_hash)
         try:
             subscription = await self.subscription_repository.get_by_any_token_hash(token_hash)

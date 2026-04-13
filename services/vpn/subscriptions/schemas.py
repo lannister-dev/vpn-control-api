@@ -17,6 +17,7 @@ class SubscriptionCreateIn(BaseModel):
 class SubscriptionInternalCreate(BaseModel):
     user_id: UUID
     plan_id: UUID | None = None
+    token: str = Field(min_length=1, max_length=64)
     token_hash: str = Field(min_length=64, max_length=64)
     prev_token_hash: str | None = None
     prev_token_expires_at: datetime | None = None
@@ -55,6 +56,7 @@ class SubscriptionOut(BaseModel):
     user_id: UUID
     plan_id: UUID | None = None
     plan_name: str | None = None
+    token: str | None = None
     is_active: bool
     expires_at: datetime | None
     profile_key: str | None
@@ -72,6 +74,7 @@ class SubscriptionOut(BaseModel):
 
 
 class SubscriptionInternalRotate(BaseModel):
+    token: str = Field(min_length=1, max_length=64)
     token_hash: str = Field(min_length=64, max_length=64)
     prev_token_hash: str | None
     prev_token_expires_at: datetime | None

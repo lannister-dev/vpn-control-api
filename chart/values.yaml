@@ -28,6 +28,9 @@ command:
   - --proxy-headers
   - --forwarded-allow-ips=*
 
+migrations:
+  enabled: true
+
 service:
   type: ClusterIP
   port: 8000
