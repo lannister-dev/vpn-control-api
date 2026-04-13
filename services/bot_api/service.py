@@ -463,9 +463,13 @@ class BotApiService:
         }:
             raise HTTPException(status_code=409, detail="Subscription is not active")
 
-        rotated = await self.subscription_service.rotate_token(subscription.id)
+        if not subscription.token:
+            rotated = await self.subscription_service.rotate_token(subscription.id)
+            subscription_url = rotated.subscription_url
+        else:
+            subscription_url = f"{self.settings.subscriptions.public_base_url}{subscription.token}"
         session = await self._build_session(user=user)
-        return BotSubscriptionLinkOut(subscription_url=rotated.subscription_url, session=session)
+        return BotSubscriptionLinkOut(subscription_url=subscription_url, session=session)
 
     async def _ensure_user(self, payload: BotSessionSyncIn) -> tuple[UserOut, bool]:
         existing = await self.user_repository.get_by_telegram_id(payload.telegram_id)

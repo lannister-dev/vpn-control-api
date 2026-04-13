@@ -24,17 +24,16 @@ from services.bot_api.service import BotApiService
 @pytest.fixture()
 def service(async_session, redis_client):
     svc = BotApiService(async_session, redis_client)
-    svc.settings = SimpleNamespace(subscriptions=SimpleNamespace())
+    svc.settings = SimpleNamespace(
+        subscriptions=SimpleNamespace(public_base_url="https://example.com/sub/"),
+    )
     svc._require_user_by_telegram_id = AsyncMock(
         return_value=SimpleNamespace(id=uuid4())
     )
     svc._current_subscription = AsyncMock(
-        return_value=SimpleNamespace(id=uuid4())
+        return_value=SimpleNamespace(id=uuid4(), token="test_token_abc")
     )
     svc._classify_subscription = MagicMock(return_value=BotDashboardState.ACTIVE)
-    svc.subscription_service.rotate_token = AsyncMock(
-        return_value=SimpleNamespace(subscription_url="https://example.com/sub/token")
-    )
     now = datetime.now(timezone.utc)
     svc._build_session = AsyncMock(
         return_value=BotSessionOut(
@@ -66,10 +65,10 @@ def service(async_session, redis_client):
 
 
 @pytest.mark.asyncio
-async def test_issue_subscription_link_returns_plain_url(service):
+async def test_issue_subscription_link_returns_stable_url(service):
     out = await service.issue_subscription_link(telegram_id=42)
 
-    assert out.subscription_url == "https://example.com/sub/token"
+    assert out.subscription_url == "https://example.com/sub/test_token_abc"
 
 
 @pytest.mark.asyncio
