@@ -3,8 +3,6 @@ from __future__ import annotations
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
-import httpx
-
 from services.billing.schemas import PaymentProviderEnum
 from services.billing.utils import is_payment_provider_available
 
@@ -65,47 +63,3 @@ def get_device_display_name(user_agent: str | None, index: int) -> str:
         if normalized:
             return normalized[:80]
     return f"Устройство {index}"
-
-
-def parse_happ_crypto_response(response: httpx.Response) -> str:
-    text = response.text.strip()
-    if not text:
-        raise ValueError("Happ crypto API returned empty body")
-
-    value = text
-    content_type = response.headers.get("content-type", "").lower()
-    if "application/json" in content_type or text[:1] in {"{", "["}:
-        try:
-            value = extract_happ_crypto_url(response.json())
-        except Exception:
-            value = text
-
-    value = value.strip()
-    if not value.startswith("happ://crypt5/"):
-        raise ValueError(f"Unexpected Happ crypto payload: {value[:64]}")
-    return value
-
-
-def extract_happ_crypto_url(payload: Any) -> str:
-    if isinstance(payload, str):
-        return payload
-    if isinstance(payload, dict):
-        for key in (
-            "url",
-            "encrypted_link",
-            "encryptedLink",
-            "encrypted_url",
-            "encryptedUrl",
-            "result",
-            "data",
-            "link",
-        ):
-            value = payload.get(key)
-            if value:
-                return extract_happ_crypto_url(value)
-    if isinstance(payload, list):
-        for item in payload:
-            value = extract_happ_crypto_url(item)
-            if value:
-                return value
-    raise ValueError("Unable to extract Happ crypto URL")
