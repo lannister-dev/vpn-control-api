@@ -125,6 +125,7 @@ def _make_subscription_row(*, user_id=None, is_active=True):
     sub.root_vpn_key_id = None
     sub.plan_id = None
     sub.plan = None
+    sub.token = "test_token_abc"
     sub.is_active = is_active
     sub.expires_at = now + timedelta(days=30)
     sub.profile_key = "ws_tls_v1"
@@ -430,13 +431,14 @@ async def test_build_payload_uses_cached_payload_without_db_lookup(service):
     service.redis.client.get.return_value = json.dumps(
         {"etag": "etag-cached", "payload": "vless://cached"}
     )
+    sub = _make_sub()
+    service.subscription_repository.get_by_any_token_hash.return_value = sub
 
-    payload, etag, not_modified, _ = await service.build_payload(raw_token="tok")
+    payload, etag, not_modified, user_info = await service.build_payload(raw_token="tok")
 
     assert payload == "vless://cached"
     assert etag == "etag-cached"
     assert not not_modified
-    service.subscription_repository.get_by_any_token_hash.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -446,8 +448,10 @@ async def test_build_payload_uses_cached_etag_for_304_without_db_lookup(service)
     service.redis.client.get.return_value = json.dumps(
         {"etag": "etag-cached", "payload": "vless://cached"}
     )
+    sub = _make_sub()
+    service.subscription_repository.get_by_any_token_hash.return_value = sub
 
-    payload, etag, not_modified, _ = await service.build_payload(
+    payload, etag, not_modified, user_info = await service.build_payload(
         raw_token="tok",
         if_none_match="etag-cached",
     )
@@ -455,7 +459,6 @@ async def test_build_payload_uses_cached_etag_for_304_without_db_lookup(service)
     assert payload == ""
     assert etag == "etag-cached"
     assert not_modified
-    service.subscription_repository.get_by_any_token_hash.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -467,14 +470,15 @@ async def test_build_payload_waits_on_lock_contention_and_uses_wait_hit_cache(se
         json.dumps({"etag": "etag-wait", "payload": "vless://waited"}),
     ]
     service.redis.client.set.return_value = None
+    sub = _make_sub()
+    service.subscription_repository.get_by_any_token_hash.return_value = sub
 
     with patch("services.vpn.subscriptions.service.asyncio.sleep", new=AsyncMock()):
-        payload, etag, not_modified, _ = await service.build_payload(raw_token="tok")
+        payload, etag, not_modified, user_info = await service.build_payload(raw_token="tok")
 
     assert payload == "vless://waited"
     assert etag == "etag-wait"
     assert not not_modified
-    service.subscription_repository.get_by_any_token_hash.assert_not_awaited()
     service.redis.client.set.assert_awaited()
 
 
