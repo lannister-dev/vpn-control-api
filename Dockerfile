@@ -1,5 +1,5 @@
-ARG PYTHON_BUILD_IMAGE=harbor.lannister-dev.ru/docker-hub/library/python:3.10
-ARG PYTHON_RUNTIME_IMAGE=harbor.lannister-dev.ru/docker-hub/library/python:3.10-slim
+ARG PYTHON_BUILD_IMAGE=python:3.10
+ARG PYTHON_RUNTIME_IMAGE=python:3.10-slim
 
 FROM ${PYTHON_BUILD_IMAGE} AS compile-image
 
