@@ -19,6 +19,7 @@ from services.vpn.subscriptions.schemas import (
     SubscriptionDeviceOut,
     SubscriptionOut,
     SubscriptionRotateOut,
+    SubscriptionSetMaxDevicesIn,
 )
 from services.vpn.subscriptions.exceptions import (
     SubscriptionNotFound,
@@ -158,6 +159,24 @@ async def get_subscription_by_id(
 ):
     try:
         return await service.get_subscription(subscription_id)
+    except SubscriptionNotFound:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+
+
+@router.patch(
+    "/{subscription_id}/max-devices",
+    response_model=SubscriptionOut,
+    status_code=status.HTTP_200_OK,
+    summary="Set subscription max devices",
+    dependencies=[Depends(admin_auth)],
+)
+async def set_max_devices(
+        subscription_id: UUID,
+        data: SubscriptionSetMaxDevicesIn,
+        service: SubscriptionService = Depends(get_subscription_service),
+):
+    try:
+        return await service.set_max_devices(subscription_id, data.max_devices)
     except SubscriptionNotFound:
         raise HTTPException(status_code=404, detail="Subscription not found")
 

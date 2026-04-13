@@ -2151,6 +2151,14 @@
             <button class="btn-mini btn-primary sub-detail-activate" data-sub-id="${esc(sub.id)}">Activate</button>
             <button class="btn-mini btn-danger sub-detail-deactivate" data-sub-id="${esc(sub.id)}">Deactivate</button>
             <button class="btn-mini sub-detail-devices" data-sub-id="${esc(sub.id)}">Show Devices</button>
+            <button class="btn-mini sub-detail-edit" data-sub-id="${esc(sub.id)}">Edit</button>
+          </div>
+          <div id="sub-detail-edit-form" style="display:none;margin-top:10px">
+            <div style="display:flex;align-items:flex-end;gap:8px">
+              <div class="form-group" style="margin:0"><label class="form-label">Max devices</label><input class="input mono" id="sub-edit-max-devices" type="number" min="1" max="100" value="${sub.max_devices || ""}" style="width:80px" /></div>
+              <button class="btn-mini btn-primary sub-edit-save" data-sub-id="${esc(sub.id)}">Сохранить</button>
+              <button class="btn-mini sub-edit-cancel">Отмена</button>
+            </div>
           </div>
           <div id="sub-detail-url"></div>
           <div id="sub-detail-token-info" class="muted" style="font-size:11px;margin-top:4px">${sub.last_token_rotated_at ? "Last token rotation: " + fmtDate(sub.last_token_rotated_at) : ""}</div>
@@ -2678,6 +2686,33 @@
             const devices = await runAction("List devices", () => req(`/api/v1/subscriptions/${encodeURIComponent(subId)}/devices?active_only=false`));
             state.subscriptionDevices = Array.isArray(devices) ? devices : [];
             renderSubscriptionDevices(state.subscriptionDevices, subId);
+          } catch (_) {}
+          return;
+        }
+        const editBtn = el.closest(".sub-detail-edit");
+        if (editBtn) {
+          const form = $("sub-detail-edit-form");
+          if (form) form.style.display = form.style.display === "none" ? "block" : "none";
+          return;
+        }
+        const cancelBtn = el.closest(".sub-edit-cancel");
+        if (cancelBtn) {
+          const form = $("sub-detail-edit-form");
+          if (form) form.style.display = "none";
+          return;
+        }
+        const saveBtn = el.closest(".sub-edit-save");
+        if (saveBtn) {
+          const subId = saveBtn.dataset.subId;
+          const maxDev = $("sub-edit-max-devices").value.trim();
+          if (!maxDev) return;
+          const payload = { max_devices: Number(maxDev) };
+          try {
+            const sub = await runAction("Set max devices", () => req(`/api/v1/subscriptions/${encodeURIComponent(subId)}/max-devices`, { method: "PATCH", body: payload }));
+            renderSubscriptionDetail(sub);
+            const idx = state.subscriptions.findIndex((s) => s.id === sub.id);
+            if (idx >= 0) state.subscriptions[idx] = sub; else state.subscriptions.unshift(sub);
+            render();
           } catch (_) {}
           return;
         }
