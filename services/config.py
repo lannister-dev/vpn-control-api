@@ -111,6 +111,9 @@ class NodeAgentConfig:
     placement_error_retry_enabled: bool = True
     placement_error_retry_tick_sec: int = 120
     placement_error_retry_after_sec: int = 120
+    placement_rebalance_enabled: bool = False
+    placement_rebalance_tick_sec: int = 120
+    placement_rebalance_batch_size: int = 200
 
 
 @dataclass
@@ -390,6 +393,9 @@ def get_settings() -> Settings:
         placement_error_retry_enabled=env.bool("NODE_PLACEMENT_ERROR_RETRY_ENABLED", default=True),
         placement_error_retry_tick_sec=max(30, env.int("NODE_PLACEMENT_ERROR_RETRY_TICK_SEC", default=120)),
         placement_error_retry_after_sec=max(30, env.int("NODE_PLACEMENT_ERROR_RETRY_AFTER_SEC", default=120)),
+        placement_rebalance_enabled=env.bool("NODE_PLACEMENT_REBALANCE_ENABLED", default=False),
+        placement_rebalance_tick_sec=max(30, env.int("NODE_PLACEMENT_REBALANCE_TICK_SEC", default=120)),
+        placement_rebalance_batch_size=max(1, min(1000, env.int("NODE_PLACEMENT_REBALANCE_BATCH_SIZE", default=200))),
     )
 
     alerts = AlertsConfig(

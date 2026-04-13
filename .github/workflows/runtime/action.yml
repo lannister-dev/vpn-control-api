@@ -1,13 +1,7 @@
 name: Prepare Runtime
-description: Load secrets from Vault, render env file, and login to Harbor.
+description: Load Harbor credentials from Vault and login to the registry.
 
 inputs:
-  vault_scope:
-    description: Vault scope under kv/data/controle-plane.
-    required: true
-  env_file:
-    description: Absolute or relative path for the rendered env file.
-    required: true
   harbor_login:
     description: Whether to login to Harbor after loading secrets.
     required: false
@@ -29,7 +23,7 @@ runs:
         echo "VAULT_ROLE_ID=${VAULT_ROLE_ID}" >> "${GITHUB_ENV}"
         echo "VAULT_SECRET_ID=${VAULT_SECRET_ID}" >> "${GITHUB_ENV}"
 
-    - name: Load context from Vault
+    - name: Load Harbor credentials from Vault
       uses: hashicorp/vault-action@v3
       with:
         url: ${{ env.VAULT_ADDR }}
@@ -37,19 +31,10 @@ runs:
         roleId: ${{ env.VAULT_ROLE_ID }}
         secretId: ${{ env.VAULT_SECRET_ID }}
         secrets: |
-          kv/data/control-plane/${{ inputs.vault_scope }} config | CONTROL_API_ENV_CONTENT ;
-          kv/data/control-plane/${{ inputs.vault_scope }} harbor_url | HARBOR_URL ;
-          kv/data/control-plane/${{ inputs.vault_scope }} harbor_project | HARBOR_PROJECT ;
-          kv/data/control-plane/${{ inputs.vault_scope }} harbor_username | HARBOR_USERNAME ;
-          kv/data/control-plane/${{ inputs.vault_scope }} harbor_password | HARBOR_PASSWORD ;
-
-    - name: Render env
-      shell: bash
-      run: |
-        set -Eeuo pipefail
-        printf '%s\n' "${CONTROL_API_ENV_CONTENT}" > "${{ inputs.env_file }}"
-        chmod 600 "${{ inputs.env_file }}"
-        echo "CONTROL_API_ENV_FILE=${{ inputs.env_file }}" >> "$GITHUB_ENV"
+          kv/data/ci/harbor harbor_url | HARBOR_URL ;
+          kv/data/ci/harbor harbor_project | HARBOR_PROJECT ;
+          kv/data/ci/harbor harbor_username | HARBOR_USERNAME ;
+          kv/data/ci/harbor harbor_password | HARBOR_PASSWORD ;
 
     - name: Login to Harbor
       if: ${{ inputs.harbor_login == 'true' }}

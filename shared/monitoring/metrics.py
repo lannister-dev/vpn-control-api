@@ -76,6 +76,17 @@ PLACEMENT_AUTO_HEAL_TOTAL = Counter(
     ["action", "result"],
 )
 
+PLACEMENT_REBALANCE_TOTAL = Counter(
+    "placement_rebalance_total",
+    "Placements created by rebalancer",
+    ["result"],
+)
+
+PLACEMENT_REBALANCE_MISSING_GAUGE = Gauge(
+    "placement_rebalance_missing_total",
+    "Missing placements detected in last rebalance tick",
+)
+
 CONNECT_TELEMETRY_TOTAL = Counter(
     "connect_telemetry_total",
     "Client connect telemetry events processed",
