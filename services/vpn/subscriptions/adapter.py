@@ -20,7 +20,6 @@ from services.vpn.subscriptions.schemas import (
     SubscriptionUserInfo,
 )
 
-
 class SubscriptionPublicAdapter:
     def __init__(
             self,
@@ -187,7 +186,7 @@ class SubscriptionPublicAdapter:
         if self._happ_routing:
             headers["routing"] = self._happ_routing
         if self._happ_hide_settings:
-            headers["hide-settings"] = "true"
+            headers["hide-settings"] = "1"
         if self._happ_always_hwid_enable:
             headers["subscription-always-hwid-enable"] = "1"
         if self._happ_color_profile:
