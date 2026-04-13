@@ -42,6 +42,10 @@ class SubscriptionInternalUpdate(BaseModel):
     updated_at: datetime | None = None
 
 
+class SubscriptionSetMaxDevicesIn(BaseModel):
+    max_devices: int = Field(gt=0, le=100)
+
+
 class SubscriptionCreatedOut(BaseModel):
     id: UUID
     vpn_key_id: UUID | None = None

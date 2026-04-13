@@ -214,6 +214,20 @@ class SubscriptionService:
             updated_at=sub.updated_at,
         )
 
+    async def set_max_devices(
+            self,
+            subscription_id: UUID,
+            max_devices: int,
+    ) -> SubscriptionOut:
+        sub = await self.subscription_repository.get_by_id(subscription_id)
+        if not sub:
+            raise SubscriptionNotFound(subscription_id)
+        update_data = SubscriptionInternalUpdate(max_devices=max_devices)
+        updated = await self.subscription_repository.update_by_id(
+            subscription_id, update_data.model_dump(exclude_unset=True),
+        )
+        return self._sub_to_out(updated)
+
     async def list_subscriptions_by_user(
             self,
             *,
