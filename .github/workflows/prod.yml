@@ -48,13 +48,6 @@ jobs:
           docker push "${HARBOR_URL}/${HARBOR_PROJECT}/${IMAGE_NAME}:prod"
       - name: Create namespace
         run: kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
-      - name: Update env secret
-        run: |
-          set -Eeuo pipefail
-          kubectl create secret generic control-api-prod-env \
-            --from-env-file=.env.prod \
-            -n "${NAMESPACE}" \
-            --dry-run=client -o yaml | kubectl apply -f -
       - name: Update Harbor pull secret
         run: |
           set -Eeuo pipefail

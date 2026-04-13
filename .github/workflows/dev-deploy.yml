@@ -64,13 +64,6 @@ jobs:
           echo "image_digest=${DIGEST}" >> "$GITHUB_OUTPUT"
       - name: Create namespace
         run: kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
-      - name: Update env secret
-        run: |
-          set -Eeuo pipefail
-          kubectl create secret generic control-api-dev-env \
-            --from-env-file=.env.dev \
-            -n "${NAMESPACE}" \
-            --dry-run=client -o yaml | kubectl apply -f -
       - name: Update Harbor pull secret
         run: |
           set -Eeuo pipefail
