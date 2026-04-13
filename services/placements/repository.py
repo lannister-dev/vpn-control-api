@@ -2,8 +2,8 @@ from datetime import datetime
 from uuid import UUID
 
 from fastapi import Depends
-from sqlalchemy import and_, func, or_, select, update as sa_update
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy import and_, cast, func, or_, select, update as sa_update
+from sqlalchemy.dialects.postgresql import ARRAY, UUID as PG_UUID, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.placements.model import UserPlacement
@@ -474,6 +474,102 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
         )
         if backend_node_id is not None:
             stmt = stmt.where(self.model.backend_node_id == backend_node_id)
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+
+    async def find_missing_placements(
+        self,
+        *,
+        healthy_node_ids: list[UUID],
+        batch_size: int = 200,
+    ) -> list[tuple[UUID, UUID]]:
+        """Find (key_id, node_id) pairs where an active key is missing
+        a placement on a healthy node."""
+        if not healthy_node_ids:
+            return []
+
+        active_keys = (
+            select(self.model.key_id)
+            .where(
+                self.model.is_active.is_(True),
+                self.model.desired_state == "active",
+            )
+            .distinct()
+            .subquery("active_keys")
+        )
+
+        nodes_cte = select(
+            func.unnest(cast(healthy_node_ids, ARRAY(PG_UUID))).label("id")
+        ).subquery("healthy_nodes")
+
+        cross = (
+            select(
+                active_keys.c.key_id.label("key_id"),
+                nodes_cte.c.id.label("node_id"),
+            )
+            .subquery("expected")
+        )
+
+        existing = self.model.__table__.alias("existing")
+        stmt = (
+            select(cross.c.key_id, cross.c.node_id)
+            .outerjoin(
+                existing,
+                and_(
+                    existing.c.key_id == cross.c.key_id,
+                    existing.c.backend_node_id == cross.c.node_id,
+                    existing.c.is_active.is_(True),
+                ),
+            )
+            .where(existing.c.id.is_(None))
+            .limit(batch_size)
+        )
+
+        result = await self.session.execute(stmt)
+        return [(row[0], row[1]) for row in result.all()]
+
+    async def bulk_upsert_set_pending(
+        self,
+        *,
+        pairs: list[tuple[UUID, UUID]],
+        desired_state: str = "active",
+        last_migration_reason: str | None = None,
+    ) -> list[UUID]:
+        """Bulk upsert placements for (key_id, backend_node_id) pairs.
+        Returns list of created/updated placement IDs."""
+        if not pairs:
+            return []
+
+        values_list = [
+            {
+                "key_id": key_id,
+                "backend_node_id": node_id,
+                "desired_state": desired_state,
+                "applied_state": "pending",
+                "op_version": 1,
+                "applied_version": 0,
+                "sticky_until": None,
+                "last_migration_reason": last_migration_reason,
+                "is_active": True,
+            }
+            for key_id, node_id in pairs
+        ]
+
+        stmt = insert(self.model).values(values_list)
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_user_placement_key_backend",
+            set_={
+                "desired_state": desired_state,
+                "applied_state": "pending",
+                "op_version": self.model.op_version + 1,
+                "sticky_until": None,
+                "last_migration_reason": last_migration_reason,
+                "is_active": True,
+                "updated_at": func.now(),
+            },
+        ).returning(self.model.id)
+
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
