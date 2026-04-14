@@ -1,6 +1,9 @@
 import logging
 from contextlib import asynccontextmanager
 
+from shared.network.ipv4 import force_ipv4
+force_ipv4()
+
 import uvicorn
 from fastapi import FastAPI, APIRouter, status
 from fastapi.responses import JSONResponse
