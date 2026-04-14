@@ -27,7 +27,8 @@
       --teal-ring: 0 0 0 1px rgba(45, 212, 191, 0.25), 0 0 24px rgba(45, 212, 191, 0.12);
     }
     * { box-sizing: border-box; }
-    html, body { margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; scrollbar-gutter: stable; }
+    body { margin: 0; padding: 0; }
     body {
       min-height: 100vh;
       color: var(--text);
@@ -75,7 +76,20 @@
       height: calc(100vh - 36px);
       overflow-y: auto;
       scrollbar-width: thin;
-      scrollbar-color: rgba(45, 212, 191, 0.2) transparent;
+      scrollbar-color: rgba(45, 212, 191, 0.3) transparent;
+    }
+    .sidebar::-webkit-scrollbar {
+      width: 8px;
+    }
+    .sidebar::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .sidebar::-webkit-scrollbar-thumb {
+      background: rgba(45, 212, 191, 0.3);
+      border-radius: 4px;
+    }
+    .sidebar::-webkit-scrollbar-thumb:hover {
+      background: rgba(45, 212, 191, 0.5);
     }
     .brand h1 {
       margin: 0;
@@ -118,22 +132,47 @@
       font-size: 13px;
       font-family: inherit;
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      transition: border-color 120ms ease, box-shadow 120ms ease;
     }
     .input:focus, .select:focus {
       outline: none;
       border-color: rgba(45, 212, 191, 0.55);
       box-shadow: var(--teal-ring);
     }
+    .input:focus-visible, .select:focus-visible {
+      outline: 2px solid rgba(45, 212, 191, 0.5);
+      outline-offset: 2px;
+    }
     .btn {
       cursor: pointer;
-      transition: transform 120ms ease, filter 120ms ease, border-color 120ms ease;
+      transition: transform 120ms ease, filter 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
       border-color: rgba(255, 255, 255, 0.16);
+      position: relative;
+    }
+    .btn:focus-visible {
+      outline: 2px solid rgba(45, 212, 191, 0.5);
+      outline-offset: 2px;
     }
     .btn:hover {
       transform: translateY(-1px);
       filter: brightness(1.06);
       border-color: rgba(45, 212, 191, 0.42);
       box-shadow: var(--teal-ring);
+    }
+    .btn:active {
+      transform: translateY(0px);
+      filter: brightness(1.02);
+    }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      filter: grayscale(0.3);
+    }
+    .btn:disabled:hover {
+      transform: none;
+      filter: grayscale(0.3) brightness(1);
+      box-shadow: none;
+      border-color: rgba(255, 255, 255, 0.16);
     }
     .btn-primary { background: linear-gradient(160deg, rgba(13, 148, 136, 0.52), rgba(8, 145, 178, 0.42)); }
     .btn-info { background: linear-gradient(160deg, rgba(8, 145, 178, 0.5), rgba(30, 64, 175, 0.34)); }
@@ -164,6 +203,10 @@
       position: relative;
       transition: all 140ms ease;
       white-space: nowrap;
+    }
+    .nav button:focus-visible {
+      outline: 2px solid rgba(45, 212, 191, 0.5);
+      outline-offset: 2px;
     }
     .nav button[disabled] {
       opacity: 0.52;
@@ -204,7 +247,10 @@
       background: linear-gradient(130deg, rgba(13, 148, 136, 0.24), rgba(14, 116, 144, 0.12));
       box-shadow: var(--teal-ring);
     }
-    .nav button.active::before { background: #2dd4bf; }
+    .nav button.active::before {
+      background: #2dd4bf;
+      transition: background 140ms ease;
+    }
     .nav button.active .nav-icon {
       background: rgba(45, 212, 191, 0.26);
       color: #d8fffa;
@@ -218,6 +264,21 @@
       min-width: 0;
       overflow-x: hidden;
       overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(45, 212, 191, 0.2) transparent;
+    }
+    .content::-webkit-scrollbar {
+      width: 8px;
+    }
+    .content::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .content::-webkit-scrollbar-thumb {
+      background: rgba(45, 212, 191, 0.2);
+      border-radius: 4px;
+    }
+    .content::-webkit-scrollbar-thumb:hover {
+      background: rgba(45, 212, 191, 0.4);
     }
     .hero {
       border: 1px solid var(--line-strong);
@@ -242,13 +303,17 @@
       background: rgba(15, 23, 42, 0.46);
       padding: 12px 14px;
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
-      transition: transform 130ms ease, border-color 130ms ease;
+      transition: transform 130ms ease, border-color 130ms ease, box-shadow 130ms ease;
       display: flex;
       align-items: center;
       gap: 10px;
     }
     .kpi:hover {
       transform: translateY(-2px);
+      border-color: rgba(45, 212, 191, 0.35);
+      box-shadow: var(--teal-ring);
+    }
+    .kpi:focus-within {
       border-color: rgba(45, 212, 191, 0.35);
       box-shadow: var(--teal-ring);
     }
@@ -302,12 +367,16 @@
       background: rgba(15, 23, 42, 0.44);
       padding: 10px;
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
-      transition: transform 130ms ease, border-color 130ms ease;
+      transition: transform 130ms ease, border-color 130ms ease, box-shadow 130ms ease;
       min-width: 0;
       overflow: hidden;
     }
     .card:hover {
       transform: translateY(-2px);
+      border-color: rgba(45, 212, 191, 0.34);
+      box-shadow: var(--teal-ring);
+    }
+    .card:focus-within {
       border-color: rgba(45, 212, 191, 0.34);
       box-shadow: var(--teal-ring);
     }
@@ -343,7 +412,13 @@
     .card-icon.cyan { background: rgba(6, 182, 212, 0.12); }
     .filters { display: grid; grid-template-columns: 1.6fr repeat(3, minmax(110px, 1fr)) auto; gap: 10px; margin-bottom: 10px; }
     .stack { display: grid; gap: 8px; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      table-layout: auto;
+      font-variant-numeric: tabular-nums;
+    }
     th, td {
       border-bottom: 1px solid rgba(255, 255, 255, 0.08);
       padding: 9px 7px;
@@ -352,8 +427,19 @@
       word-break: normal;
       overflow-wrap: normal;
     }
-    th { color: rgba(159, 179, 207, 0.84); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; }
-    tbody tr:hover td { background: rgba(45, 212, 191, 0.06); }
+    th {
+      color: rgba(159, 179, 207, 0.84);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      white-space: nowrap;
+      position: sticky;
+      top: 0;
+      background: var(--panel-soft);
+      z-index: 5;
+    }
+    tbody tr:nth-child(odd) { background: rgba(45, 212, 191, 0.02); }
+    tbody tr:hover td { background: rgba(45, 212, 191, 0.08); transition: background 120ms ease; }
     .badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 2px 8px; font-size: 11px; border: 1px solid transparent; white-space: nowrap; margin-right: 4px; vertical-align: middle; }
     .env-pill {
       display: inline-flex;
@@ -388,6 +474,13 @@
       cursor: pointer;
       transition: all 130ms ease;
       white-space: nowrap;
+    }
+    .btn-mini:focus-visible {
+      outline: 1px solid rgba(45, 212, 191, 0.5);
+      outline-offset: 1px;
+    }
+    .btn-mini:hover {
+      transform: translateY(-1px);
     }
     #tab-traffic .panel-body > table { min-width: 0; }
     #traffic-history-section table { min-width: 0; }
@@ -513,7 +606,7 @@
       position: relative;
       opacity: 0;
       transform: translateX(8px);
-      transition: 200ms ease;
+      transition: opacity 200ms ease, transform 200ms ease;
       pointer-events: auto;
       border: 1px solid var(--line);
       border-radius: 12px;
@@ -523,6 +616,11 @@
       padding: 10px 32px 10px 12px;
       max-width: 460px;
       font-size: 13px;
+      animation: toast-in 200ms ease;
+    }
+    @keyframes toast-in {
+      from { opacity: 0; transform: translateX(12px); }
+      to { opacity: 1; transform: translateX(0); }
     }
     .toast-container .toast.show { opacity: 1; transform: translateX(0); }
     .toast-container .toast.error { border-color: rgba(255, 127, 133, 0.5); }
@@ -538,8 +636,13 @@
       font-size: 16px;
       line-height: 1;
       padding: 2px;
+      transition: color 120ms ease;
     }
     .toast-close:hover { color: var(--text); }
+    .toast-close:focus-visible {
+      outline: 1px solid rgba(45, 212, 191, 0.5);
+      outline-offset: 2px;
+    }
 
     /* Confirmation modal */
     .modal-overlay {
@@ -564,6 +667,11 @@
       box-shadow: var(--shadow);
       display: flex;
       flex-direction: column;
+      animation: slide-up 200ms ease;
+    }
+    @keyframes slide-up {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
     }
     .modal-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; flex-shrink: 0; }
     .modal-body { color: var(--muted); font-size: 13px; margin-bottom: 16px; line-height: 1.5; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(45, 212, 191, 0.2) transparent; }
@@ -634,6 +742,347 @@
     .capacity-fill.mid { background: var(--warn); }
     .capacity-fill.high { background: var(--bad); }
 
+    /* Accessibility: sr-only & announcements */
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border-width: 0;
+    }
+
+    /* Tooltips */
+    [data-tooltip] {
+      position: relative;
+    }
+    .tooltip {
+      position: absolute;
+      pointer-events: none;
+      z-index: 9999;
+      background: rgba(15, 23, 42, 0.98);
+      border: 1px solid var(--line-strong);
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 12px;
+      color: var(--text);
+      white-space: nowrap;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      opacity: 0;
+      transition: opacity 150ms ease;
+      max-width: 200px;
+      word-wrap: break-word;
+      white-space: normal;
+    }
+    .tooltip.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .tooltip::after {
+      content: "";
+      position: absolute;
+      width: 6px;
+      height: 6px;
+      background: rgba(15, 23, 42, 0.98);
+      border: 1px solid var(--line-strong);
+      border-radius: 1px;
+      transform: rotate(45deg);
+    }
+    .tooltip.top::after {
+      bottom: -4px;
+      left: 50%;
+      transform: translateX(-50%) rotate(45deg);
+    }
+    .tooltip.bottom::after {
+      top: -4px;
+      left: 50%;
+      transform: translateX(-50%) rotate(45deg);
+    }
+    .tooltip.left::after {
+      right: -4px;
+      top: 50%;
+      transform: translateY(-50%) rotate(45deg);
+    }
+    .tooltip.right::after {
+      left: -4px;
+      top: 50%;
+      transform: translateY(-50%) rotate(45deg);
+    }
+
+    /* Skeleton loaders */
+    @keyframes shimmer {
+      0% { background-position: -1000px 0; }
+      100% { background-position: 1000px 0; }
+    }
+    .skeleton {
+      background: linear-gradient(90deg, rgba(45, 212, 191, 0.08) 25%, rgba(45, 212, 191, 0.12) 50%, rgba(45, 212, 191, 0.08) 75%);
+      background-size: 1000px 100%;
+      animation: shimmer 2.5s infinite;
+    }
+    .skeleton-row {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 8px;
+      height: 20px;
+      border-radius: 6px;
+    }
+    .skeleton-row > div {
+      flex: 1;
+      border-radius: 6px;
+      background: linear-gradient(90deg, rgba(45, 212, 191, 0.08) 25%, rgba(45, 212, 191, 0.12) 50%, rgba(45, 212, 191, 0.08) 75%);
+      background-size: 1000px 100%;
+      animation: shimmer 2.5s infinite;
+    }
+
+    /* Empty state */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 40px 20px;
+      text-align: center;
+      min-height: 200px;
+    }
+    .empty-state-icon {
+      font-size: 36px;
+      opacity: 0.6;
+    }
+    .empty-state-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .empty-state-hint {
+      font-size: 13px;
+      color: var(--muted);
+      max-width: 300px;
+    }
+    .empty-state-action {
+      margin-top: 10px;
+    }
+
+    /* Global loading bar (top) */
+    .global-loading-bar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, rgba(94, 233, 181, 0.4), rgba(103, 217, 246, 0.4));
+      box-shadow: 0 0 12px rgba(94, 233, 181, 0.3);
+      transform: scaleX(0);
+      transform-origin: left;
+      transition: transform 200ms ease;
+      z-index: 10000;
+    }
+    .global-loading-bar.active {
+      animation: bar-pulse 1.5s ease-in-out infinite;
+    }
+    @keyframes bar-pulse {
+      0% { transform: scaleX(0.1); }
+      50% { transform: scaleX(0.8); }
+      100% { transform: scaleX(0.1); }
+    }
+
+    /* Improve modal & toast for better accessibility */
+    .modal-overlay {
+      animation: fade-in 160ms ease;
+    }
+    @keyframes fade-in {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    /* Enhanced toast with progress bar */
+    .toast {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .toast-progress {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      height: 2px;
+      background: linear-gradient(90deg, var(--ok), var(--info));
+      border-radius: 0 0 12px 0;
+      animation: progress-shrink 4.5s linear forwards;
+    }
+    .toast.error .toast-progress {
+      background: linear-gradient(90deg, var(--bad), var(--warn));
+      animation: progress-shrink 6s linear forwards;
+    }
+    @keyframes progress-shrink {
+      from { width: 100%; }
+      to { width: 0%; }
+    }
+
+    /* Table improvements */
+    tbody tr {
+      transition: background 100ms ease;
+    }
+    tbody tr.selected td {
+      background: rgba(45, 212, 191, 0.12);
+    }
+    tbody tr[data-focusable] {
+      cursor: pointer;
+    }
+
+    /* Command palette */
+    .command-palette {
+      position: fixed;
+      inset: 0;
+      z-index: 9998;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding-top: 60px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 200ms ease;
+    }
+    .command-palette.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .command-palette-box {
+      background: rgba(15, 23, 42, 0.98);
+      border: 1px solid var(--line-strong);
+      border-radius: 16px;
+      width: 90%;
+      max-width: 540px;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      max-height: 70vh;
+      animation: slide-up 200ms ease;
+    }
+    .command-palette-input {
+      border: none;
+      border-bottom: 1px solid var(--line);
+      border-radius: 16px 16px 0 0;
+      background: rgba(15, 23, 42, 0.5);
+      color: var(--text);
+      padding: 16px;
+      font-size: 16px;
+      font-family: inherit;
+      outline: none;
+    }
+    .command-palette-input::placeholder {
+      color: var(--muted);
+    }
+    .command-palette-list {
+      overflow-y: auto;
+      padding: 8px;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(45, 212, 191, 0.2) transparent;
+      max-height: calc(70vh - 80px);
+    }
+    .command-palette-group {
+      margin-bottom: 8px;
+    }
+    .command-palette-group-title {
+      font-size: 10px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 8px 12px 4px;
+      font-weight: 600;
+    }
+    .command-palette-item {
+      padding: 10px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      transition: background 120ms ease;
+      border: 1px solid transparent;
+    }
+    .command-palette-item:hover,
+    .command-palette-item.selected {
+      background: rgba(45, 212, 191, 0.1);
+      border-color: rgba(45, 212, 191, 0.2);
+    }
+    .command-palette-item-icon {
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      background: rgba(45, 212, 191, 0.1);
+      flex-shrink: 0;
+      font-size: 11px;
+    }
+    .command-palette-item-label {
+      flex: 1;
+      color: var(--text);
+    }
+    .command-palette-item-shortcut {
+      font-size: 11px;
+      color: var(--muted);
+      font-family: "JetBrains Mono", monospace;
+    }
+
+    /* Keyboard shortcuts modal */
+    .shortcuts-modal-content {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+      margin-top: 12px;
+    }
+    .shortcuts-group {
+      display: grid;
+      gap: 6px;
+    }
+    .shortcuts-group-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: var(--muted);
+      letter-spacing: 0.06em;
+      margin-bottom: 4px;
+    }
+    .shortcuts-item {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 6px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      font-size: 12px;
+    }
+    .shortcuts-item:last-child {
+      border-bottom: none;
+    }
+    .shortcuts-key {
+      font-family: "JetBrains Mono", monospace;
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+    .shortcuts-desc {
+      color: var(--text);
+    }
+
+    /* Respect prefers-reduced-motion */
+    @media (prefers-reduced-motion: reduce) {
+      * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
     /* Sortable table headers */
     th.sortable { cursor: pointer; user-select: none; transition: color 120ms ease; }
     th.sortable:hover { color: var(--info); }
@@ -673,19 +1122,55 @@
 
     /* ── NEW: Form sections ────────────────────────── */
     .form-section { margin-bottom: 16px; }
-    .form-section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+    .form-section-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 8px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
     .form-group { margin-bottom: 10px; }
-    .form-label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; letter-spacing: 0.02em; }
+    .form-label {
+      display: block;
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 4px;
+      letter-spacing: 0.02em;
+      font-weight: 600;
+      transition: color 120ms ease;
+    }
+    .form-group:focus-within .form-label {
+      color: rgba(45, 212, 191, 0.8);
+    }
 
     /* ── NEW: Empty states ─────────────────────────── */
-    .empty-state { text-align: center; padding: 32px 16px; color: var(--muted); }
-    .empty-state-icon { font-size: 28px; margin-bottom: 8px; opacity: 0.5; }
-    .empty-state-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; color: var(--text); opacity: 0.7; }
-    .empty-state-desc { font-size: 12px; line-height: 1.5; }
+    .empty-state { text-align: center; padding: 40px 24px; color: var(--muted); border: 1px solid var(--line); border-radius: 12px; background: rgba(15,23,42,0.3); }
+    .empty-state-icon { font-size: 36px; margin-bottom: 12px; opacity: 0.6; display: block; }
+    .empty-state-title { font-size: 15px; font-weight: 600; margin-bottom: 6px; color: var(--text); opacity: 0.8; }
+    .empty-state-desc { font-size: 13px; line-height: 1.6; opacity: 0.75; margin-bottom: 12px; }
+    .empty-state-action { margin-top: 16px; }
+    .empty-state .btn { width: auto; }
 
     /* ── NEW: Collapsible sections ─────────────────── */
-    .collapse-trigger { cursor: pointer; display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,0.02); transition: all 140ms ease; }
+    .collapse-trigger {
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.02);
+      transition: all 140ms ease;
+    }
     .collapse-trigger:hover { border-color: rgba(45,212,191,0.3); background: rgba(45,212,191,0.04); }
+    .collapse-trigger:focus-visible {
+      outline: 2px solid rgba(45, 212, 191, 0.5);
+      outline-offset: 2px;
+    }
     .collapse-content { overflow: hidden; transition: max-height 300ms ease; }
 
     /* ── NEW: Wider modal ──────────────────────────── */
@@ -719,6 +1204,24 @@
       from { opacity: 0; transform: translateY(4px); }
       to { opacity: 1; transform: translateY(0); }
     }
+    @media (prefers-reduced-motion: reduce) {
+      * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+    }
+
+    /* Skeleton shimmer animation */
+    @keyframes skeleton-shimmer {
+      0% { background-position: -1000px 0; }
+      100% { background-position: 1000px 0; }
+    }
+    .skeleton {
+      background: linear-gradient(90deg, rgba(45,212,191,0.1) 25%, rgba(45,212,191,0.2) 50%, rgba(45,212,191,0.1) 75%);
+      background-size: 1000px 100%;
+      animation: skeleton-shimmer 2s infinite;
+      border-radius: 8px;
+      height: 16px;
+    }
+    .skeleton.small { height: 12px; }
+    .skeleton.large { height: 20px; }
     @media (max-width: 1280px) {
       .kpis { grid-template-columns: repeat(3, minmax(110px, 1fr)); }
       .filters { grid-template-columns: 1fr 1fr 1fr; }
@@ -728,8 +1231,57 @@
     }
     @media (max-width: 980px) {
       .layout { grid-template-columns: 1fr; min-height: auto; }
-      .sidebar { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--line); }
+      .sidebar {
+        position: fixed;
+        left: -280px;
+        top: 0;
+        height: 100vh;
+        width: 280px;
+        z-index: 1000;
+        transition: left 300ms ease;
+        border-right: 1px solid var(--line);
+        border-bottom: none;
+      }
+      .sidebar.mobile-open {
+        left: 0;
+      }
+      .sidebar-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(4px);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 300ms ease;
+        z-index: 999;
+      }
+      .sidebar-backdrop.active {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      .sidebar-toggle {
+        display: none;
+        width: 40px;
+        height: 40px;
+        border: none;
+        background: transparent;
+        color: var(--text);
+        cursor: pointer;
+        font-size: 18px;
+        padding: 0;
+        align-items: center;
+        justify-content: center;
+        z-index: 998;
+      }
+      .sidebar-toggle:hover {
+        color: var(--ok);
+      }
       .kpis { grid-template-columns: repeat(2, minmax(110px, 1fr)); }
+    }
+    @media (max-width: 900px) {
+      .sidebar-toggle {
+        display: flex;
+      }
     }
     @media (max-width: 760px) {
       .kpis, .filters, .row-2 { grid-template-columns: 1fr; }
@@ -738,6 +1290,8 @@
       .hero-title { font-size: 24px; }
       .panel-head .actions { flex-direction: column; }
       .panel-head .actions .input, .panel-head .actions .select { max-width: 100% !important; }
+      th { font-size: 9px; }
+      td { font-size: 12px; padding: 6px 4px; }
     }
   </style>
 </head>
@@ -802,6 +1356,9 @@
         <div>Последнее обновление: <span id="last-sync">-</span></div>
       </section>
     </aside>
+
+    <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
+    <button id="sidebar-toggle" class="sidebar-toggle" aria-label="Открыть меню">☰</button>
 
     <section id="content-area" class="content">
       <header class="hero">
@@ -1272,6 +1829,20 @@
   <div id="node-config-modal"></div>
   <div id="selected-node-card" style="display:none"></div>
 
+  <!-- Accessibility: sr-only announcements -->
+  <div id="aria-announce" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- Global loading bar -->
+  <div id="global-loading-bar" class="global-loading-bar"></div>
+
+  <!-- Command palette -->
+  <div id="command-palette" class="command-palette">
+    <div class="command-palette-box">
+      <input id="command-input" class="command-palette-input" type="text" placeholder="Поиск... (введите команду или раздел)" />
+      <div id="command-list" class="command-palette-list"></div>
+    </div>
+  </div>
+
   <script>
     (function () {
       const REFRESH_MS = 15000;
@@ -1493,11 +2064,15 @@
       /* Confirmation modal */
       function confirmAction(title, body, btnClass) {
         return new Promise((resolve) => {
-          refs.confirmModal.innerHTML = `<div class="modal-overlay"><div class="modal-box"><div class="modal-title">${esc(title)}</div><div class="modal-body">${esc(body)}</div><div class="modal-actions"><button class="btn btn-ghost" data-confirm="cancel">Отмена</button><button class="btn ${btnClass || "btn-danger"}" data-confirm="ok">Подтвердить</button></div></div></div>`;
-          const cleanup = (result) => { refs.confirmModal.innerHTML = ""; resolve(result); };
+          refs.confirmModal.innerHTML = `<div class="modal-overlay"><div class="modal-box"><div class="modal-title">${esc(title)}</div><div class="modal-body">${body}</div><div class="modal-actions"><button class="btn btn-ghost" data-confirm="cancel">Отмена</button><button class="btn ${btnClass || "btn-danger"}" data-confirm="ok">Подтвердить</button></div></div></div>`;
+          const modalBox = refs.confirmModal.querySelector(".modal-box");
+          const cleanup = (result) => { releaseFocus(); refs.confirmModal.innerHTML = ""; resolve(result); };
+          const handleEsc = (e) => { if (e.key === "Escape") { e.preventDefault(); cleanup(false); } };
           refs.confirmModal.querySelector('[data-confirm="cancel"]').addEventListener("click", () => cleanup(false));
           refs.confirmModal.querySelector('[data-confirm="ok"]').addEventListener("click", () => cleanup(true));
           refs.confirmModal.querySelector(".modal-overlay").addEventListener("click", (ev) => { if (ev.target === ev.currentTarget) cleanup(false); });
+          refs.confirmModal.addEventListener("keydown", handleEsc);
+          trapFocus(modalBox);
         });
       }
 
@@ -1537,6 +2112,326 @@
         if (!text) return;
         try { await navigator.clipboard.writeText(text); notify("Скопировано в буфер обмена", false); }
         catch (_) { notify("Не удалось скопировать", true); }
+      }
+
+      /* ── NEW ACCESSIBILITY & UX FUNCTIONS ──────────────── */
+
+      /* Focus trap for modals */
+      let focusTrapStack = [];
+      function trapFocus(modalEl) {
+        if (!modalEl) return;
+        const focusableSelector = 'a, button, input, select, textarea, [tabindex]:not([tabindex="-1"])';
+        const focusableElements = Array.from(modalEl.querySelectorAll(focusableSelector)).filter(el => !el.hasAttribute('disabled'));
+        if (focusableElements.length === 0) return;
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+        focusTrapStack.push({ modal: modalEl, firstElement, lastElement, previousFocus: document.activeElement });
+        firstElement.focus();
+        const handleKeydown = (e) => {
+          if (e.key === 'Tab') {
+            if (e.shiftKey) {
+              if (document.activeElement === firstElement) { e.preventDefault(); lastElement.focus(); }
+            } else {
+              if (document.activeElement === lastElement) { e.preventDefault(); firstElement.focus(); }
+            }
+          }
+        };
+        modalEl.addEventListener('keydown', handleKeydown);
+        modalEl._trapKeydownHandler = handleKeydown;
+      }
+      function releaseFocus() {
+        const trap = focusTrapStack.pop();
+        if (trap && trap.modal) {
+          trap.modal.removeEventListener('keydown', trap.modal._trapKeydownHandler);
+          delete trap.modal._trapKeydownHandler;
+          if (trap.previousFocus && typeof trap.previousFocus.focus === 'function') {
+            trap.previousFocus.focus();
+          }
+        }
+      }
+
+      /* Enhanced notify with progress bar, pause-on-hover, stacking */
+      const toastQueue = [];
+      const MAX_TOASTS = 5;
+      function notify(message, isError, duration) {
+        const el = document.createElement("div");
+        el.className = "toast" + (isError ? " error" : "");
+        const dur = duration || (isError ? 6000 : 4500);
+        el.innerHTML = `<span>${esc(message)}</span><div class="toast-progress"></div><button class="toast-close" aria-label="Закрыть уведомление">&times;</button>`;
+        refs.toastContainer.appendChild(el);
+
+        let timeoutId;
+        let startTime = Date.now();
+        let isPaused = false;
+        let pauseTime = 0;
+
+        const dismiss = () => { el.classList.remove("show"); setTimeout(() => { el.remove(); toastQueue.splice(toastQueue.indexOf(el), 1); }, 200); };
+        const resume = () => {
+          if (!isPaused) return;
+          isPaused = false;
+          startTime = Date.now() - pauseTime;
+          const remaining = dur - pauseTime;
+          timeoutId = setTimeout(dismiss, remaining);
+        };
+        const pause = () => {
+          if (isPaused) return;
+          isPaused = true;
+          pauseTime = Date.now() - startTime;
+          clearTimeout(timeoutId);
+        };
+
+        el.addEventListener("mouseenter", pause);
+        el.addEventListener("mouseleave", resume);
+        el.querySelector(".toast-close").addEventListener("click", dismiss);
+
+        requestAnimationFrame(() => el.classList.add("show"));
+        toastQueue.push(el);
+        while (refs.toastContainer.children.length > MAX_TOASTS) refs.toastContainer.firstChild.remove();
+        timeoutId = setTimeout(dismiss, dur);
+      }
+
+      /* Screen reader announcements */
+      function announce(text) {
+        const announcer = $("aria-announce");
+        if (announcer) {
+          announcer.textContent = text;
+          setTimeout(() => { announcer.textContent = ""; }, 3000);
+        }
+      }
+
+      /* Skeleton loaders */
+      function showSkeleton(containerId, rowCount = 5) {
+        const container = $(containerId);
+        if (!container) return;
+        const skeletons = Array.from({ length: rowCount }, () => {
+          const cols = Math.floor(Math.random() * 3) + 3;
+          return `<tr><td colspan="${cols}"><div class="skeleton-row">${Array.from({ length: cols }).map(() => `<div></div>`).join("")}</div></td></tr>`;
+        }).join("");
+        container.innerHTML = skeletons;
+      }
+      function hideSkeleton(containerId) {
+        const container = $(containerId);
+        if (container) container.innerHTML = "";
+      }
+
+      /* Empty state component */
+      function renderEmptyState(container, { icon = "📭", title = "Пусто", hint = "", actionLabel = null, onAction = null } = {}) {
+        const actionBtn = actionLabel && onAction ? `<div class="empty-state-action"><button class="btn btn-primary">${esc(actionLabel)}</button></div>` : "";
+        container.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">${icon}</div>
+            <div class="empty-state-title">${esc(title)}</div>
+            ${hint ? `<div class="empty-state-hint">${esc(hint)}</div>` : ""}
+            ${actionBtn}
+          </div>
+        `;
+        if (actionLabel && onAction) {
+          container.querySelector(".btn").addEventListener("click", onAction);
+        }
+      }
+
+      /* Tooltip system */
+      function initTooltips(rootEl = document) {
+        const tooltipElements = rootEl.querySelectorAll("[data-tooltip]");
+        tooltipElements.forEach(el => {
+          const text = el.getAttribute("data-tooltip");
+          const pos = el.getAttribute("data-tooltip-pos") || "top";
+          let tooltip = null;
+          let timeoutId = null;
+          const show = () => {
+            clearTimeout(timeoutId);
+            const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+            timeoutId = setTimeout(() => {
+              tooltip = document.createElement("div");
+              tooltip.className = `tooltip ${pos}`;
+              tooltip.textContent = text;
+              document.body.appendChild(tooltip);
+              const rect = el.getBoundingClientRect();
+              const ttRect = tooltip.getBoundingClientRect();
+              let top, left;
+              const offset = 10;
+              switch (pos) {
+                case "top": top = rect.top - ttRect.height - offset; left = rect.left + (rect.width - ttRect.width) / 2; break;
+                case "bottom": top = rect.bottom + offset; left = rect.left + (rect.width - ttRect.width) / 2; break;
+                case "left": top = rect.top + (rect.height - ttRect.height) / 2; left = rect.left - ttRect.width - offset; break;
+                case "right": top = rect.top + (rect.height - ttRect.height) / 2; left = rect.right + offset; break;
+              }
+              tooltip.style.top = top + "px";
+              tooltip.style.left = left + "px";
+              requestAnimationFrame(() => tooltip.classList.add("visible"));
+            }, prefersReduced ? 0 : 300);
+          };
+          const hide = () => {
+            clearTimeout(timeoutId);
+            if (tooltip) {
+              tooltip.classList.remove("visible");
+              setTimeout(() => tooltip && tooltip.remove(), 150);
+              tooltip = null;
+            }
+          };
+          el.addEventListener("mouseenter", show);
+          el.addEventListener("mouseleave", hide);
+          el.addEventListener("focus", show);
+          el.addEventListener("blur", hide);
+        });
+      }
+
+      /* Global loading bar for fetch interception */
+      let fetchCount = 0;
+      const loadingBar = $("global-loading-bar");
+      const originalFetch = window.fetch;
+      window.fetch = function(...args) {
+        fetchCount++;
+        if (loadingBar) loadingBar.classList.add("active");
+        return originalFetch.apply(this, args).finally(() => {
+          fetchCount--;
+          if (fetchCount === 0 && loadingBar) loadingBar.classList.remove("active");
+        });
+      };
+
+      /* Command palette */
+      const commandPalette = $("command-palette");
+      const commandInput = $("command-input");
+      const commandList = $("command-list");
+      let commandPaletteOpen = false;
+      const commandItems = [
+        { label: "Серверы", icon: "🖥", section: "Навигация", action: () => setTab("nodes") },
+        { label: "Transport", icon: "🚀", section: "Навигация", action: () => setTab("transport") },
+        { label: "Маршруты", icon: "🛣", section: "Навигация", action: () => setTab("routes") },
+        { label: "Плейсменты", icon: "📍", section: "Навигация", action: () => setTab("placements") },
+        { label: "Пользователи", icon: "👥", section: "Навигация", action: () => setTab("users") },
+        { label: "Тарифы", icon: "💰", section: "Навигация", action: () => setTab("plans") },
+        { label: "Подписки", icon: "🔐", section: "Навигация", action: () => setTab("subscriptions") },
+        { label: "Трафик", icon: "📊", section: "Навигация", action: () => setTab("traffic") },
+        { label: "Админы", icon: "⚙", section: "Навигация", action: () => setTab("admin-users") },
+        { label: "Проверки", icon: "🔍", section: "Навигация", action: () => setTab("probes") },
+      ];
+      function fuzzyMatch(query, text) {
+        const q = query.toLowerCase();
+        const t = text.toLowerCase();
+        let qi = 0, ti = 0, score = 0;
+        while (qi < q.length && ti < t.length) {
+          if (q[qi] === t[ti]) { score += 1; qi++; }
+          ti++;
+        }
+        return qi === q.length ? score : 0;
+      }
+      function openCommandPalette() {
+        commandPaletteOpen = true;
+        commandInput.value = "";
+        commandPalette.classList.add("active");
+        commandInput.focus();
+        renderCommandList("");
+      }
+      function closeCommandPalette() {
+        commandPaletteOpen = false;
+        commandPalette.classList.remove("active");
+        commandInput.value = "";
+      }
+      function renderCommandList(query) {
+        const filtered = query ? commandItems.filter(item => fuzzyMatch(query, item.label) > 0).sort((a, b) => fuzzyMatch(query, b.label) - fuzzyMatch(query, a.label)) : commandItems;
+        const grouped = {};
+        filtered.forEach(item => {
+          if (!grouped[item.section]) grouped[item.section] = [];
+          grouped[item.section].push(item);
+        });
+        commandList.innerHTML = Object.entries(grouped).map(([section, items]) =>
+          `<div class="command-palette-group"><div class="command-palette-group-title">${esc(section)}</div>${items.map((item, idx) => `<div class="command-palette-item" data-idx="${idx}" data-section="${esc(section)}"><div class="command-palette-item-icon">${item.icon}</div><div class="command-palette-item-label">${esc(item.label)}</div></div>`).join("")}</div>`
+        ).join("");
+      }
+      commandInput.addEventListener("input", (e) => renderCommandList(e.target.value));
+      commandInput.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") { closeCommandPalette(); }
+        if (e.key === "Enter") {
+          const selected = commandList.querySelector(".command-palette-item.selected");
+          if (selected) {
+            const idx = Array.from(commandList.querySelectorAll(".command-palette-item")).indexOf(selected);
+            const item = commandItems.find((_, i) => i === idx);
+            if (item && item.action) { item.action(); closeCommandPalette(); }
+          }
+        }
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          const items = Array.from(commandList.querySelectorAll(".command-palette-item"));
+          const selected = commandList.querySelector(".command-palette-item.selected");
+          const idx = selected ? items.indexOf(selected) : -1;
+          if (items[idx + 1]) { items[idx + 1].classList.add("selected"); selected?.classList.remove("selected"); }
+          else if (items[0]) { items[0].classList.add("selected"); selected?.classList.remove("selected"); }
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          const items = Array.from(commandList.querySelectorAll(".command-palette-item"));
+          const selected = commandList.querySelector(".command-palette-item.selected");
+          const idx = selected ? items.indexOf(selected) : 0;
+          if (items[idx - 1]) { items[idx - 1].classList.add("selected"); selected?.classList.remove("selected"); }
+          else if (items[items.length - 1]) { items[items.length - 1].classList.add("selected"); selected?.classList.remove("selected"); }
+        }
+      });
+      commandList.addEventListener("click", (e) => {
+        const item = e.target.closest(".command-palette-item");
+        if (item) {
+          const idx = Array.from(commandList.querySelectorAll(".command-palette-item")).indexOf(item);
+          const cmdItem = commandItems.find((_, i) => i === idx);
+          if (cmdItem && cmdItem.action) { cmdItem.action(); closeCommandPalette(); }
+        }
+      });
+      commandPalette.addEventListener("click", (e) => {
+        if (e.target === commandPalette) closeCommandPalette();
+      });
+      document.addEventListener("keydown", (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === "k") { e.preventDefault(); commandPaletteOpen ? closeCommandPalette() : openCommandPalette(); }
+        if (e.key === "?") { e.preventDefault(); openShortcutsModal(); }
+      });
+
+      /* Keyboard shortcuts modal */
+      function openShortcutsModal() {
+        const shortcuts = [
+          { keys: "Esc", desc: "Закрыть модаль" },
+          { keys: "Cmd/Ctrl+K", desc: "Открыть палетру команд" },
+          { keys: "?", desc: "Показать горячие клавиши" },
+          { keys: "Tab", desc: "Переход по полям" },
+          { keys: "Shift+Tab", desc: "Переход назад" },
+        ];
+        confirmAction("Горячие клавиши", `
+          <div class="shortcuts-modal-content">
+            <div class="shortcuts-group">
+              <div class="shortcuts-group-title">Общее</div>
+              ${shortcuts.map(s => `<div class="shortcuts-item"><span class="shortcuts-desc">${esc(s.desc)}</span><span class="shortcuts-key">${esc(s.keys)}</span></div>`).join("")}
+            </div>
+          </div>
+        `, "btn-ghost");
+      }
+
+      /* Dirty form detection */
+      function trackFormDirty(formEl) {
+        if (!formEl) return;
+        formEl.setAttribute("data-dirty", "false");
+        formEl.addEventListener("input", () => formEl.setAttribute("data-dirty", "true"));
+        formEl.addEventListener("change", () => formEl.setAttribute("data-dirty", "true"));
+      }
+      function isFormDirty(formEl) {
+        return formEl && formEl.getAttribute("data-dirty") === "true";
+      }
+      function resetFormDirty(formEl) {
+        if (formEl) formEl.setAttribute("data-dirty", "false");
+      }
+
+      /* Enhanced copy-to-clipboard with icon */
+      function initCopyButtons(rootEl = document) {
+        const copyBtns = rootEl.querySelectorAll(".copy-value, .uuid");
+        copyBtns.forEach(btn => {
+          btn.addEventListener("click", async (e) => {
+            e.stopPropagation();
+            const val = btn.getAttribute("data-copy") || btn.textContent;
+            await copyToClipboard(val);
+          });
+        });
+      }
+
+      /* Number formatters */
+      const numberFormatter = new Intl.NumberFormat("ru-RU");
+      function formatNumber(num) {
+        return numberFormatter.format(num);
       }
 
       function parseDateTimeLocal(value) {
@@ -1585,9 +2480,14 @@
         const r = auRole.value; if (r) params.set("role", r);
         const a = auStatus.value; if (a) params.set("is_active", a);
         params.set("limit", "100");
-        const data = await req(`/api/v1/auth/admin/users?${params}`);
-        state.adminUsers = data.items || []; state.adminUsersTotal = data.total || 0;
-        renderAdminUsers();
+        showSkeleton("au-body", 5);
+        try {
+          const data = await req(`/api/v1/auth/admin/users?${params}`);
+          state.adminUsers = data.items || []; state.adminUsersTotal = data.total || 0;
+          renderAdminUsers();
+        } finally {
+          hideSkeleton("au-body");
+        }
       }
 
       function renderAdminUsers() {
@@ -1600,8 +2500,21 @@
         auMeta.textContent = `Показано ${state.adminUsers.length} из ${state.adminUsersTotal}`;
       }
 
-      function showModal(el) { el.style.display = "flex"; }
-      function hideModal(el) { el.style.display = "none"; }
+      function showModal(el) {
+        if (!el) return;
+        el.style.display = "flex";
+        const modalBox = el.querySelector(".modal-box");
+        if (modalBox) trapFocus(modalBox);
+        const handleEsc = (e) => { if (e.key === "Escape") { e.preventDefault(); hideModal(el); } };
+        el.addEventListener("keydown", handleEsc);
+        el._escHandler = handleEsc;
+      }
+      function hideModal(el) {
+        if (!el) return;
+        el.style.display = "none";
+        if (el._escHandler) { el.removeEventListener("keydown", el._escHandler); delete el._escHandler; }
+        releaseFocus();
+      }
 
       auCreateBtn.addEventListener("click", () => { auCreateForm.reset(); showModal(auCreateModal); });
       auCreateCancel.addEventListener("click", () => hideModal(auCreateModal));
@@ -1650,7 +2563,8 @@
 
       auDeleteUser.addEventListener("click", async () => {
         const uid = auEditUid.value; const name = auEditName.textContent;
-        if (!confirm(`Удалить пользователя "${name}"? Это необратимо.`)) return;
+        const confirmed = await confirmAction(`Удалить пользователя?`, `Это действие удалит пользователя "${esc(name)}" навсегда. Его нельзя будет восстановить.`, "btn-danger");
+        if (!confirmed) return;
         try { await req(`/api/v1/auth/admin/users/${uid}`, { method: "DELETE" }); notify("Пользователь удален", false); hideModal(auEditModal); await loadAdminUsers(); }
         catch (err) { notify("Ошибка: " + err.message, true); }
       });
@@ -1933,13 +2847,13 @@
       function render() {
         if (state.status) {
           const t = state.status.totals || {};
-          refs.kpiNodes.textContent = String(t.nodes_total || 0);
-          refs.kpiHealthy.textContent = String(t.nodes_healthy || 0);
-          refs.kpiDraining.textContent = String(t.nodes_draining || 0);
-          refs.kpiPlacements.textContent = String(t.placements_total || 0);
+          refs.kpiNodes.textContent = formatNumber(t.nodes_total || 0);
+          refs.kpiHealthy.textContent = formatNumber(t.nodes_healthy || 0);
+          refs.kpiDraining.textContent = formatNumber(t.nodes_draining || 0);
+          refs.kpiPlacements.textContent = formatNumber(t.placements_total || 0);
         }
-        refs.kpiRoutes.textContent = String(state.routes.length || 0);
-        refs.kpiProbeFail.textContent = String(state.probes.filter((p) => !p.is_reachable).length || 0);
+        refs.kpiRoutes.textContent = formatNumber(state.routes.length || 0);
+        refs.kpiProbeFail.textContent = formatNumber(state.probes.filter((p) => !p.is_reachable).length || 0);
 
         /* Transport KPI on dashboard */
         const to = state.transportOverview;
@@ -2849,9 +3763,14 @@
         const search = refs.usersSearch.value.trim(); if (search) params.set("search", search);
         const statusVal = refs.usersStatus.value; if (statusVal) params.set("is_active", statusVal);
         params.set("limit", String(state.usersLimit)); params.set("offset", String(state.usersOffset));
-        const data = await req(`/api/v1/users?${params}`);
-        state.users = data.items || []; state.usersTotal = data.total || 0;
-        renderUsers();
+        showSkeleton("users-body", 5);
+        try {
+          const data = await req(`/api/v1/users?${params}`);
+          state.users = data.items || []; state.usersTotal = data.total || 0;
+          renderUsers();
+        } finally {
+          hideSkeleton("users-body");
+        }
       }
 
       const usersComparators = {
@@ -2867,7 +3786,7 @@
         refs.usersHead.innerHTML = `<tr>${sortTh("users", "id", "ID")}${sortTh("users", "telegram_id", "Telegram ID")}${sortTh("users", "username", "Username")}${sortTh("users", "tag", "Tag")}${sortTh("users", "balance", "Баланс")}<th>Subs</th><th>Keys</th>${sortTh("users", "status", "Статус")}${sortTh("users", "created_at", "Создан")}<th>Действия</th></tr>`;
         const sorted = sortedBy([...state.users], "users", usersComparators);
         refs.usersBody.innerHTML = sorted.length
-          ? sorted.map((u) => `<tr>
+          ? sorted.map((u) => `<tr data-focusable tabindex="0">
               <td>${uuidCell(u.id)}</td>
               <td class="mono">${esc(u.telegram_id)}</td>
               <td>${esc(u.username || "-")}</td>
@@ -2879,7 +3798,7 @@
               <td style="white-space:nowrap">${fmtDate(u.created_at)}</td>
               <td><div class="actions"><button class="btn-mini usr-edit-btn" data-user-id="${esc(u.id)}">Edit</button><button class="btn-mini usr-subs-btn" data-user-id="${esc(u.id)}" data-username="${esc(u.username || "")}" data-tg="${esc(u.telegram_id)}">Subs</button></div></td>
             </tr>`).join("")
-          : `<tr><td colspan="10"><div class="empty-state"><div class="empty-state-icon">W</div><div class="empty-state-title">Нет пользователей</div><div class="empty-state-desc">Нажмите Загрузить или создайте нового пользователя</div></div></td></tr>`;
+          : `<tr><td colspan="10"><div class="empty-state"><div class="empty-state-icon">👥</div><div class="empty-state-title">Нет пользователей</div><div class="empty-state-hint">Нажмите Загрузить или создайте нового пользователя</div></div></td></tr>`;
         renderPagination(refs.usersPagination, state.usersTotal, state.usersLimit, state.usersOffset, (page) => {
           state.usersOffset = page * state.usersLimit;
           loadUsers().catch((e) => notify("Ошибка: " + e.message, true));
@@ -3034,9 +3953,15 @@
       const resetColors = { NO_RESET: "muted", DAY: "warn", WEEK: "info", MONTH: "ok" };
 
       async function loadPlans() {
-        const data = await req("/api/v1/plans");
-        state.plans = data.items || [];
-        renderPlans(); renderPlanSelect();
+        const planBodyEl = $("plans-body");
+        if (planBodyEl) showSkeleton("plans-body", 4);
+        try {
+          const data = await req("/api/v1/plans");
+          state.plans = data.items || [];
+          renderPlans(); renderPlanSelect();
+        } finally {
+          if (planBodyEl) hideSkeleton("plans-body");
+        }
       }
 
       function renderPlanSelect() {
@@ -3224,9 +4149,14 @@
         const userId = refs.trafficUserId.value.trim(); if (userId) params.set("user_id", userId);
         const revoked = refs.trafficRevoked.value; if (revoked !== "") params.set("is_revoked", revoked);
         params.set("limit", String(state.trafficLimit)); params.set("offset", String(state.trafficOffset));
-        const data = await req(`/api/v1/admin/traffic/keys?${params}`);
-        state.trafficKeys = data.items || []; state.trafficTotal = data.total || 0;
-        renderTraffic(); updateTrafficKpis();
+        showSkeleton("traffic-body", 5);
+        try {
+          const data = await req(`/api/v1/admin/traffic/keys?${params}`);
+          state.trafficKeys = data.items || []; state.trafficTotal = data.total || 0;
+          renderTraffic(); updateTrafficKpis();
+        } finally {
+          hideSkeleton("traffic-body");
+        }
       }
 
       function updateTrafficKpis() {
@@ -3368,7 +4298,7 @@
         state.trafficHistoryKeyId = null; state.trafficHistoryKeyData = null; state.trafficHistory = [];
       });
 
-      /* Global delegated click: UUID copy + sortable headers */
+      /* Global delegated click: UUID copy + sortable headers + row selection */
       document.addEventListener("click", (ev) => {
         const el = ev.target; if (!(el instanceof HTMLElement)) return;
         const uuid = el.closest(".uuid");
@@ -3377,6 +4307,21 @@
         if (th && th.dataset.sortKey && th.dataset.sortTable) { toggleSort(th.dataset.sortTable, th.dataset.sortKey); return; }
         const auEdit = el.closest(".au-edit-btn");
         if (auEdit) { openEditModal(auEdit.dataset.uid, auEdit.dataset.uname, auEdit.dataset.urole, auEdit.dataset.uactive === "true"); return; }
+        const row = el.closest("tr[data-focusable]");
+        if (row) { row.classList.toggle("selected"); return; }
+      });
+
+      /* Keyboard navigation in tables */
+      document.addEventListener("keydown", (ev) => {
+        if (ev.key === "ArrowUp" || ev.key === "ArrowDown") {
+          const row = ev.target.closest("tr[data-focusable]");
+          if (!row) return;
+          ev.preventDefault();
+          const allRows = Array.from(row.parentElement.querySelectorAll("tr[data-focusable]"));
+          const idx = allRows.indexOf(row);
+          const nextIdx = ev.key === "ArrowDown" ? Math.min(idx + 1, allRows.length - 1) : Math.max(idx - 1, 0);
+          if (allRows[nextIdx]) allRows[nextIdx].focus();
+        }
       });
 
       /* ── Session auth ───────────────────────────── */
@@ -3401,9 +4346,67 @@
         });
       }
 
+      /* ── Global keyboard shortcuts ──────────────── */
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          const modals = [auCreateModal, auEditModal];
+          for (const modal of modals) {
+            if (modal && modal.style.display === "flex") {
+              hideModal(modal);
+              e.preventDefault();
+              break;
+            }
+          }
+          // Close sidebar on mobile
+          const sidebar = document.querySelector(".sidebar");
+          if (sidebar && sidebar.classList.contains("mobile-open")) {
+            closeMobileSidebar();
+            e.preventDefault();
+          }
+        }
+      });
+
+      /* ── Mobile sidebar drawer ──────────────────── */
+      function openMobileSidebar() {
+        const sidebar = document.querySelector(".sidebar");
+        const backdrop = $("sidebar-backdrop");
+        if (sidebar) sidebar.classList.add("mobile-open");
+        if (backdrop) backdrop.classList.add("active");
+      }
+      function closeMobileSidebar() {
+        const sidebar = document.querySelector(".sidebar");
+        const backdrop = $("sidebar-backdrop");
+        if (sidebar) sidebar.classList.remove("mobile-open");
+        if (backdrop) backdrop.classList.remove("active");
+      }
+      const sidebarToggle = $("sidebar-toggle");
+      const sidebarBackdrop = $("sidebar-backdrop");
+      if (sidebarToggle) {
+        sidebarToggle.addEventListener("click", () => {
+          const sidebar = document.querySelector(".sidebar");
+          if (sidebar && sidebar.classList.contains("mobile-open")) { closeMobileSidebar(); }
+          else { openMobileSidebar(); }
+        });
+      }
+      if (sidebarBackdrop) {
+        sidebarBackdrop.addEventListener("click", closeMobileSidebar);
+      }
+      // Close sidebar when nav item is clicked on mobile
+      const navButtons = document.querySelectorAll(".nav button[data-tab]");
+      navButtons.forEach(btn => {
+        btn.addEventListener("click", () => {
+          if (window.innerWidth < 900) closeMobileSidebar();
+        });
+      });
+
       /* ── Init ───────────────────────────────────── */
       pushLog("Панель", "инициализирована", false);
       updateTimer();
+
+      /* Init tooltips, copy buttons, and form tracking */
+      initTooltips();
+      initCopyButtons();
+      document.querySelectorAll("form").forEach(trackFormDirty);
 
       (async () => {
         const hasSession = await checkSession();
