@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import logging
 import os
 import secrets
 from typing import Any
@@ -15,6 +16,8 @@ except ModuleNotFoundError:  # pragma: no cover
     PyJWKClient = None
 
 from services.auth.admin.constants import SALT_BYTES, SESSION_ID_BYTES
+
+logger = logging.getLogger("admin-auth.crypto")
 
 
 def hash_password(password: str) -> str:
@@ -63,6 +66,7 @@ def verify_telegram_oidc_id_token(
     expected_nonce: str | None = None,
 ) -> dict[str, Any] | None:
     if jwt is None or PyJWKClient is None:
+        logger.error("pyjwt library not available, cannot verify id_token")
         return None
     try:
         jwk_client = PyJWKClient(jwks_url)
@@ -75,12 +79,18 @@ def verify_telegram_oidc_id_token(
             issuer=issuer,
             options={"require": ["exp", "iat", "sub"]},
         )
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            "telegram oidc id_token verification failed: %s: %s",
+            type(exc).__name__,
+            exc,
+        )
         return None
 
     if expected_nonce:
         token_nonce = payload.get("nonce")
         if not token_nonce or not hmac.compare_digest(str(token_nonce), expected_nonce):
+            logger.warning("telegram oidc nonce mismatch")
             return None
 
     return payload

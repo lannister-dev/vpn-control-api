@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from secrets import token_urlsafe
 from urllib.parse import urlencode
@@ -8,6 +9,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from starlette import status
+
+log = logging.getLogger("admin-auth.router")
 
 from services.auth.admin.constants import (
     CSRF_COOKIE_NAME,
@@ -227,6 +230,14 @@ async def login_telegram_callback(
     cookie_nonce = request.cookies.get(TG_OIDC_NONCE_COOKIE_NAME)
     cookie_verifier = request.cookies.get(TG_OIDC_VERIFIER_COOKIE_NAME)
     if not cookie_state or state != cookie_state or not cookie_nonce or not cookie_verifier:
+        log.warning(
+            "telegram oidc state validation failed: "
+            "cookie_state=%s state_match=%s cookie_nonce=%s cookie_verifier=%s",
+            bool(cookie_state),
+            cookie_state == state if cookie_state else False,
+            bool(cookie_nonce),
+            bool(cookie_verifier),
+        )
         login_rate_limiter.record(ip)
         await service.audit_repository.log_event(
             action="login_failure",
