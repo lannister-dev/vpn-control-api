@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI, APIRouter, status
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from prometheus_fastapi_instrumentator import Instrumentator
 from shared.database.session import AsyncDatabase
 from shared.profiles.init import bootstrap_profiles_registry
@@ -110,7 +111,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="VPN Control API",
-    docs_url="/api/docs",
+    docs_url="/api/instruction",
     openapi_url="/api/openapi.json",
     lifespan=lifespan,
 )
@@ -154,6 +155,8 @@ async def runtime_readiness() -> RuntimeReadinessOut | JSONResponse:
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         content=readiness.model_dump(mode="json"),
     )
+
+app.mount("/instruction", StaticFiles(directory="shared/static/instruction", html=True), name="instruction")
 
 app.add_middleware(DocsBasicAuthMiddleware)
 
