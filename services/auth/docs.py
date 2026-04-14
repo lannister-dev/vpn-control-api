@@ -8,7 +8,7 @@ from starlette.responses import Response
 
 from services.config import get_settings
 
-PROTECTED_PATHS = {"/api/docs", "/api/openapi.json", "/api/docs/oauth2-redirect"}
+PROTECTED_PATHS = {"/api/instruction", "/api/openapi.json", "/api/instruction/oauth2-redirect"}
 
 
 class DocsBasicAuthMiddleware(BaseHTTPMiddleware):
@@ -22,7 +22,7 @@ class DocsBasicAuthMiddleware(BaseHTTPMiddleware):
 
         return Response(
             status_code=401,
-            headers={"WWW-Authenticate": 'Basic realm="docs"'},
+            headers={"WWW-Authenticate": 'Basic realm="instruction"'},
         )
 
     @staticmethod
