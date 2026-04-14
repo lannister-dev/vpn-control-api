@@ -2,13 +2,11 @@ from __future__ import annotations
 
 import logging
 import base64
-import json
 from datetime import datetime, timedelta, timezone
 from typing import Literal
-from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
-from urllib.request import Request, urlopen
 from uuid import UUID
+
+import httpx
 
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,7 +17,7 @@ from services.auth.admin.crypto import (
     generate_session_id,
     hash_password,
     hash_session_id,
-    verify_password, verify_telegram_oidc_id_token,
+    verify_password,
 )
 from services.auth.admin.models import AdminSession, AdminUser
 from services.auth.admin.repository import (
@@ -121,13 +119,14 @@ class AdminAuthService:
             )
             return None
 
-        token_data, exchange_error = self._exchange_telegram_code(
+        token_data, exchange_error = await self._exchange_telegram_code(
             code=code,
             redirect_uri=redirect_uri,
             code_verifier=code_verifier,
             client_id=settings.admin_auth.telegram_client_id,
             client_secret=settings.admin_auth.telegram_client_secret,
             token_url=settings.admin_auth.telegram_token_url,
+            proxy=settings.admin_auth.telegram_oidc_proxy or None,
         )
         if token_data is None:
             detail = "reason=telegram_token_exchange_failed"
@@ -149,7 +148,8 @@ class AdminAuthService:
         if not id_token:
             logger.warning(
                 "telegram oidc missing id_token in response",
-                extra={"ip": ip_address, "token_keys": list(token_data.keys())},
+                ip=ip_address,
+                token_keys=list(token_data.keys()),
             )
             await self.audit_repository.log_event(
                 action="login_failure",
@@ -158,17 +158,18 @@ class AdminAuthService:
             )
             return None
 
-        claims = verify_telegram_oidc_id_token(
+        claims = await self._verify_id_token(
             id_token=id_token,
             client_id=settings.admin_auth.telegram_client_id,
             jwks_url=settings.admin_auth.telegram_jwks_url,
             issuer=settings.admin_auth.telegram_issuer,
             expected_nonce=expected_nonce,
+            proxy=settings.admin_auth.telegram_oidc_proxy or None,
         )
         if claims is None:
             logger.warning(
                 "telegram oidc id_token validation failed",
-                extra={"ip": ip_address},
+                ip=ip_address,
             )
             await self.audit_repository.log_event(
                 action="login_failure",
@@ -185,7 +186,8 @@ class AdminAuthService:
         except (TypeError, ValueError):
             logger.warning(
                 "telegram oidc sub not a valid integer",
-                extra={"ip": ip_address, "sub": sub},
+                ip=ip_address,
+                sub=sub,
             )
             await self.audit_repository.log_event(
                 action="login_failure",
@@ -198,7 +200,8 @@ class AdminAuthService:
         if allowed_ids and telegram_id not in allowed_ids:
             logger.warning(
                 "telegram oidc id not in allowed list",
-                extra={"ip": ip_address, "telegram_id": telegram_id},
+                ip=ip_address,
+                telegram_id=telegram_id,
             )
             await self.audit_repository.log_event(
                 action="login_failure",
@@ -211,7 +214,8 @@ class AdminAuthService:
         if user is None or not user.is_active:
             logger.warning(
                 "telegram oidc user not found or inactive",
-                extra={"ip": ip_address, "telegram_id": telegram_id},
+                ip=ip_address,
+                telegram_id=telegram_id,
             )
             await self.audit_repository.log_event(
                 action="login_failure",
@@ -505,7 +509,7 @@ class AdminAuthService:
         )
 
     @staticmethod
-    def _exchange_telegram_code(
+    async def _exchange_telegram_code(
         *,
         code: str,
         redirect_uri: str,
@@ -513,45 +517,92 @@ class AdminAuthService:
         client_id: str,
         client_secret: str,
         token_url: str,
+        proxy: str | None = None,
     ) -> tuple[dict | None, str | None]:
-        body = urlencode(
-            {
-                "grant_type": "authorization_code",
-                "code": code,
-                "redirect_uri": redirect_uri,
-                "client_id": client_id,
-                "code_verifier": code_verifier,
-            }
-        ).encode("utf-8")
-        basic_auth = base64.b64encode(f"{client_id}:{client_secret}".encode("utf-8")).decode("ascii")
-        req = Request(
-            token_url,
-            data=body,
-            headers={
-                "Content-Type": "application/x-www-form-urlencoded",
-                "Authorization": f"Basic {basic_auth}",
-            },
-            method="POST",
-        )
+        basic_auth = base64.b64encode(
+            f"{client_id}:{client_secret}".encode("utf-8"),
+        ).decode("ascii")
         try:
-            with urlopen(req, timeout=10) as resp:
-                return json.loads(resp.read().decode("utf-8")), None
-        except HTTPError as exc:
-            response_body = ""
-            try:
-                response_body = exc.read().decode("utf-8", errors="replace")
-            except Exception:
-                response_body = ""
-            error_detail = f"http_{exc.code}"
-            if response_body:
-                error_detail = f"{error_detail}:{response_body[:200]}"
-            return None, error_detail
-        except URLError as exc:
-            return None, f"url_error:{exc.reason}"
-        except TimeoutError:
+            async with httpx.AsyncClient(proxy=proxy, timeout=15) as client:
+                resp = await client.post(
+                    token_url,
+                    data={
+                        "grant_type": "authorization_code",
+                        "code": code,
+                        "redirect_uri": redirect_uri,
+                        "client_id": client_id,
+                        "code_verifier": code_verifier,
+                    },
+                    headers={
+                        "Content-Type": "application/x-www-form-urlencoded",
+                        "Authorization": f"Basic {basic_auth}",
+                    },
+                )
+            if resp.status_code >= 400:
+                return None, f"http_{resp.status_code}:{resp.text[:200]}"
+            return resp.json(), None
+        except httpx.TimeoutException:
             return None, "timeout"
-        except ValueError as exc:
-            return None, f"bad_json:{exc}"
+        except httpx.HTTPError as exc:
+            return None, f"http_error:{exc}"
+
+    @staticmethod
+    async def _verify_id_token(
+        *,
+        id_token: str,
+        client_id: str,
+        jwks_url: str,
+        issuer: str,
+        expected_nonce: str | None = None,
+        proxy: str | None = None,
+    ) -> dict | None:
+        import hmac
+        try:
+            import jwt as pyjwt
+            from jwt.algorithms import RSAAlgorithm
+        except ModuleNotFoundError:
+            logger.error("pyjwt library not available")
+            return None
+        try:
+            async with httpx.AsyncClient(proxy=proxy, timeout=10) as client:
+                resp = await client.get(jwks_url)
+                resp.raise_for_status()
+                jwks = resp.json()
+        except Exception as exc:
+            logger.warning("telegram oidc jwks fetch failed", error=f"{type(exc).__name__}: {exc}")
+            return None
+        try:
+            header = pyjwt.get_unverified_header(id_token)
+            kid = header.get("kid")
+            key_data = None
+            for k in jwks.get("keys", []):
+                if k.get("kid") == kid:
+                    key_data = k
+                    break
+            if not key_data:
+                logger.warning("telegram oidc signing key not found in jwks", kid=kid)
+                return None
+            public_key = RSAAlgorithm.from_jwk(key_data)
+            payload = pyjwt.decode(
+                id_token,
+                public_key,
+                algorithms=["RS256"],
+                audience=client_id,
+                issuer=issuer,
+                options={"require": ["exp", "iat", "sub"]},
+            )
+        except Exception as exc:
+            logger.warning(
+                "telegram oidc id_token verification failed",
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            return None
+        if expected_nonce:
+            token_nonce = payload.get("nonce")
+            if not token_nonce or not hmac.compare_digest(str(token_nonce), expected_nonce):
+                logger.warning("telegram oidc nonce mismatch")
+                return None
+        return payload
 
     @staticmethod
     def _to_admin_role(role: AdminRole | str) -> AdminRole:
