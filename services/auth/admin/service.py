@@ -147,6 +147,10 @@ class AdminAuthService:
 
         id_token = str(token_data.get("id_token") or "")
         if not id_token:
+            logger.warning(
+                "telegram oidc missing id_token in response",
+                extra={"ip": ip_address, "token_keys": list(token_data.keys())},
+            )
             await self.audit_repository.log_event(
                 action="login_failure",
                 detail="reason=telegram_missing_id_token",
@@ -162,6 +166,10 @@ class AdminAuthService:
             expected_nonce=expected_nonce,
         )
         if claims is None:
+            logger.warning(
+                "telegram oidc id_token validation failed",
+                extra={"ip": ip_address},
+            )
             await self.audit_repository.log_event(
                 action="login_failure",
                 detail="reason=telegram_oidc_invalid_id_token",
@@ -175,6 +183,10 @@ class AdminAuthService:
         try:
             telegram_id = int(sub)
         except (TypeError, ValueError):
+            logger.warning(
+                "telegram oidc sub not a valid integer",
+                extra={"ip": ip_address, "sub": sub},
+            )
             await self.audit_repository.log_event(
                 action="login_failure",
                 detail="reason=telegram_sub_invalid",
@@ -184,6 +196,10 @@ class AdminAuthService:
 
         allowed_ids = settings.admin_auth.telegram_allowed_ids
         if allowed_ids and telegram_id not in allowed_ids:
+            logger.warning(
+                "telegram oidc id not in allowed list",
+                extra={"ip": ip_address, "telegram_id": telegram_id},
+            )
             await self.audit_repository.log_event(
                 action="login_failure",
                 detail=f"reason=telegram_id_not_allowed telegram_id={telegram_id}",
@@ -193,6 +209,10 @@ class AdminAuthService:
 
         user = await self.user_repository.get_by_telegram_id(telegram_id)
         if user is None or not user.is_active:
+            logger.warning(
+                "telegram oidc user not found or inactive",
+                extra={"ip": ip_address, "telegram_id": telegram_id},
+            )
             await self.audit_repository.log_event(
                 action="login_failure",
                 detail=f"reason=telegram_user_not_found telegram_id={telegram_id}",
