@@ -156,7 +156,7 @@ async def runtime_readiness() -> RuntimeReadinessOut | JSONResponse:
         content=readiness.model_dump(mode="json"),
     )
 
-app.mount("/instruction", StaticFiles(directory="shared/static/instruction", html=True), name="instruction")
+app.mount("/api/instruction", StaticFiles(directory="shared/static/instruction", html=True), name="instruction")
 
 app.add_middleware(DocsBasicAuthMiddleware)
 
