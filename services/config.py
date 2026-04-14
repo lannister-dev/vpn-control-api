@@ -258,6 +258,7 @@ class AdminAuthConfig:
     telegram_jwks_url: str = "https://oauth.telegram.org/.well-known/jwks.json"
     telegram_issuer: str = "https://oauth.telegram.org"
     telegram_allowed_ids: tuple[int, ...] = ()
+    telegram_oidc_proxy: str = ""
 
 
 @dataclass
@@ -539,6 +540,7 @@ def get_settings() -> Settings:
         telegram_jwks_url=env.str("ADMIN_TELEGRAM_JWKS_URL", default="https://oauth.telegram.org/.well-known/jwks.json"),
         telegram_issuer=env.str("ADMIN_TELEGRAM_ISSUER", default="https://oauth.telegram.org"),
         telegram_allowed_ids=_tg_allowed,
+        telegram_oidc_proxy=env.str("ADMIN_TELEGRAM_OIDC_PROXY", default=""),
     )
 
     return Settings(
