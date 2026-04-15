@@ -88,15 +88,18 @@ class TelegramBotNotifyService:
             reply_markup=self._wallet_markup(),
         )
 
+    _EMOJI_SUCCESS = '<tg-emoji emoji-id="5118392447394644756">✅</tg-emoji>'
+
     @staticmethod
     def _payment_completed_text(order_type: str) -> str:
+        ok = TelegramBotNotifyService._EMOJI_SUCCESS
         if order_type == "top_up":
-            return "✅ Оплата подтверждена."
+            return f"{ok} <b>Оплата подтверждена</b>"
         if order_type == "device_slots":
-            return "✅ Оплата подтверждена.\n\nДополнительное устройство добавлено."
+            return f"{ok} <b>Оплата подтверждена</b>\n\nДополнительное устройство добавлено."
         if order_type == "subscription_renewal":
-            return "✅ Оплата подтверждена.\n\nПодписка продлена."
-        return "✅ Оплата подтверждена.\n\nПодписка активирована."
+            return f"{ok} <b>Оплата подтверждена</b>\n\nПодписка продлена."
+        return f"{ok} <b>Оплата подтверждена</b>\n\nПодписка активирована."
 
     @staticmethod
     def _payment_completed_markup(order_type: str) -> dict[str, object]:
