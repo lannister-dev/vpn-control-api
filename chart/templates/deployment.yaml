@@ -15,7 +15,6 @@ spec:
   selector:
     matchLabels:
       {{- include "control-api.selectorLabels" . | nindent 6 }}
-      component: api
   template:
     metadata:
       labels:
