@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 from urllib import request
+from urllib.error import HTTPError
 
 from services.config import BotNotificationsConfig, get_settings
 from shared.utils.logger import StructuredLogger
@@ -88,11 +89,11 @@ class TelegramBotNotifyService:
             reply_markup=self._wallet_markup(),
         )
 
-    _EMOJI_SUCCESS = '<tg-emoji emoji-id="5118392447394644756">✅</tg-emoji>'
+    _SUCCESS_EMOJI = '<tg-emoji emoji-id="5118392447394644756">✅</tg-emoji>'
 
     @staticmethod
     def _payment_completed_text(order_type: str) -> str:
-        ok = TelegramBotNotifyService._EMOJI_SUCCESS
+        ok = TelegramBotNotifyService._SUCCESS_EMOJI
         if order_type == "top_up":
             return f"{ok} <b>Оплата подтверждена</b>"
         if order_type == "device_slots":
@@ -199,6 +200,19 @@ class TelegramBotNotifyService:
                     log.warning("bot_notify_rejected", response=data)
                     return False
                 return True
+        except HTTPError as e:
+            error_body = ""
+            try:
+                error_body = e.read().decode("utf-8")
+            except Exception:
+                pass
+            log.warning(
+                "bot_notify_http_error",
+                method=method,
+                http_status=e.code,
+                body=error_body,
+            )
+            return False
         except Exception:
             log.exception("bot_notify_request_failed")
             return False
