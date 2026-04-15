@@ -62,7 +62,7 @@
       display: grid;
       grid-template-columns: 280px 1fr;
       gap: 0;
-      height: calc(100vh - 36px);
+      min-height: calc(100vh - 36px);
     }
     .sidebar {
       border-right: 1px solid var(--line);
@@ -2484,8 +2484,9 @@
           const data = await req(`/api/v1/auth/admin/users?${params}`);
           state.adminUsers = data.items || []; state.adminUsersTotal = data.total || 0;
           renderAdminUsers();
-        } finally {
+        } catch (e) {
           hideSkeleton("au-body");
+          throw e;
         }
       }
 
@@ -3767,8 +3768,9 @@
           const data = await req(`/api/v1/users?${params}`);
           state.users = data.items || []; state.usersTotal = data.total || 0;
           renderUsers();
-        } finally {
+        } catch (e) {
           hideSkeleton("users-body");
+          throw e;
         }
       }
 
@@ -3958,8 +3960,9 @@
           const data = await req("/api/v1/plans");
           state.plans = data.items || [];
           renderPlans(); renderPlanSelect();
-        } finally {
+        } catch (e) {
           if (planBodyEl) hideSkeleton("plans-body");
+          throw e;
         }
       }
 
@@ -4153,8 +4156,9 @@
           const data = await req(`/api/v1/admin/traffic/keys?${params}`);
           state.trafficKeys = data.items || []; state.trafficTotal = data.total || 0;
           renderTraffic(); updateTrafficKpis();
-        } finally {
+        } catch (e) {
           hideSkeleton("traffic-body");
+          throw e;
         }
       }
 
