@@ -39,3 +39,6 @@ ingress:
 
 serviceMonitor:
   enabled: true
+
+reconciler:
+  enabled: true

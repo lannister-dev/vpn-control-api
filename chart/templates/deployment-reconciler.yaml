@@ -1,12 +1,14 @@
+{{- if .Values.reconciler.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "control-api.fullname" . }}
+  name: {{ include "control-api.fullname" . }}-reconciler
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "control-api.labels" . | nindent 4 }}
+    component: reconciler
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: {{ .Values.reconciler.replicaCount | default 1 }}
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -15,12 +17,12 @@ spec:
   selector:
     matchLabels:
       {{- include "control-api.selectorLabels" . | nindent 6 }}
-      component: api
+      component: reconciler
   template:
     metadata:
       labels:
         {{- include "control-api.selectorLabels" . | nindent 8 }}
-        component: api
+        component: reconciler
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -32,27 +34,15 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- if .Values.migrations.enabled }}
-      initContainers:
-        - name: migrate
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: ["alembic", "upgrade", "head"]
-          {{- if .Values.envSecret }}
-          envFrom:
-            - secretRef:
-                name: {{ .Values.envSecret }}
-          {{- end }}
-      {{- end }}
       containers:
-        - name: control-api
+        - name: reconciler
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command:
-            {{- toYaml .Values.command | nindent 12 }}
+            {{- toYaml .Values.reconciler.command | nindent 12 }}
           ports:
-            - name: http
-              containerPort: 8000
+            - name: health
+              containerPort: 8081
               protocol: TCP
           {{- if .Values.envSecret }}
           envFrom:
@@ -67,19 +57,20 @@ spec:
             {{- end }}
           {{- end }}
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
-          readinessProbe:
-            httpGet:
-              path: /api/readyz
-              port: http
-            initialDelaySeconds: 5
-            periodSeconds: 5
-            timeoutSeconds: 3
+            {{- toYaml (.Values.reconciler.resources | default .Values.resources) | nindent 12 }}
           livenessProbe:
             httpGet:
-              path: /api/readyz
-              port: http
+              path: /healthz
+              port: health
             initialDelaySeconds: 10
-            periodSeconds: 10
+            periodSeconds: 15
             timeoutSeconds: 5
             failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+{{- end }}
