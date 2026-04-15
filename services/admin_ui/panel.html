@@ -1204,6 +1204,8 @@
       from { opacity: 0; transform: translateY(4px); }
       to { opacity: 1; transform: translateY(0); }
     }
+    tbody { transition: opacity 150ms ease; }
+    tbody.refreshing { opacity: 0.4; }
     @media (prefers-reduced-motion: reduce) {
       * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
     }
@@ -2201,7 +2203,7 @@
       /* Skeleton loaders */
       function showSkeleton(containerId, rowCount = 5) {
         const container = $(containerId);
-        if (!container) return;
+        if (!container || container.children.length > 0) return;
         const skeletons = Array.from({ length: rowCount }, () => {
           const cols = Math.floor(Math.random() * 3) + 3;
           return `<tr><td colspan="${cols}"><div class="skeleton-row">${Array.from({ length: cols }).map(() => `<div></div>`).join("")}</div></td></tr>`;
@@ -2211,6 +2213,19 @@
       function hideSkeleton(containerId) {
         const container = $(containerId);
         if (container) container.innerHTML = "";
+      }
+      function smoothUpdate(containerId, html) {
+        const el = $(containerId);
+        if (!el) return;
+        el.classList.remove("refreshing");
+        el.innerHTML = html;
+        void el.offsetWidth;
+        el.style.opacity = "0";
+        requestAnimationFrame(() => { el.style.opacity = ""; });
+      }
+      function markRefreshing(containerId) {
+        const el = $(containerId);
+        if (el && el.children.length > 0) el.classList.add("refreshing");
       }
 
       /* Empty state component */
@@ -2480,6 +2495,7 @@
         const a = auStatus.value; if (a) params.set("is_active", a);
         params.set("limit", "100");
         showSkeleton("au-body", 5);
+        markRefreshing("au-body");
         try {
           const data = await req(`/api/v1/auth/admin/users?${params}`);
           state.adminUsers = data.items || []; state.adminUsersTotal = data.total || 0;
@@ -2491,12 +2507,13 @@
       }
 
       function renderAdminUsers() {
-        if (!state.adminUsers.length) { auBody.innerHTML = `<tr><td colspan="7" class="empty">Нет пользователей.</td></tr>`; auMeta.textContent = ""; return; }
-        auBody.innerHTML = state.adminUsers.map((u) => {
+        if (!state.adminUsers.length) { smoothUpdate("au-body", `<tr><td colspan="7" class="empty">Нет пользователей.</td></tr>`); auMeta.textContent = ""; return; }
+        const html = state.adminUsers.map((u) => {
           const roleCls = u.role === "admin" ? "bad" : (u.role === "operator" ? "warn" : "info");
           const statusCls = u.is_active ? "ok" : "warn";
           return `<tr><td>${esc(u.username)}</td><td>${chip(roleCls, u.role)}</td><td>${chip(statusCls, u.is_active ? "active" : "inactive")}</td><td class="mono">${u.telegram_id ? esc(u.telegram_id) : "-"}</td><td>-</td><td style="white-space:nowrap;">${fmtDate(u.created_at)}</td><td><button class="btn-mini au-edit-btn" data-uid="${esc(u.id)}" data-uname="${esc(u.username)}" data-urole="${esc(u.role)}" data-uactive="${u.is_active}">Edit</button></td></tr>`;
         }).join("");
+        smoothUpdate("au-body", html);
         auMeta.textContent = `Показано ${state.adminUsers.length} из ${state.adminUsersTotal}`;
       }
 
@@ -3764,6 +3781,7 @@
         const statusVal = refs.usersStatus.value; if (statusVal) params.set("is_active", statusVal);
         params.set("limit", String(state.usersLimit)); params.set("offset", String(state.usersOffset));
         showSkeleton("users-body", 5);
+        markRefreshing("users-body");
         try {
           const data = await req(`/api/v1/users?${params}`);
           state.users = data.items || []; state.usersTotal = data.total || 0;
@@ -3786,7 +3804,7 @@
       function renderUsers() {
         refs.usersHead.innerHTML = `<tr>${sortTh("users", "id", "ID")}${sortTh("users", "telegram_id", "Telegram ID")}${sortTh("users", "username", "Username")}${sortTh("users", "tag", "Tag")}${sortTh("users", "balance", "Баланс")}<th>Subs</th><th>Keys</th>${sortTh("users", "status", "Статус")}${sortTh("users", "created_at", "Создан")}<th>Действия</th></tr>`;
         const sorted = sortedBy([...state.users], "users", usersComparators);
-        refs.usersBody.innerHTML = sorted.length
+        const html = sorted.length
           ? sorted.map((u) => `<tr data-focusable tabindex="0">
               <td>${uuidCell(u.id)}</td>
               <td class="mono">${esc(u.telegram_id)}</td>
@@ -3800,6 +3818,7 @@
               <td><div class="actions"><button class="btn-mini usr-edit-btn" data-user-id="${esc(u.id)}">Edit</button><button class="btn-mini usr-subs-btn" data-user-id="${esc(u.id)}" data-username="${esc(u.username || "")}" data-tg="${esc(u.telegram_id)}">Subs</button></div></td>
             </tr>`).join("")
           : `<tr><td colspan="10"><div class="empty-state"><div class="empty-state-icon">👥</div><div class="empty-state-title">Нет пользователей</div><div class="empty-state-hint">Нажмите Загрузить или создайте нового пользователя</div></div></td></tr>`;
+        smoothUpdate("users-body", html);
         renderPagination(refs.usersPagination, state.usersTotal, state.usersLimit, state.usersOffset, (page) => {
           state.usersOffset = page * state.usersLimit;
           loadUsers().catch((e) => notify("Ошибка: " + e.message, true));
@@ -4152,6 +4171,7 @@
         const revoked = refs.trafficRevoked.value; if (revoked !== "") params.set("is_revoked", revoked);
         params.set("limit", String(state.trafficLimit)); params.set("offset", String(state.trafficOffset));
         showSkeleton("traffic-body", 5);
+        markRefreshing("traffic-body");
         try {
           const data = await req(`/api/v1/admin/traffic/keys?${params}`);
           state.trafficKeys = data.items || []; state.trafficTotal = data.total || 0;
@@ -4214,7 +4234,7 @@
         refs.trafficMeta.innerHTML = metaHtml;
         refs.trafficHead.innerHTML = `<tr>${sortTh("traffic", "client_id", "Ключ / client_id")}<th>Пользователь</th><th>Протокол</th>${sortTh("traffic", "used", "Использовано")}${sortTh("traffic", "limit", "Лимит")}<th>Остаток</th>${sortTh("traffic", "pct", "Использование")}${sortTh("traffic", "status", "Статус")}${sortTh("traffic", "expires", "Истекает")}<th>Действия</th></tr>`;
         const sorted = sortedBy([...keys], "traffic", trafficComparators);
-        refs.trafficBody.innerHTML = sorted.length
+        const trafficHtml = sorted.length
           ? sorted.map((k) => {
             const pct = trafficPct(k.used_traffic_bytes, k.traffic_limit_mb);
             const isNearLimit = pct !== null && pct >= 90 && !k.is_revoked;
@@ -4223,6 +4243,7 @@
             return `<tr${rowStyle}><td><div>${uuidCell(k.id)}</div><div class="mono muted" style="font-size:11px">${esc(k.client_id)}</div></td><td>${uuidCell(k.user_id)}</td><td><span class="mono">${esc(k.protocol)}/${esc(k.transport)}</span></td><td class="mono">${fmtBytes(k.used_traffic_bytes)}</td><td class="mono">${k.traffic_limit_mb ? fmtBytes(k.traffic_limit_mb * 1024 * 1024) : "\u2014"}</td><td>${trafficRemaining(k.used_traffic_bytes, k.traffic_limit_mb)}</td><td>${trafficBar(k.used_traffic_bytes, k.traffic_limit_mb)}</td><td>${statusChip}</td><td>${relTime(k.valid_until)}</td><td><button class="btn-mini traffic-history-btn" data-key-idx="${esc(keys.indexOf(k))}" data-key-id="${esc(k.id)}" data-client-id="${esc(k.client_id)}">История</button></td></tr>`;
           }).join("")
           : `<tr><td colspan="10" class="empty">Нет данных. Нажмите \u00ABЗагрузить\u00BB.</td></tr>`;
+        smoothUpdate("traffic-body", trafficHtml);
         renderPagination(refs.trafficPagination, state.trafficTotal, state.trafficLimit, state.trafficOffset, (page) => {
           state.trafficOffset = page * state.trafficLimit;
           loadTrafficKeys().catch((e) => notify("Ошибка загрузки трафика: " + e.message, true));
