@@ -24,6 +24,25 @@ from services.placements.error_retry_reconciler import PlacementErrorRetryReconc
 from services.placements.reconciler import PlacementRebalanceReconciler
 from services.vpn.keys.expiration_reconciler import VpnKeyExpirationReconciler
 
+# Register all SQLAlchemy models (no routers to pull them in)
+from services.users.models import User  # noqa: F401
+from services.vpn.keys.models import VpnKey, KeyAssignment  # noqa: F401
+from services.nodes.models import VpnNode, NodeAgentIdentity, NodeAgentState  # noqa: F401
+from services.placements.model import UserPlacement  # noqa: F401
+from services.probe.model import ProbeSignal  # noqa: F401
+from services.artifacts.models import ProfileArtifact  # noqa: F401
+from services.vpn.subscriptions.model import Subscription, SubscriptionDevice, SubscriptionDeviceKey  # noqa: F401
+from services.routes.model import Route, TransportProfile  # noqa: F401
+from services.traffic.model import TrafficUsage  # noqa: F401
+from services.auth.admin.models import AdminUser, AdminSession, AdminAuditEvent  # noqa: F401
+from services.billing.models import PaymentOrder, BalanceTransaction  # noqa: F401
+from services.nodes.agent.model import (  # noqa: F401
+    NodeTransportEventLog,
+    NodeTransportOutbox,
+    NodeTransportState,
+)
+from services.plans.models import Plan  # noqa: F401
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
