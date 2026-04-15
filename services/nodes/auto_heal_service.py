@@ -78,6 +78,10 @@ class NodePlacementAutoHealService:
         await self._observe_node_freshness(now=now)
 
         desired_active_counts = await self.placement_repository.count_desired_active_by_backend_node()
+        logger.info(
+            "auto_heal_desired_active",
+            counts={str(k): v for k, v in desired_active_counts.items()},
+        )
         for node_id, active_count in desired_active_counts.items():
             PLACEMENT_ACTIVE_BY_BACKEND.labels(node_id=str(node_id)).set(active_count)
         if not desired_active_counts:
@@ -113,6 +117,15 @@ class NodePlacementAutoHealService:
             node = nodes_by_id.get(source_node_id)
             state = states_by_node_id.get(source_node_id)
             reason = self._unavailability_reason(node=node, state=state, now=now)
+            logger.info(
+                "auto_heal_node_eval",
+                node_id=str(source_node_id),
+                node_name=node.name if node else "N/A",
+                reason=reason,
+                active_count=active_count,
+                freshness=round(self._freshness_seconds(state=state, now=now) or -1, 1),
+                stale_threshold=self.stale_after_sec,
+            )
             if reason is None:
                 continue
 
@@ -134,6 +147,12 @@ class NodePlacementAutoHealService:
             target = await self._select_target_backend(
                 source_node=node,
                 source_node_id=source_node_id,
+            )
+            logger.info(
+                "auto_heal_target_selection",
+                source_node_id=str(source_node_id),
+                target_node_id=str(target.id) if target else None,
+                target_name=target.name if target else None,
             )
             if target is None:
                 out.skipped_nodes += 1

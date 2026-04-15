@@ -64,10 +64,12 @@ class NodePlacementReconciler:
             return None
         async with self._tick_lock.hold() as acquired:
             if not acquired:
+                logger.debug("node_auto_heal_lock_not_acquired")
                 return NodeAutoHealTickOut()
             return await self._execute_tick()
 
     async def _run(self) -> None:
+        logger.info("node_auto_heal_loop_started")
         while not self._stop_event.is_set():
             try:
                 await self.run_once()
@@ -82,6 +84,7 @@ class NodePlacementReconciler:
                 continue
 
     async def _execute_tick(self) -> NodeAutoHealTickOut:
+        logger.info("node_auto_heal_tick_start")
         async with self._session_maker() as session:
             service = self._service_factory(
                 session,
@@ -92,17 +95,16 @@ class NodePlacementReconciler:
             )
             out = await service.run_once()
             await session.commit()
-            if out.processed_nodes > 0 or out.orphan_active_placements > 0 or out.undrained_nodes > 0:
-                logger.info(
-                    "node_auto_heal_tick",
-                    processed_nodes=out.processed_nodes,
-                    drained_nodes=out.drained_nodes,
-                    migrated_nodes=out.migrated_nodes,
-                    migrated_placements=out.migrated_placements,
-                    skipped_nodes=out.skipped_nodes,
-                    undrained_nodes=out.undrained_nodes,
-                    orphan_active_placements=out.orphan_active_placements,
-                )
+            logger.info(
+                "node_auto_heal_tick",
+                processed_nodes=out.processed_nodes,
+                drained_nodes=out.drained_nodes,
+                migrated_nodes=out.migrated_nodes,
+                migrated_placements=out.migrated_placements,
+                skipped_nodes=out.skipped_nodes,
+                undrained_nodes=out.undrained_nodes,
+                orphan_active_placements=out.orphan_active_placements,
+            )
             return out
 
     @staticmethod
