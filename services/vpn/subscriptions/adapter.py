@@ -34,6 +34,9 @@ class SubscriptionPublicAdapter:
             happ_hide_settings: bool = False,
             happ_always_hwid_enable: bool = False,
             happ_color_profile: str = "",
+            happ_autoconnect: bool = True,
+            happ_autoconnect_type: str = "lowestdelay",
+            happ_ping_onopen: bool = True,
     ):
         self._hwid_header = hwid_header.strip()
         self._happ_profile_title = happ_profile_title.strip() or "VPN"
@@ -44,6 +47,9 @@ class SubscriptionPublicAdapter:
         self._happ_routing = happ_routing.strip()
         self._happ_hide_settings = bool(happ_hide_settings)
         self._happ_always_hwid_enable = bool(happ_always_hwid_enable)
+        self._happ_autoconnect = bool(happ_autoconnect)
+        self._happ_autoconnect_type = happ_autoconnect_type.strip() or "lowestdelay"
+        self._happ_ping_onopen = bool(happ_ping_onopen)
         color_profile = happ_color_profile.strip()
         self._happ_color_profile = (
             json.dumps(json.loads(color_profile), separators=(",", ":"))
@@ -191,6 +197,11 @@ class SubscriptionPublicAdapter:
             headers["subscription-always-hwid-enable"] = "1"
         if self._happ_color_profile:
             headers["color-profile"] = self._happ_color_profile
+        if self._happ_autoconnect:
+            headers["subscription-autoconnect"] = "true"
+            headers["subscription-autoconnect-type"] = self._happ_autoconnect_type
+        if self._happ_ping_onopen:
+            headers["subscription-ping-onopen-enabled"] = "true"
         return headers
 
     def _build_payload_body(self, *, payload: str, user_agent: str | None) -> str:
