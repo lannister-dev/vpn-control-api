@@ -28,6 +28,7 @@ from services.vpn.keys.expiration_reconciler import VpnKeyExpirationReconciler
 from services.users.models import User  # noqa: F401
 from services.vpn.keys.models import VpnKey, KeyAssignment  # noqa: F401
 from services.nodes.models import VpnNode, NodeAgentIdentity, NodeAgentState  # noqa: F401
+from services.entry.models import EntryBackendAssignment  # noqa: F401
 from services.placements.model import UserPlacement  # noqa: F401
 from services.probe.model import ProbeSignal  # noqa: F401
 from services.artifacts.models import ProfileArtifact  # noqa: F401
