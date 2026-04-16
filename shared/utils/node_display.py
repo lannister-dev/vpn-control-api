@@ -59,6 +59,8 @@ REGION_TO_COUNTRY_CODE: dict[str, str] = {
     "br": "BR",
     "mx": "MX",
     "il": "IL",
+    "lv": "LV",
+    "rig": "LV",
 }
 
 COUNTRY_CODE_TO_NAME: dict[str, str] = {
@@ -92,6 +94,7 @@ COUNTRY_CODE_TO_NAME: dict[str, str] = {
     "BR": "Brazil",
     "MX": "Mexico",
     "IL": "Israel",
+    "LV": "Latvia",
 }
 
 
