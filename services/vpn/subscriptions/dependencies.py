@@ -15,4 +15,7 @@ def get_subscription_public_adapter() -> SubscriptionPublicAdapter:
         happ_hide_settings=settings.subscriptions.happ_hide_settings,
         happ_always_hwid_enable=settings.subscriptions.happ_always_hwid_enable,
         happ_color_profile=settings.subscriptions.happ_color_profile,
+        happ_autoconnect=settings.subscriptions.happ_autoconnect,
+        happ_autoconnect_type=settings.subscriptions.happ_autoconnect_type,
+        happ_ping_onopen=settings.subscriptions.happ_ping_onopen,
     )
