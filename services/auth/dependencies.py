@@ -2,7 +2,7 @@ import secrets
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import Header, Depends, HTTPException, Request, Security
+from fastapi import Header, Depends, HTTPException, Query, Request, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette import status
 
@@ -211,6 +211,77 @@ async def bootstrap_auth(
     AUTH_ATTEMPT_TOTAL.labels(type="bootstrap", result="success").inc()
 
 
+node_install_bearer = HTTPBearer(auto_error=False)
+
+
+class NodeInstallCredentials:
+    """Pair of (node, raw_token) returned by node_install_auth."""
+
+    __slots__ = ("node", "raw_token")
+
+    def __init__(self, node: VpnNode, raw_token: str) -> None:
+        self.node = node
+        self.raw_token = raw_token
+
+
+async def node_install_auth(
+        credentials: HTTPAuthorizationCredentials | None = Security(node_install_bearer),
+        token: str | None = Query(default=None, description="Bootstrap token (alt to Bearer)"),
+        service: VpnNodeService = Depends(get_vpn_node_service),
+) -> NodeInstallCredentials:
+    """
+    Authenticates a pending VPN node's installer using its one-shot bootstrap token.
+
+    Accepts token via either Authorization: Bearer <token> (preferred for JSON
+    callbacks) or ?token=<token> query string (for the `curl | bash` installer).
+
+    Rejects if the token is unknown, the node is inactive, the token has
+    expired, or the node was already bootstrapped.
+    """
+    raw_token = None
+    if credentials is not None and credentials.credentials:
+        raw_token = credentials.credentials.strip()
+    elif token:
+        raw_token = token.strip()
+
+    if not raw_token:
+        AUTH_ATTEMPT_TOTAL.labels(type="node_install", result="failure").inc()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Bootstrap token required",
+        )
+
+    token_hash = AuthUtils.hash_node_token(raw_token)
+    node = await service.vpn_node_repository.get_by_auth_token_hash(token_hash)
+    if node is None or not node.is_active:
+        AUTH_ATTEMPT_TOTAL.labels(type="node_install", result="failure").inc()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid bootstrap token",
+        )
+
+    if node.bootstrapped_at is not None:
+        AUTH_ATTEMPT_TOTAL.labels(type="node_install", result="already_bootstrapped").inc()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Node already bootstrapped; rotate token via admin API",
+        )
+
+    expires_at = node.bootstrap_token_expires_at
+    if expires_at is not None:
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at <= datetime.now(timezone.utc):
+            AUTH_ATTEMPT_TOTAL.labels(type="node_install", result="expired").inc()
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Bootstrap token expired",
+            )
+
+    AUTH_ATTEMPT_TOTAL.labels(type="node_install", result="success").inc()
+    return NodeInstallCredentials(node=node, raw_token=raw_token)
+
+
 probe_bearer = HTTPBearer(auto_error=False)
 
 
@@ -239,6 +310,49 @@ async def probe_auth(
         )
 
     AUTH_ATTEMPT_TOTAL.labels(type="probe", result="success").inc()
+
+
+relay_bearer = HTTPBearer(auto_error=False)
+
+
+async def relay_auth(
+        credentials: HTTPAuthorizationCredentials | None = Security(relay_bearer),
+) -> None:
+    """
+    Validates the bearer token used by Go relay binaries to poll the entry backend pool.
+    """
+    if not credentials:
+        AUTH_ATTEMPT_TOTAL.labels(type="relay", result="failure").inc()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing Authorization header",
+        )
+
+    if credentials.scheme.lower() != "bearer":
+        AUTH_ATTEMPT_TOTAL.labels(type="relay", result="failure").inc()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authorization scheme",
+        )
+
+    raw_token = credentials.credentials
+    expected_hash = get_settings().admin.relay_token_hash
+    if not expected_hash:
+        AUTH_ATTEMPT_TOTAL.labels(type="relay", result="failure").inc()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Relay auth not configured",
+        )
+
+    provided_hash = AuthUtils.hash_admin_api_key(raw_token)
+    if not secrets.compare_digest(provided_hash, expected_hash):
+        AUTH_ATTEMPT_TOTAL.labels(type="relay", result="failure").inc()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid relay token",
+        )
+
+    AUTH_ATTEMPT_TOTAL.labels(type="relay", result="success").inc()
 
 
 bot_bearer = HTTPBearer(auto_error=False)

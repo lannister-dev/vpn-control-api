@@ -63,6 +63,7 @@ class AdminConfig:
     connect_api_key_hash: str
     bootstrap_token_hash: str
     probe_token_hash: str
+    relay_token_hash: str
 
 
 @dataclass
@@ -96,6 +97,16 @@ class SubscriptionsConfig:
     happ_autoconnect: bool = True
     happ_autoconnect_type: str = "lowestdelay"
     happ_ping_onopen: bool = True
+
+
+@dataclass
+class K3sConfig:
+    server_url: str = ""
+    node_token: str = ""
+    version: str = ""
+    bootstrap_token_ttl_sec: int = 86400
+    public_base_url: str = ""
+    channel: str = ""  # "dev" | "prod" — used as nodeSelector channel= label by installer
 
 
 @dataclass
@@ -287,6 +298,7 @@ class Settings:
     billing: BillingConfig
     migration: MigrationConfig
     referral: ReferralConfig
+    k3s: K3sConfig
 
 
 @lru_cache
@@ -341,6 +353,7 @@ def get_settings() -> Settings:
         connect_api_key_hash=env.str("CONNECT_API_KEY_HASH", default=env.str("ADMIN_API_KEY_HASH")),
         bootstrap_token_hash=env.str("BOOTSTRAP_TOKEN_HASH"),
         probe_token_hash= env.str("PROBE_TOKEN_HASH"),
+        relay_token_hash=env.str("RELAY_TOKEN_HASH", default=""),
     )
 
     bot_api = BotApiConfig(api_key_hash=env.str("BOT_API_KEY_HASH", default=""))
@@ -528,6 +541,15 @@ def get_settings() -> Settings:
         bot_username=env.str("REFERRAL_BOT_USERNAME", default="").strip(),
     )
 
+    k3s = K3sConfig(
+        server_url=env.str("K3S_URL", default=""),
+        node_token=env.str("K3S_NODE_TOKEN", default=""),
+        version=env.str("K3S_VERSION", default=""),
+        bootstrap_token_ttl_sec=max(300, env.int("NODE_BOOTSTRAP_TOKEN_TTL_SEC", default=86400)),
+        public_base_url=env.str("CONTROL_API_PUBLIC_URL", default="").strip().rstrip("/"),
+        channel=env.str("CHANNEL", default="").strip().lower(),
+    )
+
     _tg_allowed_raw = env.str("ADMIN_TELEGRAM_ALLOWED_IDS", default="")
     _tg_allowed = tuple(
         int(x.strip()) for x in _tg_allowed_raw.split(",") if x.strip().isdigit()
@@ -571,4 +593,5 @@ def get_settings() -> Settings:
         billing=billing,
         migration=migration,
         referral=referral,
+        k3s=k3s,
     )

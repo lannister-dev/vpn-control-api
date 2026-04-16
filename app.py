@@ -21,6 +21,11 @@ from services.admin_status.router import router as admin_status_router
 from services.admin_ui.router import router as admin_ui_router
 from services.artifacts.router import router as artifacts_router
 from services.connect.router import router as connect_router
+from services.entry.router import router as entry_router
+from services.nodes.admin_router import (
+    admin_router as nodes_admin_router,
+    installer_router as nodes_installer_router,
+)
 from services.nodes.router import router as node_router
 from services.placements.router import router as placements_router
 from services.probe.router import router as probe_router
@@ -74,7 +79,10 @@ api_router.include_router(admin_transport_router)
 api_router.include_router(admin_ui_router)
 api_router.include_router(artifacts_router)
 api_router.include_router(connect_router)
+api_router.include_router(entry_router)
 api_router.include_router(node_router)
+api_router.include_router(nodes_admin_router)
+api_router.include_router(nodes_installer_router)
 api_router.include_router(placements_router)
 api_router.include_router(probe_router)
 api_router.include_router(routes_router)

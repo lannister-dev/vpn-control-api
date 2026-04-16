@@ -7,6 +7,14 @@ from uuid import UUID
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.nodes.constants import ALLOWED_NODE_ROLES, DEFAULT_NODE_ROLE, DRAIN_REASON_UNHEALTHY_HEARTBEAT, \
+    HEARTBEAT_DETAILS_KEY
+from services.nodes.exceptions import (
+    AdminNodeAlreadyBootstrappedError,
+    AdminNodeCreateError,
+    AdminNodeNotFoundError,
+    NodeBootstrapConflictError,
+)
 from services.nodes.models import VpnNode
 from services.nodes.repository import (
     NodeAgentIdentityRepository,
@@ -15,6 +23,9 @@ from services.nodes.repository import (
 )
 from services.config import get_settings
 from services.nodes.schemas import (
+    AdminNodeCreateIn,
+    AdminNodeCreateOut,
+    AdminNodeRotateBootstrapOut,
     NodeAgentDetails,
     NodeHeartbeatMeta,
     NodeAgentStateCreate,
@@ -24,6 +35,7 @@ from services.nodes.schemas import (
     NodeSyncDetails,
     NodeSyncReportIn,
     VpnNodeCreate,
+    VpnNodeOut,
 )
 from shared.database.session import AsyncDatabase
 from shared.monitoring.metrics import (
@@ -34,16 +46,7 @@ from shared.utils.logger import StructuredLogger
 logger_node = StructuredLogger(logging.getLogger("node-service"))
 
 
-class NodeBootstrapConflictError(ValueError):
-    pass
-
-
 class VpnNodeService:
-    _HEARTBEAT_DETAILS_KEY = "heartbeat"
-    _DRAIN_REASON_UNHEALTHY_HEARTBEAT = "unhealthy_heartbeat"
-    _DEFAULT_BOOTSTRAP_NODE_ROLE = "backend"
-    _ALLOWED_BOOTSTRAP_NODE_ROLES = {"backend", "whitelist_entry"}
-
     def __init__(self, session: AsyncSession):
         self.vpn_node_repository = (
             VpnNodeRepository(session)
@@ -158,11 +161,10 @@ class VpnNodeService:
 
     def _normalize_bootstrap_node_role(self, node_role: str | None) -> str:
         if node_role is None:
-            return self._DEFAULT_BOOTSTRAP_NODE_ROLE
-        normalized = node_role
-        if normalized in self._ALLOWED_BOOTSTRAP_NODE_ROLES:
-            return normalized
-        return self._DEFAULT_BOOTSTRAP_NODE_ROLE
+            return DEFAULT_NODE_ROLE
+        if node_role in ALLOWED_NODE_ROLES:
+            return node_role
+        return DEFAULT_NODE_ROLE
 
     async def handle_heartbeat(
             self,
@@ -194,7 +196,7 @@ class VpnNodeService:
                 {"is_draining": True},
             )
             node.is_draining = True
-            heartbeat_meta.drain_reason = self._DRAIN_REASON_UNHEALTHY_HEARTBEAT
+            heartbeat_meta.drain_reason = DRAIN_REASON_UNHEALTHY_HEARTBEAT
             heartbeat_meta.drained_at = now
             logger_node.info(
                 "node set to draining after unhealthy heartbeat threshold",
@@ -207,7 +209,7 @@ class VpnNodeService:
             and node.is_draining
             and node.is_active
             and node.is_enabled
-            and heartbeat_meta.drain_reason in (self._DRAIN_REASON_UNHEALTHY_HEARTBEAT, None)
+            and heartbeat_meta.drain_reason in (DRAIN_REASON_UNHEALTHY_HEARTBEAT, None)
             and heartbeat_meta.consecutive_healthy >= self.heartbeat_healthy_undrain_threshold
         )
         if should_undrain:
@@ -225,7 +227,7 @@ class VpnNodeService:
                 consecutive_healthy=heartbeat_meta.consecutive_healthy,
             )
         details_data = details.model_dump(mode="json", exclude_none=True)
-        details_data[self._HEARTBEAT_DETAILS_KEY] = heartbeat_meta.model_dump(
+        details_data[HEARTBEAT_DETAILS_KEY] = heartbeat_meta.model_dump(
             mode="json",
             exclude_none=True,
         )
@@ -348,7 +350,7 @@ class VpnNodeService:
             base_details: dict[str, object],
             is_healthy: bool,
     ) -> NodeHeartbeatMeta:
-        heartbeat_raw = base_details.get(cls._HEARTBEAT_DETAILS_KEY)
+        heartbeat_raw = base_details.get(HEARTBEAT_DETAILS_KEY)
         heartbeat_data = heartbeat_raw if isinstance(heartbeat_raw, dict) else {}
 
         consecutive_unhealthy = cls._safe_int(heartbeat_data.get("consecutive_unhealthy"))
@@ -400,6 +402,129 @@ class VpnNodeService:
         suffix = node_key[:8]
         candidate = f"{base}-{suffix}"
         return candidate[:64]
+
+    # ------------------------------------------------------------------
+    # Admin flow: create a pending node + mint a one-shot bootstrap token.
+    # ------------------------------------------------------------------
+
+    async def admin_create_node(self, payload: AdminNodeCreateIn) -> AdminNodeCreateOut:
+        role = payload.role.strip()
+        if role not in ALLOWED_NODE_ROLES:
+            raise AdminNodeCreateError(
+                f"role must be one of: {', '.join(sorted(ALLOWED_NODE_ROLES))}"
+            )
+        name = payload.name.strip()
+        if not name:
+            raise AdminNodeCreateError("name is required")
+
+        existing = await self.vpn_node_repository.get_one_by(name=name)
+        if existing is not None:
+            raise AdminNodeCreateError(f"node with name '{name}' already exists")
+
+        raw_token, token_hash = self._mint_bootstrap_token()
+        expires_at = self._bootstrap_token_expires_at()
+
+        create_schema = VpnNodeCreate(
+            name=name,
+            role=role,
+            region=payload.region.strip() or "unknown",
+            public_domain=payload.public_domain.strip(),
+            reality_ip=(payload.reality_ip or "").strip() or None,
+            internal_wg_ip=payload.internal_wg_ip.strip(),
+            node_key=None,
+            auth_token_hash=token_hash,
+            capacity=payload.capacity,
+        )
+        node = await self.vpn_node_repository.create(
+            {
+                **create_schema.model_dump(),
+                "bootstrap_token_expires_at": expires_at,
+                "bootstrapped_at": None,
+            }
+        )
+        NODE_BOOTSTRAP_TOTAL.labels(result="admin_pending_created").inc()
+        logger_node.info(
+            "admin created pending node",
+            node_id=str(node.id),
+            name=node.name,
+            role=node.role,
+        )
+        return AdminNodeCreateOut(
+            node=VpnNodeOut.model_validate(node),
+            bootstrap_token=raw_token,
+            bootstrap_token_expires_at=expires_at,
+            install_command=self._render_install_command(raw_token),
+        )
+
+    async def admin_rotate_bootstrap_token(
+            self,
+            node_id: UUID,
+    ) -> AdminNodeRotateBootstrapOut:
+        node = await self.vpn_node_repository.get_by_id(node_id)
+        if node is None or not node.is_active:
+            raise AdminNodeNotFoundError(f"node {node_id} not found")
+        if node.bootstrapped_at is not None:
+            raise AdminNodeAlreadyBootstrappedError(
+                f"node {node_id} already bootstrapped at {node.bootstrapped_at.isoformat()}"
+            )
+
+        raw_token, token_hash = self._mint_bootstrap_token()
+        expires_at = self._bootstrap_token_expires_at()
+        await self.vpn_node_repository.update_by_id(
+            node.id,
+            {
+                "auth_token_hash": token_hash,
+                "bootstrap_token_expires_at": expires_at,
+            },
+        )
+        NODE_BOOTSTRAP_TOTAL.labels(result="admin_token_rotated").inc()
+        return AdminNodeRotateBootstrapOut(
+            node_id=node.id,
+            bootstrap_token=raw_token,
+            bootstrap_token_expires_at=expires_at,
+            install_command=self._render_install_command(raw_token),
+        )
+
+    async def mark_bootstrapped(self, node: VpnNode) -> datetime:
+        now = datetime.now(timezone.utc)
+        await self.vpn_node_repository.update_by_id(
+            node.id,
+            {
+                "bootstrapped_at": now,
+                "bootstrap_token_expires_at": None,
+            },
+        )
+        NODE_BOOTSTRAP_TOTAL.labels(result="installer_completed").inc()
+        logger_node.info(
+            "node installer reported bootstrap complete",
+            node_id=str(node.id),
+            name=node.name,
+        )
+        return now
+
+    @staticmethod
+    def _mint_bootstrap_token() -> tuple[str, str]:
+        raw = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(raw.encode()).hexdigest()
+        return raw, token_hash
+
+    @staticmethod
+    def _bootstrap_token_expires_at() -> datetime:
+        ttl = get_settings().k3s.bootstrap_token_ttl_sec
+        return datetime.now(timezone.utc) + timedelta(seconds=ttl)
+
+    @staticmethod
+    def _render_install_command(raw_token: str) -> str:
+        base = get_settings().k3s.public_base_url
+        if not base:
+            return (
+                "# Set CONTROL_API_PUBLIC_URL in control-api env to render a real one-liner.\n"
+                f"# token={raw_token}"
+            )
+        return (
+            f"curl -fsSL '{base}/api/v1/agent/install.sh?token={raw_token}' "
+            f"| sudo bash"
+        )
 
 
 async def get_vpn_node_service(
