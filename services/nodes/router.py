@@ -5,6 +5,7 @@ from starlette import status
 from starlette.requests import Request
 
 from services.auth.dependencies import admin_auth, bootstrap_auth
+from services.nodes.constants import ALLOWED_NODE_ROLES
 from services.nodes.schemas import (
     AdminNodeUpdateIn,
     NodeAgentInitialOut,
@@ -60,10 +61,10 @@ async def initial(wg_request: Request,
     normalized_node_role = None
     if x_node_role is not None:
         normalized_node_role = x_node_role
-        if normalized_node_role not in {"backend", "whitelist_entry"}:
+        if normalized_node_role not in ALLOWED_NODE_ROLES:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="X-Node-Role must be backend or whitelist_entry",
+                detail=f"X-Node-Role must be one of: {', '.join(sorted(ALLOWED_NODE_ROLES))}",
             )
 
     try:

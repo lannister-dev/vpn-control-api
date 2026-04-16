@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# ============================================================
+# VPN node installer (rendered by control-api)
+#
+# Generated for:
+#   node_id       = {{ NODE_ID }}
+#   node_name     = {{ NODE_NAME }}
+#   traffic_role  = {{ NODE_ROLE }}
+#   region        = {{ NODE_REGION }}
+#   channel       = {{ CHANNEL }}
+#
+# Joins this VM to the k3s cluster as an agent with the right
+# labels, then reports back to control-api that bootstrap is done.
+# ============================================================
+set -Eeuo pipefail
+
+NODE_ID="{{ NODE_ID }}"
+NODE_NAME="{{ NODE_NAME }}"
+TRAFFIC_ROLE="{{ NODE_ROLE }}"
+NODE_REGION="{{ NODE_REGION }}"
+CHANNEL="{{ CHANNEL }}"
+K3S_URL="{{ K3S_URL }}"
+K3S_TOKEN="{{ K3S_TOKEN }}"
+K3S_VERSION="{{ K3S_VERSION }}"
+CONTROL_API_URL="{{ CONTROL_API_URL }}"
+BOOTSTRAP_TOKEN="{{ BOOTSTRAP_TOKEN }}"
+
+log() { printf '[install] %s\n' "$*" >&2; }
+die() { printf '[install] FATAL: %s\n' "$*" >&2; exit 1; }
+
+# ---- sanity ----
+if [ "$(id -u)" -ne 0 ]; then
+    die "must run as root (use sudo)"
+fi
+if ! command -v curl >/dev/null 2>&1; then
+    die "curl not found; apt-get install -y curl first"
+fi
+if [ -z "${K3S_URL}" ] || [ -z "${K3S_TOKEN}" ]; then
+    die "control-api is misconfigured: K3S_URL/K3S_TOKEN not rendered"
+fi
+if systemctl list-unit-files --type=service 2>/dev/null | grep -q '^k3s-agent'; then
+    die "k3s-agent already installed on this host; refusing to overwrite"
+fi
+
+# ---- k3s agent join ----
+log "joining k3s cluster at ${K3S_URL} as node=${NODE_NAME} channel=${CHANNEL} traffic_role=${TRAFFIC_ROLE}"
+
+export K3S_URL
+export K3S_TOKEN
+if [ -n "${K3S_VERSION}" ]; then
+    export INSTALL_K3S_VERSION="${K3S_VERSION}"
+fi
+export INSTALL_K3S_EXEC="agent \
+    --node-name=${NODE_NAME} \
+    --node-label=role=vpn \
+    --node-label=channel=${CHANNEL} \
+    --node-label=traffic_role=${TRAFFIC_ROLE} \
+    --node-label=region=${NODE_REGION} \
+    --node-label=vpn-node-id=${NODE_ID}"
+
+curl -sfL https://get.k3s.io | sh -
+
+# ---- wait for kubelet to register ----
+log "waiting for k3s-agent to settle (up to 60s)..."
+for _ in $(seq 1 30); do
+    if systemctl is-active --quiet k3s-agent 2>/dev/null; then
+        break
+    fi
+    sleep 2
+done
+if ! systemctl is-active --quiet k3s-agent 2>/dev/null; then
+    die "k3s-agent did not come up; see: journalctl -u k3s-agent -n 200"
+fi
+
+# ---- report back to control-api ----
+log "reporting bootstrap-complete to ${CONTROL_API_URL}"
+http_code="$(curl -sS -o /tmp/bootstrap-complete.out -w '%{http_code}' \
+    -X POST "${CONTROL_API_URL}/api/v1/agent/bootstrap-complete" \
+    -H "Authorization: Bearer ${BOOTSTRAP_TOKEN}" \
+    -H "Content-Type: application/json" \
+    --data "{\"k3s_node_name\":\"${NODE_NAME}\"}" || true)"
+
+if [ "${http_code}" != "200" ] && [ "${http_code}" != "204" ]; then
+    log "bootstrap-complete callback got HTTP ${http_code} — node is joined but control-api did not record completion"
+    log "response body:"
+    cat /tmp/bootstrap-complete.out >&2 || true
+    exit 1
+fi
+
+log "done. kubectl from control-plane should see node '${NODE_NAME}'."
+log "channel=${CHANNEL} traffic_role=${TRAFFIC_ROLE} region=${NODE_REGION} — DaemonSets with matching nodeSelector will land here."

@@ -1399,7 +1399,7 @@
         </div>
       </section>
       <section id="tab-nodes" class="panel">
-        <div class="panel-head"><div class="panel-title">Серверы</div><button id="nodes-reload" class="btn btn-ghost">Перезагрузить</button></div>
+        <div class="panel-head"><div class="panel-title">Серверы</div><div class="actions"><button id="nodes-add" class="btn btn-primary">+ Добавить сервер</button><button id="nodes-reload" class="btn btn-ghost">Перезагрузить</button></div></div>
         <div class="panel-body">
           <div class="filters">
             <input id="nodes-search" class="input" placeholder="Поиск: имя, UUID, домен, reality IP, регион" />
@@ -1828,6 +1828,7 @@
   <div id="toast-container" class="toast-container"></div>
   <div id="confirm-modal"></div>
   <div id="node-config-modal"></div>
+  <div id="add-node-modal"></div>
   <div id="selected-node-card" style="display:none"></div>
 
   <!-- Accessibility: sr-only announcements -->
@@ -1868,7 +1869,7 @@
         subSearchBtn: $("sub-search-btn"), subClearBtn: $("sub-clear-btn"),
         subCreateTrigger: $("sub-create-trigger"), subCreateContent: $("sub-create-content"), subCreateArrow: $("sub-create-arrow"),
 
-        nodesSearch: $("nodes-search"), nodesHealth: $("nodes-health"), nodesState: $("nodes-state"), nodesClear: $("nodes-clear"), nodesReload: $("nodes-reload"),
+        nodesSearch: $("nodes-search"), nodesHealth: $("nodes-health"), nodesState: $("nodes-state"), nodesClear: $("nodes-clear"), nodesReload: $("nodes-reload"), nodesAdd: $("nodes-add"), addNodeModal: $("add-node-modal"),
         routesStatus: $("routes-status"), routesSearch: $("routes-search"), routesReload: $("routes-reload"),
         placementsNode: $("placements-node"), placementsKey: $("placements-key"), placementsDesired: $("placements-desired"), placementsApplied: $("placements-applied"), placementsReload: $("placements-reload"),
         formSubCreate: $("form-sub-create"),
@@ -2758,6 +2759,74 @@
         });
       }
 
+      /* ── Add Node modal (admin provisioning flow) ─────── */
+      function openAddNodeModal() {
+        const closeModal = () => { refs.addNodeModal.innerHTML = ""; };
+        refs.addNodeModal.innerHTML = `<div class="modal-overlay"><div class="modal-box wide">
+          <div class="modal-title">Добавить VPN-сервер</div>
+          <div class="modal-body">
+            <div class="form-section">
+              <div class="form-section-title">Параметры ноды</div>
+              <div class="form-group"><label class="form-label">Имя</label><input id="an-name" class="input" placeholder="например, vpn-yc-entry-03" /></div>
+              <div class="form-group"><label class="form-label">Роль</label><select id="an-role" class="select">
+                <option value="backend">backend (Xray, трафик выходит здесь)</option>
+                <option value="entry">entry (Go-релей, stateless)</option>
+                <option value="whitelist_entry">whitelist_entry (WireGuard mesh)</option>
+              </select></div>
+              <div class="form-group"><label class="form-label">Регион</label><input id="an-region" class="input" placeholder="например, ru-central1-d" /></div>
+              <div class="form-group"><label class="form-label">Capacity</label><input id="an-capacity" class="input" type="number" min="1" max="10000" value="100" /></div>
+              <div class="form-group"><label class="form-label">Public domain <span class="muted">(опционально)</span></label><input id="an-public-domain" class="input" placeholder="leave empty for entry/relay roles" /></div>
+              <div class="form-group"><label class="form-label">Reality IP <span class="muted">(опционально)</span></label><input id="an-reality-ip" class="input" placeholder="" /></div>
+            </div>
+            <div id="an-result" class="form-section" style="display:none">
+              <div class="form-section-title">Установщик готов</div>
+              <div class="muted" style="font-size:12px;margin-bottom:8px">Скопируйте команду и выполните на новой VM под root. Токен одноразовый.</div>
+              <pre id="an-install-cmd" class="mono" style="white-space:pre-wrap;word-break:break-all;padding:10px;background:var(--bg-soft);border:1px solid var(--line);border-radius:8px;font-size:12px"></pre>
+              <div style="margin-top:6px"><button id="an-copy" class="btn btn-ghost">Скопировать</button></div>
+              <div id="an-expires" class="muted" style="font-size:11px;margin-top:6px"></div>
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-ghost" id="an-cancel">Закрыть</button>
+            <button class="btn btn-primary" id="an-create">Создать ноду</button>
+          </div>
+        </div></div>`;
+        refs.addNodeModal.querySelector("#an-cancel").addEventListener("click", closeModal);
+        refs.addNodeModal.querySelector(".modal-overlay").addEventListener("click", (ev) => { if (ev.target === ev.currentTarget) closeModal(); });
+        refs.addNodeModal.querySelector("#an-create").addEventListener("click", async () => {
+          const name = document.getElementById("an-name").value.trim();
+          const role = document.getElementById("an-role").value;
+          const region = document.getElementById("an-region").value.trim();
+          const capacity = Number(document.getElementById("an-capacity").value || 100);
+          const publicDomain = document.getElementById("an-public-domain").value.trim();
+          const realityIp = document.getElementById("an-reality-ip").value.trim();
+          if (!name || !region) { notify("Заполните имя и регион", true); return; }
+          const body = { name, role, region, capacity, public_domain: publicDomain, reality_ip: realityIp || null };
+          const createBtn = refs.addNodeModal.querySelector("#an-create");
+          createBtn.disabled = true;
+          try {
+            const out = await runAction(`Create node ${name}`, () => req(`/api/v1/admin/nodes`, { method: "POST", body }));
+            if (!out) return;
+            const resultDiv = refs.addNodeModal.querySelector("#an-result");
+            const cmdEl = refs.addNodeModal.querySelector("#an-install-cmd");
+            const expEl = refs.addNodeModal.querySelector("#an-expires");
+            cmdEl.textContent = out.install_command || "";
+            expEl.textContent = out.bootstrap_token_expires_at ? `Токен истекает: ${fmtDate(out.bootstrap_token_expires_at)}` : "";
+            resultDiv.style.display = "";
+            createBtn.textContent = "Создано";
+            refreshAll().catch(() => {});
+          } catch (_) {
+            createBtn.disabled = false;
+          }
+        });
+        refs.addNodeModal.addEventListener("click", (ev) => {
+          if (ev.target && ev.target.id === "an-copy") {
+            const cmdEl = refs.addNodeModal.querySelector("#an-install-cmd");
+            if (cmdEl) copyToClipboard(cmdEl.textContent);
+          }
+        });
+      }
+
       /* ── Entry node selection modal ──────────────── */
       function openEntryNodeModal(routeId) {
         const route = state.routes.find((r) => r.id === routeId);
@@ -3436,6 +3505,7 @@
       });
       refs.nodesClear.addEventListener("click", () => { refs.nodesSearch.value = ""; refs.nodesHealth.value = ""; refs.nodesState.value = ""; render(); });
       refs.nodesReload.addEventListener("click", () => refreshAll(true).catch((e) => notify(`Ошибка: ${e.message}`, true)));
+      if (refs.nodesAdd) refs.nodesAdd.addEventListener("click", () => openAddNodeModal());
       refs.routesReload.addEventListener("click", () => refreshAll(true).catch((e) => notify(`Ошибка: ${e.message}`, true)));
       refs.placementsReload.addEventListener("click", () => refreshAll(true).catch((e) => notify(`Ошибка: ${e.message}`, true)));
 

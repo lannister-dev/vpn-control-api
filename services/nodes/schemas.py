@@ -158,6 +158,46 @@ class NodeAgentInitialOut(BaseModel):
     full_resync_required: bool = True
 
 
+class AdminNodeCreateIn(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+    role: str = Field(min_length=1, max_length=16)
+    region: str = Field(min_length=1, max_length=32)
+    public_domain: str = Field(default="", max_length=255)
+    reality_ip: str | None = Field(default=None, max_length=64)
+    internal_wg_ip: str = Field(default="", max_length=64)
+    capacity: int = Field(default=100, ge=1, le=10000)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class AdminNodeCreateOut(BaseModel):
+    node: VpnNodeOut
+    bootstrap_token: str
+    bootstrap_token_expires_at: datetime
+    install_command: str
+
+    model_config = ConfigDict(from_attributes=False)
+
+
+class AdminNodeRotateBootstrapOut(BaseModel):
+    node_id: UUID
+    bootstrap_token: str
+    bootstrap_token_expires_at: datetime
+    install_command: str
+
+
+class NodeBootstrapCompleteIn(BaseModel):
+    k3s_node_name: str | None = Field(default=None, max_length=64)
+    labels_applied: dict[str, str] | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class NodeBootstrapCompleteOut(BaseModel):
+    node_id: UUID
+    bootstrapped_at: datetime
+
+
 class NodeAgentStateCreate(BaseModel):
     node_id: UUID
     agent_version: str
