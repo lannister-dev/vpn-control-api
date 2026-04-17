@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
@@ -144,29 +145,14 @@ class NodePlacementAutoHealService:
                 out.drained_nodes += 1
                 PLACEMENT_AUTO_HEAL_TOTAL.labels(action="drain", result="ok").inc()
 
-            target = await self._select_target_backend(
+            migrated = await self._smart_migrate_placements(
                 source_node=node,
                 source_node_id=source_node_id,
-            )
-            logger.info(
-                "auto_heal_target_selection",
-                source_node_id=str(source_node_id),
-                target_node_id=str(target.id) if target else None,
-                target_name=target.name if target else None,
-            )
-            if target is None:
-                out.skipped_nodes += 1
-                PLACEMENT_AUTO_HEAL_TOTAL.labels(action="migrate", result="no_target").inc()
-                continue
-
-            migrated = await self._migrate_active_placements(
-                source_node_id=source_node_id,
-                target_backend_id=target.id,
                 updated_at=now,
             )
             if migrated <= 0:
                 out.skipped_nodes += 1
-                PLACEMENT_AUTO_HEAL_TOTAL.labels(action="migrate", result="no_active").inc()
+                PLACEMENT_AUTO_HEAL_TOTAL.labels(action="migrate", result="no_orphans").inc()
                 continue
 
             out.migrated_nodes += 1
@@ -229,43 +215,106 @@ class NodePlacementAutoHealService:
             )
         return undrained
 
-    async def _select_target_backend(
+    async def _smart_migrate_placements(
         self,
         *,
         source_node: VpnNode | None,
         source_node_id: UUID,
-    ) -> VpnNode | None:
+        updated_at: datetime,
+    ) -> int:
+        """Migrate only orphan placements (users with no other healthy nodes).
+
+        Covered users (who have active placements on other healthy nodes)
+        are left untouched — their placements will resync when the node
+        recovers.
+
+        Orphan placements are distributed evenly across available target
+        nodes where the user doesn't already have a placement.
+        """
+        placements = await self.placement_repository.list_active(backend_node_id=source_node_id)
+        active = [
+            p for p in placements
+            if p.desired_state == PlacementDesiredState.active.value
+        ]
+        if not active:
+            return 0
+
+        key_ids = list({p.key_id for p in active})
+        key_nodes = await self.placement_repository.map_active_backend_nodes_by_key(
+            key_ids=key_ids,
+        )
+
+        # Get healthy target candidates (sorted by score, least-loaded first)
         preferred_region = source_node.region if source_node is not None else None
         candidates = await self.routing_service.select_nodes(
             preferred_region=preferred_region,
             exclude_node_ids=[source_node_id],
         )
-        return candidates[0] if candidates else None
-
-    async def _migrate_active_placements(
-        self,
-        *,
-        source_node_id: UUID,
-        target_backend_id: UUID,
-        updated_at: datetime,
-    ) -> int:
-        placements = await self.placement_repository.list_active(backend_node_id=source_node_id)
-        active_ids = [
-            placement.id
-            for placement in placements
-            if placement.desired_state == PlacementDesiredState.active.value
-        ]
-        if not active_ids:
+        if not candidates:
+            logger.info(
+                "smart_migrate_no_targets",
+                source_node_id=str(source_node_id),
+            )
             return 0
-        migrated, target_ids = await self.placement_repository.bulk_migrate_backend(
-            placement_ids=active_ids,
-            target_backend_id=target_backend_id,
-            last_migration_reason="node_auto_heal",
-            updated_at=updated_at,
+
+        healthy_node_ids = {c.id for c in candidates}
+
+        # Split: covered (user has other healthy nodes) vs orphan (doesn't)
+        orphan_placements = []
+        covered_count = 0
+        for p in active:
+            other_nodes = key_nodes.get(p.key_id, set()) - {source_node_id}
+            if other_nodes & healthy_node_ids:
+                covered_count += 1
+            else:
+                orphan_placements.append(p)
+
+        if covered_count > 0:
+            logger.info(
+                "smart_migrate_covered_skipped",
+                source_node_id=str(source_node_id),
+                covered=covered_count,
+                orphans=len(orphan_placements),
+            )
+
+        if not orphan_placements:
+            return 0
+
+        # Distribute orphans across targets where key isn't already placed.
+        # Track how many we assign to each target for even distribution.
+        target_load: dict[UUID, int] = {c.id: 0 for c in candidates}
+        groups: dict[UUID, list[UUID]] = defaultdict(list)
+
+        for p in orphan_placements:
+            existing_nodes = key_nodes.get(p.key_id, set())
+            available = [c for c in candidates if c.id not in existing_nodes]
+            if not available:
+                available = candidates
+            # Pick least-loaded target among available
+            best = min(available, key=lambda c: target_load[c.id])
+            groups[best.id].append(p.id)
+            target_load[best.id] += 1
+
+        total_migrated = 0
+        for target_id, placement_ids in groups.items():
+            migrated, target_ids = await self.placement_repository.bulk_migrate_backend(
+                placement_ids=placement_ids,
+                target_backend_id=target_id,
+                last_migration_reason="node_auto_heal",
+                updated_at=updated_at,
+            )
+            if target_ids:
+                await self.node_agent_transport.enqueue_for_placement_ids(target_ids)
+            total_migrated += migrated
+
+        target_name = lambda tid: next((c.name for c in candidates if c.id == tid), str(tid))
+        logger.info(
+            "smart_migrate_result",
+            source_node_id=str(source_node_id),
+            total_migrated=total_migrated,
+            distribution={target_name(tid): len(pids) for tid, pids in groups.items()},
         )
-        if target_ids:
-            await self.node_agent_transport.enqueue_for_placement_ids(target_ids)
-        return migrated
+        return total_migrated
 
     def _unavailability_reason(
         self,
