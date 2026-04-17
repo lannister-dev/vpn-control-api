@@ -93,6 +93,22 @@ class VpnNodeService:
         normalized_node_role = self._normalize_bootstrap_node_role(node_role)
         node = await self.vpn_node_repository.get_by_node_key(normalized_node_key)
         if node is None:
+            # Admin-created nodes have node_key=None; match by name since
+            # AGENT_NODE_KEY == spec.nodeName == node.name from the installer.
+            candidate = await self.vpn_node_repository.get_one_by(name=normalized_node_key)
+            if candidate is not None and candidate.node_key is None:
+                node = candidate
+                await self.vpn_node_repository.update_by_id(
+                    node.id,
+                    {"node_key": normalized_node_key, "internal_wg_ip": source_ip},
+                )
+                NODE_BOOTSTRAP_TOTAL.labels(result="recovered_by_name").inc()
+                logger_node.info(
+                    "admin-created node claimed by agent",
+                    node_id=str(node.id),
+                    name=node.name,
+                )
+        if node is None:
             same_ip_nodes = await self.vpn_node_repository.list_by_internal_ip(source_ip=source_ip)
             if len(same_ip_nodes) == 1:
                 node = same_ip_nodes[0]

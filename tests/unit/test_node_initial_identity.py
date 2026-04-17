@@ -17,6 +17,7 @@ async def test_initial_with_agent_instance_issues_identity_token_without_node_ro
     existing_node = SimpleNamespace(id=node_id, auth_token_hash="old-node-hash")
     service.vpn_node_repository = SimpleNamespace(
         get_by_node_key=AsyncMock(return_value=existing_node),
+        get_one_by=AsyncMock(return_value=None),
         list_by_internal_ip=AsyncMock(return_value=[]),
         update_by_id=AsyncMock(),
         create=AsyncMock(),
@@ -48,6 +49,7 @@ async def test_initial_strict_mode_creates_node_by_node_key(async_session):
     agent_instance_id = uuid4()
     service.vpn_node_repository = SimpleNamespace(
         get_by_node_key=AsyncMock(return_value=None),
+        get_one_by=AsyncMock(return_value=None),
         list_by_internal_ip=AsyncMock(return_value=[]),
         update_by_id=AsyncMock(),
         create=AsyncMock(return_value=created_node),
@@ -78,6 +80,7 @@ async def test_initial_with_node_key_does_not_merge_into_different_key_node(asyn
     created_node = SimpleNamespace(id=uuid4())
     service.vpn_node_repository = SimpleNamespace(
         get_by_node_key=AsyncMock(return_value=None),
+        get_one_by=AsyncMock(return_value=None),
         list_by_internal_ip=AsyncMock(return_value=[]),
         update_by_id=AsyncMock(),
         create=AsyncMock(return_value=created_node),
@@ -107,6 +110,7 @@ async def test_initial_recovers_existing_node_by_source_ip(async_session):
     existing_node = SimpleNamespace(id=uuid4(), auth_token_hash="old-node-hash")
     service.vpn_node_repository = SimpleNamespace(
         get_by_node_key=AsyncMock(return_value=None),
+        get_one_by=AsyncMock(return_value=None),
         list_by_internal_ip=AsyncMock(return_value=[existing_node]),
         update_by_id=AsyncMock(),
         create=AsyncMock(),
@@ -135,6 +139,7 @@ async def test_initial_recovery_ambiguous_source_ip_raises_conflict(async_sessio
     service = VpnNodeService(async_session)
     service.vpn_node_repository = SimpleNamespace(
         get_by_node_key=AsyncMock(return_value=None),
+        get_one_by=AsyncMock(return_value=None),
         list_by_internal_ip=AsyncMock(return_value=[SimpleNamespace(id=uuid4()), SimpleNamespace(id=uuid4())]),
         update_by_id=AsyncMock(),
         create=AsyncMock(),
@@ -160,6 +165,7 @@ async def test_initial_with_create_disabled_raises_conflict(async_session):
     service.bootstrap_allow_create = False
     service.vpn_node_repository = SimpleNamespace(
         get_by_node_key=AsyncMock(return_value=None),
+        get_one_by=AsyncMock(return_value=None),
         list_by_internal_ip=AsyncMock(return_value=[]),
         update_by_id=AsyncMock(),
         create=AsyncMock(),
@@ -186,6 +192,7 @@ async def test_initial_auto_create_uses_entry_role_when_requested(async_session)
     agent_instance_id = uuid4()
     service.vpn_node_repository = SimpleNamespace(
         get_by_node_key=AsyncMock(return_value=None),
+        get_one_by=AsyncMock(return_value=None),
         list_by_internal_ip=AsyncMock(return_value=[]),
         update_by_id=AsyncMock(),
         create=AsyncMock(return_value=created_node),

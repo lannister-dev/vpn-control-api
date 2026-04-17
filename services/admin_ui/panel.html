@@ -2014,7 +2014,7 @@
         ch: "CH", zrh: "CH", at: "AT", vie: "AT", cz: "CZ", prg: "CZ", us: "US", nyc: "US",
         lax: "US", ca: "CA", tor: "CA", sg: "SG", jp: "JP", tok: "JP", kr: "KR", sel: "KR",
         hk: "HK", au: "AU", syd: "AU", in: "IN", tr: "TR", ua: "UA", ru: "RU", kz: "KZ",
-        ae: "AE", dxb: "AE", br: "BR", mx: "MX", il: "IL",
+        ae: "AE", dxb: "AE", br: "BR", mx: "MX", il: "IL", lv: "LV", rig: "LV",
       };
       const COUNTRY_CODE_TO_NAME = {
         FI: "Finland", DE: "Germany", NL: "Netherlands", PL: "Poland", GB: "United Kingdom",
@@ -2022,7 +2022,7 @@
         CH: "Switzerland", AT: "Austria", CZ: "Czechia", US: "United States", CA: "Canada",
         SG: "Singapore", JP: "Japan", KR: "South Korea", HK: "Hong Kong", AU: "Australia",
         IN: "India", TR: "Turkey", UA: "Ukraine", RU: "Russia", KZ: "Kazakhstan",
-        AE: "United Arab Emirates", BR: "Brazil", MX: "Mexico", IL: "Israel",
+        AE: "United Arab Emirates", BR: "Brazil", MX: "Mexico", IL: "Israel", LV: "Latvia",
       };
       function extractRegionTokens(region) { return String(region || "").toLowerCase().split(/[^a-zA-Z]+/).filter(Boolean); }
       function countryCodeFromRegion(region) {
@@ -2729,7 +2729,8 @@
           const body = {};
           const role = document.getElementById("edit-role").value;
           const region = document.getElementById("edit-region").value;
-          const publicDomain = document.getElementById("edit-public-domain").value;
+          const publicDomainEl = document.getElementById("edit-public-domain");
+          const publicDomain = publicDomainEl ? publicDomainEl.value : "";
           const realityIp = document.getElementById("edit-reality-ip").value;
           const capacityEl = document.getElementById("edit-capacity");
           const upstreamEl = document.getElementById("edit-upstream");
@@ -2737,7 +2738,7 @@
           const upstream = upstreamEl ? upstreamEl.value : "";
           if (role !== (n.role || "backend")) body.role = role;
           if (region !== (n.region || "")) body.region = region;
-          if (publicDomain !== (n.public_domain || "")) body.public_domain = publicDomain;
+          if (publicDomainEl && publicDomain !== (n.public_domain || "")) body.public_domain = publicDomain;
           if (realityIp !== (n.reality_ip || "")) body.reality_ip = realityIp || null;
           if (capacity !== "" && Number(capacity) !== n.capacity) body.capacity = Number(capacity);
           if (upstreamEl && upstream !== (n.upstream_node_id || "")) body.upstream_node_id = upstream || null;
