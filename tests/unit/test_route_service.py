@@ -137,7 +137,41 @@ async def test_create_route_rejects_invalid_entry_node_role(async_session):
         await svc.create_route(payload)
 
     assert exc.value.status_code == 422
-    assert "role=whitelist_entry" in exc.value.detail
+    assert "entry" in exc.value.detail.lower()
+
+
+@pytest.mark.asyncio
+async def test_create_route_accepts_entry_relay_node(async_session):
+    svc = RouteService(async_session)
+    svc.node_repository = AsyncMock()
+    svc.transport_repository = AsyncMock()
+    svc.route_repository = AsyncMock()
+    _mock_outbox(svc)
+
+    backend = _node(role="backend")
+    entry = _node(role="entry")
+    svc.node_repository.get_by_id = AsyncMock(side_effect=[backend, entry, entry])
+    svc.node_repository.update_by_id = AsyncMock(return_value=entry)
+    svc.transport_repository.get_by_id = AsyncMock(return_value=_transport_profile())
+    svc.route_repository.get_one_by = AsyncMock(return_value=None)
+    created = _route()
+    created.node_id = backend.id
+    created.entry_node_id = entry.id
+    svc.route_repository.create = AsyncMock(return_value=created)
+
+    payload = RouteCreateIn(
+        name="be1-reality-via-entry-relay",
+        node_id=backend.id,
+        entry_node_id=entry.id,
+        transport_profile_id=uuid4(),
+        base_weight=40,
+        health_status=RouteHealthStatus.healthy,
+    )
+
+    out = await svc.create_route(payload)
+
+    assert out.node_id == backend.id
+    assert out.entry_node_id == entry.id
 
 
 @pytest.mark.asyncio
@@ -477,7 +511,7 @@ async def test_update_route_rejects_non_entry_role(async_session):
         await svc.update_route(route.id, payload)
 
     assert exc.value.status_code == 422
-    assert "role=whitelist_entry" in exc.value.detail
+    assert "entry" in exc.value.detail.lower()
 
 
 @pytest.mark.asyncio

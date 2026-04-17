@@ -29,6 +29,9 @@ class Plan(Base):
     whitelist_enabled: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false"), nullable=False
     )
+    entry_relay_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), nullable=False
+    )
     included_devices: Mapped[int] = mapped_column(
         Integer, default=1, server_default=text("1"), nullable=False
     )

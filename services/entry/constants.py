@@ -1,5 +1,6 @@
-from services.nodes.constants import ROLE_BACKEND, ROLE_ENTRY
+from services.nodes.constants import ROLE_BACKEND, ROLE_ENTRY, ROLE_WHITELIST_ENTRY
 
-__all__ = ["RELAY_POOL_TTL_SEC", "ROLE_BACKEND", "ROLE_ENTRY"]
+__all__ = ["RELAY_POOL_TTL_SEC", "ROLE_BACKEND", "ROLE_ENTRY", "ROLE_WHITELIST_ENTRY", "ENTRY_ROLES"]
 
 RELAY_POOL_TTL_SEC = 300
+ENTRY_ROLES: frozenset[str] = frozenset({ROLE_ENTRY, ROLE_WHITELIST_ENTRY})
