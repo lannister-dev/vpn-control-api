@@ -2014,7 +2014,7 @@
         ch: "CH", zrh: "CH", at: "AT", vie: "AT", cz: "CZ", prg: "CZ", us: "US", nyc: "US",
         lax: "US", ca: "CA", tor: "CA", sg: "SG", jp: "JP", tok: "JP", kr: "KR", sel: "KR",
         hk: "HK", au: "AU", syd: "AU", in: "IN", tr: "TR", ua: "UA", ru: "RU", kz: "KZ",
-        ae: "AE", dxb: "AE", br: "BR", mx: "MX", il: "IL",
+        ae: "AE", dxb: "AE", br: "BR", mx: "MX", il: "IL", lv: "LV", rig: "LV",
       };
       const COUNTRY_CODE_TO_NAME = {
         FI: "Finland", DE: "Germany", NL: "Netherlands", PL: "Poland", GB: "United Kingdom",
@@ -2022,7 +2022,7 @@
         CH: "Switzerland", AT: "Austria", CZ: "Czechia", US: "United States", CA: "Canada",
         SG: "Singapore", JP: "Japan", KR: "South Korea", HK: "Hong Kong", AU: "Australia",
         IN: "India", TR: "Turkey", UA: "Ukraine", RU: "Russia", KZ: "Kazakhstan",
-        AE: "United Arab Emirates", BR: "Brazil", MX: "Mexico", IL: "Israel",
+        AE: "United Arab Emirates", BR: "Brazil", MX: "Mexico", IL: "Israel", LV: "Latvia",
       };
       function extractRegionTokens(region) { return String(region || "").toLowerCase().split(/[^a-zA-Z]+/).filter(Boolean); }
       function countryCodeFromRegion(region) {
