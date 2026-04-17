@@ -63,7 +63,7 @@ class AdminConfig:
     connect_api_key_hash: str
     bootstrap_token_hash: str
     probe_token_hash: str
-    relay_token_hash: str
+    relay_token: str
 
 
 @dataclass
@@ -98,6 +98,11 @@ class SubscriptionsConfig:
     happ_autoconnect_type: str = "lowestdelay"
     happ_ping_onopen: bool = True
 
+
+@dataclass
+class EntryRelayConfig:
+    listen_port: int = 443
+    api_poll_sec: int = 300
 
 @dataclass
 class K3sConfig:
@@ -299,6 +304,7 @@ class Settings:
     migration: MigrationConfig
     referral: ReferralConfig
     k3s: K3sConfig
+    entry_relay: EntryRelayConfig
 
 
 @lru_cache
@@ -353,7 +359,7 @@ def get_settings() -> Settings:
         connect_api_key_hash=env.str("CONNECT_API_KEY_HASH", default=env.str("ADMIN_API_KEY_HASH")),
         bootstrap_token_hash=env.str("BOOTSTRAP_TOKEN_HASH"),
         probe_token_hash= env.str("PROBE_TOKEN_HASH"),
-        relay_token_hash=env.str("RELAY_TOKEN_HASH", default=""),
+        relay_token=env.str("RELAY_TOKEN", default=""),
     )
 
     bot_api = BotApiConfig(api_key_hash=env.str("BOT_API_KEY_HASH", default=""))
@@ -550,6 +556,11 @@ def get_settings() -> Settings:
         channel=env.str("CHANNEL", default="").strip().lower(),
     )
 
+    entry_relay = EntryRelayConfig(
+        listen_port=env.int("ENTRY_RELAY_LISTEN_PORT", default=443),
+        api_poll_sec=env.int("ENTRY_RELAY_API_POLL_SEC", default=300),
+    )
+
     _tg_allowed_raw = env.str("ADMIN_TELEGRAM_ALLOWED_IDS", default="")
     _tg_allowed = tuple(
         int(x.strip()) for x in _tg_allowed_raw.split(",") if x.strip().isdigit()
@@ -594,4 +605,5 @@ def get_settings() -> Settings:
         migration=migration,
         referral=referral,
         k3s=k3s,
+        entry_relay=entry_relay,
     )

@@ -5,7 +5,7 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.config import get_settings
-from services.entry.constants import RELAY_POOL_TTL_SEC, ROLE_BACKEND, ROLE_ENTRY
+from services.entry.constants import ENTRY_ROLES, RELAY_POOL_TTL_SEC, ROLE_BACKEND
 from services.entry.models import EntryBackendAssignment
 from services.entry.repository import EntryBackendAssignmentRepository
 from services.entry.schemas import (
@@ -49,9 +49,9 @@ class EntryService:
         entry = await self.node_repo.get_by_id(entry_node_id)
         if entry is None or not entry.is_active:
             raise EntryNotFoundError(f"entry node {entry_node_id} not found")
-        if entry.role != ROLE_ENTRY:
+        if entry.role not in ENTRY_ROLES:
             raise EntryRoleError(
-                f"node {entry_node_id} has role '{entry.role}', expected '{ROLE_ENTRY}'"
+                f"node {entry_node_id} has role '{entry.role}', expected one of {sorted(ENTRY_ROLES)}"
             )
 
         assignments = await self.assignment_repo.list_by_entry(entry_node_id)
@@ -167,9 +167,9 @@ class EntryService:
         entry = await self.node_repo.get_by_id(entry_node_id)
         if entry is None or not entry.is_active:
             raise EntryNotFoundError(f"entry node {entry_node_id} not found")
-        if entry.role != ROLE_ENTRY:
+        if entry.role not in ENTRY_ROLES:
             raise EntryRoleError(
-                f"node {entry_node_id} has role '{entry.role}', expected '{ROLE_ENTRY}'"
+                f"node {entry_node_id} has role '{entry.role}', expected one of {sorted(ENTRY_ROLES)}"
             )
         return entry
 

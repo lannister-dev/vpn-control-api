@@ -336,16 +336,15 @@ async def relay_auth(
         )
 
     raw_token = credentials.credentials
-    expected_hash = get_settings().admin.relay_token_hash
-    if not expected_hash:
+    expected_token = get_settings().admin.relay_token
+    if not expected_token:
         AUTH_ATTEMPT_TOTAL.labels(type="relay", result="failure").inc()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Relay auth not configured",
         )
 
-    provided_hash = AuthUtils.hash_admin_api_key(raw_token)
-    if not secrets.compare_digest(provided_hash, expected_hash):
+    if not secrets.compare_digest(raw_token, expected_token):
         AUTH_ATTEMPT_TOTAL.labels(type="relay", result="failure").inc()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
