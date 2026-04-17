@@ -2729,7 +2729,8 @@
           const body = {};
           const role = document.getElementById("edit-role").value;
           const region = document.getElementById("edit-region").value;
-          const publicDomain = document.getElementById("edit-public-domain").value;
+          const publicDomainEl = document.getElementById("edit-public-domain");
+          const publicDomain = publicDomainEl ? publicDomainEl.value : "";
           const realityIp = document.getElementById("edit-reality-ip").value;
           const capacityEl = document.getElementById("edit-capacity");
           const upstreamEl = document.getElementById("edit-upstream");
@@ -2737,7 +2738,7 @@
           const upstream = upstreamEl ? upstreamEl.value : "";
           if (role !== (n.role || "backend")) body.role = role;
           if (region !== (n.region || "")) body.region = region;
-          if (publicDomain !== (n.public_domain || "")) body.public_domain = publicDomain;
+          if (publicDomainEl && publicDomain !== (n.public_domain || "")) body.public_domain = publicDomain;
           if (realityIp !== (n.reality_ip || "")) body.reality_ip = realityIp || null;
           if (capacity !== "" && Number(capacity) !== n.capacity) body.capacity = Number(capacity);
           if (upstreamEl && upstream !== (n.upstream_node_id || "")) body.upstream_node_id = upstream || null;
