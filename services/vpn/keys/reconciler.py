@@ -18,14 +18,6 @@ logger = StructuredLogger(logging.getLogger("vpn-key-expiration-reconciler"))
 
 
 class VpnKeyExpirationReconciler:
-    """Automatically revokes VPN keys whose valid_until has passed.
-
-    Per tick (3 bulk queries + 1 commit):
-      1. SELECT + UPDATE expired keys → is_revoked=true
-      2. UPDATE placements for those keys → desired_state=inactive
-      3. INSERT outbox entries for affected placements
-    """
-
     def __init__(
         self,
         *,

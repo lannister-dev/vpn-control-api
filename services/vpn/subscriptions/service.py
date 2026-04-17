@@ -698,7 +698,7 @@ class SubscriptionService:
             )
             entry_nodes_by_id = await self._entry_nodes_by_id(route_rows=route_rows)
 
-        plan = subscription.plane
+        plan =subscription.plan
         whitelist_enabled = bool(plan and getattr(plan, "whitelist_enabled", False))
         entry_relay_enabled = bool(plan and getattr(plan, "entry_relay_enabled", False))
 
