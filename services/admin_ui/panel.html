@@ -1910,12 +1910,12 @@
       const nodeRoleLabel = (s) => ({
         backend: "Backend",
         whitelist_entry: "Whitelist Entry",
-        gateway: "Gateway",
+        entry: "Entry Relay",
       }[String(s || "").toLowerCase()] || String(s || "-"));
       const nodeRoleClass = (s) => ({
         backend: "ok",
         whitelist_entry: "info",
-        gateway: "warn",
+        entry: "warn",
       }[String(s || "").toLowerCase()] || "info");
       const routingReasonLabel = (s) => ({
         node_role_excluded: "role excluded",
@@ -2664,7 +2664,7 @@
         if (!n) { notify("Сервер не найден", true); return; }
         state.selectedNode = n;
         const g = nodeGeo(n.region);
-        const isEntry = String(n.role || "").toLowerCase() === "whitelist_entry";
+        const isEntry = ["whitelist_entry", "entry"].includes(String(n.role || "").toLowerCase());
         const nodeRoutes = state.routes.filter((r) => r.node_id === n.id || r.entry_node_id === n.id);
         const entryRoutes = isEntry ? state.routes.filter((r) => r.entry_node_id === n.id) : [];
         const nodePlacementsCount = state.placements.filter((p) => p.backend_node_id === n.id).length;
@@ -2704,7 +2704,7 @@
               <div style="margin-top:8px"><div class="muted" style="font-size:11px;margin-bottom:4px">Маршруты</div>${routesHtml}</div>
             </div>
             <div class="form-section"><div class="form-section-title">Конфигурация</div>
-              <div class="form-group"><label class="form-label">Role</label><select id="edit-role" class="select"><option value="backend"${n.role === "backend" ? " selected" : ""}>backend</option><option value="whitelist_entry"${n.role === "whitelist_entry" ? " selected" : ""}>whitelist_entry</option><option value="gateway"${n.role === "gateway" ? " selected" : ""}>gateway</option></select></div>
+              <div class="form-group"><label class="form-label">Role</label><select id="edit-role" class="select"><option value="backend"${n.role === "backend" ? " selected" : ""}>backend</option><option value="whitelist_entry"${n.role === "whitelist_entry" ? " selected" : ""}>whitelist_entry</option><option value="entry"${n.role === "entry" ? " selected" : ""}>entry</option></select></div>
               <div class="form-group"><label class="form-label">Region</label><input id="edit-region" class="input" value="${esc(n.region || "")}" /></div>
               ${isEntry ? "" : `<div class="form-group" id="fg-public-domain"><label class="form-label">Public domain</label><input id="edit-public-domain" class="input" value="${esc(n.public_domain || "")}" /></div>`}
               <div class="form-group"><label class="form-label">${isEntry ? "Адрес (IP)" : "Reality IP"}</label><input id="edit-reality-ip" class="input" value="${esc(n.reality_ip || "")}" placeholder="${isEntry ? "IP-адрес entry ноды" : ""}" /></div>
@@ -2770,9 +2770,9 @@
               <div class="form-section-title">Параметры ноды</div>
               <div class="form-group"><label class="form-label">Имя</label><input id="an-name" class="input" placeholder="например, vpn-yc-entry-03" /></div>
               <div class="form-group"><label class="form-label">Роль</label><select id="an-role" class="select">
-                <option value="backend">backend (Xray, трафик выходит здесь)</option>
-                <option value="entry">entry (Go-релей, stateless)</option>
-                <option value="whitelist_entry">whitelist_entry (WireGuard mesh)</option>
+                <option value="backend">backend — Xray backend</option>
+                <option value="entry">entry — TCP relay</option>
+                <option value="whitelist_entry">whitelist_entry — whitelisted IP entry</option>
               </select></div>
               <div class="form-group"><label class="form-label">Регион</label><input id="an-region" class="input" placeholder="например, ru-central1-d" /></div>
               <div class="form-group"><label class="form-label">Capacity</label><input id="an-capacity" class="input" type="number" min="1" max="10000" value="100" /></div>
@@ -2832,7 +2832,7 @@
       function openEntryNodeModal(routeId) {
         const route = state.routes.find((r) => r.id === routeId);
         if (!route) { notify("Маршрут не найден", true); return; }
-        const entryNodes = ((state.status && state.status.nodes) || []).filter((n) => String(n.role || "").toLowerCase() === "whitelist_entry");
+        const entryNodes = ((state.status && state.status.nodes) || []).filter((n) => ["whitelist_entry", "entry"].includes(String(n.role || "").toLowerCase()));
         const optionsHtml = [`<div class="entry-option${!route.entry_node_id ? " selected" : ""}" data-entry-id="none" style="padding:8px 12px;border:1px solid var(--line);border-radius:10px;cursor:pointer;margin-bottom:6px;transition:border-color 120ms ease">Без entry (прямое подключение)</div>`].concat(
           entryNodes.map((en) => {
             const sel = route.entry_node_id === en.id ? " selected" : "";
@@ -2863,7 +2863,7 @@
       function _routeFormHtml({ title, name, nodeId, entryNodeId, tpId, baseWeight, healthStatus, isCreate }) {
         const nodes = ((state.status && state.status.nodes) || []);
         const backendNodes = nodes.filter((n) => String(n.role || "").toLowerCase() === "backend");
-        const entryNodes = nodes.filter((n) => String(n.role || "").toLowerCase() === "whitelist_entry");
+        const entryNodes = nodes.filter((n) => ["whitelist_entry", "entry"].includes(String(n.role || "").toLowerCase()));
         const tps = state.transportProfiles || [];
         const backendOpts = backendNodes.map((n) => { const g = nodeGeo(n.region); return `<option value="${esc(n.id)}"${n.id === nodeId ? " selected" : ""}>${esc(g.flag)} ${esc(n.name)} (${shortId(n.id)})</option>`; }).join("");
         const entryOpts = [`<option value=""${!entryNodeId ? " selected" : ""}>Без entry (прямое)</option>`].concat(entryNodes.map((n) => { const g = nodeGeo(n.region); return `<option value="${esc(n.id)}"${n.id === entryNodeId ? " selected" : ""}>${esc(g.flag)} ${esc(n.name)} (${shortId(n.id)})</option>`; })).join("");
@@ -2994,12 +2994,12 @@
 
         const allNodes = (state.status && state.status.nodes) || [];
         const alertNodes = allNodes.filter((n) => {
-          const isEntry = String(n.role || "").toLowerCase() === "whitelist_entry";
+          const isEntry = ["whitelist_entry", "entry"].includes(String(n.role || "").toLowerCase());
           if (isEntry) return false;
           return !n.is_healthy || n.is_draining || !n.is_enabled;
         }).slice(0, 10);
         const unusedEntryNodes = allNodes.filter((n) => {
-          if (String(n.role || "").toLowerCase() !== "whitelist_entry") return false;
+          if (!["whitelist_entry", "entry"].includes(String(n.role || "").toLowerCase())) return false;
           return !state.routes.some((r) => r.entry_node_id === n.id);
         });
         const alertHtml = alertNodes.map((n) => { const g = nodeGeo(n.region); return `<div class="card"><div><strong>${esc(n.name)}</strong></div><div class="geo"><span class="flag">${esc(g.flag)}</span>${esc(g.country)}</div><div>${uuidCell(n.id)}</div><div>${n.is_healthy ? "" : chip("bad", "Нездоров")} ${n.is_draining ? chip("warn", "Draining") : ""} ${!n.is_enabled ? chip("bad", "Отключен") : ""}</div></div>`; }).join("");
@@ -3037,7 +3037,7 @@
           ? nodes.map((n) => {
             const g = nodeGeo(n.region);
             const routingHint = n.routing_eligible ? `<div style="margin-top:3px">${chip("ok", "eligible")}</div>` : (n.routing_reason ? `<div style="margin-top:3px">${chip("warn", routingReasonLabel(n.routing_reason))}</div>` : "");
-            const isEntryNode = String(n.role || "").toLowerCase() === "whitelist_entry";
+            const isEntryNode = ["whitelist_entry", "entry"].includes(String(n.role || "").toLowerCase());
             const healthCol = isEntryNode ? chip("info", "Relay") : (n.is_healthy ? chip("ok", "Здоров") : chip("bad", "Нездоров"));
             const nodeProbe = latestProbeForNode(n.id);
             const probeLine = nodeProbe ? `<div class="muted" style="font-size:10px;margin-top:3px">${nodeProbe.is_reachable ? "probe ok" : "probe fail"}${nodeProbe.latency_ms != null ? " · " + nodeProbe.latency_ms + "ms" : ""}</div>` : "";

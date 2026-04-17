@@ -10,7 +10,7 @@ ProbeDetailsValue: TypeAlias = str | int | float | bool | None
 ProbeDetails: TypeAlias = dict[str, ProbeDetailsValue]
 ProbeTransportKind: TypeAlias = Literal["reality", "ws"]
 ProbeKind: TypeAlias = Literal["tcp_connect", "synthetic_vpn"]
-ProbeTargetRole: TypeAlias = Literal["backend", "gateway", "whitelist_entry", "all"]
+ProbeTargetRole: TypeAlias = Literal["backend", "whitelist_entry", "entry", "all"]
 ProbeErrorPhase: TypeAlias = Literal[
     "dns",
     "tcp",

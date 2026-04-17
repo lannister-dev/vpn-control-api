@@ -165,7 +165,7 @@ class ProbeIngestionService:
 
         targets: list[ProbeTargetOut] = []
         for route, node, transport_profile, _agent_state in rows:
-            if node.role == "whitelist_entry":
+            if node.role in {"whitelist_entry", "entry"}:
                 continue
             if role is not None and not self._matches_target_role(node=node, role=role):
                 continue
@@ -521,13 +521,13 @@ class ProbeIngestionService:
             include_disabled: bool,
             role: ProbeTargetRole | None,
     ) -> list[ProbeTargetOut]:
-        if role not in {None, "all", "whitelist_entry"}:
+        if role not in {None, "all", "whitelist_entry", "entry"}:
             return []
 
         nodes = await self.node_repository.list_public()
         targets: list[ProbeTargetOut] = []
         for node in nodes:
-            if node.role != "whitelist_entry":
+            if node.role not in {"whitelist_entry", "entry"}:
                 continue
             if role is not None and not self._matches_target_role(node=node, role=role):
                 continue

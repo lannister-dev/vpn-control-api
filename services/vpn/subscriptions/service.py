@@ -86,6 +86,7 @@ from shared.monitoring.metrics import (
 )
 from shared.profiles.builder import VlessUriBuilder
 from shared.profiles.constants import WS_TLS_DEFAULT_PATH
+from services.nodes.constants import ROLE_ENTRY, ROLE_WHITELIST_ENTRY
 from shared.profiles.exceptions import ProfileRegistryError
 from shared.profiles.registry import ProfileRegistry
 from shared.profiles.schemas import (
@@ -697,10 +698,9 @@ class SubscriptionService:
             )
             entry_nodes_by_id = await self._entry_nodes_by_id(route_rows=route_rows)
 
-        whitelist_enabled = bool(
-            getattr(subscription, "plan", None)
-            and getattr(subscription.plan, "whitelist_enabled", False)
-        )
+        plan = subscription.plane
+        whitelist_enabled = bool(plan and getattr(plan, "whitelist_enabled", False))
+        entry_relay_enabled = bool(plan and getattr(plan, "entry_relay_enabled", False))
 
         resolved_routes: list[ResolvedSubscriptionRoute] = []
         seen_uris: set[str] = set()
@@ -712,8 +712,12 @@ class SubscriptionService:
             entry_node_id = self._route_entry_node_id(route)
             entry_node = entry_nodes_by_id.get(entry_node_id) if entry_node_id is not None else None
 
-            if entry_node is not None and not whitelist_enabled:
-                continue
+            if entry_node is not None:
+                entry_role = getattr(entry_node, "role", "")
+                if entry_role == ROLE_WHITELIST_ENTRY and not whitelist_enabled:
+                    continue
+                if entry_role == ROLE_ENTRY and not entry_relay_enabled:
+                    continue
 
             transport_security = transport_profile.security
             transport_network = transport_profile.network

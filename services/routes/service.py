@@ -37,7 +37,7 @@ from services.routes.state_machine import (
     resolve_route_health_action,
     resolve_warmup_tick,
 )
-from services.routes.types import RouteNodeRole
+from services.routes.types import ENTRY_NODE_ROLES, RouteNodeRole
 from services.routes.utils import build_route_out, normalized_node_role, to_utc_or_none
 from shared.database.session import AsyncDatabase
 
@@ -152,10 +152,10 @@ class RouteService:
             if not entry_node:
                 raise HTTPException(status_code=404, detail="Entry node not found")
             entry_role = normalized_node_role(entry_node)
-            if entry_role != RouteNodeRole.whitelist_entry:
+            if entry_role not in ENTRY_NODE_ROLES:
                 raise HTTPException(
                     status_code=422,
-                    detail="Route entry node must have role=whitelist_entry",
+                    detail=f"Route entry node must have role in {sorted(r.value for r in ENTRY_NODE_ROLES)}",
                 )
 
         tp = await self.transport_repository.get_by_id(payload.transport_profile_id)
@@ -254,10 +254,10 @@ class RouteService:
                 entry_node = await self.node_repository.get_by_id(payload.entry_node_id)
                 if not entry_node:
                     raise HTTPException(status_code=404, detail="Entry node not found")
-                if normalized_node_role(entry_node) != RouteNodeRole.whitelist_entry:
+                if normalized_node_role(entry_node) not in ENTRY_NODE_ROLES:
                     raise HTTPException(
                         status_code=422,
-                        detail="Route entry node must have role=whitelist_entry",
+                        detail=f"Route entry node must have role in {sorted(r.value for r in ENTRY_NODE_ROLES)}",
                     )
             update.entry_node_id = payload.entry_node_id
 
