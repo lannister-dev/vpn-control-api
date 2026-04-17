@@ -13,6 +13,7 @@ from services.nodes.auto_heal_service import NodePlacementAutoHealService
 def _node(
     *,
     node_id=None,
+    name: str = "node",
     role: str = "backend",
     is_active: bool = True,
     is_enabled: bool = True,
@@ -21,6 +22,7 @@ def _node(
 ):
     node = MagicMock()
     node.id = node_id or uuid4()
+    node.name = name
     node.role = role
     node.is_active = is_active
     node.is_enabled = is_enabled
@@ -37,48 +39,60 @@ def _state(*, node_id, is_healthy: bool = True, last_seen_at: datetime | None = 
     return state
 
 
-def _placement(*, desired_state: str = "active"):
+def _placement(*, key_id=None, desired_state: str = "active"):
     placement = MagicMock()
     placement.id = uuid4()
+    placement.key_id = key_id or uuid4()
     placement.desired_state = desired_state
     return placement
 
 
-@pytest.mark.asyncio
-async def test_run_once_drains_and_migrates_stale_source(async_session):
-    source = _node()
-    target = _node()
-    stale_state = _state(
-        node_id=source.id,
-        is_healthy=True,
-        last_seen_at=datetime.now(timezone.utc) - timedelta(seconds=240),
-    )
-    fresh_target_state = _state(node_id=target.id, is_healthy=True)
-
+def _make_service(async_session, *, stale_after_sec=90, auto_undrain_enabled=False):
     service = NodePlacementAutoHealService(
         async_session,
-        stale_after_sec=90,
+        stale_after_sec=stale_after_sec,
         max_nodes=20,
-        auto_undrain_enabled=False,
+        auto_undrain_enabled=auto_undrain_enabled,
     )
     service.node_repository = AsyncMock()
     service.node_agent_state_repository = AsyncMock()
     service.placement_repository = AsyncMock()
     service.node_agent_transport = AsyncMock()
     service.routing_service = AsyncMock()
+    return service
 
+
+@pytest.mark.asyncio
+async def test_drains_stale_node_and_migrates_orphan_placements(async_session):
+    source = _node(name="source-fi")
+    target = _node(name="target-de")
+    stale_state = _state(
+        node_id=source.id,
+        is_healthy=True,
+        last_seen_at=datetime.now(timezone.utc) - timedelta(seconds=240),
+    )
+    fresh_target_state = _state(node_id=target.id, is_healthy=True)
+    p1 = _placement()
+    p2 = _placement()
+
+    service = _make_service(async_session)
     service.node_repository.list_active_with_agent_state = AsyncMock(
         return_value=[(source, stale_state), (target, fresh_target_state)]
     )
-    service.placement_repository.count_desired_active_by_backend_node = AsyncMock(return_value={source.id: 2})
+    service.placement_repository.count_desired_active_by_backend_node = AsyncMock(
+        return_value={source.id: 2}
+    )
     service.node_repository.list_by_ids = AsyncMock(return_value=[source])
     service.node_agent_state_repository.list_by_node_ids = AsyncMock(return_value=[stale_state])
     service.routing_service.select_nodes = AsyncMock(return_value=[target])
-    service.placement_repository.list_active = AsyncMock(
-        return_value=[_placement(desired_state="active"), _placement(desired_state="active")]
+    service.placement_repository.list_active = AsyncMock(return_value=[p1, p2])
+    # No other placements for these keys → orphans
+    service.placement_repository.map_active_backend_nodes_by_key = AsyncMock(
+        return_value={p1.key_id: {source.id}, p2.key_id: {source.id}}
     )
-    active_ids = [p.id for p in service.placement_repository.list_active.return_value if p.desired_state == "active"]
-    service.placement_repository.bulk_migrate_backend = AsyncMock(return_value=(2, active_ids))
+    service.placement_repository.bulk_migrate_backend = AsyncMock(
+        return_value=(2, [p1.id, p2.id])
+    )
 
     out = await service.run_once()
 
@@ -86,30 +100,157 @@ async def test_run_once_drains_and_migrates_stale_source(async_session):
     assert out.drained_nodes == 1
     assert out.migrated_nodes == 1
     assert out.migrated_placements == 2
-    assert out.skipped_nodes == 0
-    assert out.orphan_active_placements == 2
-    service.node_repository.update_by_id.assert_awaited_once_with(source.id, {"is_draining": True})
+    service.node_repository.update_by_id.assert_awaited_once_with(
+        source.id, {"is_draining": True}
+    )
 
 
 @pytest.mark.asyncio
-async def test_run_once_skips_when_source_is_healthy(async_session):
+async def test_skips_covered_placements_migrates_only_orphans(async_session):
+    """User has placements on source + target → covered, skip migration."""
+    source = _node(name="source-lv")
+    target = _node(name="target-fi")
+    stale_state = _state(
+        node_id=source.id,
+        is_healthy=True,
+        last_seen_at=datetime.now(timezone.utc) - timedelta(seconds=240),
+    )
+    fresh_state = _state(node_id=target.id, is_healthy=True)
+
+    covered_key = uuid4()
+    orphan_key = uuid4()
+    p_covered = _placement(key_id=covered_key)
+    p_orphan = _placement(key_id=orphan_key)
+
+    service = _make_service(async_session)
+    service.node_repository.list_active_with_agent_state = AsyncMock(
+        return_value=[(source, stale_state), (target, fresh_state)]
+    )
+    service.placement_repository.count_desired_active_by_backend_node = AsyncMock(
+        return_value={source.id: 2}
+    )
+    service.node_repository.list_by_ids = AsyncMock(return_value=[source])
+    service.node_agent_state_repository.list_by_node_ids = AsyncMock(return_value=[stale_state])
+    service.routing_service.select_nodes = AsyncMock(return_value=[target])
+    service.placement_repository.list_active = AsyncMock(return_value=[p_covered, p_orphan])
+    # covered_key is on source AND target; orphan_key only on source
+    service.placement_repository.map_active_backend_nodes_by_key = AsyncMock(
+        return_value={
+            covered_key: {source.id, target.id},
+            orphan_key: {source.id},
+        }
+    )
+    service.placement_repository.bulk_migrate_backend = AsyncMock(
+        return_value=(1, [p_orphan.id])
+    )
+
+    out = await service.run_once()
+
+    assert out.migrated_placements == 1
+    # Only orphan was migrated
+    call_args = service.placement_repository.bulk_migrate_backend.await_args
+    assert call_args.kwargs["placement_ids"] == [p_orphan.id]
+    assert call_args.kwargs["target_backend_id"] == target.id
+
+
+@pytest.mark.asyncio
+async def test_all_covered_no_migration(async_session):
+    """All users have other healthy nodes → nothing to migrate."""
+    source = _node(name="source-lv")
+    target = _node(name="target-fi")
+    stale_state = _state(
+        node_id=source.id,
+        is_healthy=True,
+        last_seen_at=datetime.now(timezone.utc) - timedelta(seconds=240),
+    )
+    fresh_state = _state(node_id=target.id, is_healthy=True)
+
+    key1 = uuid4()
+    key2 = uuid4()
+    p1 = _placement(key_id=key1)
+    p2 = _placement(key_id=key2)
+
+    service = _make_service(async_session)
+    service.node_repository.list_active_with_agent_state = AsyncMock(
+        return_value=[(source, stale_state), (target, fresh_state)]
+    )
+    service.placement_repository.count_desired_active_by_backend_node = AsyncMock(
+        return_value={source.id: 2}
+    )
+    service.node_repository.list_by_ids = AsyncMock(return_value=[source])
+    service.node_agent_state_repository.list_by_node_ids = AsyncMock(return_value=[stale_state])
+    service.routing_service.select_nodes = AsyncMock(return_value=[target])
+    service.placement_repository.list_active = AsyncMock(return_value=[p1, p2])
+    # Both keys exist on target too → covered
+    service.placement_repository.map_active_backend_nodes_by_key = AsyncMock(
+        return_value={
+            key1: {source.id, target.id},
+            key2: {source.id, target.id},
+        }
+    )
+
+    out = await service.run_once()
+
+    assert out.migrated_placements == 0
+    assert out.skipped_nodes == 1
+    service.placement_repository.bulk_migrate_backend.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_orphans_distributed_evenly_across_targets(async_session):
+    """4 orphan placements should spread across 2 targets (2 each)."""
+    source = _node(name="source-lv")
+    t1 = _node(name="target-fi")
+    t2 = _node(name="target-de")
+    stale_state = _state(
+        node_id=source.id,
+        is_healthy=True,
+        last_seen_at=datetime.now(timezone.utc) - timedelta(seconds=240),
+    )
+
+    orphans = [_placement() for _ in range(4)]
+
+    service = _make_service(async_session)
+    service.node_repository.list_active_with_agent_state = AsyncMock(
+        return_value=[(source, stale_state)]
+    )
+    service.placement_repository.count_desired_active_by_backend_node = AsyncMock(
+        return_value={source.id: 4}
+    )
+    service.node_repository.list_by_ids = AsyncMock(return_value=[source])
+    service.node_agent_state_repository.list_by_node_ids = AsyncMock(return_value=[stale_state])
+    service.routing_service.select_nodes = AsyncMock(return_value=[t1, t2])
+    service.placement_repository.list_active = AsyncMock(return_value=orphans)
+    service.placement_repository.map_active_backend_nodes_by_key = AsyncMock(
+        return_value={p.key_id: {source.id} for p in orphans}
+    )
+    service.placement_repository.bulk_migrate_backend = AsyncMock(
+        side_effect=lambda *, placement_ids, target_backend_id, **kw: (
+            len(placement_ids), placement_ids
+        )
+    )
+
+    out = await service.run_once()
+
+    assert out.migrated_placements == 4
+    calls = service.placement_repository.bulk_migrate_backend.await_args_list
+    assert len(calls) == 2
+    sizes = sorted(len(c.kwargs["placement_ids"]) for c in calls)
+    assert sizes == [2, 2]
+
+
+@pytest.mark.asyncio
+async def test_skips_when_source_is_healthy(async_session):
     source = _node()
     source_state = _state(node_id=source.id, is_healthy=True)
 
-    service = NodePlacementAutoHealService(
-        async_session,
-        stale_after_sec=90,
-        max_nodes=20,
-        auto_undrain_enabled=False,
+    service = _make_service(async_session)
+    service.node_repository.list_active_with_agent_state = AsyncMock(
+        return_value=[(source, source_state)]
     )
-    service.node_repository = AsyncMock()
-    service.node_agent_state_repository = AsyncMock()
-    service.placement_repository = AsyncMock()
-    service.node_agent_transport = AsyncMock()
-    service.routing_service = AsyncMock()
-
-    service.node_repository.list_active_with_agent_state = AsyncMock(return_value=[(source, source_state)])
-    service.placement_repository.count_desired_active_by_backend_node = AsyncMock(return_value={source.id: 3})
+    service.placement_repository.count_desired_active_by_backend_node = AsyncMock(
+        return_value={source.id: 3}
+    )
     service.node_repository.list_by_ids = AsyncMock(return_value=[source])
     service.node_agent_state_repository.list_by_node_ids = AsyncMock(return_value=[source_state])
 
@@ -117,37 +258,32 @@ async def test_run_once_skips_when_source_is_healthy(async_session):
 
     assert out.processed_nodes == 0
     assert out.migrated_nodes == 0
-    assert out.orphan_active_placements == 0
     service.node_repository.update_by_id.assert_not_awaited()
     service.placement_repository.bulk_migrate_backend.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_run_once_handles_missing_source_node_and_migrates(async_session):
+async def test_handles_missing_source_node_and_migrates(async_session):
     missing_source_id = uuid4()
-    target = _node()
+    target = _node(name="target-fi")
     target_state = _state(node_id=target.id, is_healthy=True)
+    p = _placement()
 
-    service = NodePlacementAutoHealService(
-        async_session,
-        stale_after_sec=90,
-        max_nodes=20,
-        auto_undrain_enabled=False,
+    service = _make_service(async_session)
+    service.node_repository.list_active_with_agent_state = AsyncMock(
+        return_value=[(target, target_state)]
     )
-    service.node_repository = AsyncMock()
-    service.node_agent_state_repository = AsyncMock()
-    service.placement_repository = AsyncMock()
-    service.node_agent_transport = AsyncMock()
-    service.routing_service = AsyncMock()
-
-    service.node_repository.list_active_with_agent_state = AsyncMock(return_value=[(target, target_state)])
-    service.placement_repository.count_desired_active_by_backend_node = AsyncMock(return_value={missing_source_id: 1})
+    service.placement_repository.count_desired_active_by_backend_node = AsyncMock(
+        return_value={missing_source_id: 1}
+    )
     service.node_repository.list_by_ids = AsyncMock(return_value=[])
     service.node_agent_state_repository.list_by_node_ids = AsyncMock(return_value=[])
     service.routing_service.select_nodes = AsyncMock(return_value=[target])
-    service.placement_repository.list_active = AsyncMock(return_value=[_placement(desired_state="active")])
-    active_ids = [p.id for p in service.placement_repository.list_active.return_value if p.desired_state == "active"]
-    service.placement_repository.bulk_migrate_backend = AsyncMock(return_value=(1, active_ids))
+    service.placement_repository.list_active = AsyncMock(return_value=[p])
+    service.placement_repository.map_active_backend_nodes_by_key = AsyncMock(
+        return_value={p.key_id: {missing_source_id}}
+    )
+    service.placement_repository.bulk_migrate_backend = AsyncMock(return_value=(1, [p.id]))
 
     out = await service.run_once()
 
@@ -158,21 +294,11 @@ async def test_run_once_handles_missing_source_node_and_migrates(async_session):
 
 
 @pytest.mark.asyncio
-async def test_run_once_auto_undrains_recovered_empty_node(async_session):
+async def test_auto_undrains_recovered_empty_node(async_session):
     recovering = _node(is_draining=True)
     recovering_state = _state(node_id=recovering.id, is_healthy=True)
 
-    service = NodePlacementAutoHealService(
-        async_session,
-        stale_after_sec=90,
-        max_nodes=20,
-        auto_undrain_enabled=True,
-    )
-    service.node_repository = AsyncMock()
-    service.node_agent_state_repository = AsyncMock()
-    service.placement_repository = AsyncMock()
-    service.routing_service = AsyncMock()
-
+    service = _make_service(async_session, auto_undrain_enabled=True)
     rows = [(recovering, recovering_state)]
     service.node_repository.list_active_with_agent_state = AsyncMock(side_effect=[rows, rows])
     service.placement_repository.count_desired_active_by_backend_node = AsyncMock(return_value={})
@@ -187,7 +313,7 @@ async def test_run_once_auto_undrains_recovered_empty_node(async_session):
 
 
 @pytest.mark.asyncio
-async def test_run_once_auto_undrains_probe_drained_node_after_successful_probes(async_session):
+async def test_auto_undrains_probe_drained_node_after_successful_probes(async_session):
     recovering = _node(is_draining=True)
     recovering_state = _state(node_id=recovering.id, is_healthy=True)
     recovering_state.details = {
@@ -201,16 +327,7 @@ async def test_run_once_auto_undrains_probe_drained_node_after_successful_probes
         checked_at=datetime.now(timezone.utc),
     )
 
-    service = NodePlacementAutoHealService(
-        async_session,
-        stale_after_sec=90,
-        max_nodes=20,
-        auto_undrain_enabled=True,
-    )
-    service.node_repository = AsyncMock()
-    service.node_agent_state_repository = AsyncMock()
-    service.placement_repository = AsyncMock()
-    service.routing_service = AsyncMock()
+    service = _make_service(async_session, auto_undrain_enabled=True)
     service.probe_repository = AsyncMock()
     service.probe_auto_undrain_enabled = True
     service.probe_auto_undrain_min_consecutive_successes = 2
@@ -218,7 +335,9 @@ async def test_run_once_auto_undrains_probe_drained_node_after_successful_probes
 
     rows = [(recovering, recovering_state)]
     service.node_repository.list_active_with_agent_state = AsyncMock(side_effect=[rows, rows])
-    service.placement_repository.count_desired_active_by_backend_node = AsyncMock(return_value={recovering.id: 2})
+    service.placement_repository.count_desired_active_by_backend_node = AsyncMock(
+        return_value={recovering.id: 2}
+    )
     service.probe_repository.get_latest_for_backend_node = AsyncMock(return_value=healthy_probe)
     service.probe_repository.list_recent_for_backend_node = AsyncMock(
         return_value=[healthy_probe, healthy_probe]

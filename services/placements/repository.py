@@ -478,6 +478,27 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
         return list(result.scalars().all())
 
 
+    async def map_active_backend_nodes_by_key(
+        self,
+        *,
+        key_ids: list[UUID],
+    ) -> dict[UUID, set[UUID]]:
+        """Return {key_id: {backend_node_id, ...}} for active placements."""
+        if not key_ids:
+            return {}
+        stmt = (
+            select(self.model.key_id, self.model.backend_node_id)
+            .where(
+                self.model.key_id.in_(key_ids),
+                self.model.is_active.is_(True),
+            )
+        )
+        result = await self.session.execute(stmt)
+        out: dict[UUID, set[UUID]] = {}
+        for key_id, node_id in result.all():
+            out.setdefault(key_id, set()).add(node_id)
+        return out
+
     async def find_missing_placements(
         self,
         *,
