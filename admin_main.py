@@ -3,15 +3,15 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI, APIRouter
+from starlette.staticfiles import StaticFiles
 
 from shared.database.session import AsyncDatabase
 from shared.profiles.init import bootstrap_profiles_registry
 from shared.redis.client import redis_client
 from shared.utils.logger import StructuredLogger
-from services.config import get_settings
 
 # Admin UI (panel + static)
-from services.admin_ui.router import router as admin_ui_router
+from services.admin_ui.router import router as admin_ui_router, STATIC_DIR
 
 # Admin API routers used by the panel frontend
 from services.auth.admin.router import router as admin_auth_router
@@ -64,7 +64,6 @@ api_router.include_router(admin_auth_router)
 api_router.include_router(admin_ops_router)
 api_router.include_router(admin_status_router)
 api_router.include_router(admin_transport_router)
-api_router.include_router(admin_ui_router)
 api_router.include_router(nodes_admin_router)
 api_router.include_router(node_router)
 api_router.include_router(placements_router)
@@ -77,6 +76,10 @@ api_router.include_router(users_router)
 api_router.include_router(subscriptions_router)
 
 app.include_router(api_router)
+
+# Panel at root, static at /static
+app.include_router(admin_ui_router)
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="admin-static")
 
 
 @app.get("/healthz")
