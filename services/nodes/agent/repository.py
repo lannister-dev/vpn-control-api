@@ -23,7 +23,7 @@ class NodeTransportOutboxRepository(BaseRepository[NodeTransportOutbox]):
     async def enqueue_many(self, rows: list[OutboxEnqueueItem]) -> None:
         if not rows:
             return
-        stmt = insert(self.model).values(rows)
+        stmt = insert(self.model).values([row.model_dump() for row in rows])
         stmt = stmt.on_conflict_do_nothing(index_elements=[self.model.message_id])
         await self.session.execute(stmt)
 
