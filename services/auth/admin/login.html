@@ -222,7 +222,7 @@
           const data = await res.json().catch(() => ({}));
           throw new Error(data.detail || `Ошибка ${res.status}`);
         }
-        window.location.href = `${BASE}/api/v1/admin/panel`;
+        window.location.href = `${BASE}/`;
       } catch (err) {
         errorEl.textContent = err.message;
       } finally {
