@@ -11,9 +11,9 @@ from shared.database.base_model import Base
 class NodeTrafficUsage(Base):
     __tablename__ = "node_traffic_usage"
 
-    entry_node_id: Mapped[UUID] = mapped_column(
+    entry_node_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("vpn_node.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
     )
     backend_node_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("vpn_node.id", ondelete="SET NULL"),
