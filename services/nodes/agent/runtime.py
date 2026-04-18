@@ -315,6 +315,7 @@ class NodeAgentRuntime:
             subjects=[
                 f"{self._config.js_command_subject_prefix}.*.commands",
                 f"{self._config.js_command_subject_prefix}.*.upstream",
+                f"{self._config.js_command_subject_prefix}.*.pool",
             ],
         )
         await self._nats.ensure_stream(
@@ -365,7 +366,9 @@ class NodeAgentRuntime:
                 emitted_at = datetime.now(timezone.utc)
                 command_payload: PlacementCommandPayload | None = None
 
-                if row.event_type == "upstream_changed":
+                if row.event_type in ("upstream_changed", "pool_changed"):
+                    # Passthrough events: payload already holds the full wire
+                    # envelope. Agents decode based on event_type or by subject.
                     publish_payload = row.payload
                 else:
                     command_payload = PlacementCommandPayload.model_validate(row.payload)

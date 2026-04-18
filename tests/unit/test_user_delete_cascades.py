@@ -1,5 +1,5 @@
 from services.placements.model import UserPlacement
-from services.traffic.model import TrafficUsage
+from services.traffic.users.model import TrafficUsage
 from services.vpn.keys.models import KeyAssignment, VpnKey
 from services.vpn.subscriptions.model import (
     Subscription,

@@ -2,6 +2,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from starlette.staticfiles import StaticFiles
 
 from services.auth.admin.constants import SESSION_COOKIE_NAME
 from services.auth.admin.crypto import hash_session_id
@@ -10,8 +11,9 @@ from shared.database.session import AsyncDatabase
 
 router = APIRouter(prefix="/admin", tags=["Admin UI"])
 
-_PANEL_PATH = Path(__file__).with_name("panel.html")
-_PANEL_HTML = _PANEL_PATH.read_text(encoding="utf-8")
+_TEMPLATE_PATH = Path(__file__).parent / "templates" / "panel.html"
+_PANEL_HTML = _TEMPLATE_PATH.read_text(encoding="utf-8")
+_STATIC_DIR = Path(__file__).parent / "static"
 
 
 @router.get("/panel", response_class=HTMLResponse, include_in_schema=False)
@@ -25,3 +27,6 @@ async def admin_control_panel(request: Request):
     if result is None:
         return RedirectResponse(url="/api/v1/auth/admin/login", status_code=307)
     return HTMLResponse(content=_PANEL_HTML, status_code=200)
+
+
+router.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="admin-static")

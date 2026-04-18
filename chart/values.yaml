@@ -1,5 +1,3 @@
-# control-api default values
-
 nameOverride: ""
 fullnameOverride: ""
 
@@ -39,10 +37,6 @@ ingress:
   enabled: false
   className: traefik
   hosts: []
-  #  - host: api.lannister-dev.ru
-  #    paths:
-  #      - path: /api
-  #        pathType: Prefix
   tls: []
 
 nodeSelector: {}
@@ -74,6 +68,33 @@ reconciler:
   resources:
     limits:
       memory: 384Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+admin:
+  enabled: false
+  replicaCount: 1
+  command:
+    - uvicorn
+    - admin_main:app
+    - --host
+    - "0.0.0.0"
+    - --port
+    - "8082"
+    - --proxy-headers
+    - --forwarded-allow-ips=*
+  service:
+    type: ClusterIP
+    port: 8082
+  ingress:
+    enabled: false
+    className: traefik
+    hosts: []
+    tls: []
+  resources:
+    limits:
+      memory: 256Mi
     requests:
       cpu: 100m
       memory: 128Mi

@@ -4,7 +4,7 @@ import asyncio
 import logging
 
 from services.config import TrafficConfig, get_settings
-from services.traffic.service import UserTrafficService
+from services.traffic.users.service import UserTrafficService
 from shared.database.session import AsyncDatabase
 from shared.redis.lock import RedisTickLock
 from shared.utils.logger import StructuredLogger

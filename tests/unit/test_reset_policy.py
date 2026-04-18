@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import pytest
 
 from services.plans.schemas import ResetStrategy
-from services.traffic.reset_policy import (
+from services.traffic.users.reset_policy import (
     RESETTABLE_STRATEGIES,
     reset_cutoff,
 )

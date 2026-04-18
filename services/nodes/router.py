@@ -5,7 +5,8 @@ from starlette import status
 from starlette.requests import Request
 
 from services.auth.dependencies import admin_auth, bootstrap_auth
-from services.nodes.constants import ALLOWED_NODE_ROLES
+from services.entry.events import enqueue_pool_snapshots_for_backend
+from services.nodes.constants import ALLOWED_NODE_ROLES, ROLE_BACKEND
 from services.nodes.schemas import (
     AdminNodeUpdateIn,
     NodeAgentInitialOut,
@@ -95,6 +96,10 @@ async def drain_node(
     await service.vpn_node_repository.update_by_id(
         node_id, {"is_draining": True}
     )
+    if node.role == ROLE_BACKEND:
+        await enqueue_pool_snapshots_for_backend(
+            service.vpn_node_repository.session, node_id
+        )
     return {"status": "draining"}
 
 
@@ -113,6 +118,10 @@ async def enable_node(
     await service.vpn_node_repository.update_by_id(
         node_id, {"is_draining": False, "is_enabled": True}
     )
+    if node.role == ROLE_BACKEND:
+        await enqueue_pool_snapshots_for_backend(
+            service.vpn_node_repository.session, node_id
+        )
     return {"status": "enabled"}
 
 

@@ -22,19 +22,19 @@ class NodeTransportOutboxRepository(BaseRepository[NodeTransportOutbox]):
     async def enqueue_many(self, rows: list[dict]) -> None:
         if not rows:
             return
-        stmt = insert(NodeTransportOutbox).values(rows)
-        stmt = stmt.on_conflict_do_nothing(index_elements=[NodeTransportOutbox.message_id])
+        stmt = insert(self.model).values(rows)
+        stmt = stmt.on_conflict_do_nothing(index_elements=[self.model.message_id])
         await self.session.execute(stmt)
 
     async def claim_batch(self, *, now: datetime, limit: int) -> list[NodeTransportOutbox]:
         stmt = (
-            select(NodeTransportOutbox)
-            .where(NodeTransportOutbox.status.in_(("pending", "failed")))
+            select(self.model)
+            .where(self.model.status.in_(("pending", "failed")))
             .where(
-                (NodeTransportOutbox.next_retry_at.is_(None))
+                (self.model.next_retry_at.is_(None))
                 | (NodeTransportOutbox.next_retry_at <= now)
             )
-            .order_by(NodeTransportOutbox.created_at.asc(), NodeTransportOutbox.id.asc())
+            .order_by(self.model.created_at.asc(), self.model.id.asc())
             .limit(limit)
             .with_for_update(skip_locked=True)
         )
@@ -43,11 +43,11 @@ class NodeTransportOutboxRepository(BaseRepository[NodeTransportOutbox]):
         if not rows:
             return []
         await self.session.execute(
-            update(NodeTransportOutbox)
+            update(self.model)
             .where(NodeTransportOutbox.id.in_([row.id for row in rows]))
             .values(
                 status="publishing",
-                attempts=NodeTransportOutbox.attempts + 1,
+                attempts=self.model.attempts + 1,
                 updated_at=func.now(),
             )
         )
@@ -55,8 +55,8 @@ class NodeTransportOutboxRepository(BaseRepository[NodeTransportOutbox]):
 
     async def mark_published(self, *, outbox_id: UUID, published_at: datetime) -> None:
         await self.session.execute(
-            update(NodeTransportOutbox)
-            .where(NodeTransportOutbox.id == outbox_id)
+            update(self.model)
+            .where(self.model.id == outbox_id)
             .values(
                 status="published",
                 published_at=published_at,
@@ -68,8 +68,8 @@ class NodeTransportOutboxRepository(BaseRepository[NodeTransportOutbox]):
 
     async def mark_failed(self, *, outbox_id: UUID, error: str, next_retry_at: datetime) -> None:
         await self.session.execute(
-            update(NodeTransportOutbox)
-            .where(NodeTransportOutbox.id == outbox_id)
+            update(self.model)
+            .where(self.model.id == outbox_id)
             .values(
                 status="failed",
                 last_error=error[:4000],
