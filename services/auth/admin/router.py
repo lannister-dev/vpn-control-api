@@ -268,7 +268,7 @@ async def login_telegram_callback(
         )
 
     login_out, session_id = result
-    response = RedirectResponse(url="/api/v1/admin/panel", status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+    response = RedirectResponse(url="/", status_code=status.HTTP_307_TEMPORARY_REDIRECT)
     set_session_cookie(
         response,
         session_id,
