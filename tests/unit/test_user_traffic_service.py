@@ -6,8 +6,8 @@ from uuid import uuid4
 
 import pytest
 
-from services.traffic.schemas import UserTrafficIn
-from services.traffic.service import UserTrafficService
+from services.traffic.users.schemas import UserTrafficIn
+from services.traffic.users.service import UserTrafficService
 
 
 def _make_key(

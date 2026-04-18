@@ -8,8 +8,8 @@ from services.config import TrafficConfig, get_settings
 from services.placements.repository import UserPlacementRepository
 from services.placements.schemas import PlacementDesiredState
 from services.placements.transport import NodeAgentPlacementTransport
-from services.traffic.constants import _RESET_REASON
-from services.traffic.reset_policy import RESETTABLE_STRATEGIES, reset_cutoff
+from services.traffic.users.constants import _RESET_REASON
+from services.traffic.users.reset_policy import RESETTABLE_STRATEGIES, reset_cutoff
 from services.vpn.keys.repository import VpnKeyRepository
 from services.vpn.subscriptions.repository import SubscriptionRepository
 from shared.database.session import AsyncDatabase

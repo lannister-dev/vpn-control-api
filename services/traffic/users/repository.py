@@ -6,8 +6,8 @@ from uuid import UUID
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.traffic.model import TrafficUsage
-from services.traffic.schemas import TrafficUsageCreate
+from services.traffic.users.model import TrafficUsage
+from services.traffic.users.schemas import TrafficUsageCreate
 from shared.database.base_repository import BaseRepository
 
 

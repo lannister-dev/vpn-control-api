@@ -187,6 +187,9 @@ class AgentSubjects:
     def upstream_changed(self, node_id: str) -> str:
         return f"{self._command_prefix}.{node_id}.upstream"
 
+    def pool_changed(self, node_id: str) -> str:
+        return f"{self._command_prefix}.{node_id}.pool"
+
 
 class UpstreamChangedPayload(BaseModel):
     schema_version: int = Field(default=1, ge=1)

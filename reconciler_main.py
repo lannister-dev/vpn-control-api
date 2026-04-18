@@ -16,9 +16,10 @@ from services.probe.cleanup_reconciler import ProbeSignalCleanupReconciler
 from services.probe.reconciler import ProbeAutoDrainReconciler
 from services.probe.synthetic_reconciler import ProbeSyntheticCredentialReconciler
 from services.routes.reconciler import RouteWarmupReconciler
-from services.traffic.consumer import UserTrafficNatsConsumer
-from services.traffic.reconciler import TrafficHistoryCleanupReconciler
-from services.traffic.reset_reconciler import TrafficResetReconciler
+from services.traffic.users.consumer import UserTrafficNatsConsumer
+from services.traffic.users.reconciler import TrafficHistoryCleanupReconciler
+from services.traffic.users.reset_reconciler import TrafficResetReconciler
+from services.traffic.nodes.consumer import NodeTrafficNatsConsumer
 from services.admin_transport.cleanup_reconciler import AdminTransportCleanupReconciler
 from services.placements.error_retry_reconciler import PlacementErrorRetryReconciler
 from services.placements.reconciler import PlacementRebalanceReconciler
@@ -34,7 +35,8 @@ from services.probe.model import ProbeSignal  # noqa: F401
 from services.artifacts.models import ProfileArtifact  # noqa: F401
 from services.vpn.subscriptions.model import Subscription, SubscriptionDevice, SubscriptionDeviceKey  # noqa: F401
 from services.routes.model import Route, TransportProfile  # noqa: F401
-from services.traffic.model import TrafficUsage  # noqa: F401
+from services.traffic.users.model import TrafficUsage  # noqa: F401
+from services.traffic.nodes.model import NodeTrafficUsage  # noqa: F401
 from services.auth.admin.models import AdminUser, AdminSession, AdminAuditEvent  # noqa: F401
 from services.billing.models import PaymentOrder, BalanceTransaction  # noqa: F401
 from services.nodes.agent.model import (  # noqa: F401
@@ -78,6 +80,7 @@ async def lifespan(app: FastAPI):
     runtimes = [
         NodeAgentRuntime(settings.nats),
         UserTrafficNatsConsumer(settings.nats),
+        NodeTrafficNatsConsumer(settings.nats),
     ]
 
     for r in reconcilers:

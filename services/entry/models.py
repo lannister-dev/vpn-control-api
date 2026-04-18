@@ -13,6 +13,7 @@ class EntryBackendAssignment(Base):
     backend_node_id: Mapped[UUID] = mapped_column(ForeignKey("vpn_node.id"), nullable=False, index=True)
     weight: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("100"))
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    rank: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"), index=True)
 
     __table_args__ = (
         UniqueConstraint(

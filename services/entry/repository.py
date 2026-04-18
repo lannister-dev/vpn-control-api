@@ -34,3 +34,13 @@ class EntryBackendAssignmentRepository(BaseRepository[EntryBackendAssignment]):
         )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def list_entry_ids_for_backend(self, backend_node_id: UUID) -> list[UUID]:
+        stmt = (
+            select(self.model.entry_node_id)
+            .where(self.model.backend_node_id == backend_node_id)
+            .where(self.model.is_active.is_(True))
+            .distinct()
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())

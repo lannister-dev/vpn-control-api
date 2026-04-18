@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def _patch_enqueue():
+    with patch("services.nodes.service.enqueue_pool_snapshots_for_backend", new=AsyncMock()):
+        yield
 
 from services.nodes.schemas import (
     HeartbeatDetails,
@@ -89,6 +95,7 @@ async def test_handle_heartbeat_drains_on_unhealthy_threshold(async_session):
         is_draining=False,
         is_active=True,
         is_enabled=True,
+        role="backend",
     )
 
     await service.handle_heartbeat(node=node, payload=_payload(is_healthy=False))
@@ -126,6 +133,7 @@ async def test_handle_heartbeat_undrains_when_recovered_after_threshold(async_se
         is_draining=True,
         is_active=True,
         is_enabled=True,
+        role="backend",
     )
 
     await service.handle_heartbeat(node=node, payload=_payload(is_healthy=True))
@@ -189,6 +197,7 @@ async def test_handle_heartbeat_treats_runtime_not_ready_as_unhealthy(async_sess
         is_draining=False,
         is_active=True,
         is_enabled=True,
+        role="backend",
     )
 
     await service.handle_heartbeat(

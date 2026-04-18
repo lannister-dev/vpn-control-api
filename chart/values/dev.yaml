@@ -42,3 +42,18 @@ serviceMonitor:
 
 reconciler:
   enabled: true
+
+admin:
+  enabled: true
+  ingress:
+    enabled: true
+    className: traefik
+    annotations:
+      traefik.ingress.kubernetes.io/router.entrypoints: websecure
+      traefik.ingress.kubernetes.io/router.tls: "true"
+      traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
+    hosts:
+      - host: admin-dev.lannister-dev.ru
+        paths:
+          - path: /
+            pathType: Prefix

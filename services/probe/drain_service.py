@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.entry.events import enqueue_pool_snapshots_for_backend
 from services.nodes.models import VpnNode
 from services.nodes.repository import NodeAgentStateRepository, VpnNodeRepository
 from services.nodes.schemas import NodeHeartbeatMeta, VpnNodeUpdate
@@ -76,6 +77,10 @@ class ProbeDrainService:
                     drain_reason=self._normalize_probe_drain_reason(payload.last_migration_reason),
                     drained_at=drained_at,
                 )
+                await enqueue_pool_snapshots_for_backend(
+                    self.node_repository.session,
+                    payload.source_backend_id,
+                )
 
             try:
                 migration = await self.placement_service.migrate_backend(
@@ -94,6 +99,10 @@ class ProbeDrainService:
                         ).model_dump(exclude_unset=True),
                     )
                     await self._clear_probe_drain_reason(node_id=payload.source_backend_id)
+                    await enqueue_pool_snapshots_for_backend(
+                        self.node_repository.session,
+                        payload.source_backend_id,
+                    )
                 raise
             PROBE_ACTION_TOTAL.labels(action=action, result="success").inc()
             return ProbeDrainMigrateOut(
