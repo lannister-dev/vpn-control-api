@@ -2,10 +2,16 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def _patch_enqueue():
+    with patch("services.nodes.auto_heal_service.enqueue_pool_snapshots_for_backend", new=AsyncMock()):
+        yield
 
 from services.nodes.auto_heal_service import NodePlacementAutoHealService
 
