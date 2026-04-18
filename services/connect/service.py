@@ -170,7 +170,6 @@ class ConnectService:
             key_id: UUID,
             preferred_region: str | None,
             desired_replicas: int,
-            key_transport: str | None,
     ) -> tuple[UUID, UserPlacement, set[UUID]]:
         desired_replicas = max(1, min(10, int(desired_replicas)))
         all_placements = await self.placement_repository.list_by_key_id(

@@ -1,7 +1,4 @@
-"""Traffic reset policy: cutoff calculation and resettable strategies.
-
-Pure functions — no IO, no DB, easily testable.
-"""
+"""Traffic reset policy: cutoff calculation and resettable strategies."""
 
 from __future__ import annotations
 
@@ -17,11 +14,6 @@ RESETTABLE_STRATEGIES: tuple[ResetStrategy, ...] = (
 
 
 def reset_cutoff(strategy: ResetStrategy, now: datetime) -> datetime:
-    """Return the cutoff timestamp for a given strategy.
-
-    Subscriptions whose ``last_traffic_reset_at`` is before this cutoff
-    are eligible for a traffic reset.
-    """
     if strategy is ResetStrategy.DAY:
         return now.replace(hour=0, minute=0, second=0, microsecond=0)
     if strategy is ResetStrategy.WEEK:
