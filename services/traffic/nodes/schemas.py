@@ -15,7 +15,7 @@ class TrafficPeriod(str, Enum):
 
 
 class NodeTrafficIn(BaseModel):
-    entry_node_id: UUID
+    entry_node_id: UUID | None = None
     backend_node_id: UUID | None = None
     bytes_in: int = Field(ge=0)
     bytes_out: int = Field(ge=0)
@@ -26,7 +26,7 @@ class NodeTrafficIn(BaseModel):
 
 
 class NodeTrafficCreate(BaseModel):
-    entry_node_id: UUID
+    entry_node_id: UUID | None = None
     backend_node_id: UUID | None = None
     bytes_in: int = Field(ge=0)
     bytes_out: int = Field(ge=0)

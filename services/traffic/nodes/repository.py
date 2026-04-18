@@ -28,7 +28,7 @@ class NodeTrafficUsageRepository(BaseRepository[NodeTrafficUsage]):
         await self.session.flush()
         return len(objects)
 
-    async def sum_by_entry(
+    async def sum_entry_self(
         self,
         *,
         from_ts: datetime,
@@ -44,6 +44,7 @@ class NodeTrafficUsageRepository(BaseRepository[NodeTrafficUsage]):
             )
             .where(self.model.created_at >= from_ts)
             .where(self.model.created_at < to_ts)
+            .where(self.model.entry_node_id.is_not(None))
             .group_by(self.model.entry_node_id)
         )
         result = await self.session.execute(stmt)
@@ -58,7 +59,7 @@ class NodeTrafficUsageRepository(BaseRepository[NodeTrafficUsage]):
             for row in result.all()
         ]
 
-    async def sum_by_backend(
+    async def sum_backend_self(
         self,
         *,
         from_ts: datetime,
@@ -74,6 +75,7 @@ class NodeTrafficUsageRepository(BaseRepository[NodeTrafficUsage]):
             )
             .where(self.model.created_at >= from_ts)
             .where(self.model.created_at < to_ts)
+            .where(self.model.entry_node_id.is_(None))
             .where(self.model.backend_node_id.is_not(None))
             .group_by(self.model.backend_node_id)
         )
@@ -100,7 +102,6 @@ class NodeTrafficUsageRepository(BaseRepository[NodeTrafficUsage]):
     ) -> list[NodeTimeseriesBucket]:
         if side not in ("entry", "backend"):
             raise ValueError(f"side must be 'entry' or 'backend', got {side!r}")
-        column = self.model.entry_node_id if side == "entry" else self.model.backend_node_id
 
         epoch = func.extract("epoch", self.model.created_at)
         bucket_idx = cast(epoch / resolution_seconds, BigInteger)
@@ -113,12 +114,16 @@ class NodeTrafficUsageRepository(BaseRepository[NodeTrafficUsage]):
                 func.coalesce(func.sum(self.model.bytes_out), 0),
                 func.coalesce(func.max(self.model.active_sessions), 0),
             )
-            .where(column == node_id)
             .where(self.model.created_at >= from_ts)
             .where(self.model.created_at < to_ts)
             .group_by(bucket_ts)
             .order_by(bucket_ts.asc())
         )
+        if side == "entry":
+            stmt = stmt.where(self.model.entry_node_id == node_id)
+        else:
+            stmt = stmt.where(self.model.backend_node_id == node_id)
+            stmt = stmt.where(self.model.entry_node_id.is_(None))
         result = await self.session.execute(stmt)
         return [
             NodeTimeseriesBucket(
@@ -146,6 +151,8 @@ class NodeTrafficUsageRepository(BaseRepository[NodeTrafficUsage]):
             )
             .where(self.model.created_at >= from_ts)
             .where(self.model.created_at < to_ts)
+            .where(self.model.entry_node_id.is_not(None))
+            .where(self.model.backend_node_id.is_not(None))
             .group_by(self.model.entry_node_id, self.model.backend_node_id)
             .order_by(func.sum(self.model.bytes_in + self.model.bytes_out).desc())
         )
