@@ -70,22 +70,18 @@ class NodeTrafficService:
         if role:
             nodes = [n for n in nodes if n.role == role]
 
-        entry_aggs = await self.usage_repo.sum_by_entry(from_ts=from_ts, to_ts=to_ts)
-        backend_aggs = await self.usage_repo.sum_by_backend(from_ts=from_ts, to_ts=to_ts)
+        entry_aggs = await self.usage_repo.sum_entry_self(from_ts=from_ts, to_ts=to_ts)
+        backend_aggs = await self.usage_repo.sum_backend_self(from_ts=from_ts, to_ts=to_ts)
         entry_map = {a.node_id: a for a in entry_aggs}
         backend_map = {a.node_id: a for a in backend_aggs}
 
         items: list[NodeTrafficSummaryOut] = []
         for node in nodes:
-            e = entry_map.get(node.id)
-            b = backend_map.get(node.id)
-            bytes_in = (e.bytes_in if e else 0) + (b.bytes_in if b else 0)
-            bytes_out = (e.bytes_out if e else 0) + (b.bytes_out if b else 0)
-            total_sessions = (e.total_sessions if e else 0) + (b.total_sessions if b else 0)
-            active_sessions = max(
-                e.active_sessions if e else 0,
-                b.active_sessions if b else 0,
-            )
+            source = backend_map.get(node.id) if node.role == ROLE_BACKEND else entry_map.get(node.id)
+            bytes_in = source.bytes_in if source else 0
+            bytes_out = source.bytes_out if source else 0
+            total_sessions = source.total_sessions if source else 0
+            active_sessions = source.active_sessions if source else 0
             items.append(
                 NodeTrafficSummaryOut(
                     node_id=node.id,
