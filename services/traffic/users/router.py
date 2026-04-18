@@ -4,8 +4,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, status
 
 from services.auth.dependencies import admin_auth
-from services.traffic.schemas import TrafficHistoryListOut, TrafficKeySummaryListOut
-from services.traffic.service import TrafficAdminService, get_traffic_admin_service
+from services.traffic.users.schemas import TrafficHistoryListOut, TrafficKeySummaryListOut
+from services.traffic.users.service import TrafficAdminService, get_traffic_admin_service
 
 router = APIRouter(
     prefix="/admin/traffic",

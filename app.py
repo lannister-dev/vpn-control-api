@@ -18,11 +18,10 @@ from services.admin_ops.router import router as admin_ops_router
 from services.admin_status.runtime_service import RuntimeReadinessService
 from services.admin_status.schemas import RuntimeReadinessOut
 from services.admin_status.router import router as admin_status_router
-from services.admin_ui.router import router as admin_ui_router
 from services.artifacts.router import router as artifacts_router
 from services.connect.router import router as connect_router
 from services.entry.router import router as entry_router
-from services.nodes.admin_router import (
+from services.admin_nodes.router import (
     admin_router as nodes_admin_router,
     installer_router as nodes_installer_router,
 )
@@ -31,7 +30,8 @@ from services.placements.router import router as placements_router
 from services.probe.router import router as probe_router
 from services.routes.router import router as routes_router
 from services.auth.admin.router import router as admin_auth_router
-from services.traffic.router import router as traffic_admin_router
+from services.traffic.users.router import router as traffic_admin_router
+from services.traffic.nodes.router import router as nodes_traffic_admin_router
 from services.vpn.keys.router import router as vpn_router
 from services.plans.router import router as plans_router
 from services.users.router import router as users_router
@@ -76,7 +76,6 @@ api_router.include_router(auth_router)
 api_router.include_router(admin_ops_router)
 api_router.include_router(admin_status_router)
 api_router.include_router(admin_transport_router)
-api_router.include_router(admin_ui_router)
 api_router.include_router(artifacts_router)
 api_router.include_router(connect_router)
 api_router.include_router(entry_router)
@@ -87,6 +86,7 @@ api_router.include_router(placements_router)
 api_router.include_router(probe_router)
 api_router.include_router(routes_router)
 api_router.include_router(traffic_admin_router)
+api_router.include_router(nodes_traffic_admin_router)
 api_router.include_router(vpn_router)
 api_router.include_router(plans_router)
 api_router.include_router(users_router)

@@ -9,6 +9,8 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.config import get_settings
+from services.entry.events import enqueue_pool_snapshots_for_backend
+from services.nodes.constants import ROLE_BACKEND
 from services.nodes.models import NodeAgentState, VpnNode
 from services.nodes.repository import NodeAgentStateRepository, VpnNodeRepository
 from services.nodes.schemas import NodeHeartbeatMeta
@@ -142,6 +144,11 @@ class NodePlacementAutoHealService:
                     reason=self._DRAIN_REASON_UNHEALTHY_HEARTBEAT,
                     now=now,
                 )
+                if node.role == ROLE_BACKEND:
+                    await enqueue_pool_snapshots_for_backend(
+                        self.node_repository.session,
+                        node.id,
+                    )
                 out.drained_nodes += 1
                 PLACEMENT_AUTO_HEAL_TOTAL.labels(action="drain", result="ok").inc()
 
@@ -206,6 +213,11 @@ class NodePlacementAutoHealService:
                     continue
             await self.node_repository.update_by_id(node.id, {"is_draining": False})
             await self._clear_drain_reason(node_id=node.id, state=state)
+            if node.role == ROLE_BACKEND:
+                await enqueue_pool_snapshots_for_backend(
+                    self.node_repository.session,
+                    node.id,
+                )
             undrained += 1
             PLACEMENT_AUTO_HEAL_TOTAL.labels(action="undrain", result="ok").inc()
             logger.info(

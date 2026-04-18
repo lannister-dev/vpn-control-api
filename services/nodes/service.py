@@ -7,8 +7,14 @@ from uuid import UUID
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.nodes.constants import ALLOWED_NODE_ROLES, DEFAULT_NODE_ROLE, DRAIN_REASON_UNHEALTHY_HEARTBEAT, \
-    HEARTBEAT_DETAILS_KEY
+from services.entry.events import enqueue_pool_snapshots_for_backend
+from services.nodes.constants import (
+    ALLOWED_NODE_ROLES,
+    DEFAULT_NODE_ROLE,
+    DRAIN_REASON_UNHEALTHY_HEARTBEAT,
+    HEARTBEAT_DETAILS_KEY,
+    ROLE_BACKEND,
+)
 from services.nodes.exceptions import (
     AdminNodeAlreadyBootstrappedError,
     AdminNodeCreateError,
@@ -214,6 +220,10 @@ class VpnNodeService:
             node.is_draining = True
             heartbeat_meta.drain_reason = DRAIN_REASON_UNHEALTHY_HEARTBEAT
             heartbeat_meta.drained_at = now
+            if node.role == ROLE_BACKEND:
+                await enqueue_pool_snapshots_for_backend(
+                    self.vpn_node_repository.session, node.id
+                )
             logger_node.info(
                 "node set to draining after unhealthy heartbeat threshold",
                 node_id=str(node.id),
@@ -236,6 +246,10 @@ class VpnNodeService:
             node.is_draining = False
             heartbeat_meta.drain_reason = None
             heartbeat_meta.drained_at = None
+            if node.role == ROLE_BACKEND:
+                await enqueue_pool_snapshots_for_backend(
+                    self.vpn_node_repository.session, node.id
+                )
             logger_node.info(
                 "node restored from draining after healthy heartbeat threshold",
                 node_id=str(node.id),

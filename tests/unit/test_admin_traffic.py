@@ -7,13 +7,13 @@ from uuid import uuid4
 
 import pytest
 
-from services.traffic.schemas import (
+from services.traffic.users.schemas import (
     TrafficHistoryItemOut,
     TrafficHistoryListOut,
     TrafficKeySummaryListOut,
     TrafficKeySummaryOut,
 )
-from services.traffic.service import TrafficAdminService
+from services.traffic.users.service import TrafficAdminService
 
 
 def _make_key(
@@ -102,7 +102,7 @@ class TestTrafficSchemas:
 class TestTrafficUsageRepository:
     @pytest.fixture()
     def repo(self, async_session):
-        from services.traffic.repository import TrafficUsageRepository
+        from services.traffic.users.repository import TrafficUsageRepository
         return TrafficUsageRepository(async_session)
 
     async def test_list_by_key_id_calls_session(self, repo):

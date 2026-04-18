@@ -32,6 +32,8 @@ class NatsConfig:
     name: str = "vpn-control-api"
     users_traffic_subject: str = "users.traffic"
     users_traffic_queue: str = "vpn-control-api-users-traffic"
+    nodes_traffic_subject: str = "nodes.traffic"
+    nodes_traffic_queue: str = "vpn-control-api-nodes-traffic"
     reconnect_time_wait: int = 2
     max_reconnect_attempts: int = -1
     js_command_stream: str = "agent_placement_commands"
@@ -336,6 +338,8 @@ def get_settings() -> Settings:
         name=env.str("NATS_NAME", default="vpn-control-api"),
         users_traffic_subject=env.str("NATS_USERS_TRAFFIC_SUBJECT", default="users.traffic"),
         users_traffic_queue=env.str("NATS_USERS_TRAFFIC_QUEUE", default="vpn-control-api-users-traffic"),
+        nodes_traffic_subject=env.str("NATS_NODES_TRAFFIC_SUBJECT", default="nodes.traffic"),
+        nodes_traffic_queue=env.str("NATS_NODES_TRAFFIC_QUEUE", default="vpn-control-api-nodes-traffic"),
         reconnect_time_wait=env.int("NATS_RECONNECT_TIME_WAIT", default=2),
         max_reconnect_attempts=env.int("NATS_RECONNECT_ATTEMPTS", default=-1),
         js_command_stream=env.str("NATS_JS_COMMAND_STREAM", default="agent_placement_commands"),
