@@ -14,7 +14,7 @@ from services.nodes.agent.schemas import (
     PlacementCommandPayload,
     TransportDesiredState,
     TransportProtocol,
-    TransportVpnTransport,
+    TransportVpnTransport, OutboxEnqueueItem,
 )
 
 
@@ -40,16 +40,16 @@ class NodeAgentPlacementTransport:
             return
         await self._outbox_repository.enqueue_many(
             [
-                {
-                    "node_id": payload.node_id,
-                    "event_type": "placement_command",
-                    "aggregate_id": payload.placement_id,
-                    "op_version": payload.op_version,
-                    "subject": self._subjects.placement_command(str(payload.node_id)),
-                    "payload": payload.model_dump(mode="json"),
-                    "message_id": f"placement-command:{payload.placement_id}:{payload.op_version}",
-                    "status": "pending",
-                }
+                OutboxEnqueueItem(
+                    node_id=payload.node_id,
+                    event_type="placement_command",
+                    aggregate_id=payload.placement_id,
+                    op_version=payload.op_version,
+                    subject=self._subjects.placement_command(str(payload.node_id)),
+                    payload=payload.model_dump(mode="json"),
+                    message_id=f"placement-command:{payload.placement_id}:{payload.op_version}",
+                    status="pending"
+                )
                 for payload in payloads
             ]
         )

@@ -10,6 +10,10 @@ replicaCount: 1
 
 envSecret: control-api-dev-env
 
+env:
+  NATS_NODES_TRAFFIC_SUBJECT: dev.nodes.traffic
+  NATS_NODES_TRAFFIC_QUEUE: nodes-traffic-dev
+
 nodeSelector:
   kind: dev
 

@@ -12,6 +12,7 @@ from services.nodes.agent.model import (
     NodeTransportOutbox,
     NodeTransportState,
 )
+from services.nodes.agent.schemas import OutboxEnqueueItem
 from shared.database.base_repository import BaseRepository
 
 
@@ -19,7 +20,7 @@ class NodeTransportOutboxRepository(BaseRepository[NodeTransportOutbox]):
     def __init__(self, session: AsyncSession):
         super().__init__(NodeTransportOutbox, session)
 
-    async def enqueue_many(self, rows: list[dict]) -> None:
+    async def enqueue_many(self, rows: list[OutboxEnqueueItem]) -> None:
         if not rows:
             return
         stmt = insert(self.model).values(rows)
