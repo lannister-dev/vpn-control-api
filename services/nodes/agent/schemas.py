@@ -205,6 +205,7 @@ class OutboxEnqueueItem(BaseModel):
     node_id: UUID
     event_type: str = Field(min_length=1, max_length=64)
     aggregate_id: UUID | None = None
+    op_version: int = None
     subject: str = Field(min_length=1, max_length=255)
     payload: dict
     message_id: str = Field(min_length=1, max_length=255)

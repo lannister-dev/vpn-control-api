@@ -10,6 +10,10 @@ replicaCount: 2
 
 envSecret: control-api-prod-env
 
+env:
+  NATS_NODES_TRAFFIC_SUBJECT: prod.nodes.traffic
+  NATS_NODES_TRAFFIC_QUEUE: nodes-traffic-prod
+
 nodeSelector:
   kind: prod
 
