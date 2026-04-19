@@ -44,6 +44,7 @@ function setTab(tab) {
   if (tab === "users" && state.users.length === 0) loadUsers().catch((e) => notify("Ошибка загрузки пользователей: " + e.message, true));
   if (tab === "plans" && state.plans.length === 0) loadPlans().catch((e) => notify("Ошибка загрузки планов: " + e.message, true));
   if (tab === "traffic") {
+    switchTrafficSub(state.trafficSubTab || "keys");
     if (state.trafficSubTab === "nodes") {
       if (state.trafficNodes.length === 0) loadNodesTraffic().catch((e) => notify("Ошибка загрузки трафика серверов: " + e.message, true));
     } else if (state.trafficKeys.length === 0) {
