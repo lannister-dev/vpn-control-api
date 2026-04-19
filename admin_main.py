@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI, APIRouter
+from prometheus_fastapi_instrumentator import Instrumentator
 from starlette.staticfiles import StaticFiles
 
 from shared.database.session import AsyncDatabase
@@ -80,6 +81,8 @@ app.include_router(api_router)
 # Panel at root, static at /static
 app.include_router(admin_ui_router)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="admin-static")
+
+Instrumentator().instrument(app).expose(app, endpoint="/api/monitoring")
 
 
 @app.get("/healthz")
