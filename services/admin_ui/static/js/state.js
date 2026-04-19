@@ -21,6 +21,7 @@ export const state = {
   trafficNodeTimeseries: null,
   adminUsers: [], adminUsersTotal: 0,
   transportOverview: null, transportNodes: [], transportNodeDetail: null,
+  natsLastOnlineAt: null,
   outboxItems: [], outboxTotal: 0, outboxOffset: 0,
   eventsItems: [], eventsTotal: 0, eventsOffset: 0,
   transportSubTab: "nodes",
@@ -53,11 +54,13 @@ export function initRefs() {
   refs.kpiRoutes = $("kpi-routes");
   refs.kpiProbeFail = $("kpi-probe-fail");
   refs.kpiTrafficTotal = $("kpi-traffic-total");
-  refs.readinessList = $("readiness-list");
-  refs.routeHealthList = $("route-health-list");
-  refs.probeFailList = $("probe-fail-list");
-  refs.nodeAlertList = $("node-alert-list");
-  refs.actionLog = $("action-log");
+  refs.dashTiles = $("dash-tiles");
+  refs.dashBanner = $("dash-banner");
+  refs.dashQuickActions = $("dash-quick-actions");
+  refs.dashIssues = $("dash-issues");
+  refs.dashIssuesCount = $("dash-issues-count");
+  refs.dashActivity = $("dash-activity");
+  refs.dashCompact = $("dash-compact");
   refs.nodesHead = $("nodes-head");
   refs.nodesBody = $("nodes-body");
   refs.routesHead = $("routes-head");

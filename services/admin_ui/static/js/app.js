@@ -5,7 +5,7 @@ import { notify, pushLog, confirmAction, initTooltips, initCopyButtons, trackFor
 
 // Tab modules
 import { renderOverview } from './tabs/overview.js';
-import { filteredNodes, renderNodes, openNodeConfigModal, openAddNodeModal, bindNodeEvents, setCallbacks as setNodeCallbacks } from './tabs/nodes.js';
+import { filteredNodes, renderNodes, openNodeDetail, openAddNodeModal, bindNodeEvents, setCallbacks as setNodeCallbacks } from './tabs/nodes.js';
 import { filteredRoutes, renderRoutes, openEntryNodeModal, openRouteCreateModal, openRouteEditModal, bindRouteEvents, setCallbacks as setRouteCallbacks } from './tabs/routes.js';
 import { filteredPlacements, renderPlacements, renderPlacementMeta, bindPlacementEvents, setCallbacks as setPlacementCallbacks } from './tabs/placements.js';
 import { filteredSubscriptions, renderSubscriptions, renderSubPlanFilter, renderSubUserContext, renderSubscriptionDetail, renderSubscriptionDevices, renderSubscriptionCreateResult, bindSubscriptionEvents, setCallbacks as setSubCallbacks } from './tabs/subscriptions.js';
@@ -78,7 +78,11 @@ async function refreshAll(fullRefresh) {
     const tab = state.activeTab;
     const fetches = [];
     if (fullRefresh || tab === "overview") {
-      fetches.push(Promise.all([req("/api/v1/admin/transport/overview"), req("/api/v1/admin/transport/nodes")]).then(([ov, nl]) => { state.transportOverview = ov; state.transportNodes = nl.items || []; }).catch(() => {}));
+      fetches.push(Promise.all([req("/api/v1/admin/transport/overview"), req("/api/v1/admin/transport/nodes")]).then(([ov, nl]) => {
+        state.transportOverview = ov;
+        state.transportNodes = nl.items || [];
+        if (ov && ov.nats_connected) state.natsLastOnlineAt = Date.now();
+      }).catch(() => {}));
     }
     if (fullRefresh || tab === "routes" || tab === "overview") {
       fetches.push(req("/api/v1/routes?limit=500").then((r) => { state.routes = r; }));
@@ -147,6 +151,47 @@ bindTrafficNodesEvents();
 bindAdminUserEvents();
 bindOpsEvents();
 setupLogout();
+
+// Dashboard delegated click: quick actions + priority issues
+const tabOverviewEl = document.getElementById("tab-overview");
+if (tabOverviewEl) {
+  tabOverviewEl.addEventListener("click", (ev) => {
+    const target = ev.target;
+    if (!(target instanceof HTMLElement)) return;
+
+    const qa = target.closest(".dash-quick-btn");
+    if (qa && qa.dataset.qa) {
+      const act = qa.dataset.qa;
+      if (act === "add-node") openAddNodeModal();
+      else if (act === "add-route") openRouteCreateModal();
+      else if (act === "add-plan") { setTab("plans"); setTimeout(() => document.getElementById("plans-create-btn")?.click(), 0); }
+      else if (act === "add-user") { setTab("users"); setTimeout(() => document.getElementById("users-create-btn")?.click(), 0); }
+      else if (act === "ops") setTab("ops");
+      return;
+    }
+
+    const issueBtn = target.closest(".dash-issue");
+    if (issueBtn && issueBtn.dataset.idx != null) {
+      const host = document.getElementById("dash-issues");
+      const issues = host && host._issues;
+      if (!issues) return;
+      const item = issues[Number(issueBtn.dataset.idx)];
+      if (!item || !item.target) return;
+      const t = item.target;
+      if (t.type === "node" && t.id) {
+        setTab("nodes");
+        setTimeout(() => openNodeDetail(t.id), 0);
+      } else if (t.type === "routes") {
+        setTab("routes");
+      } else if (t.type === "probes") {
+        setTab("probes");
+      } else if (t.type === "transport") {
+        setTab("transport");
+      }
+      return;
+    }
+  });
+}
 
 // Global delegated click: UUID copy + sortable headers + row selection
 document.addEventListener("click", (ev) => {

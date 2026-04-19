@@ -19,6 +19,7 @@ export const fmtUptime = (s) => { if (s == null) return "-"; const h = Math.floo
 export async function loadTransportData() {
   const [overview, nodesList] = await Promise.all([req("/api/v1/admin/transport/overview"), req("/api/v1/admin/transport/nodes")]);
   state.transportOverview = overview; state.transportNodes = nodesList.items || [];
+  if (overview && overview.nats_connected) state.natsLastOnlineAt = Date.now();
   renderTransportKpi(); renderTransportNodes(); populateTransportNodeFilters();
 }
 
