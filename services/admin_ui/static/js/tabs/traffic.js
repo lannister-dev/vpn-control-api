@@ -131,8 +131,8 @@ export function switchTrafficSub(sub) {
   if (!["keys", "nodes"].includes(sub)) sub = "keys";
   state.trafficSubTab = sub;
   document.querySelectorAll(".traffic-sub[data-tsub]").forEach((b) => b.classList.toggle("active", b.dataset.tsub === sub));
-  const keysEl = document.getElementById("tsub-keys");
-  const nodesEl = document.getElementById("tsub-nodes");
+  const keysEl = document.getElementById("traffic-sub-keys");
+  const nodesEl = document.getElementById("traffic-sub-nodes");
   if (keysEl) {
     keysEl.style.removeProperty("display");
     keysEl.classList.toggle("is-active", sub === "keys");

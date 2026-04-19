@@ -2,8 +2,9 @@ from datetime import datetime
 from uuid import UUID
 
 from fastapi import Depends
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from services.nodes.models import NodeAgentState, VpnNode
 from services.routes.model import Route, TransportProfile
@@ -33,6 +34,74 @@ class TransportProfileRepository(BaseRepository[TransportProfile]):
 class RouteRepository(BaseRepository[Route]):
     def __init__(self, session: AsyncSession):
         super().__init__(Route, session)
+
+    async def get_by_triple(
+            self,
+            *,
+            backend_node_id: UUID,
+            entry_node_id: UUID | None,
+            transport_profile_id: UUID,
+    ) -> Route | None:
+        stmt = select(Route).where(
+            Route.node_id == backend_node_id,
+            Route.transport_profile_id == transport_profile_id,
+        )
+        if entry_node_id is None:
+            stmt = stmt.where(Route.entry_node_id.is_(None))
+        else:
+            stmt = stmt.where(Route.entry_node_id == entry_node_id)
+        res = await self.session.execute(stmt)
+        return res.scalar_one_or_none()
+
+    async def list_substitutes_for_backend(
+            self,
+            *,
+            backend_node_id: UUID,
+            entry_node_ids: list[UUID],
+    ) -> list[tuple[Route, VpnNode, TransportProfile]]:
+        if not entry_node_ids:
+            return []
+        entry_node = aliased(VpnNode)
+        entry_agent_state = aliased(NodeAgentState)
+        stmt = (
+            select(Route, VpnNode, TransportProfile)
+            .join(VpnNode, VpnNode.id == Route.node_id)
+            .join(TransportProfile, TransportProfile.id == Route.transport_profile_id)
+            .join(NodeAgentState, NodeAgentState.node_id == VpnNode.id)
+            .join(entry_node, entry_node.id == Route.entry_node_id)
+            .outerjoin(entry_agent_state, entry_agent_state.node_id == entry_node.id)
+            .where(
+                Route.is_active.is_(True),
+                Route.node_id == backend_node_id,
+                Route.entry_node_id.in_(entry_node_ids),
+                Route.health_status.in_(("healthy", "warming_up", "degraded", "suspected")),
+                TransportProfile.is_active.is_(True),
+                VpnNode.is_active.is_(True),
+                VpnNode.is_enabled.is_(True),
+                VpnNode.is_draining.is_(False),
+                NodeAgentState.is_healthy.is_(True),
+                entry_node.is_active.is_(True),
+                entry_node.is_enabled.is_(True),
+                entry_node.is_draining.is_(False),
+                or_(
+                    entry_agent_state.id.is_(None),
+                    entry_agent_state.is_healthy.is_(True),
+                ),
+            )
+            .order_by(Route.effective_weight.desc(), Route.name.asc())
+        )
+        res = await self.session.execute(stmt)
+        return list(res.tuples().all())
+
+    async def count_active_by_entry(self) -> dict[UUID, int]:
+        stmt = (
+            select(Route.entry_node_id, func.count(Route.id))
+            .where(Route.is_active.is_(True))
+            .where(Route.entry_node_id.is_not(None))
+            .group_by(Route.entry_node_id)
+        )
+        res = await self.session.execute(stmt)
+        return {row[0]: int(row[1]) for row in res.all()}
 
     async def list_active(
             self,
@@ -152,6 +221,8 @@ class RouteRepository(BaseRepository[Route]):
     ) -> list[tuple[Route, VpnNode, TransportProfile]]:
         if backend_node_ids is not None and not backend_node_ids:
             return []
+        entry_node = aliased(VpnNode)
+        entry_agent_state = aliased(NodeAgentState)
         status_order = (
             case(
                 (Route.health_status == "healthy", 0),
@@ -166,6 +237,8 @@ class RouteRepository(BaseRepository[Route]):
             .join(VpnNode, VpnNode.id == Route.node_id)
             .join(TransportProfile, TransportProfile.id == Route.transport_profile_id)
             .join(NodeAgentState, NodeAgentState.node_id == VpnNode.id)
+            .outerjoin(entry_node, entry_node.id == Route.entry_node_id)
+            .outerjoin(entry_agent_state, entry_agent_state.node_id == entry_node.id)
             .where(
                 Route.is_active.is_(True),
                 Route.effective_weight > 0,
@@ -175,6 +248,18 @@ class RouteRepository(BaseRepository[Route]):
                 VpnNode.is_enabled.is_(True),
                 VpnNode.is_draining.is_(False),
                 NodeAgentState.is_healthy.is_(True),
+                or_(
+                    Route.entry_node_id.is_(None),
+                    (
+                        entry_node.is_active.is_(True)
+                        & entry_node.is_enabled.is_(True)
+                        & entry_node.is_draining.is_(False)
+                        & (
+                            entry_agent_state.id.is_(None)
+                            | entry_agent_state.is_healthy.is_(True)
+                        )
+                    ),
+                ),
             )
         )
         if backend_node_ids is not None:

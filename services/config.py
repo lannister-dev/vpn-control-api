@@ -135,6 +135,15 @@ class NodeAgentConfig:
     placement_rebalance_enabled: bool = False
     placement_rebalance_tick_sec: int = 120
     placement_rebalance_batch_size: int = 200
+    entry_apply_fail_threshold: int = 3
+    entry_apply_fail_unhealthy: bool = True
+    entry_auto_drain_enabled: bool = True
+    entry_auto_drain_tick_sec: int = 60
+    entry_auto_drain_probe_failures: int = 3
+    entry_auto_drain_max_nodes: int = 50
+    entry_auto_drain_reason: str = "entry_auto_drain"
+    entry_auto_undrain_enabled: bool = True
+    entry_auto_undrain_healthy_ticks: int = 3
 
 
 @dataclass
@@ -426,6 +435,15 @@ def get_settings() -> Settings:
         placement_rebalance_enabled=env.bool("NODE_PLACEMENT_REBALANCE_ENABLED", default=False),
         placement_rebalance_tick_sec=max(30, env.int("NODE_PLACEMENT_REBALANCE_TICK_SEC", default=120)),
         placement_rebalance_batch_size=max(1, min(1000, env.int("NODE_PLACEMENT_REBALANCE_BATCH_SIZE", default=200))),
+        entry_apply_fail_threshold=max(1, env.int("NODE_ENTRY_APPLY_FAIL_THRESHOLD", default=3)),
+        entry_apply_fail_unhealthy=env.bool("NODE_ENTRY_APPLY_FAIL_UNHEALTHY", default=True),
+        entry_auto_drain_enabled=env.bool("NODE_ENTRY_AUTO_DRAIN_ENABLED", default=True),
+        entry_auto_drain_tick_sec=max(15, env.int("NODE_ENTRY_AUTO_DRAIN_TICK_SEC", default=60)),
+        entry_auto_drain_probe_failures=max(1, env.int("NODE_ENTRY_AUTO_DRAIN_PROBE_FAILURES", default=3)),
+        entry_auto_drain_max_nodes=min(500, max(1, env.int("NODE_ENTRY_AUTO_DRAIN_MAX_NODES", default=50))),
+        entry_auto_drain_reason=env.str("NODE_ENTRY_AUTO_DRAIN_REASON", default="entry_auto_drain"),
+        entry_auto_undrain_enabled=env.bool("NODE_ENTRY_AUTO_UNDRAIN_ENABLED", default=True),
+        entry_auto_undrain_healthy_ticks=max(1, env.int("NODE_ENTRY_AUTO_UNDRAIN_HEALTHY_TICKS", default=3)),
     )
 
     alerts = AlertsConfig(

@@ -3,7 +3,7 @@ import {
   esc, fmtDate, chip, uuidCell, shortId, nodeGeo, nodeNameById,
   routeStatusLabel, latestProbeForNode, capacityBar, relTime,
   nodeRoleLabel, nodeRoleClass, routingReasonLabel, routeReasonLabel,
-  sortTh, sortedBy,
+  sortTh, sortedBy, ZONE_VALUES, ZONE_LABELS, effectiveZone,
 } from '../utils.js';
 import { req, runAction, copyToClipboard } from '../api.js';
 import { notify, confirmAction, openModal } from '../ui.js';
@@ -77,7 +77,7 @@ export function renderNodes() {
       const rowCls = "node-row" + (n.id === selectedId ? " node-row-selected" : "");
       return `<tr class="${rowCls}" data-node-id="${esc(n.id)}">`
         + `<td><strong>${esc(n.name)}</strong> ${chip(nodeRoleClass(n.role), nodeRoleLabel(n.role))}<div>${uuidCell(n.id)}</div>${n.public_domain ? `<div class="mono muted" style="font-size:11px">${esc(n.public_domain)}</div>` : ""}${n.reality_ip ? `<div class="mono muted" style="font-size:11px">reality: ${esc(n.reality_ip)}</div>` : ""}</td>`
-        + `<td><div class="geo"><span class="flag">${esc(g.flag)}</span>${esc(g.country)}</div><div class="mono muted">${esc(g.regionText)}</div></td>`
+        + `<td><div class="geo"><span class="flag">${esc(g.flag)}</span>${esc(g.country)}</div><div class="mono muted">${esc(g.regionText)}</div><div class="muted" style="font-size:10px;margin-top:2px">${esc(ZONE_LABELS[effectiveZone(n)] || "—")}${n.zone ? "" : ' <span style="opacity:0.6">(auto)</span>'}</div></td>`
         + `<td>${healthCol}</td>`
         + `<td>${n.is_draining ? chip("warn", "Draining") : (!n.is_enabled ? chip("bad", "Отключен") : chip("ok", "Активен"))}${routingHint}</td>`
         + `<td>${loadCol}</td>`
@@ -202,6 +202,7 @@ function renderNdOverview(node) {
     ["Роль", chip(nodeRoleClass(node.role), nodeRoleLabel(node.role))],
     ["Состояние", `${entry ? chip("info", "Relay") : (node.is_healthy ? chip("ok", "Здоров") : chip("bad", "Нездоров"))} ${node.is_draining ? chip("warn", "Draining") : (!node.is_enabled ? chip("bad", "Отключен") : chip("ok", "Активен"))}`],
     ["Регион", `<span class="flag">${esc(g.flag)}</span>${esc(g.country)} · <span class="mono">${esc(g.regionText)}</span>`],
+    ["Zone", `${esc(ZONE_LABELS[effectiveZone(node)] || "—")}${node.zone ? "" : ' <span class="muted" style="font-size:11px">(auto)</span>'}`],
     ["Heartbeat", `<span title="${esc(fmtDate(node.last_seen_at))}">${relTime(node.last_seen_at)}</span>`],
   ];
   if (!entry) infoRows.push(["Нагрузка", capacityBar(node.placements_backend, node.capacity)]);
@@ -243,6 +244,13 @@ function renderNdOverview(node) {
       </select></div>
     <div class="form-group"><label class="form-label">Region</label>
       <input id="nd-edit-region" class="input" value="${esc(node.region || "")}" /></div>
+    <div class="form-group"><label class="form-label">Zone</label>
+      <select id="nd-edit-zone" class="select">
+        <option value=""${!node.zone ? " selected" : ""}>Auto (по региону)</option>
+        ${ZONE_VALUES.map((z) => `<option value="${esc(z)}"${node.zone === z ? " selected" : ""}>${esc(ZONE_LABELS[z])}</option>`).join("")}
+      </select>
+      <div class="muted" style="font-size:11px;margin-top:3px">Сейчас: ${esc(ZONE_LABELS[effectiveZone(node)] || "—")}${node.zone ? " (явно)" : " (из региона)"}</div>
+    </div>
     ${entry ? "" : `<div class="form-group"><label class="form-label">Public domain</label>
       <input id="nd-edit-public-domain" class="input" value="${esc(node.public_domain || "")}" /></div>`}
     <div class="form-group"><label class="form-label">${entry ? "Адрес (IP)" : "Reality IP"}</label>
@@ -379,12 +387,19 @@ async function saveOverviewConfig(node) {
   const upstreamEl = document.getElementById("nd-edit-upstream");
   const capacity = capacityEl ? capacityEl.value : "";
   const upstream = upstreamEl ? upstreamEl.value : "";
+  const zoneEl = document.getElementById("nd-edit-zone");
+  const zoneVal = zoneEl ? zoneEl.value : "";
   if (role !== (node.role || "backend")) body.role = role;
   if (region !== (node.region || "")) body.region = region;
   if (publicDomainEl && publicDomain !== (node.public_domain || "")) body.public_domain = publicDomain;
   if (realityIp !== (node.reality_ip || "")) body.reality_ip = realityIp || null;
   if (capacity !== "" && Number(capacity) !== node.capacity) body.capacity = Number(capacity);
   if (upstreamEl && upstream !== (node.upstream_node_id || "")) body.upstream_node_id = upstream || null;
+  if (zoneEl) {
+    const normalizedCurrent = (node.zone || "").trim().toLowerCase();
+    const normalizedNext = zoneVal.trim().toLowerCase();
+    if (normalizedNext !== normalizedCurrent) body.zone = normalizedNext || null;
+  }
   if (!Object.keys(body).length) { notify("Нет изменений", false); return; }
   try {
     await runAction(`Update node config ${node.id}`, () => req(`/api/v1/agent/nodes/${encodeURIComponent(node.id)}`, { method: "PATCH", body }));
@@ -407,6 +422,12 @@ export function openAddNodeModal() {
       <div class="row-2">
         <div class="form-group"><label class="form-label">Регион</label><input id="an-region" class="input" placeholder="ru-central1-d" /></div>
         <div class="form-group"><label class="form-label">Capacity</label><input id="an-capacity" class="input" type="number" min="1" max="10000" value="100" /></div>
+      </div>
+      <div class="form-group"><label class="form-label">Zone <span class="muted">(опционально)</span></label>
+        <select id="an-zone" class="select">
+          <option value="">Auto (из региона)</option>
+          ${ZONE_VALUES.map((z) => `<option value="${esc(z)}">${esc(ZONE_LABELS[z])}</option>`).join("")}
+        </select>
       </div>
       <div class="form-group"><label class="form-label">Public domain <span class="muted">(опционально)</span></label><input id="an-public-domain" class="input" placeholder="leave empty for entry/relay roles" /></div>
       <div class="form-group"><label class="form-label">Reality IP <span class="muted">(опционально)</span></label><input id="an-reality-ip" class="input" /></div>
@@ -434,8 +455,10 @@ export function openAddNodeModal() {
         const capacity = Number(root.querySelector("#an-capacity").value || 100);
         const publicDomain = root.querySelector("#an-public-domain").value.trim();
         const realityIp = root.querySelector("#an-reality-ip").value.trim();
+        const zone = (root.querySelector("#an-zone")?.value || "").trim().toLowerCase();
         if (!name || !region) { notify("Заполните имя и регион", true); return; }
         const body = { name, role, region, capacity, public_domain: publicDomain, reality_ip: realityIp || null };
+        if (zone) body.zone = zone;
         const createBtn = root.querySelector("#an-create");
         createBtn.disabled = true;
         try {

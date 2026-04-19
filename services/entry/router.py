@@ -14,6 +14,7 @@ from services.entry.service import (
     BackendNotFoundError,
     EntryNotFoundError,
     EntryRoleError,
+    EntryZoneMismatchError,
     EntryService,
     get_entry_service,
 )
@@ -75,6 +76,8 @@ async def assign_backend(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except BackendNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except EntryZoneMismatchError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except EntryRoleError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 

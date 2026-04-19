@@ -12,6 +12,7 @@ from services.config import get_settings
 
 from services.nodes.reconciler import NodePlacementReconciler
 from services.nodes.agent.runtime import NodeAgentRuntime
+from services.entry.reconciler import EntryAutoDrainReconciler
 from services.probe.cleanup_reconciler import ProbeSignalCleanupReconciler
 from services.probe.reconciler import ProbeAutoDrainReconciler
 from services.probe.synthetic_reconciler import ProbeSyntheticCredentialReconciler
@@ -76,6 +77,7 @@ async def lifespan(app: FastAPI):
         PlacementErrorRetryReconciler(),
         PlacementRebalanceReconciler(),
         VpnKeyExpirationReconciler(),
+        EntryAutoDrainReconciler(),
     ]
     runtimes = [
         NodeAgentRuntime(settings.nats),

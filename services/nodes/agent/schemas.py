@@ -104,6 +104,29 @@ class SnapshotChunkEvent(AgentEnvelope):
     items: list[PlacementCommandEvent] = Field(default_factory=list)
 
 
+class HeartbeatPoolHealth(BaseModel):
+    slots_total: int = Field(ge=0)
+    slots_active: int = Field(ge=0)
+    desired_backends: int = Field(ge=0)
+    dropped_overflow: int = Field(ge=0, default=0)
+    last_apply_ok: bool = True
+    last_apply_error: str | None = None
+    consecutive_apply_failures: int = Field(ge=0, default=0)
+    last_applied_generation: int = Field(ge=0, default=0)
+    last_applied_at: datetime | None = None
+
+
+class HeartbeatUpstreamHealth(BaseModel):
+    configured: bool = False
+    last_apply_ok: bool = True
+    last_apply_error: str | None = None
+    consecutive_apply_failures: int = Field(ge=0, default=0)
+    upstream_node_id: str | None = None
+    upstream_host: str | None = None
+    upstream_addr: str | None = None
+    last_applied_at: datetime | None = None
+
+
 class HeartbeatEvent(BaseModel):
     schema_version: int = Field(default=1, ge=1)
     event_id: str
@@ -116,6 +139,8 @@ class HeartbeatEvent(BaseModel):
     poll_count: int = Field(ge=0)
     applied: int = Field(ge=0)
     failed: int = Field(ge=0)
+    pool: HeartbeatPoolHealth | None = None
+    upstream: HeartbeatUpstreamHealth | None = None
 
 
 class SyncReportEvent(BaseModel):
