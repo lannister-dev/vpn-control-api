@@ -242,7 +242,7 @@ class EntryService:
             payload=payload.model_dump(mode="json"),
             message_id=f"pool-changed:{entry_node_id}:{pool.generation}:{event_id}",
         )
-        await self.outbox_repo.enqueue_many([item.model_dump()])
+        await self.outbox_repo.enqueue_many([item])
 
 
 async def get_entry_service(

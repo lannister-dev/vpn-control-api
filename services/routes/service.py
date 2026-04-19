@@ -430,7 +430,7 @@ class RouteService:
             payload=event.model_dump(mode="json"),
             message_id=f"upstream-changed:{entry_node_id}:{backend_node_id}:{now.isoformat()}",
         )
-        await self.outbox_repository.enqueue_many([outbox_item.model_dump()])
+        await self.outbox_repository.enqueue_many([outbox_item])
 
     def _build_route_out(
             self,
