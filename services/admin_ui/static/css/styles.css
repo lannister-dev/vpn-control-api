@@ -1447,6 +1447,10 @@
       .dash-tiles { grid-template-columns: 1fr; }
     }
 
+    /* ── Traffic sub-tabs ──────────────────────── */
+    .traffic-section { display: none; }
+    .traffic-section.is-active { display: block; }
+
     /* ── Payload viewer ─────────────────────────── */
     .payload-pre {
       font-size: 12px;

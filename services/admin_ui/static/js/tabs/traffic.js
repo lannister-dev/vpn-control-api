@@ -133,10 +133,15 @@ export function switchTrafficSub(sub) {
   document.querySelectorAll(".traffic-sub[data-tsub]").forEach((b) => b.classList.toggle("active", b.dataset.tsub === sub));
   const keysEl = document.getElementById("tsub-keys");
   const nodesEl = document.getElementById("tsub-nodes");
-  if (keysEl) keysEl.style.display = (sub === "keys") ? "block" : "none";
-  if (nodesEl) nodesEl.style.display = (sub === "nodes") ? "block" : "none";
+  if (keysEl) {
+    keysEl.style.removeProperty("display");
+    keysEl.classList.toggle("is-active", sub === "keys");
+  }
+  if (nodesEl) {
+    nodesEl.style.removeProperty("display");
+    nodesEl.classList.toggle("is-active", sub === "nodes");
+  }
   if (sub === "nodes" && state.trafficNodes.length === 0) {
-    /* lazy import to avoid circular */
     import("./traffic-nodes.js").then((mod) => {
       mod.loadNodesTraffic().catch((e) => notify("Ошибка загрузки трафика серверов: " + e.message, true));
     });
