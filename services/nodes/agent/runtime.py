@@ -11,6 +11,7 @@ from services.config import NatsConfig
 from services.nodes.agent.constants import (
     NODE_AGENT_RUNTIME_LEADER_LOCK_KEY,
     NODE_AGENT_RUNTIME_LEADER_POLL_INTERVAL_S,
+    NODE_AGENT_SNAPSHOT_CHUNK_SIZE,
 )
 from services.nodes.agent.repository import (
     NodeTransportEventLogRepository,
@@ -294,7 +295,7 @@ class NodeAgentRuntime:
                     epoch=epoch, chunk_index=0, is_last_chunk=True, items=[],
                 )
             else:
-                chunked = self._chunk_items(snapshot_items, chunk_size=200)
+                chunked = self._chunk_items(snapshot_items, chunk_size=NODE_AGENT_SNAPSHOT_CHUNK_SIZE)
                 for index, chunk in enumerate(chunked):
                     is_last = index == len(chunked) - 1
                     for item in chunk:
@@ -673,7 +674,7 @@ class NodeAgentRuntime:
                     items=[],
                 )
             else:
-                chunked = self._chunk_items(snapshot_items, chunk_size=200)
+                chunked = self._chunk_items(snapshot_items, chunk_size=NODE_AGENT_SNAPSHOT_CHUNK_SIZE)
                 for index, chunk in enumerate(chunked):
                     is_last = index == len(chunked) - 1
                     for item in chunk:
