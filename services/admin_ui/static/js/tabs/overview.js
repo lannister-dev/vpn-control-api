@@ -21,11 +21,12 @@ export function renderOverview(render) {
   if (state.status) {
     const t = state.status.totals || {};
     refs.kpiNodes.textContent = formatNumber(t.nodes_total || 0);
-    refs.kpiHealthy.textContent = formatNumber(t.nodes_healthy || 0);
-    refs.kpiDraining.textContent = formatNumber(t.nodes_draining || 0);
-    refs.kpiPlacements.textContent = formatNumber(t.placements_total || 0);
+    const healthy = t.nodes_healthy || 0;
+    const draining = t.nodes_draining || 0;
+    refs.kpiHealthy.innerHTML = `${formatNumber(healthy)}${draining > 0 ? ` <span class="muted" style="font-size:11px">· ${draining} drain</span>` : ""}`;
   }
-  refs.kpiRoutes.textContent = formatNumber(state.routes.length || 0);
+  const healthyRoutes = state.routes.filter((r) => r.health_status === "healthy").length;
+  refs.kpiRoutes.innerHTML = `${formatNumber(healthyRoutes)}<span class="muted" style="font-size:12px"> / ${formatNumber(state.routes.length)}</span>`;
   refs.kpiProbeFail.textContent = formatNumber(state.probes.filter((p) => !p.is_reachable).length || 0);
 
   /* Transport KPI on dashboard */

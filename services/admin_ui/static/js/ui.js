@@ -202,6 +202,60 @@ export function showModal(el) {
   el._escHandler = handleEsc;
 }
 
+/**
+ * Unified modal helper. Creates a floating modal with title/body/footer,
+ * focus trap, Esc + backdrop dismissal. Returns { close, root, body }.
+ *
+ * @param {object} opts
+ * @param {string} opts.title        Heading text
+ * @param {string} opts.bodyHtml     Inner HTML for body
+ * @param {string} [opts.footerHtml] Inner HTML for footer actions
+ * @param {boolean} [opts.wide]      Wide variant
+ * @param {function} [opts.onClose]  Called after close
+ * @param {function} [opts.onMount]  Called with { root, body, close } after DOM insert — wire handlers here
+ */
+export function openModal({ title, bodyHtml = "", footerHtml = "", wide = false, onClose, onMount } = {}) {
+  const container = document.createElement("div");
+  container.className = "generic-modal-host";
+  container.innerHTML = `<div class="modal-overlay">
+    <div class="modal-box${wide ? " wide" : ""}">
+      <div class="modal-title">${esc(title || "")}</div>
+      <div class="modal-body">${bodyHtml}</div>
+      ${footerHtml ? `<div class="modal-actions">${footerHtml}</div>` : ""}
+    </div>
+  </div>`;
+  document.body.appendChild(container);
+
+  const close = () => {
+    if (container._escHandler) {
+      document.removeEventListener("keydown", container._escHandler);
+      delete container._escHandler;
+    }
+    releaseFocus();
+    container.remove();
+    if (typeof onClose === "function") onClose();
+  };
+
+  container.querySelector(".modal-overlay").addEventListener("click", (ev) => {
+    if (ev.target === ev.currentTarget) close();
+  });
+
+  const handleEsc = (e) => { if (e.key === "Escape") { e.preventDefault(); close(); } };
+  document.addEventListener("keydown", handleEsc);
+  container._escHandler = handleEsc;
+
+  trapFocus(container.querySelector(".modal-box"));
+
+  const handle = {
+    root: container,
+    body: container.querySelector(".modal-body"),
+    footer: container.querySelector(".modal-actions"),
+    close,
+  };
+  if (typeof onMount === "function") onMount(handle);
+  return handle;
+}
+
 export function hideModal(el) {
   if (!el) return;
   el.style.display = "none";
