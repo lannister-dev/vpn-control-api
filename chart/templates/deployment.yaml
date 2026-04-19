@@ -33,15 +33,7 @@ spec:
       {{- end }}
       {{- if .Values.migrations.enabled }}
       initContainers:
-        - name: migrate
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: ["alembic", "upgrade", "head"]
-          {{- if .Values.envSecret }}
-          envFrom:
-            - secretRef:
-                name: {{ .Values.envSecret }}
-          {{- end }}
+        {{- include "control-api.migrateInitContainer" . | nindent 8 }}
       {{- end }}
       containers:
         - name: control-api

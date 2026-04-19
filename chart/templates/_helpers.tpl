@@ -20,3 +20,17 @@ chart: {{ .Chart.Name }}-{{ .Chart.Version }}
 app: {{ include "control-api.name" . }}
 release: {{ .Release.Name }}
 {{- end }}
+
+{{- define "control-api.migrateInitContainer" -}}
+{{- if .Values.migrations.enabled }}
+- name: migrate
+  image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+  imagePullPolicy: {{ .Values.image.pullPolicy }}
+  command: ["alembic", "upgrade", "head"]
+  {{- if .Values.envSecret }}
+  envFrom:
+    - secretRef:
+        name: {{ .Values.envSecret }}
+  {{- end }}
+{{- end }}
+{{- end }}
