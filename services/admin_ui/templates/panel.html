@@ -196,24 +196,24 @@
                 </div>
               </div>
               <div id="tnd-snapshot-bar" class="t-snapshot-bar"></div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-                <div>
-                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-                    <span class="muted" style="font-weight:600;text-transform:uppercase;letter-spacing:0.06em;font-size:10px">Последние события</span>
-                    <select id="tnd-event-filter" class="select" style="width:auto;padding:4px 8px;font-size:11px;border-radius:6px">
+              <div class="t-detail-grid">
+                <div class="t-detail-col">
+                  <div class="t-detail-col-head">
+                    <span>Последние события</span>
+                    <select id="tnd-event-filter" class="select">
                       <option value="">Все типы</option>
                       <option value="snapshot_request">Snapshot</option>
                       <option value="placement_result">Результат</option>
                     </select>
                   </div>
-                  <div id="tnd-events" class="stack" style="max-height:400px;overflow-y:auto"></div>
+                  <div id="tnd-events" class="stack t-detail-scroll"></div>
                 </div>
-                <div>
-                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-                    <span class="muted" style="font-weight:600;text-transform:uppercase;letter-spacing:0.06em;font-size:10px">Очередь команд</span>
+                <div class="t-detail-col">
+                  <div class="t-detail-col-head">
+                    <span>Очередь команд</span>
                     <button id="tnd-retry-all" class="btn-mini btn-warn" style="display:none">Перезапустить все</button>
                   </div>
-                  <div id="tnd-outbox" class="stack" style="max-height:400px;overflow-y:auto"></div>
+                  <div id="tnd-outbox" class="stack t-detail-scroll"></div>
                 </div>
               </div>
             </div>

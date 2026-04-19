@@ -15,42 +15,57 @@ export async function loadNodesTraffic() {
   const params = new URLSearchParams({ period });
   if (role) params.set("role", role);
 
+  const nodesBody = document.getElementById("traffic-nodes-body");
+  const pairsBody = document.getElementById("traffic-pairs-body");
   markRefreshing("traffic-nodes-body");
   markRefreshing("traffic-pairs-body");
 
-  const [summary, pairs] = await Promise.all([
-    req(`/api/v1/admin/traffic/nodes?${params}`),
-    req(`/api/v1/admin/traffic/nodes/pairs?period=${encodeURIComponent(period)}`),
-  ]);
+  try {
+    const [summary, pairs] = await Promise.all([
+      req(`/api/v1/admin/traffic/nodes?${params}`),
+      req(`/api/v1/admin/traffic/nodes/pairs?period=${encodeURIComponent(period)}`),
+    ]);
 
-  state.trafficNodes = summary.items || [];
-  state.trafficPairs = pairs.items || [];
+    state.trafficNodes = summary.items || [];
+    state.trafficPairs = pairs.items || [];
 
-  const totalBytes = state.trafficNodes.reduce((s, n) => s + (n.total_bytes || 0), 0);
-  const activeSessions = state.trafficNodes.reduce((s, n) => s + (n.active_sessions || 0), 0);
-  refs.trafficNodesMeta.innerHTML =
-    `${chip("info", "серверов: " + state.trafficNodes.length)} ` +
-    `${chip("ok", "сессий сейчас: " + activeSessions)} ` +
-    `${chip("cyan", "трафика за период: " + fmtBytes(totalBytes))} ` +
-    `<span class="muted" style="font-size:11px;margin-left:8px">${fmtDate(summary.from_ts)} — ${fmtDate(summary.to_ts)}</span>`;
+    const totalBytes = state.trafficNodes.reduce((s, n) => s + (n.total_bytes || 0), 0);
+    const activeSessions = state.trafficNodes.reduce((s, n) => s + (n.active_sessions || 0), 0);
+    refs.trafficNodesMeta.innerHTML =
+      `${chip("info", "серверов: " + state.trafficNodes.length)} ` +
+      `${chip("ok", "сессий сейчас: " + activeSessions)} ` +
+      `${chip("cyan", "трафика за период: " + fmtBytes(totalBytes))} ` +
+      `<span class="muted" style="font-size:11px;margin-left:8px">${fmtDate(summary.from_ts)} — ${fmtDate(summary.to_ts)}</span>`;
 
-  renderTrafficNodes();
-  renderTrafficPairs();
+    renderTrafficNodes();
+    renderTrafficPairs();
+  } finally {
+    if (nodesBody) nodesBody.classList.remove("refreshing");
+    if (pairsBody) pairsBody.classList.remove("refreshing");
+  }
 }
 
 export function renderTrafficNodes() {
   const rows = state.trafficNodes;
   if (!rows.length) {
     const period = state.trafficNodesPeriod || "24h";
+    const role = state.trafficNodesRole;
     const canExpand = period !== "30d";
+    const roleFiltered = !!role;
+    const title = roleFiltered
+      ? `Нет серверов с ролью «${ROLE_LABEL[role] || role}»`
+      : "Нет трафика за выбранный период";
+    const hint = roleFiltered
+      ? `Фильтр роли исключил все сервера. Снимите фильтр или поменяйте роль.`
+      : `Данные появляются, когда entry-агенты отчитываются о сессиях.<br/>Попробуйте увеличить период или проверьте, что агенты онлайн в разделе Transport.`;
+    const actions = roleFiltered
+      ? `<button class="btn btn-primary btn-auto tn-clear-role">Снять фильтр роли</button>`
+      : `${canExpand ? `<button class="btn btn-primary btn-auto tn-expand-period">Период: 7 дней</button>` : ""}<button class="btn btn-ghost btn-auto tn-goto-transport">Открыть Transport</button>`;
     smoothUpdate("traffic-nodes-body", `<tr><td colspan="10"><div class="empty-state">
       <div class="empty-state-icon">\uD83D\uDCE1</div>
-      <div class="empty-state-title">Нет трафика за выбранный период</div>
-      <div class="empty-state-hint">Данные появляются, когда entry-агенты отчитываются о сессиях.<br/>Попробуйте увеличить период или проверьте, что агенты онлайн в разделе Transport.</div>
-      <div class="empty-state-action">
-        ${canExpand ? `<button class="btn btn-primary btn-auto tn-expand-period">Период: 7 дней</button>` : ""}
-        <button class="btn btn-ghost btn-auto tn-goto-transport">Открыть Transport</button>
-      </div>
+      <div class="empty-state-title">${esc(title)}</div>
+      <div class="empty-state-hint">${hint}</div>
+      <div class="empty-state-action">${actions}</div>
     </div></td></tr>`);
     return;
   }
@@ -240,6 +255,13 @@ export function bindTrafficNodesEvents() {
     if (expandBtn) {
       state.trafficNodesPeriod = "7d";
       refs.trafficNodesPeriod.value = "7d";
+      loadNodesTraffic().catch((e) => notify("Ошибка загрузки: " + e.message, true));
+      return;
+    }
+    const clearRole = target.closest(".tn-clear-role");
+    if (clearRole) {
+      state.trafficNodesRole = "";
+      refs.trafficNodesRole.value = "";
       loadNodesTraffic().catch((e) => notify("Ошибка загрузки: " + e.message, true));
       return;
     }

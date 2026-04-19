@@ -227,3 +227,33 @@ class PlacementCommandPayload(BaseModel):
     updated_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class RuntimeTaskStatus(BaseModel):
+    name: str
+    running: bool
+    error: str | None = None
+
+
+class RuntimeStatus(BaseModel):
+    nats_connected: bool
+    uptime_s: float | None = None
+    tasks: list[RuntimeTaskStatus] = Field(default_factory=list)
+
+
+class TransportEventLogInsert(BaseModel):
+    node_id: UUID
+    event_type: str
+    event_id: str
+    subject: str | None = None
+    payload: dict
+    processed_at: datetime
+
+
+class PlacementResultApply(BaseModel):
+    id: UUID
+    op_version: int = Field(ge=1)
+    backend_node_id: UUID
+    applied_state: str
+    applied_version: int
+    updated_at: datetime

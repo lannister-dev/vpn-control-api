@@ -30,6 +30,11 @@ class AdminTransportRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
+    async def get_latest_heartbeat_received_at(self) -> datetime | None:
+        stmt = select(func.max(NodeTransportState.last_heartbeat_received_at))
+        result = await self.session.execute(stmt)
+        return result.scalar()
+
     # ── Outbox summary ────────────────────────────────────────
 
     async def get_outbox_summary(self, *, since: datetime) -> OutboxSummaryRow:
