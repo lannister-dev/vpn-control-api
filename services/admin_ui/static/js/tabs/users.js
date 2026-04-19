@@ -1,7 +1,7 @@
 import { state, refs, $ } from '../state.js';
 import { esc, chip, uuidCell, shortId, fmtDate, sortTh, sortedBy, toggleSort } from '../utils.js';
 import { req, runAction } from '../api.js';
-import { notify, confirmAction, renderPagination, showSkeleton, hideSkeleton, smoothUpdate, markRefreshing } from '../ui.js';
+import { notify, confirmAction, renderPagination, showSkeleton, hideSkeleton, smoothUpdate, markRefreshing, openModal } from '../ui.js';
 
 /* ── Callback setters (injected from app.js) ───────── */
 let _refreshAll = () => {};
@@ -66,75 +66,73 @@ export function renderUsers() {
 export function openUserEditModal(userId) {
   runAction("Load user", () => req(`/api/v1/users/${encodeURIComponent(userId)}`))
     .then((user) => {
-      refs.confirmModal.innerHTML = `
-        <div class="modal-overlay"><div class="modal-box wide">
-          <div class="modal-title">Редактировать пользователя</div>
-          <div class="modal-body">
-            <div class="form-section"><div class="form-section-title">Информация</div>
-              <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px">
-                <div class="stat-inline">ID: ${uuidCell(user.id)}</div>
-                <div class="stat-inline">TG: <strong>${esc(user.telegram_id)}</strong></div>
-                <div class="stat-inline">Создан: <strong>${fmtDate(user.created_at)}</strong></div>
-              </div>
-              <div class="mini-kpi-row">
-                <div class="mini-kpi"><div class="mini-kpi-label">Подписки</div><div class="mini-kpi-value">${esc(user.subscription_count != null ? user.subscription_count : "-")}</div></div>
-                <div class="mini-kpi"><div class="mini-kpi-label">Ключи</div><div class="mini-kpi-value">${esc(user.key_count != null ? user.key_count : "-")}</div></div>
-              </div>
-            </div>
-            <div class="form-section"><div class="form-section-title">Редактирование</div>
-              <div class="form-group"><label class="form-label">Username</label><input class="input" id="usr-edit-username" value="${esc(user.username || "")}" /></div>
-              <div class="form-group"><label class="form-label">Tag</label><input class="input" id="usr-edit-tag" value="${esc(user.tag || "")}" /></div>
-              <div class="form-group"><label class="form-label">Описание</label><textarea class="input" id="usr-edit-desc" rows="2" style="resize:vertical">${esc(user.description || "")}</textarea></div>
-              <div class="row-2">
-                <div class="form-group"><label class="form-label">Баланс</label><input class="input mono" id="usr-edit-balance" type="number" step="0.01" value="${esc(user.balance)}" /></div>
-                <div class="form-group"><label class="form-label">Статус</label><label class="muted" style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="usr-edit-active" ${user.is_active ? "checked" : ""} /> Активен</label></div>
-              </div>
-            </div>
-            <div class="form-section"><div class="form-section-title">Быстрые действия</div>
-              <div class="actions">
-                <button class="btn-mini btn-info" data-confirm="view-subs">Подписки пользователя</button>
-                <button class="btn-mini btn-primary" data-confirm="create-sub">Создать подписку</button>
-              </div>
-            </div>
-            <div class="danger-zone"><div class="danger-zone-title">Опасная зона</div>
-              <button class="btn btn-danger" data-confirm="deactivate" style="width:auto;padding:8px 16px">Деактивировать пользователя</button>
-            </div>
+      const bodyHtml = `
+        <div class="form-section"><div class="form-section-title">Информация</div>
+          <div class="stat-inline-row">
+            <div class="stat-inline">ID: ${uuidCell(user.id)}</div>
+            <div class="stat-inline">TG: <strong>${esc(user.telegram_id)}</strong></div>
+            <div class="stat-inline">Создан: <strong>${fmtDate(user.created_at)}</strong></div>
           </div>
-          <div class="modal-actions">
-            <button class="btn btn-ghost" data-confirm="cancel">Отмена</button>
-            <button class="btn btn-primary" data-confirm="ok">Сохранить</button>
+          <div class="mini-kpi-row">
+            <div class="mini-kpi"><div class="mini-kpi-label">Подписки</div><div class="mini-kpi-value">${esc(user.subscription_count != null ? user.subscription_count : "-")}</div></div>
+            <div class="mini-kpi"><div class="mini-kpi-label">Ключи</div><div class="mini-kpi-value">${esc(user.key_count != null ? user.key_count : "-")}</div></div>
           </div>
-        </div></div>`;
-      const cleanup = () => { refs.confirmModal.innerHTML = ""; };
-      refs.confirmModal.querySelector('[data-confirm="cancel"]').addEventListener("click", cleanup);
-      refs.confirmModal.querySelector(".modal-overlay").addEventListener("click", (ev) => { if (ev.target === ev.currentTarget) cleanup(); });
-      refs.confirmModal.querySelector('[data-confirm="ok"]').addEventListener("click", () => {
-        const payload = {};
-        payload.username = document.getElementById("usr-edit-username").value.trim() || null;
-        payload.tag = document.getElementById("usr-edit-tag").value.trim() || null;
-        payload.description = document.getElementById("usr-edit-desc").value.trim() || null;
-        const balance = document.getElementById("usr-edit-balance").value.trim(); if (balance !== "") payload.balance = balance;
-        payload.is_active = document.getElementById("usr-edit-active").checked;
-        cleanup();
-        runAction("Update user", () => req(`/api/v1/users/${encodeURIComponent(userId)}`, { method: "PATCH", body: payload })).then(() => loadUsers()).catch(() => {});
-      });
-      refs.confirmModal.querySelector('[data-confirm="deactivate"]').addEventListener("click", async () => {
-        cleanup();
-        const ok = await confirmAction("Деактивация пользователя", `Деактивировать пользователя ${shortId(userId)}...?`); if (!ok) return;
-        runAction("Deactivate user", () => req(`/api/v1/users/${encodeURIComponent(userId)}`, { method: "DELETE" })).then(() => loadUsers()).catch(() => {});
-      });
-      refs.confirmModal.querySelector('[data-confirm="view-subs"]').addEventListener("click", () => {
-        cleanup();
-        navigateToUserSubscriptions(userId, user.username, user.telegram_id);
-      });
-      refs.confirmModal.querySelector('[data-confirm="create-sub"]').addEventListener("click", () => {
-        cleanup();
-        _setTab("subscriptions");
-        state.subCreateOpen = true;
-        refs.subCreateContent.style.maxHeight = "600px";
-        refs.subCreateArrow.style.transform = "rotate(180deg)";
-        const userIdInput = refs.formSubCreate.querySelector('input[name="user_id"]');
-        if (userIdInput) userIdInput.value = userId;
+        </div>
+        <div class="form-section"><div class="form-section-title">Редактирование</div>
+          <div class="form-group"><label class="form-label">Username</label><input class="input" id="usr-edit-username" value="${esc(user.username || "")}" /></div>
+          <div class="form-group"><label class="form-label">Tag</label><input class="input" id="usr-edit-tag" value="${esc(user.tag || "")}" /></div>
+          <div class="form-group"><label class="form-label">Описание</label><textarea class="input textarea-resize" id="usr-edit-desc" rows="2">${esc(user.description || "")}</textarea></div>
+          <div class="row-2">
+            <div class="form-group"><label class="form-label">Баланс</label><input class="input mono" id="usr-edit-balance" type="number" step="0.01" value="${esc(user.balance)}" /></div>
+            <div class="form-group"><label class="form-label">Статус</label><label class="checkbox-inline muted"><input type="checkbox" id="usr-edit-active" ${user.is_active ? "checked" : ""} /> Активен</label></div>
+          </div>
+        </div>
+        <div class="form-section"><div class="form-section-title">Быстрые действия</div>
+          <div class="actions">
+            <button class="btn-mini btn-info" data-act="view-subs">Подписки пользователя</button>
+            <button class="btn-mini btn-primary" data-act="create-sub">Создать подписку</button>
+          </div>
+        </div>
+        <div class="danger-zone"><div class="danger-zone-title">Опасная зона</div>
+          <button class="btn btn-danger btn-auto" data-act="deactivate">Деактивировать пользователя</button>
+        </div>`;
+      const footerHtml = `<button class="btn btn-ghost" data-act="cancel">Отмена</button><button class="btn btn-primary" data-act="save">Сохранить</button>`;
+      openModal({
+        title: "Редактировать пользователя",
+        bodyHtml,
+        footerHtml,
+        wide: true,
+        onMount: ({ root, close }) => {
+          root.querySelector('[data-act="cancel"]').addEventListener("click", close);
+          root.querySelector('[data-act="save"]').addEventListener("click", () => {
+            const payload = {};
+            payload.username = root.querySelector("#usr-edit-username").value.trim() || null;
+            payload.tag = root.querySelector("#usr-edit-tag").value.trim() || null;
+            payload.description = root.querySelector("#usr-edit-desc").value.trim() || null;
+            const balance = root.querySelector("#usr-edit-balance").value.trim(); if (balance !== "") payload.balance = balance;
+            payload.is_active = root.querySelector("#usr-edit-active").checked;
+            close();
+            runAction("Update user", () => req(`/api/v1/users/${encodeURIComponent(userId)}`, { method: "PATCH", body: payload })).then(() => loadUsers()).catch(() => {});
+          });
+          root.querySelector('[data-act="deactivate"]').addEventListener("click", async () => {
+            close();
+            const ok = await confirmAction("Деактивация пользователя", `Деактивировать пользователя ${shortId(userId)}...?`); if (!ok) return;
+            runAction("Deactivate user", () => req(`/api/v1/users/${encodeURIComponent(userId)}`, { method: "DELETE" })).then(() => loadUsers()).catch(() => {});
+          });
+          root.querySelector('[data-act="view-subs"]').addEventListener("click", () => {
+            close();
+            navigateToUserSubscriptions(userId, user.username, user.telegram_id);
+          });
+          root.querySelector('[data-act="create-sub"]').addEventListener("click", () => {
+            close();
+            _setTab("subscriptions");
+            state.subCreateOpen = true;
+            refs.subCreateContent.style.maxHeight = "600px";
+            refs.subCreateArrow.style.transform = "rotate(180deg)";
+            const userIdInput = refs.formSubCreate.querySelector('input[name="user_id"]');
+            if (userIdInput) userIdInput.value = userId;
+          });
+        },
       });
     }).catch(() => {});
 }
@@ -164,36 +162,34 @@ export function bindUserEvents() {
 
   /* User create modal */
   refs.usersCreateBtn.addEventListener("click", () => {
-    refs.confirmModal.innerHTML = `
-      <div class="modal-overlay"><div class="modal-box wide">
-        <div class="modal-title">Создать пользователя</div>
-        <div class="modal-body">
-          <div class="form-section"><div class="form-section-title">Идентификация</div>
-            <div class="form-group"><label class="form-label">Telegram ID (обязательно)</label><input class="input mono" id="usr-create-tg" type="number" required /></div>
-            <div class="form-group"><label class="form-label">Username</label><input class="input" id="usr-create-username" placeholder="Опционально" /></div>
-          </div>
-          <div class="form-section"><div class="form-section-title">Мета-данные</div>
-            <div class="form-group"><label class="form-label">Tag</label><input class="input" id="usr-create-tag" placeholder="Опционально (напр. vip, test)" /></div>
-            <div class="form-group"><label class="form-label">Описание</label><textarea class="input" id="usr-create-desc" rows="2" placeholder="Опционально" style="resize:vertical"></textarea></div>
-          </div>
-        </div>
-        <div class="modal-actions">
-          <button class="btn btn-ghost" data-confirm="cancel">Отмена</button>
-          <button class="btn btn-primary" data-confirm="ok">Создать</button>
-        </div>
-      </div></div>`;
-    const cleanup = () => { refs.confirmModal.innerHTML = ""; };
-    refs.confirmModal.querySelector('[data-confirm="cancel"]').addEventListener("click", cleanup);
-    refs.confirmModal.querySelector(".modal-overlay").addEventListener("click", (ev) => { if (ev.target === ev.currentTarget) cleanup(); });
-    refs.confirmModal.querySelector('[data-confirm="ok"]').addEventListener("click", () => {
-      const tgId = document.getElementById("usr-create-tg").value.trim();
-      if (!tgId) { notify("telegram_id обязателен", true); return; }
-      const payload = { telegram_id: Number(tgId) };
-      const username = document.getElementById("usr-create-username").value.trim(); if (username) payload.username = username;
-      const tag = document.getElementById("usr-create-tag").value.trim(); if (tag) payload.tag = tag;
-      const desc = document.getElementById("usr-create-desc").value.trim(); if (desc) payload.description = desc;
-      cleanup();
-      runAction("Create user", () => req("/api/v1/users", { method: "POST", body: payload })).then(() => loadUsers()).catch(() => {});
+    const bodyHtml = `
+      <div class="form-section"><div class="form-section-title">Идентификация</div>
+        <div class="form-group"><label class="form-label">Telegram ID (обязательно)</label><input class="input mono" id="usr-create-tg" type="number" required /></div>
+        <div class="form-group"><label class="form-label">Username</label><input class="input" id="usr-create-username" placeholder="Опционально" /></div>
+      </div>
+      <div class="form-section"><div class="form-section-title">Мета-данные</div>
+        <div class="form-group"><label class="form-label">Tag</label><input class="input" id="usr-create-tag" placeholder="Опционально (напр. vip, test)" /></div>
+        <div class="form-group"><label class="form-label">Описание</label><textarea class="input textarea-resize" id="usr-create-desc" rows="2" placeholder="Опционально"></textarea></div>
+      </div>`;
+    const footerHtml = `<button class="btn btn-ghost" data-act="cancel">Отмена</button><button class="btn btn-primary" data-act="save">Создать</button>`;
+    openModal({
+      title: "Создать пользователя",
+      bodyHtml,
+      footerHtml,
+      wide: true,
+      onMount: ({ root, close }) => {
+        root.querySelector('[data-act="cancel"]').addEventListener("click", close);
+        root.querySelector('[data-act="save"]').addEventListener("click", () => {
+          const tgId = root.querySelector("#usr-create-tg").value.trim();
+          if (!tgId) { notify("telegram_id обязателен", true); return; }
+          const payload = { telegram_id: Number(tgId) };
+          const username = root.querySelector("#usr-create-username").value.trim(); if (username) payload.username = username;
+          const tag = root.querySelector("#usr-create-tag").value.trim(); if (tag) payload.tag = tag;
+          const desc = root.querySelector("#usr-create-desc").value.trim(); if (desc) payload.description = desc;
+          close();
+          runAction("Create user", () => req("/api/v1/users", { method: "POST", body: payload })).then(() => loadUsers()).catch(() => {});
+        });
+      },
     });
   });
 

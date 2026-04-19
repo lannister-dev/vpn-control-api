@@ -23,11 +23,8 @@ export async function loadTrafficKeys() {
 
 export function updateTrafficKpis() {
   const keys = state.trafficKeys;
-  refs.kpiTrafficKeys.textContent = String(state.trafficTotal);
-  const revokedCount = keys.filter((k) => k.is_revoked).length;
-  refs.kpiTrafficRevoked.textContent = String(revokedCount);
   const totalBytes = keys.reduce((sum, k) => sum + (k.used_traffic_bytes || 0), 0);
-  refs.kpiTrafficTotal.textContent = fmtBytes(totalBytes);
+  if (refs.kpiTrafficTotal) refs.kpiTrafficTotal.textContent = fmtBytes(totalBytes);
 }
 
 export async function loadTrafficHistory() {
@@ -130,7 +127,26 @@ export function renderTrafficChart() {
   ctx.textAlign = "right"; ctx.fillText(fmtBytes(maxV), w - padRight, padTop - 2);
 }
 
+export function switchTrafficSub(sub) {
+  if (!["keys", "nodes"].includes(sub)) sub = "keys";
+  state.trafficSubTab = sub;
+  document.querySelectorAll(".traffic-sub[data-tsub]").forEach((b) => b.classList.toggle("active", b.dataset.tsub === sub));
+  const keysEl = document.getElementById("tsub-keys");
+  const nodesEl = document.getElementById("tsub-nodes");
+  if (keysEl) keysEl.style.display = (sub === "keys") ? "" : "none";
+  if (nodesEl) nodesEl.style.display = (sub === "nodes") ? "" : "none";
+  if (sub === "nodes" && state.trafficNodes.length === 0) {
+    /* lazy import to avoid circular */
+    import("./traffic-nodes.js").then((mod) => {
+      mod.loadNodesTraffic().catch((e) => notify("Ошибка загрузки трафика серверов: " + e.message, true));
+    });
+  }
+}
+
 export function bindTrafficEvents() {
+  document.querySelectorAll(".traffic-sub[data-tsub]").forEach((b) => {
+    b.addEventListener("click", () => switchTrafficSub(b.dataset.tsub));
+  });
   refs.trafficReload.addEventListener("click", () => { state.trafficOffset = 0; loadTrafficKeys().catch((e) => notify("\u041E\u0448\u0438\u0431\u043A\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0438 \u0442\u0440\u0430\u0444\u0438\u043A\u0430: " + e.message, true)); });
   [refs.trafficSearch, refs.trafficUserId].forEach((el) => { el.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); refs.trafficReload.click(); } }); });
 

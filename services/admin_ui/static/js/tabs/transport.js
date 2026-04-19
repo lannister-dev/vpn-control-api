@@ -1,7 +1,7 @@
 import { state, refs, $ } from '../state.js';
 import { esc, uuidCell, shortId, fmtDate, relTime } from '../utils.js';
 import { req } from '../api.js';
-import { notify, confirmAction } from '../ui.js';
+import { notify, confirmAction, openModal } from '../ui.js';
 
 /* ── Callback setters (injected from app.js) ───────── */
 let _refreshAll = () => {};
@@ -144,12 +144,20 @@ function renderEventsTable() {
 
 /* ── Payload modal ──────────────────────────────────── */
 function showPayloadModal(payloadJson) {
-  const modal = $("payload-modal"); let pretty;
+  let pretty;
   try { pretty = JSON.stringify(JSON.parse(payloadJson), null, 2); } catch { pretty = payloadJson; }
-  modal.style.display = "block";
-  modal.innerHTML = `<div class="modal-overlay"><div class="modal-box"><div class="modal-header"><h3>Содержимое события</h3><button class="btn-mini payload-close" style="font-size:14px">&times;</button></div><pre class="mono">${esc(pretty)}</pre><div class="modal-footer"><button class="btn btn-ghost payload-copy">Копировать</button><button class="btn btn-ghost payload-close">Закрыть</button></div></div></div>`;
-  modal.querySelectorAll(".payload-close").forEach((b) => b.addEventListener("click", () => { modal.style.display = "none"; modal.innerHTML = ""; }));
-  modal.querySelector(".payload-copy").addEventListener("click", () => { navigator.clipboard.writeText(pretty).then(() => notify("Скопировано")); });
+  openModal({
+    title: "Содержимое события",
+    bodyHtml: `<pre class="mono payload-pre">${esc(pretty)}</pre>`,
+    footerHtml: `<button class="btn btn-ghost" data-act="copy">Копировать</button><button class="btn btn-ghost" data-act="close">Закрыть</button>`,
+    wide: true,
+    onMount: ({ root, close }) => {
+      root.querySelector('[data-act="close"]').addEventListener("click", close);
+      root.querySelector('[data-act="copy"]').addEventListener("click", () => {
+        navigator.clipboard.writeText(pretty).then(() => notify("Скопировано"));
+      });
+    },
+  });
 }
 
 /* ── Switch transport sub-tab ───────────────────────── */

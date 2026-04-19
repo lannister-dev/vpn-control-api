@@ -13,7 +13,7 @@ import { loadTransportData, renderTransportKpi, renderTransportNodes, switchTran
 import { loadProbes, filteredProbes, renderProbes, bindProbeEvents } from './tabs/probes.js';
 import { loadUsers, renderUsers, openUserEditModal, navigateToUserSubscriptions, bindUserEvents, setCallbacks as setUserCallbacks } from './tabs/users.js';
 import { loadPlans, renderPlanSelect, renderPlans, openPlanEditModal, bindPlanEvents } from './tabs/plans.js';
-import { loadTrafficKeys, updateTrafficKpis, loadTrafficHistory, renderTraffic, renderTrafficHistory, renderTrafficChart, bindTrafficEvents } from './tabs/traffic.js';
+import { loadTrafficKeys, updateTrafficKpis, loadTrafficHistory, renderTraffic, renderTrafficHistory, renderTrafficChart, bindTrafficEvents, switchTrafficSub } from './tabs/traffic.js';
 import { loadNodesTraffic, bindTrafficNodesEvents } from './tabs/traffic-nodes.js';
 import { loadAdminUsers, renderAdminUsers, openEditModal, bindAdminUserEvents } from './tabs/admin-users.js';
 import { bindOpsEvents, setCallbacks as setOpsCallbacks } from './tabs/ops.js';
@@ -43,8 +43,13 @@ function setTab(tab) {
   refs.crumbs.textContent = "Dashboard \u2022 " + (TAB_LABELS[tab] || tab);
   if (tab === "users" && state.users.length === 0) loadUsers().catch((e) => notify("Ошибка загрузки пользователей: " + e.message, true));
   if (tab === "plans" && state.plans.length === 0) loadPlans().catch((e) => notify("Ошибка загрузки планов: " + e.message, true));
-  if (tab === "traffic" && state.trafficKeys.length === 0) loadTrafficKeys().catch((e) => notify("Ошибка загрузки трафика: " + e.message, true));
-  if (tab === "traffic-nodes" && state.trafficNodes.length === 0) loadNodesTraffic().catch((e) => notify("Ошибка загрузки трафика серверов: " + e.message, true));
+  if (tab === "traffic") {
+    if (state.trafficSubTab === "nodes") {
+      if (state.trafficNodes.length === 0) loadNodesTraffic().catch((e) => notify("Ошибка загрузки трафика серверов: " + e.message, true));
+    } else if (state.trafficKeys.length === 0) {
+      loadTrafficKeys().catch((e) => notify("Ошибка загрузки трафика: " + e.message, true));
+    }
+  }
   if (tab === "admin-users" && state.adminUsers.length === 0) loadAdminUsers().catch((e) => notify("Ошибка загрузки admin users: " + e.message, true));
   if (tab === "transport") loadTransportData().catch((e) => notify("Transport load error: " + e.message, true));
   if (tab === "subscriptions" && state.plans.length === 0) loadPlans().catch(() => {});
@@ -110,8 +115,8 @@ setCommandItems([
   { label: "Пользователи", icon: "\uD83D\uDC65", section: "Навигация", action: () => setTab("users") },
   { label: "Тарифы", icon: "\uD83D\uDCB0", section: "Навигация", action: () => setTab("plans") },
   { label: "Подписки", icon: "\uD83D\uDD10", section: "Навигация", action: () => setTab("subscriptions") },
-  { label: "Трафик", icon: "\uD83D\uDCCA", section: "Навигация", action: () => setTab("traffic") },
-  { label: "Трафик · Серверы", icon: "\uD83D\uDCE1", section: "Навигация", action: () => setTab("traffic-nodes") },
+  { label: "Трафик · Ключи", icon: "\uD83D\uDCCA", section: "Навигация", action: () => { setTab("traffic"); switchTrafficSub("keys"); } },
+  { label: "Трафик · Сервера", icon: "\uD83D\uDCE1", section: "Навигация", action: () => { setTab("traffic"); switchTrafficSub("nodes"); } },
   { label: "Админы", icon: "\u2699", section: "Навигация", action: () => setTab("admin-users") },
   { label: "Проверки", icon: "\uD83D\uDD0D", section: "Навигация", action: () => setTab("probes") },
 ]);
