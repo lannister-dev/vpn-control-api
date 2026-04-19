@@ -15,6 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.config import get_settings
+from services.entry.repository import EntryBackendAssignmentRepository
 from services.nodes.models import VpnNode
 from services.nodes.repository import VpnNodeRepository
 from services.placements.model import UserPlacement
@@ -125,12 +126,15 @@ class SubscriptionService:
         self.placement_repository = UserPlacementRepository(session)
         self.node_agent_transport = NodeAgentPlacementTransport(session)
         self.route_repository = RouteRepository(session)
+        self.entry_assignment_repository = EntryBackendAssignmentRepository(session)
         self.user_repository = UserRepository(session)
         self.vpn_key_repository = VpnKeyRepository(session)
         self.route_selector = RouteSelector[ResolvedSubscriptionRoute](
             get_backend_id=lambda item: item.backend_node_id,
             get_transport_key=lambda item: (item.transport_security, item.transport_network),
             get_route_id=lambda item: item.route_id,
+            get_weight=lambda item: item.selection_score,
+            get_entry_key=lambda item: item.entry_node_id,
         )
 
     async def create(self, data: SubscriptionCreateIn) -> SubscriptionCreatedOut:
@@ -702,6 +706,13 @@ class SubscriptionService:
         whitelist_enabled = bool(plan and getattr(plan, "whitelist_enabled", False))
         entry_relay_enabled = bool(plan and getattr(plan, "entry_relay_enabled", False))
 
+        backend_loads = await self._safe_call_counter(
+            self.placement_repository.count_desired_active_by_backend_node
+        )
+        entry_loads = await self._safe_call_counter(
+            self.route_repository.count_active_by_entry
+        )
+
         resolved_routes: list[ResolvedSubscriptionRoute] = []
         seen_uris: set[str] = set()
         seen_logical_keys: set[tuple] = set()
@@ -753,10 +764,22 @@ class SubscriptionService:
 
             seen_uris.add(uri)
             seen_logical_keys.add(logical_key)
+            effective_weight = int(getattr(route, "effective_weight", 0) or 0)
+            backend_capacity = int(getattr(node, "capacity", 0) or 0)
+            backend_load = int(backend_loads.get(backend_node_id, 0))
+            backend_factor = self._capacity_factor(backend_load, backend_capacity)
+            if entry_node_id is not None and entry_node is not None:
+                entry_capacity = int(getattr(entry_node, "capacity", 0) or 0)
+                entry_load = int(entry_loads.get(entry_node_id, 0))
+                entry_factor = self._capacity_factor(entry_load, entry_capacity)
+            else:
+                entry_factor = 1.0
+            selection_score = max(0.0, float(effective_weight)) * backend_factor * entry_factor
             resolved_routes.append(
                 ResolvedSubscriptionRoute(
                     route_id=self._as_uuid(route.id),
                     backend_node_id=backend_node_id,
+                    entry_node_id=entry_node_id,
                     vpn_key_id=key.vpn_key_id,
                     vpn_transport=key.transport,
                     client_id=key.client_id,
@@ -768,6 +791,8 @@ class SubscriptionService:
                     is_entry_route=is_entry,
                     preferred_backend=backend_node_id == selected_backend_id,
                     selection_rank=len(resolved_routes),
+                    effective_weight=effective_weight,
+                    selection_score=selection_score,
                     uri=uri,
                     route=route,
                     node=node,
@@ -775,10 +800,24 @@ class SubscriptionService:
                 )
             )
 
+        resolved_routes = await self._fill_entry_failover_substitutes(
+            resolved_routes=resolved_routes,
+            allowed_backend_ids=allowed_backend_ids,
+            entry_nodes_by_id=entry_nodes_by_id,
+            subscription=subscription,
+            key=key,
+            selected_backend_id=selected_backend_id,
+            whitelist_enabled=whitelist_enabled,
+            entry_relay_enabled=entry_relay_enabled,
+            backend_loads=backend_loads,
+            entry_loads=entry_loads,
+        )
+
         selected_routes = self.route_selector.select(
             routes=resolved_routes,
             preferred_backend_id=selected_backend_id,
             max_routes=max_routes,
+            seed=getattr(subscription, "id", None),
         )
         if not selected_routes:
             return TransportBuildResult(
@@ -858,6 +897,190 @@ class SubscriptionService:
         if message.startswith("No available "):
             return "transport_no_routes"
         return "transport_unavailable"
+
+    async def _fill_entry_failover_substitutes(
+            self,
+            *,
+            resolved_routes: list[ResolvedSubscriptionRoute],
+            allowed_backend_ids: set[UUID],
+            entry_nodes_by_id: dict,
+            subscription,
+            key: ResolvedDeviceKey,
+            selected_backend_id: UUID,
+            whitelist_enabled: bool,
+            entry_relay_enabled: bool,
+            backend_loads: dict,
+            entry_loads: dict,
+    ) -> list[ResolvedSubscriptionRoute]:
+        from shared.utils.node_display import effective_zone
+
+        backends_with_routes = {r.backend_node_id for r in resolved_routes}
+        missing_backends = [bid for bid in allowed_backend_ids if bid not in backends_with_routes]
+        if not missing_backends:
+            return resolved_routes
+
+        try:
+            assignments = await self.entry_assignment_repository.list_active_for_backends(
+                missing_backends,
+            )
+        except Exception:
+            return resolved_routes
+        if not isinstance(assignments, list) or not assignments:
+            return resolved_routes
+
+        by_backend: dict[UUID, list[UUID]] = {}
+        for a in assignments:
+            by_backend.setdefault(a.backend_node_id, []).append(a.entry_node_id)
+        if not by_backend:
+            return resolved_routes
+
+        seen_uris = {r.uri for r in resolved_routes}
+        seen_logical_keys = {
+            self._route_country_transport_key(
+                country_code=r.country_code,
+                region=getattr(r.node, "region", None),
+                transport=r.vpn_transport,
+                is_entry_route=r.is_entry_route,
+                backend_node_id=r.backend_node_id,
+            )
+            for r in resolved_routes
+        }
+        seen_route_ids = {r.route_id for r in resolved_routes}
+
+        augmented = list(resolved_routes)
+        for backend_id, entry_ids in by_backend.items():
+            try:
+                rows = await self.route_repository.list_substitutes_for_backend(
+                    backend_node_id=backend_id,
+                    entry_node_ids=entry_ids,
+                )
+            except Exception:
+                continue
+            if not isinstance(rows, list):
+                continue
+            for route, node, transport_profile in rows:
+                if self._as_uuid(route.id) in seen_route_ids:
+                    continue
+                entry_node_id = self._route_entry_node_id(route)
+                entry_node = entry_nodes_by_id.get(entry_node_id) if entry_node_id else None
+                if entry_node is None:
+                    try:
+                        entry_node = await self.node_repository.get_by_id(entry_node_id)
+                    except Exception:
+                        entry_node = None
+                    if entry_node is None:
+                        continue
+                    entry_nodes_by_id[entry_node_id] = entry_node
+
+                entry_role = getattr(entry_node, "role", "")
+                if entry_role == ROLE_WHITELIST_ENTRY and not whitelist_enabled:
+                    continue
+                if entry_role == ROLE_ENTRY and not entry_relay_enabled:
+                    continue
+
+                backend_zone = effective_zone(
+                    explicit_zone=getattr(node, "zone", None),
+                    region=getattr(node, "region", None),
+                )
+                entry_zone = effective_zone(
+                    explicit_zone=getattr(entry_node, "zone", None),
+                    region=getattr(entry_node, "region", None),
+                )
+                if backend_zone != "unknown" and entry_zone != "unknown" and backend_zone != entry_zone:
+                    continue
+
+                transport_security = transport_profile.security
+                transport_network = transport_profile.network
+                if not self._is_route_compatible_with_key_transport(
+                    key_transport=key.transport,
+                    transport_security=transport_security,
+                    transport_network=transport_network,
+                ):
+                    continue
+
+                country_code, country_name = self._country_info_for_region(node.region)
+                logical_key = self._route_country_transport_key(
+                    country_code=country_code,
+                    region=node.region,
+                    transport=key.transport,
+                    is_entry_route=True,
+                    backend_node_id=backend_id,
+                )
+                if logical_key in seen_logical_keys:
+                    continue
+
+                display = format_node_display_name(node_name=str(node.name), region=node.region)
+                uri = self._build_route_uri(
+                    client_id=key.client_id,
+                    backend_node=node,
+                    public_node=entry_node,
+                    transport_profile=transport_profile,
+                    remark_override=display,
+                )
+                if uri is None or uri in seen_uris:
+                    continue
+
+                seen_uris.add(uri)
+                seen_logical_keys.add(logical_key)
+                seen_route_ids.add(self._as_uuid(route.id))
+                effective_weight = int(getattr(route, "effective_weight", 0) or 0)
+                backend_capacity = int(getattr(node, "capacity", 0) or 0)
+                backend_load = int(backend_loads.get(backend_id, 0))
+                backend_factor = self._capacity_factor(backend_load, backend_capacity)
+                entry_capacity = int(getattr(entry_node, "capacity", 0) or 0)
+                entry_load = int(entry_loads.get(entry_node_id, 0))
+                entry_factor = self._capacity_factor(entry_load, entry_capacity)
+                selection_score = (
+                    max(0.0, float(effective_weight)) * backend_factor * entry_factor * 0.5
+                )
+                augmented.append(
+                    ResolvedSubscriptionRoute(
+                        route_id=self._as_uuid(route.id),
+                        backend_node_id=backend_id,
+                        entry_node_id=entry_node_id,
+                        vpn_key_id=key.vpn_key_id,
+                        vpn_transport=key.transport,
+                        client_id=key.client_id,
+                        transport_security=transport_security,
+                        transport_network=transport_network,
+                        country_code=country_code,
+                        country_name=country_name,
+                        display_name=display,
+                        is_entry_route=True,
+                        preferred_backend=backend_id == selected_backend_id,
+                        selection_rank=len(augmented),
+                        effective_weight=effective_weight,
+                        selection_score=selection_score,
+                        uri=uri,
+                        route=route,
+                        node=node,
+                        transport_profile=transport_profile,
+                    )
+                )
+        return augmented
+
+    @staticmethod
+    async def _safe_call_counter(fn) -> dict:
+        try:
+            result = fn()
+            if hasattr(result, "__await__"):
+                result = await result
+            if isinstance(result, dict):
+                return result
+        except Exception:
+            pass
+        return {}
+
+    @staticmethod
+    def _capacity_factor(load: int, capacity: int) -> float:
+        if capacity <= 0:
+            return 1.0
+        if load <= 0:
+            return 1.0
+        if load >= capacity:
+            return 0.05
+        remaining = capacity - load
+        return max(0.05, remaining / capacity)
 
     def _country_info_for_region(self, region: str | None) -> tuple[str | None, str | None]:
         country_code = country_code_from_region(region)

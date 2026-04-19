@@ -44,3 +44,19 @@ class EntryBackendAssignmentRepository(BaseRepository[EntryBackendAssignment]):
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def list_active_for_backends(
+        self,
+        backend_node_ids: list[UUID],
+    ) -> list[EntryBackendAssignment]:
+        if not backend_node_ids:
+            return []
+        stmt = (
+            select(self.model)
+            .where(self.model.backend_node_id.in_(backend_node_ids))
+            .where(self.model.is_active.is_(True))
+            .where(self.model.enabled.is_(True))
+            .order_by(self.model.rank.asc(), self.model.weight.desc())
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())

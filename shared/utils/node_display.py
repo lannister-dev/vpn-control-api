@@ -98,6 +98,54 @@ COUNTRY_CODE_TO_NAME: dict[str, str] = {
 }
 
 
+ZONE_EUROPE = "europe"
+ZONE_ASIA = "asia"
+ZONE_AMERICAS = "americas"
+ZONE_OCEANIA = "oceania"
+ZONE_AFRICA = "africa"
+ZONE_UNKNOWN = "unknown"
+
+COUNTRY_CODE_TO_ZONE: dict[str, str] = {
+    "FI": ZONE_EUROPE, "DE": ZONE_EUROPE, "NL": ZONE_EUROPE, "PL": ZONE_EUROPE,
+    "GB": ZONE_EUROPE, "FR": ZONE_EUROPE, "ES": ZONE_EUROPE, "IT": ZONE_EUROPE,
+    "SE": ZONE_EUROPE, "NO": ZONE_EUROPE, "DK": ZONE_EUROPE, "CH": ZONE_EUROPE,
+    "AT": ZONE_EUROPE, "CZ": ZONE_EUROPE, "UA": ZONE_EUROPE, "RU": ZONE_EUROPE,
+    "KZ": ZONE_EUROPE, "LV": ZONE_EUROPE, "TR": ZONE_EUROPE,
+
+    "SG": ZONE_ASIA, "JP": ZONE_ASIA, "KR": ZONE_ASIA, "HK": ZONE_ASIA,
+    "IN": ZONE_ASIA, "AE": ZONE_ASIA, "IL": ZONE_ASIA,
+
+    "US": ZONE_AMERICAS, "CA": ZONE_AMERICAS, "MX": ZONE_AMERICAS, "BR": ZONE_AMERICAS,
+
+    "AU": ZONE_OCEANIA,
+}
+
+VALID_ZONES: frozenset[str] = frozenset([
+    ZONE_EUROPE, ZONE_ASIA, ZONE_AMERICAS,
+    ZONE_OCEANIA, ZONE_AFRICA, ZONE_UNKNOWN,
+])
+
+
+def zone_from_country_code(country_code: str | None) -> str | None:
+    if not country_code:
+        return None
+    return COUNTRY_CODE_TO_ZONE.get(country_code.strip().upper())
+
+
+def infer_zone_from_region(region: str | None) -> str | None:
+    cc = country_code_from_region(region)
+    return zone_from_country_code(cc)
+
+
+def effective_zone(*, explicit_zone: str | None, region: str | None) -> str:
+    if explicit_zone:
+        candidate = explicit_zone.strip().lower()
+        if candidate in VALID_ZONES:
+            return candidate
+    inferred = infer_zone_from_region(region)
+    return inferred or ZONE_UNKNOWN
+
+
 def _extract_region_tokens(region: str) -> list[str]:
     return [token for token in re.split(r"[^a-zA-Z]+", region.lower()) if token]
 

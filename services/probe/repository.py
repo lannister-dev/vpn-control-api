@@ -151,6 +151,30 @@ class ProbeSignalRepository(BaseRepository[ProbeSignal]):
             count += 1
         return count
 
+    async def count_consecutive_node_failures(
+            self,
+            *,
+            node_id: UUID,
+            limit: int = 10,
+    ) -> int:
+        stmt = (
+            select(self.model.is_reachable)
+            .where(
+                self.model.is_active.is_(True),
+                self.model.node_id == node_id,
+                self.model.route_id.is_(None),
+            )
+            .order_by(self.model.checked_at.desc(), self.model.created_at.desc())
+            .limit(limit)
+        )
+        res = await self.session.execute(stmt)
+        count = 0
+        for (is_reachable,) in res.all():
+            if is_reachable:
+                break
+            count += 1
+        return count
+
     async def delete_older_than(self, *, cutoff: datetime) -> int:
         stmt = delete(self.model).where(
             self.model.checked_at < cutoff,

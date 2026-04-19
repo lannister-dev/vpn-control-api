@@ -8,3 +8,7 @@ class BackendNotFoundError(LookupError):
 
 class EntryRoleError(ValueError):
     pass
+
+
+class EntryZoneMismatchError(ValueError):
+    pass

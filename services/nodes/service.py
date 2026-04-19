@@ -70,6 +70,12 @@ class VpnNodeService:
             int(node_agent_settings.auth_token_rotation_grace_sec),
         )
         self.bootstrap_allow_create = bool(node_agent_settings.bootstrap_allow_create)
+        self.entry_apply_fail_threshold = max(
+            1, int(getattr(node_agent_settings, "entry_apply_fail_threshold", 3))
+        )
+        self.entry_apply_fail_unhealthy = bool(
+            getattr(node_agent_settings, "entry_apply_fail_unhealthy", True)
+        )
         self.heartbeat_unhealthy_drain_threshold = max(
             1, int(node_agent_settings.heartbeat_unhealthy_drain_threshold)
         )
@@ -202,6 +208,8 @@ class VpnNodeService:
         details = NodeAgentDetails(
             runtime=payload.details.runtime,
             stats=payload.details.stats,
+            pool=payload.details.pool,
+            upstream=payload.details.upstream,
         )
         heartbeat_meta = self._next_heartbeat_meta(
             base_details=existing_details,
@@ -369,9 +377,22 @@ class VpnNodeService:
             return False
         return True
 
-    @staticmethod
-    def _effective_heartbeat_health(payload: NodeHeartbeatIn) -> bool:
-        return bool(payload.is_healthy and payload.details.runtime.ready)
+    def _effective_heartbeat_health(self, payload: NodeHeartbeatIn) -> bool:
+        if not bool(payload.is_healthy and payload.details.runtime.ready):
+            return False
+        if not self.entry_apply_fail_unhealthy:
+            return True
+        pool = payload.details.pool
+        if pool is not None and pool.consecutive_apply_failures >= self.entry_apply_fail_threshold:
+            return False
+        upstream = payload.details.upstream
+        if (
+            upstream is not None
+            and upstream.configured
+            and upstream.consecutive_apply_failures >= self.entry_apply_fail_threshold
+        ):
+            return False
+        return True
 
     @classmethod
     def _next_heartbeat_meta(
@@ -437,6 +458,21 @@ class VpnNodeService:
     # Admin flow: create a pending node + mint a one-shot bootstrap token.
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _validated_zone(raw: str | None) -> str | None:
+        from shared.utils.node_display import VALID_ZONES
+
+        if raw is None:
+            return None
+        candidate = raw.strip().lower()
+        if not candidate:
+            return None
+        if candidate not in VALID_ZONES:
+            raise AdminNodeCreateError(
+                f"zone must be one of: {', '.join(sorted(VALID_ZONES))}"
+            )
+        return candidate
+
     async def admin_create_node(self, payload: AdminNodeCreateIn) -> AdminNodeCreateOut:
         role = payload.role.strip()
         if role not in ALLOWED_NODE_ROLES:
@@ -454,6 +490,7 @@ class VpnNodeService:
         raw_token, token_hash = self._mint_bootstrap_token()
         expires_at = self._bootstrap_token_expires_at()
 
+        zone_value = self._validated_zone(payload.zone)
         create_schema = VpnNodeCreate(
             name=name,
             role=role,
@@ -464,6 +501,7 @@ class VpnNodeService:
             node_key=None,
             auth_token_hash=token_hash,
             capacity=payload.capacity,
+            zone=zone_value,
         )
         node = await self.vpn_node_repository.create(
             {

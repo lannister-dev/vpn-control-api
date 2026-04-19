@@ -139,6 +139,11 @@ async def update_node_by_id(
     data = payload.model_dump(exclude_unset=True)
     if not data:
         raise HTTPException(status_code=422, detail="Empty payload")
+    if "zone" in data:
+        try:
+            data["zone"] = service._validated_zone(data["zone"])
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     node = await service.vpn_node_repository.get_by_id(node_id)
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
@@ -160,6 +165,11 @@ async def update_node_by_key(
     data = payload.model_dump(exclude_unset=True)
     if not data:
         raise HTTPException(status_code=422, detail="Empty payload")
+    if "zone" in data:
+        try:
+            data["zone"] = service._validated_zone(data["zone"])
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     node = await service.vpn_node_repository.get_by_node_key(node_key)
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
