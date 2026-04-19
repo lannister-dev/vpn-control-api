@@ -139,9 +139,9 @@ async def test_assign_backend_persists_rank(async_session):
     assert args[0]["rank"] == 2
     service.outbox_repo.enqueue_many.assert_awaited_once()
     (items,), _ = service.outbox_repo.enqueue_many.call_args
-    assert items[0]["event_type"] == "pool_changed"
-    assert items[0]["node_id"] == entry.id
-    assert items[0]["subject"].endswith(f".{entry.id}.pool")
+    assert items[0].event_type == "pool_changed"
+    assert items[0].node_id == entry.id
+    assert items[0].subject.endswith(f".{entry.id}.pool")
 
 
 @pytest.mark.asyncio
