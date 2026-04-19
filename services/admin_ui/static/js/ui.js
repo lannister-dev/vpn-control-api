@@ -80,9 +80,9 @@ export function confirmAction(title, body, btnClass) {
 export function pushLog(title, payload, isError) {
   state.logs.unshift({ at: new Date().toLocaleString(), title, payload, isError: !!isError });
   if (state.logs.length > 40) state.logs.length = 40;
-  refs.actionLog.innerHTML = state.logs.length
-    ? state.logs.map((i) => `<div class="log-item${i.isError ? " error" : ""}"><div><strong>${esc(i.title)}</strong></div><div class="muted">${esc(i.at)}</div><div class="mono">${esc(typeof i.payload === "string" ? i.payload : JSON.stringify(i.payload))}</div></div>`).join("")
-    : `<div class="empty">Операций пока не было.</div>`;
+  /* Dashboard timeline re-renders on the next render() tick; for instant feedback we nudge it here. */
+  const host = refs.dashActivity;
+  if (host && typeof host._refresh === "function") host._refresh();
 }
 
 export function announce(text) {

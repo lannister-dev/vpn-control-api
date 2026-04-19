@@ -41,7 +41,17 @@ export async function loadNodesTraffic() {
 export function renderTrafficNodes() {
   const rows = state.trafficNodes;
   if (!rows.length) {
-    smoothUpdate("traffic-nodes-body", `<tr><td colspan="10" class="empty">Нет трафика за выбранный период.</td></tr>`);
+    const period = state.trafficNodesPeriod || "24h";
+    const canExpand = period !== "30d";
+    smoothUpdate("traffic-nodes-body", `<tr><td colspan="10"><div class="empty-state">
+      <div class="empty-state-icon">\uD83D\uDCE1</div>
+      <div class="empty-state-title">Нет трафика за выбранный период</div>
+      <div class="empty-state-hint">Данные появляются, когда entry-агенты отчитываются о сессиях.<br/>Попробуйте увеличить период или проверьте, что агенты онлайн в разделе Transport.</div>
+      <div class="empty-state-action">
+        ${canExpand ? `<button class="btn btn-primary btn-auto tn-expand-period">Период: 7 дней</button>` : ""}
+        <button class="btn btn-ghost btn-auto tn-goto-transport">Открыть Transport</button>
+      </div>
+    </div></td></tr>`);
     return;
   }
   const html = rows.map((n) => {
@@ -73,7 +83,7 @@ export function renderTrafficNodes() {
 export function renderTrafficPairs() {
   const rows = state.trafficPairs;
   if (!rows.length) {
-    smoothUpdate("traffic-pairs-body", `<tr><td colspan="6" class="empty">Пока нет агрегатов по парам.</td></tr>`);
+    smoothUpdate("traffic-pairs-body", `<tr><td colspan="6" class="empty">Пока нет агрегатов по парам Entry × Backend.</td></tr>`);
     return;
   }
   const html = rows.map((p) => `
@@ -223,7 +233,23 @@ export function bindTrafficNodesEvents() {
   });
 
   refs.trafficNodesBody.addEventListener("click", (ev) => {
-    const btn = ev.target.closest(".traffic-node-detail-btn");
+    const target = ev.target;
+    if (!(target instanceof HTMLElement)) return;
+
+    const expandBtn = target.closest(".tn-expand-period");
+    if (expandBtn) {
+      state.trafficNodesPeriod = "7d";
+      refs.trafficNodesPeriod.value = "7d";
+      loadNodesTraffic().catch((e) => notify("Ошибка загрузки: " + e.message, true));
+      return;
+    }
+    const gotoTransport = target.closest(".tn-goto-transport");
+    if (gotoTransport) {
+      const btn = document.querySelector('.nav button[data-tab="transport"]');
+      if (btn) btn.click();
+      return;
+    }
+    const btn = target.closest(".traffic-node-detail-btn");
     if (!btn) return;
     state.trafficNodeSelectedId = btn.dataset.nodeId;
     state.trafficNodeSelectedSide = "auto";

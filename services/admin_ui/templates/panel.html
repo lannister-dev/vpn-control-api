@@ -92,18 +92,21 @@
       </header>
 
       <section id="tab-overview" class="panel active">
-        <div class="panel-head"><div class="panel-title">Общее состояние системы</div></div>
-        <div class="panel-body two-col">
-          <div class="stack">
-            <div class="card"><div class="card-title"><span class="card-icon green">✓</span> Проверки готовности</div><div id="readiness-list" class="stack"></div></div>
-            <div class="card"><div class="card-title"><span class="card-icon purple">⇄</span> Распределение маршрутов</div><div id="route-health-list" class="stack"></div></div>
-            <div class="card"><div class="card-title"><span class="card-icon red">✕</span> Последние сбои probe</div><div id="probe-fail-list" class="stack"></div></div>
-            <div class="card"><div class="card-title"><span class="card-icon amber">⚠</span> Серверы, требующие внимания</div><div id="node-alert-list" class="stack"></div></div>
-            <div class="card"><div class="card-title"><span class="card-icon cyan">⚡</span> Transport Health</div><div id="transport-alert-list" class="stack"></div></div>
+        <div class="panel-body dashboard">
+          <div id="dash-tiles" class="dash-tiles"></div>
+          <div id="dash-banner" class="dash-banner"></div>
+          <div id="dash-quick-actions" class="dash-quick-actions"></div>
+          <div class="dash-columns">
+            <div class="dash-col">
+              <div class="dash-section-title"><span>Требуют внимания</span><span id="dash-issues-count" class="dash-section-count"></span></div>
+              <div id="dash-issues" class="dash-issues"></div>
+            </div>
+            <div class="dash-col">
+              <div class="dash-section-title">Последняя активность</div>
+              <div id="dash-activity" class="dash-activity"></div>
+            </div>
           </div>
-          <div class="stack">
-            <div class="card"><div class="card-title"><span class="card-icon">📋</span> Журнал операций</div><div id="action-log" class="log"></div></div>
-          </div>
+          <div id="dash-compact" class="dash-compact"></div>
         </div>
       </section>
       <section id="tab-nodes" class="panel">
