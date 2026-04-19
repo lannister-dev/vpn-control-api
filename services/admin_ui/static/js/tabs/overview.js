@@ -4,21 +4,8 @@ import {
   routeStatusLabel, formatNumber,
 } from '../utils.js';
 
-/**
- * Dashboard overview:
- *   - 4 visual KPI tiles with progress bars
- *   - status banner (ok/warn/bad)
- *   - quick actions
- *   - priority-sorted issues list (left) + activity timeline (right)
- *   - compact readiness / route-distribution / transport chips row
- */
-
 const isEntryNode = (n) => ["whitelist_entry", "entry"].includes(String(n.role || "").toLowerCase());
 
-/* ── NATS stability helper ────────────────────────────
- * Brief disconnects (<30s) render as "reconnecting" (warn) instead of "offline"
- * so the UI doesn't flicker while the backend client is re-negotiating.
- */
 const NATS_GRACE_MS = 30_000;
 function natsVisualState() {
   const to = state.transportOverview;
@@ -42,7 +29,6 @@ export function renderOverview() {
   populateOpsDropdowns();
 }
 
-/* ── Hero KPIs (small cards at the top) ───────────────── */
 function renderHeroKpis() {
   if (state.status) {
     const t = state.status.totals || {};
@@ -62,7 +48,6 @@ function renderHeroKpis() {
   }
 }
 
-/* ── Dashboard tiles ──────────────────────────────────── */
 function renderDashTiles() {
   if (!refs.dashTiles) return;
   const nodes = (state.status && state.status.nodes) || [];
@@ -156,7 +141,6 @@ function tileHtml({ icon, label, value, barPct, state, meta }) {
   </div>`;
 }
 
-/* ── Status banner ────────────────────────────────────── */
 function renderDashBanner(issues) {
   if (!refs.dashBanner) return;
   const high = issues.filter((i) => i.severity === "high").length;
@@ -198,7 +182,6 @@ function plural(n, one, few, many) {
   return many;
 }
 
-/* ── Quick actions ────────────────────────────────────── */
 function renderDashQuickActions() {
   if (!refs.dashQuickActions) return;
   refs.dashQuickActions.innerHTML = `
@@ -210,7 +193,6 @@ function renderDashQuickActions() {
   `;
 }
 
-/* ── Issues ───────────────────────────────────────────── */
 function collectIssues() {
   const issues = [];
   const nodes = (state.status && state.status.nodes) || [];
@@ -228,7 +210,6 @@ function collectIssues() {
     else if (r.health_status === "suspected") issues.push({ severity: "low", icon: "🛣", title: r.name, detail: "Подозрение", target: { type: "routes" } });
   });
 
-  /* Probe failures, consecutive-grouped */
   const probeByNode = {};
   state.probes.forEach((p) => {
     if (!p.node_id) return;
@@ -250,7 +231,6 @@ function collectIssues() {
   if (state.transportOverview) {
     const failed = (state.transportOverview.outbox || {}).failed || 0;
     if (failed > 0) issues.push({ severity: failed > 5 ? "high" : "medium", icon: "📬", title: "Outbox", detail: `${failed} ошибок доставки в очереди`, target: { type: "transport" } });
-    /* Only report NATS as an issue if we're past the reconnect grace — brief flaps shouldn't alarm. */
     const nats = natsVisualState();
     if (!nats.connected && !nats.reconnecting) {
       issues.unshift({ severity: "high", icon: "⚡", title: "NATS", detail: "Не подключен", target: { type: "transport" } });
@@ -298,11 +278,9 @@ function renderDashIssues(issues) {
   refs.dashIssues._issues = visible;
 }
 
-/* ── Activity timeline ────────────────────────────────── */
 function renderDashActivity() {
   if (!refs.dashActivity) return;
   const logs = state.logs || [];
-  /* Stash refresher for pushLog to call when a new item lands. */
   refs.dashActivity._refresh = () => renderDashActivity();
   if (!logs.length) {
     refs.dashActivity.innerHTML = `<div class="dash-empty">
@@ -327,7 +305,6 @@ function renderDashActivity() {
   }).join("");
 }
 
-/* ── Compact status strip ─────────────────────────────── */
 function renderDashCompact() {
   if (!refs.dashCompact) return;
   const readiness = state.readiness ? (state.readiness.checks || []) : [];
@@ -381,7 +358,6 @@ function renderDashCompact() {
   refs.dashCompact.innerHTML = cards.join("");
 }
 
-/* ── Ops dropdowns population (kept from old overview) ── */
 function populateOpsDropdowns() {
   const opsNodes = ((state.status && state.status.nodes) || []).filter((n) => String(n.role || "").toLowerCase() === "backend");
   document.querySelectorAll(".ops-node-select").forEach((sel) => {

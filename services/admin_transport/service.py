@@ -55,11 +55,19 @@ class AdminTransportService:
         consumer_tasks: list[ConsumerTaskStatus] = []
         if runtime is not None:
             status = runtime.get_runtime_status()
-            nats_connected = status["nats_connected"]
-            uptime_s = status["uptime_s"]
+            uptime_s = status.uptime_s
             consumer_tasks = [
-                ConsumerTaskStatus(**t) for t in status["tasks"]
+                ConsumerTaskStatus(name=t.name, running=t.running, error=t.error)
+                for t in status.tasks
             ]
+            if runtime.is_leader:
+                nats_connected = status.nats_connected
+            else:
+                latest_hb = await self.repo.get_latest_heartbeat_received_at()
+                if latest_hb is not None:
+                    if latest_hb.tzinfo is None:
+                        latest_hb = latest_hb.replace(tzinfo=timezone.utc)
+                    nats_connected = (now - latest_hb).total_seconds() < 90
 
         outbox_summary = await self.repo.get_outbox_summary(since=since_24h)
         event_summary = await self.repo.get_event_log_summary(since=since_24h)
@@ -174,12 +182,25 @@ class AdminTransportService:
         )
 
     async def force_snapshot(self, node_id: UUID) -> ForceSnapshotOut:
+        from fastapi import HTTPException
+
         runtime = self._get_runtime()
         if runtime is None:
-            from fastapi import HTTPException
             raise HTTPException(status_code=503, detail="NATS runtime not available")
+        if not runtime.is_leader:
+            raise HTTPException(
+                status_code=503,
+                detail="This replica is standby; snapshot can be triggered only on the leader",
+            )
+        if not runtime._nats.is_connected:
+            raise HTTPException(status_code=503, detail="NATS is not connected on this replica")
 
-        await runtime.trigger_snapshot_for_node(node_id=node_id, reason="admin_requested")
+        try:
+            await runtime.trigger_snapshot_for_node(node_id=node_id, reason="admin_requested")
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Snapshot publish failed: {exc}") from exc
 
         state_repo = NodeTransportStateRepository(self.session)
         state = await state_repo.get_or_create(node_id=node_id)
