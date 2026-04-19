@@ -34,6 +34,10 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if .Values.migrations.enabled }}
+      initContainers:
+        {{- include "control-api.migrateInitContainer" . | nindent 8 }}
+      {{- end }}
       containers:
         - name: reconciler
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
