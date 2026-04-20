@@ -13,6 +13,7 @@ import { loadTransportData, renderTransportKpi, renderTransportNodes, switchTran
 import { loadProbes, filteredProbes, renderProbes, bindProbeEvents } from './tabs/probes.js';
 import { loadUsers, renderUsers, openUserEditModal, navigateToUserSubscriptions, bindUserEvents, setCallbacks as setUserCallbacks } from './tabs/users.js';
 import { loadPlans, renderPlanSelect, renderPlans, openPlanEditModal, bindPlanEvents } from './tabs/plans.js';
+import { loadZones, renderZones, bindZoneEvents } from './tabs/zones.js';
 import { loadTrafficKeys, updateTrafficKpis, loadTrafficHistory, renderTraffic, renderTrafficHistory, renderTrafficChart, bindTrafficEvents, switchTrafficSub } from './tabs/traffic.js';
 import { loadNodesTraffic, bindTrafficNodesEvents } from './tabs/traffic-nodes.js';
 import { loadAdminUsers, renderAdminUsers, openEditModal, bindAdminUserEvents } from './tabs/admin-users.js';
@@ -43,6 +44,7 @@ function setTab(tab) {
   refs.crumbs.textContent = "Dashboard \u2022 " + (TAB_LABELS[tab] || tab);
   if (tab === "users" && state.users.length === 0) loadUsers().catch((e) => notify("Ошибка загрузки пользователей: " + e.message, true));
   if (tab === "plans" && state.plans.length === 0) loadPlans().catch((e) => notify("Ошибка загрузки планов: " + e.message, true));
+  if (tab === "zones" && state.zones.length === 0) loadZones().catch((e) => notify("Ошибка загрузки зон: " + e.message, true));
   if (tab === "traffic") {
     switchTrafficSub(state.trafficSubTab || "keys");
     if (state.trafficSubTab === "nodes") {
@@ -89,6 +91,7 @@ async function refreshAll(fullRefresh) {
       fetches.push(req("/api/v1/routes?limit=500").then((r) => { state.routes = r; }));
       if (!state.transportProfiles.length) fetches.push(req("/api/v1/routes/transport-profiles?limit=200").then((tp) => { state.transportProfiles = tp; }).catch(() => {}));
     }
+    if (!state.zones.length) fetches.push(loadZones().catch(() => {}));
     if (fullRefresh || tab === "overview" || tab === "ops") fetches.push(req("/api/v1/probe/reports/recent?limit=60").then((p) => { state.probes = p; }));
     if (tab === "probes" && state.probesAll.length > 0) fetches.push(loadProbes().catch(() => {}));
     if (fullRefresh || tab === "placements") fetches.push(req("/api/v1/placements?limit=500").then((p) => { state.placements = p; }));
@@ -119,6 +122,7 @@ setCommandItems([
   { label: "Плейсменты", icon: "\uD83D\uDCCD", section: "Навигация", action: () => setTab("placements") },
   { label: "Пользователи", icon: "\uD83D\uDC65", section: "Навигация", action: () => setTab("users") },
   { label: "Тарифы", icon: "\uD83D\uDCB0", section: "Навигация", action: () => setTab("plans") },
+  { label: "Зоны", icon: "\uD83C\uDF0D", section: "Навигация", action: () => setTab("zones") },
   { label: "Подписки", icon: "\uD83D\uDD10", section: "Навигация", action: () => setTab("subscriptions") },
   { label: "Трафик · Ключи", icon: "\uD83D\uDCCA", section: "Навигация", action: () => { setTab("traffic"); switchTrafficSub("keys"); } },
   { label: "Трафик · Сервера", icon: "\uD83D\uDCE1", section: "Навигация", action: () => { setTab("traffic"); switchTrafficSub("nodes"); } },
@@ -147,6 +151,7 @@ bindTransportEvents();
 bindProbeEvents();
 bindUserEvents();
 bindPlanEvents();
+bindZoneEvents();
 bindTrafficEvents();
 bindTrafficNodesEvents();
 bindAdminUserEvents();

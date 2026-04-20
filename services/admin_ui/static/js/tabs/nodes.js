@@ -3,7 +3,7 @@ import {
   esc, fmtDate, chip, uuidCell, shortId, nodeGeo, nodeNameById,
   routeStatusLabel, latestProbeForNode, capacityBar, relTime,
   nodeRoleLabel, nodeRoleClass, routingReasonLabel, routeReasonLabel,
-  sortTh, sortedBy, ZONE_VALUES, ZONE_LABELS, effectiveZone,
+  sortTh, sortedBy, ZONE_VALUES, ZONE_LABELS, effectiveZone, zoneSelectOptions,
 } from '../utils.js';
 import { req, runAction, copyToClipboard } from '../api.js';
 import { notify, confirmAction, openModal } from '../ui.js';
@@ -247,7 +247,7 @@ function renderNdOverview(node) {
     <div class="form-group"><label class="form-label">Zone</label>
       <select id="nd-edit-zone" class="select">
         <option value=""${!node.zone ? " selected" : ""}>Auto (по региону)</option>
-        ${ZONE_VALUES.map((z) => `<option value="${esc(z)}"${node.zone === z ? " selected" : ""}>${esc(ZONE_LABELS[z])}</option>`).join("")}
+        ${zoneSelectOptions(state.zones, node.zone).map((z) => `<option value="${esc(z.code)}"${node.zone === z.code ? " selected" : ""}>${z.emoji ? esc(z.emoji) + " " : ""}${esc(z.name)}${z.is_active === false ? " (неактивна)" : ""}</option>`).join("")}
       </select>
       <div class="muted" style="font-size:11px;margin-top:3px">Сейчас: ${esc(ZONE_LABELS[effectiveZone(node)] || "—")}${node.zone ? " (явно)" : " (из региона)"}</div>
     </div>
@@ -426,7 +426,7 @@ export function openAddNodeModal() {
       <div class="form-group"><label class="form-label">Zone <span class="muted">(опционально)</span></label>
         <select id="an-zone" class="select">
           <option value="">Auto (из региона)</option>
-          ${ZONE_VALUES.map((z) => `<option value="${esc(z)}">${esc(ZONE_LABELS[z])}</option>`).join("")}
+          ${zoneSelectOptions(state.zones, null).map((z) => `<option value="${esc(z.code)}">${z.emoji ? esc(z.emoji) + " " : ""}${esc(z.name)}</option>`).join("")}
         </select>
       </div>
       <div class="form-group"><label class="form-label">Public domain <span class="muted">(опционально)</span></label><input id="an-public-domain" class="input" placeholder="leave empty for entry/relay roles" /></div>

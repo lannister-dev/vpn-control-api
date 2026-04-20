@@ -81,7 +81,6 @@ jobs:
             --wait --timeout 120s
       - name: Smoke checks
         id: smoke
-        continue-on-error: true
         env:
           DEV_BASE_URL: ${{ vars.DEV_BASE_URL }}
         run: |
@@ -92,22 +91,12 @@ jobs:
               break
             fi
             if [ "${attempt}" -eq 12 ]; then
-              echo "readyz check failed after retries"
+              echo "::error::readyz check failed after retries. Release left as-is; inspect DB schema before rolling back manually — auto-rollback is unsafe with alembic migrations in the init container."
               exit 1
             fi
             sleep 5
           done
           curl -fsS "${BASE_URL}/api/v1/auth/admin/session" >/dev/null
-      - name: Rollback on failed smoke
-        if: steps.smoke.outcome == 'failure'
-        run: |
-          set -Eeuo pipefail
-          helm rollback "${RELEASE_NAME}" -n "${NAMESPACE}" --wait --timeout 120s
-      - name: Fail job if smoke failed
-        if: steps.smoke.outcome == 'failure'
-        run: |
-          echo "::error::Post-deploy smoke checks failed, rollback executed"
-          exit 1
       - name: Deployment summary
         if: always()
         run: |
