@@ -87,6 +87,7 @@ class NodePublic(BaseModel):
     port: int = Field(ge=1, le=65535)
     remark: str = Field(default="", max_length=128)
     region: str | None = Field(default=None, min_length=2, max_length=16)
+    server_description: str | None = Field(default=None, max_length=30)
 
     @field_validator("domain", mode="before")
     @classmethod

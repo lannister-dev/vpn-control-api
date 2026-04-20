@@ -67,7 +67,8 @@ class VlessUriBuilder:
             host=host,
             port=node.port,
             query=query.to_query(),
-            remark=remark
+            remark=remark,
+            server_description=node.server_description,
         ).render()
 
 
@@ -102,7 +103,8 @@ class VlessUriBuilder:
              host=host,
              port=node.port,
              query=query.to_query(),
-             remark=remark
+             remark=remark,
+             server_description=node.server_description,
         ).render()
 
     @staticmethod

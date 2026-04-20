@@ -174,6 +174,7 @@ class ResolvedSubscriptionRoute(BaseModel):
     country_name: str | None = None
     display_name: str | None = None
     is_entry_route: bool = False
+    is_whitelist_route: bool = False
     preferred_backend: bool = False
     selection_rank: int = 0
     effective_weight: int = 0

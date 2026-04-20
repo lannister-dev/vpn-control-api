@@ -39,6 +39,8 @@ from services.vpn.subscriptions.constants import (
     RATE_LIMIT_REQUESTS,
     RATE_LIMIT_WINDOW_SEC,
     TRANSPORT_PRIORITY,
+    WHITELIST_SERVER_DESCRIPTION,
+    WHITELIST_SUFFIX,
 )
 from services.vpn.subscriptions.exceptions import (
     SubscriptionBuild,
@@ -751,13 +753,17 @@ class SubscriptionService:
             if logical_key in seen_logical_keys:
                 continue
 
-            display = format_node_display_name(node_name=str(node.name), region=node.region)
+            display, server_description = self._subscription_display_for_route(
+                backend_node=node,
+                entry_node=entry_node,
+            )
             uri = self._build_route_uri(
                 client_id=key.client_id,
                 backend_node=node,
                 public_node=entry_node,
                 transport_profile=transport_profile,
                 remark_override=display,
+                server_description=server_description,
             )
             if uri is None or uri in seen_uris:
                 continue
@@ -789,6 +795,10 @@ class SubscriptionService:
                     country_name=country_name,
                     display_name=display,
                     is_entry_route=is_entry,
+                    is_whitelist_route=(
+                        entry_node is not None
+                        and getattr(entry_node, "role", "") == ROLE_WHITELIST_ENTRY
+                    ),
                     preferred_backend=backend_node_id == selected_backend_id,
                     selection_rank=len(resolved_routes),
                     effective_weight=effective_weight,
@@ -1009,13 +1019,17 @@ class SubscriptionService:
                 if logical_key in seen_logical_keys:
                     continue
 
-                display = format_node_display_name(node_name=str(node.name), region=node.region)
+                display, server_description = self._subscription_display_for_route(
+                    backend_node=node,
+                    entry_node=entry_node,
+                )
                 uri = self._build_route_uri(
                     client_id=key.client_id,
                     backend_node=node,
                     public_node=entry_node,
                     transport_profile=transport_profile,
                     remark_override=display,
+                    server_description=server_description,
                 )
                 if uri is None or uri in seen_uris:
                     continue
@@ -1047,6 +1061,9 @@ class SubscriptionService:
                         country_name=country_name,
                         display_name=display,
                         is_entry_route=True,
+                        is_whitelist_route=(
+                            getattr(entry_node, "role", "") == ROLE_WHITELIST_ENTRY
+                        ),
                         preferred_backend=backend_id == selected_backend_id,
                         selection_rank=len(augmented),
                         effective_weight=effective_weight,
@@ -1308,6 +1325,48 @@ class SubscriptionService:
             applied_version = placement.op_version
         return applied_state == "applied" and applied_version == placement.op_version
 
+    def _subscription_display_for_route(
+            self,
+            *,
+            backend_node: VpnNode,
+            entry_node: VpnNode | None,
+    ) -> tuple[str, str | None]:
+        if entry_node is None:
+            return (
+                format_node_display_name(
+                    node_name=str(backend_node.name),
+                    region=backend_node.region,
+                ),
+                None,
+            )
+
+        entry_role = getattr(entry_node, "role", "")
+        if entry_role not in (ROLE_ENTRY, ROLE_WHITELIST_ENTRY):
+            return (
+                format_node_display_name(
+                    node_name=str(backend_node.name),
+                    region=backend_node.region,
+                ),
+                None,
+            )
+
+        zone_ref = getattr(entry_node, "zone_ref", None)
+        if zone_ref is not None and getattr(zone_ref, "is_active", True):
+            emoji = (getattr(zone_ref, "emoji", "") or "").strip()
+            name = (getattr(zone_ref, "name", "") or "").strip()
+            base = f"{emoji} {name}".strip() if emoji else name
+        else:
+            base = ""
+        if not base:
+            base = format_node_display_name(
+                node_name=str(entry_node.name),
+                region=entry_node.region,
+            )
+
+        if entry_role == ROLE_WHITELIST_ENTRY:
+            return f"{base}{WHITELIST_SUFFIX}", WHITELIST_SERVER_DESCRIPTION
+        return base, None
+
     def _build_route_uri(
             self,
             *,
@@ -1317,6 +1376,7 @@ class SubscriptionService:
             transport_profile,
             public_node: VpnNode | None = None,
             remark_override: str | None = None,
+            server_description: str | None = None,
     ) -> str | None:
         backend_node = backend_node or node
         if backend_node is None:
@@ -1353,6 +1413,7 @@ class SubscriptionService:
                         "fp": fingerprint,
                     },
                     remark=node_display_name,
+                    server_description=server_description,
                 ).render()
             except Exception:
                 return None
@@ -1370,6 +1431,7 @@ class SubscriptionService:
             port=transport_profile.port,
             remark=node_display_name,
             region=backend_node.region,
+            server_description=server_description,
         )
         try:
             return VlessUriBuilder.build(

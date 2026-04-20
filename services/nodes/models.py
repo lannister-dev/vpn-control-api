@@ -14,6 +14,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import mapped_column, Mapped, relationship
 
 from shared.database.base_model import Base
+from services.zones.models import Zone
 
 
 class VpnNode(Base):
@@ -32,7 +33,13 @@ class VpnNode(Base):
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"), nullable=False)
     is_draining: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"), nullable=False)
     capacity: Mapped[int] = mapped_column(Integer, default=100, server_default=text("100"), nullable=False)
-    zone: Mapped[str | None] = mapped_column(String(length=32), nullable=True, index=True)
+    zone: Mapped[str | None] = mapped_column(
+        String(length=32),
+        ForeignKey("zone.code", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    zone_ref: Mapped["Zone | None"] = relationship(lazy="joined")
     upstream_node_id: Mapped[UUID | None] = mapped_column(ForeignKey("vpn_node.id"), nullable=True, index=True)
     bootstrap_token_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

@@ -213,6 +213,23 @@ export function effectiveZone(node) {
   return inferZone(node && node.region) || "unknown";
 }
 
+export function zoneSelectOptions(stateZones, currentCode) {
+  const active = Array.isArray(stateZones) ? stateZones.filter((z) => z.is_active) : [];
+  if (active.length === 0) {
+    return ZONE_VALUES.filter((z) => z !== "unknown").map((z) => ({
+      code: z, name: ZONE_LABELS[z] || z, emoji: "",
+    }));
+  }
+  const sorted = active.slice().sort((a, b) => {
+    if (a.sort_order !== b.sort_order) return a.sort_order - b.sort_order;
+    return a.code.localeCompare(b.code);
+  });
+  if (currentCode && !sorted.some((z) => z.code === currentCode)) {
+    sorted.unshift({ code: currentCode, name: currentCode, emoji: "", is_active: false });
+  }
+  return sorted;
+}
+
 /* Plan-specific */
 export const resetLabels = { NO_RESET: "Без сброса", DAY: "Ежедневно", WEEK: "Еженедельно", MONTH: "Ежемесячно" };
 export const resetColors = { NO_RESET: "muted", DAY: "warn", WEEK: "info", MONTH: "ok" };

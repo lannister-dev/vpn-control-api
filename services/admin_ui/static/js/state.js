@@ -1,6 +1,6 @@
 export const REFRESH_MS = 15000;
 export const TABLE_LIMIT = 500;
-export const TAB_LABELS = { overview: "Главная", nodes: "Серверы", transport: "Transport", routes: "Маршруты", placements: "Плейсменты", users: "Пользователи", plans: "Тарифы", subscriptions: "Подписки", traffic: "Трафик", "admin-users": "Админы", probes: "Probes", ops: "Операции" };
+export const TAB_LABELS = { overview: "Главная", nodes: "Серверы", transport: "Transport", routes: "Маршруты", placements: "Плейсменты", users: "Пользователи", plans: "Тарифы", subscriptions: "Подписки", traffic: "Трафик", zones: "Зоны", "admin-users": "Админы", probes: "Probes", ops: "Операции" };
 
 export const $ = (id) => document.getElementById(id);
 
@@ -11,6 +11,7 @@ export const state = {
   logs: [], activeTab: "overview", loading: false,
   users: [], usersTotal: 0, usersLimit: 50, usersOffset: 0,
   plans: [],
+  zones: [],
   trafficKeys: [], trafficTotal: 0, trafficLimit: 50, trafficOffset: 0,
   trafficHistory: [], trafficHistoryTotal: 0, trafficHistoryLimit: 50, trafficHistoryOffset: 0,
   trafficHistoryKeyId: null, trafficHistoryKeyData: null,
@@ -136,6 +137,10 @@ export function initRefs() {
   refs.plansCreateBtn = $("plans-create-btn");
   refs.plansHead = $("plans-head");
   refs.plansBody = $("plans-body");
+  refs.zonesReload = $("zones-reload");
+  refs.zonesCreateBtn = $("zones-create-btn");
+  refs.zonesBody = $("zones-body");
+  refs.zonesMeta = $("zones-meta");
   refs.trafficSearch = $("traffic-search");
   refs.trafficUserId = $("traffic-user-id");
   refs.trafficRevoked = $("traffic-revoked");
@@ -175,6 +180,6 @@ export function initRefs() {
     overview: $("tab-overview"), nodes: $("tab-nodes"), transport: $("tab-transport"),
     routes: $("tab-routes"), placements: $("tab-placements"), users: $("tab-users"),
     plans: $("tab-plans"), subscriptions: $("tab-subscriptions"), traffic: $("tab-traffic"),
-    "admin-users": $("tab-admin-users"), probes: $("tab-probes"), ops: $("tab-ops"),
+    zones: $("tab-zones"), "admin-users": $("tab-admin-users"), probes: $("tab-probes"), ops: $("tab-ops"),
   };
 }
