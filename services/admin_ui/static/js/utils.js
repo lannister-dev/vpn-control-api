@@ -183,6 +183,36 @@ export function nodeGeo(region) {
   return { code, country, flag, short, regionText, full: `${short} \u00B7 ${regionText}` };
 }
 
+/* Zones */
+export const ZONE_VALUES = ["europe", "asia", "americas", "oceania", "africa", "unknown"];
+export const ZONE_LABELS = {
+  europe: "Europe",
+  asia: "Asia",
+  americas: "Americas",
+  oceania: "Oceania",
+  africa: "Africa",
+  unknown: "Unknown",
+};
+export const COUNTRY_CODE_TO_ZONE = {
+  FI: "europe", DE: "europe", NL: "europe", PL: "europe", GB: "europe",
+  FR: "europe", ES: "europe", IT: "europe", SE: "europe", NO: "europe",
+  DK: "europe", CH: "europe", AT: "europe", CZ: "europe", UA: "europe",
+  RU: "europe", KZ: "europe", LV: "europe", TR: "europe",
+  SG: "asia", JP: "asia", KR: "asia", HK: "asia", IN: "asia", AE: "asia", IL: "asia",
+  US: "americas", CA: "americas", MX: "americas", BR: "americas",
+  AU: "oceania",
+};
+export function inferZone(region) {
+  const cc = countryCodeFromRegion(region);
+  if (!cc) return null;
+  return COUNTRY_CODE_TO_ZONE[cc] || null;
+}
+export function effectiveZone(node) {
+  const explicit = String(node && node.zone || "").trim().toLowerCase();
+  if (explicit && ZONE_VALUES.includes(explicit)) return explicit;
+  return inferZone(node && node.region) || "unknown";
+}
+
 /* Plan-specific */
 export const resetLabels = { NO_RESET: "Без сброса", DAY: "Ежедневно", WEEK: "Еженедельно", MONTH: "Ежемесячно" };
 export const resetColors = { NO_RESET: "muted", DAY: "warn", WEEK: "info", MONTH: "ok" };

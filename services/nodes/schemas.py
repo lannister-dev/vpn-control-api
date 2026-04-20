@@ -20,6 +20,7 @@ class VpnNodeCreate(BaseModel):
     is_enabled: bool = True
     is_draining: bool = False
     capacity: int = 100
+    zone: str | None = None
 
 
 class VpnNodeUpdate(BaseModel):
@@ -46,6 +47,7 @@ class AdminNodeUpdateIn(BaseModel):
     reality_ip: str | None = None
     upstream_node_id: UUID | None = None
     capacity: int | None = Field(default=None, ge=1, le=10000)
+    zone: str | None = Field(default=None, max_length=32)
     is_enabled: bool | None = None
     is_draining: bool | None = None
     model_config = ConfigDict(extra="forbid")
@@ -65,6 +67,7 @@ class VpnNodeOut(BaseModel):
     is_enabled: bool
     is_draining: bool
     capacity: int
+    zone: str | None = None
     upstream_node_id: UUID | None = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -80,9 +83,34 @@ class HeartbeatRuntime(BaseModel):
     last_error: Optional[str] = None
 
 
+class HeartbeatPool(BaseModel):
+    slots_total: int = Field(ge=0)
+    slots_active: int = Field(ge=0)
+    desired_backends: int = Field(ge=0)
+    dropped_overflow: int = Field(ge=0, default=0)
+    last_apply_ok: bool = True
+    last_apply_error: str | None = None
+    consecutive_apply_failures: int = Field(ge=0, default=0)
+    last_applied_generation: int = Field(ge=0, default=0)
+    last_applied_at: datetime | None = None
+
+
+class HeartbeatUpstream(BaseModel):
+    configured: bool = False
+    last_apply_ok: bool = True
+    last_apply_error: str | None = None
+    consecutive_apply_failures: int = Field(ge=0, default=0)
+    upstream_node_id: str | None = None
+    upstream_host: str | None = None
+    upstream_addr: str | None = None
+    last_applied_at: datetime | None = None
+
+
 class HeartbeatDetails(BaseModel):
     runtime: HeartbeatRuntime
     stats: HeartbeatStats
+    pool: HeartbeatPool | None = None
+    upstream: HeartbeatUpstream | None = None
 
 
 class NodeSyncDetails(BaseModel):
@@ -97,6 +125,8 @@ class NodeAgentDetails(BaseModel):
     runtime: HeartbeatRuntime | None = None
     stats: HeartbeatStats | None = None
     sync: NodeSyncDetails | None = None
+    pool: HeartbeatPool | None = None
+    upstream: HeartbeatUpstream | None = None
 
     model_config = ConfigDict(extra="allow")
 
@@ -166,6 +196,7 @@ class AdminNodeCreateIn(BaseModel):
     reality_ip: str | None = Field(default=None, max_length=64)
     internal_wg_ip: str = Field(default="", max_length=64)
     capacity: int = Field(default=100, ge=1, le=10000)
+    zone: str | None = Field(default=None, max_length=32)
 
     model_config = ConfigDict(extra="forbid")
 

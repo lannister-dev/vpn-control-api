@@ -5,7 +5,7 @@ import { notify, pushLog, confirmAction, initTooltips, initCopyButtons, trackFor
 
 // Tab modules
 import { renderOverview } from './tabs/overview.js';
-import { filteredNodes, renderNodes, openNodeConfigModal, openAddNodeModal, bindNodeEvents, setCallbacks as setNodeCallbacks } from './tabs/nodes.js';
+import { filteredNodes, renderNodes, openNodeDetail, openAddNodeModal, bindNodeEvents, setCallbacks as setNodeCallbacks } from './tabs/nodes.js';
 import { filteredRoutes, renderRoutes, openEntryNodeModal, openRouteCreateModal, openRouteEditModal, bindRouteEvents, setCallbacks as setRouteCallbacks } from './tabs/routes.js';
 import { filteredPlacements, renderPlacements, renderPlacementMeta, bindPlacementEvents, setCallbacks as setPlacementCallbacks } from './tabs/placements.js';
 import { filteredSubscriptions, renderSubscriptions, renderSubPlanFilter, renderSubUserContext, renderSubscriptionDetail, renderSubscriptionDevices, renderSubscriptionCreateResult, bindSubscriptionEvents, setCallbacks as setSubCallbacks } from './tabs/subscriptions.js';
@@ -13,7 +13,7 @@ import { loadTransportData, renderTransportKpi, renderTransportNodes, switchTran
 import { loadProbes, filteredProbes, renderProbes, bindProbeEvents } from './tabs/probes.js';
 import { loadUsers, renderUsers, openUserEditModal, navigateToUserSubscriptions, bindUserEvents, setCallbacks as setUserCallbacks } from './tabs/users.js';
 import { loadPlans, renderPlanSelect, renderPlans, openPlanEditModal, bindPlanEvents } from './tabs/plans.js';
-import { loadTrafficKeys, updateTrafficKpis, loadTrafficHistory, renderTraffic, renderTrafficHistory, renderTrafficChart, bindTrafficEvents } from './tabs/traffic.js';
+import { loadTrafficKeys, updateTrafficKpis, loadTrafficHistory, renderTraffic, renderTrafficHistory, renderTrafficChart, bindTrafficEvents, switchTrafficSub } from './tabs/traffic.js';
 import { loadNodesTraffic, bindTrafficNodesEvents } from './tabs/traffic-nodes.js';
 import { loadAdminUsers, renderAdminUsers, openEditModal, bindAdminUserEvents } from './tabs/admin-users.js';
 import { bindOpsEvents, setCallbacks as setOpsCallbacks } from './tabs/ops.js';
@@ -43,8 +43,14 @@ function setTab(tab) {
   refs.crumbs.textContent = "Dashboard \u2022 " + (TAB_LABELS[tab] || tab);
   if (tab === "users" && state.users.length === 0) loadUsers().catch((e) => notify("Ошибка загрузки пользователей: " + e.message, true));
   if (tab === "plans" && state.plans.length === 0) loadPlans().catch((e) => notify("Ошибка загрузки планов: " + e.message, true));
-  if (tab === "traffic" && state.trafficKeys.length === 0) loadTrafficKeys().catch((e) => notify("Ошибка загрузки трафика: " + e.message, true));
-  if (tab === "traffic-nodes" && state.trafficNodes.length === 0) loadNodesTraffic().catch((e) => notify("Ошибка загрузки трафика серверов: " + e.message, true));
+  if (tab === "traffic") {
+    switchTrafficSub(state.trafficSubTab || "keys");
+    if (state.trafficSubTab === "nodes") {
+      if (state.trafficNodes.length === 0) loadNodesTraffic().catch((e) => notify("Ошибка загрузки трафика серверов: " + e.message, true));
+    } else if (state.trafficKeys.length === 0) {
+      loadTrafficKeys().catch((e) => notify("Ошибка загрузки трафика: " + e.message, true));
+    }
+  }
   if (tab === "admin-users" && state.adminUsers.length === 0) loadAdminUsers().catch((e) => notify("Ошибка загрузки admin users: " + e.message, true));
   if (tab === "transport") loadTransportData().catch((e) => notify("Transport load error: " + e.message, true));
   if (tab === "subscriptions" && state.plans.length === 0) loadPlans().catch(() => {});
@@ -73,7 +79,11 @@ async function refreshAll(fullRefresh) {
     const tab = state.activeTab;
     const fetches = [];
     if (fullRefresh || tab === "overview") {
-      fetches.push(Promise.all([req("/api/v1/admin/transport/overview"), req("/api/v1/admin/transport/nodes")]).then(([ov, nl]) => { state.transportOverview = ov; state.transportNodes = nl.items || []; }).catch(() => {}));
+      fetches.push(Promise.all([req("/api/v1/admin/transport/overview"), req("/api/v1/admin/transport/nodes")]).then(([ov, nl]) => {
+        state.transportOverview = ov;
+        state.transportNodes = nl.items || [];
+        if (ov && ov.nats_connected) state.natsLastOnlineAt = Date.now();
+      }).catch(() => {}));
     }
     if (fullRefresh || tab === "routes" || tab === "overview") {
       fetches.push(req("/api/v1/routes?limit=500").then((r) => { state.routes = r; }));
@@ -110,8 +120,8 @@ setCommandItems([
   { label: "Пользователи", icon: "\uD83D\uDC65", section: "Навигация", action: () => setTab("users") },
   { label: "Тарифы", icon: "\uD83D\uDCB0", section: "Навигация", action: () => setTab("plans") },
   { label: "Подписки", icon: "\uD83D\uDD10", section: "Навигация", action: () => setTab("subscriptions") },
-  { label: "Трафик", icon: "\uD83D\uDCCA", section: "Навигация", action: () => setTab("traffic") },
-  { label: "Трафик · Серверы", icon: "\uD83D\uDCE1", section: "Навигация", action: () => setTab("traffic-nodes") },
+  { label: "Трафик · Ключи", icon: "\uD83D\uDCCA", section: "Навигация", action: () => { setTab("traffic"); switchTrafficSub("keys"); } },
+  { label: "Трафик · Сервера", icon: "\uD83D\uDCE1", section: "Навигация", action: () => { setTab("traffic"); switchTrafficSub("nodes"); } },
   { label: "Админы", icon: "\u2699", section: "Навигация", action: () => setTab("admin-users") },
   { label: "Проверки", icon: "\uD83D\uDD0D", section: "Навигация", action: () => setTab("probes") },
 ]);
@@ -142,6 +152,47 @@ bindTrafficNodesEvents();
 bindAdminUserEvents();
 bindOpsEvents();
 setupLogout();
+
+// Dashboard delegated click: quick actions + priority issues
+const tabOverviewEl = document.getElementById("tab-overview");
+if (tabOverviewEl) {
+  tabOverviewEl.addEventListener("click", (ev) => {
+    const target = ev.target;
+    if (!(target instanceof HTMLElement)) return;
+
+    const qa = target.closest(".dash-quick-btn");
+    if (qa && qa.dataset.qa) {
+      const act = qa.dataset.qa;
+      if (act === "add-node") openAddNodeModal();
+      else if (act === "add-route") openRouteCreateModal();
+      else if (act === "add-plan") { setTab("plans"); setTimeout(() => document.getElementById("plans-create-btn")?.click(), 0); }
+      else if (act === "add-user") { setTab("users"); setTimeout(() => document.getElementById("users-create-btn")?.click(), 0); }
+      else if (act === "ops") setTab("ops");
+      return;
+    }
+
+    const issueBtn = target.closest(".dash-issue");
+    if (issueBtn && issueBtn.dataset.idx != null) {
+      const host = document.getElementById("dash-issues");
+      const issues = host && host._issues;
+      if (!issues) return;
+      const item = issues[Number(issueBtn.dataset.idx)];
+      if (!item || !item.target) return;
+      const t = item.target;
+      if (t.type === "node" && t.id) {
+        setTab("nodes");
+        setTimeout(() => openNodeDetail(t.id), 0);
+      } else if (t.type === "routes") {
+        setTab("routes");
+      } else if (t.type === "probes") {
+        setTab("probes");
+      } else if (t.type === "transport") {
+        setTab("transport");
+      }
+      return;
+    }
+  });
+}
 
 // Global delegated click: UUID copy + sortable headers + row selection
 document.addEventListener("click", (ev) => {

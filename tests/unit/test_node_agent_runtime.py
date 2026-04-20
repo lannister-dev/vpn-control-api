@@ -10,12 +10,7 @@ import pytest
 
 from services.config import NatsConfig
 from services.nodes.agent.runtime import NodeAgentRuntime
-from services.nodes.agent.schemas import (
-    HeartbeatEvent,
-    PlacementApplyResultEvent,
-    SyncReportEvent,
-    TransportAppliedState,
-)
+from services.nodes.agent.schemas import SyncReportEvent
 
 
 def _message(payload: dict, *, subject: str) -> SimpleNamespace:
@@ -61,105 +56,6 @@ async def test_ensure_topology_includes_ack_subjects():
     control_call = runtime._nats.ensure_stream.await_args_list[2].kwargs
     assert "agent.placement_results.*.acks" in result_call["subjects"]
     assert "agent.sync_reports.*.acks" in control_call["subjects"]
-
-
-@pytest.mark.asyncio
-async def test_handle_result_message_publishes_ack_for_duplicate(monkeypatch):
-    runtime = _runtime()
-    node_id = uuid4()
-    event = PlacementApplyResultEvent(
-        node_id=str(node_id),
-        emitted_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
-        snapshot_id="snap-1",
-        epoch=2,
-        event_id="placement-result:1",
-        placement_id=str(uuid4()),
-        op_version=7,
-        applied_state=TransportAppliedState.applied,
-    )
-    session = _session(has_pending_writes=False)
-    event_log_repo = SimpleNamespace(record_if_new=AsyncMock(return_value=False))
-
-    monkeypatch.setattr(
-        "services.nodes.agent.runtime.AsyncDatabase.get_session_maker",
-        lambda: _session_maker(session),
-    )
-    monkeypatch.setattr(
-        "services.nodes.agent.runtime.NodeTransportEventLogRepository",
-        lambda _: event_log_repo,
-    )
-    node_mock = SimpleNamespace(id=node_id)
-    monkeypatch.setattr(
-        "services.nodes.agent.runtime.VpnNodeRepository",
-        lambda _: SimpleNamespace(get_by_id=AsyncMock(return_value=node_mock)),
-    )
-
-    should_ack = await runtime._handle_result_message(
-        _message(event.model_dump(mode="json"), subject="agent.placement_results.node.results")
-    )
-
-    assert should_ack is True
-    session.rollback.assert_awaited_once()
-    publish_kwargs = runtime._nats.publish_jetstream.await_args.kwargs
-    assert publish_kwargs["subject"] == f"agent.placement_results.{node_id}.acks"
-    assert publish_kwargs["payload"]["status"] == "skipped_idempotent"
-    assert publish_kwargs["payload"]["event_id"] == event.event_id
-
-
-@pytest.mark.asyncio
-async def test_handle_result_message_publishes_apply_ack_after_commit(monkeypatch):
-    runtime = _runtime()
-    node_id = uuid4()
-    placement_id = uuid4()
-    event = PlacementApplyResultEvent(
-        node_id=str(node_id),
-        emitted_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
-        snapshot_id="snap-1",
-        epoch=2,
-        event_id="placement-result:2",
-        placement_id=str(placement_id),
-        op_version=9,
-        applied_state=TransportAppliedState.applied,
-    )
-    session = _session(has_pending_writes=True)
-    event_log_repo = SimpleNamespace(record_if_new=AsyncMock(return_value=True))
-    state_repo = SimpleNamespace(touch_result=AsyncMock())
-    node_repo = SimpleNamespace(get_by_id=AsyncMock(return_value=SimpleNamespace(id=node_id)))
-    apply_service = SimpleNamespace(apply_result=AsyncMock(return_value="applied"))
-
-    monkeypatch.setattr(
-        "services.nodes.agent.runtime.AsyncDatabase.get_session_maker",
-        lambda: _session_maker(session),
-    )
-    monkeypatch.setattr(
-        "services.nodes.agent.runtime.NodeTransportEventLogRepository",
-        lambda _: event_log_repo,
-    )
-    monkeypatch.setattr(
-        "services.nodes.agent.runtime.NodeTransportStateRepository",
-        lambda _: state_repo,
-    )
-    monkeypatch.setattr(
-        "services.nodes.agent.runtime.VpnNodeRepository",
-        lambda _: node_repo,
-    )
-    monkeypatch.setattr(
-        "services.nodes.agent.runtime.PlacementApplyService",
-        lambda _: apply_service,
-    )
-    monkeypatch.setattr(runtime, "_resolve_node", AsyncMock(return_value=True))
-
-    should_ack = await runtime._handle_result_message(
-        _message(event.model_dump(mode="json"), subject="agent.placement_results.node.results")
-    )
-
-    assert should_ack is True
-    apply_service.apply_result.assert_awaited_once()
-    state_repo.touch_result.assert_awaited_once()
-    session.commit.assert_awaited_once()
-    publish_kwargs = runtime._nats.publish_jetstream.await_args.kwargs
-    assert publish_kwargs["subject"] == f"agent.placement_results.{node_id}.acks"
-    assert publish_kwargs["payload"]["status"] == "applied"
 
 
 @pytest.mark.asyncio

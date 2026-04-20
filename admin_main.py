@@ -7,9 +7,11 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from starlette.staticfiles import StaticFiles
 
 from shared.database.session import AsyncDatabase
+from shared.nats.client import NatsClient
 from shared.profiles.init import bootstrap_profiles_registry
 from shared.redis.client import redis_client
 from shared.utils.logger import StructuredLogger
+from services.config import get_settings
 
 # Admin UI (panel + static)
 from services.admin_ui.router import router as admin_ui_router, STATIC_DIR
@@ -46,10 +48,28 @@ async def lifespan(app: FastAPI):
     async with session_maker() as session:
         await bootstrap_profiles_registry(session)
 
+    settings = get_settings()
+    nats_client: NatsClient | None = None
+    if settings.nats.enabled:
+        nats_client = NatsClient(settings.nats)
+        try:
+            await nats_client.connect()
+            app.state.nats_client = nats_client
+            app.state.nats_config = settings.nats
+            log.info("admin_nats_connected")
+        except Exception as exc:
+            log.exception("admin_nats_connect_failed", error=str(exc))
+            nats_client = None
+
     log.info("admin_panel_ready")
     try:
         yield
     finally:
+        if nats_client is not None:
+            try:
+                await nats_client.close()
+            except Exception:
+                log.exception("admin_nats_close_failed")
         log.info("admin_panel_shutdown")
 
 

@@ -5,13 +5,13 @@ import logging
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from fastapi import HTTPException
 from sqlalchemy import text
 
 from services.config import NatsConfig
 from services.nodes.agent.constants import (
     NODE_AGENT_RUNTIME_LEADER_LOCK_KEY,
     NODE_AGENT_RUNTIME_LEADER_POLL_INTERVAL_S,
+    NODE_AGENT_SNAPSHOT_CHUNK_SIZE,
 )
 from services.nodes.agent.repository import (
     NodeTransportEventLogRepository,
@@ -25,25 +25,30 @@ from services.nodes.agent.schemas import (
     PlacementApplyResultEvent,
     PlacementCommandEvent,
     PlacementCommandPayload,
+    PlacementResultApply,
+    RuntimeStatus,
+    RuntimeTaskStatus,
     SnapshotChunkEvent,
     SnapshotRequestEvent,
     SyncReportAckEvent,
     SyncReportAckStatus,
     SyncReportEvent,
+    TransportEventLogInsert,
     TransportReportStatus,
 )
 from services.nodes.repository import VpnNodeRepository
 from services.nodes.schemas import (
     HeartbeatDetails,
+    HeartbeatPool,
     HeartbeatRuntime,
     HeartbeatStats,
+    HeartbeatUpstream,
     NodeHeartbeatIn,
     NodeSyncReportIn,
 )
 from services.nodes.service import VpnNodeService
 from services.placements.transport import NodeAgentPlacementTransport
-from services.placements.schemas import PlacementAppliedState, PlacementApplyResultIn
-from services.placements.service import PlacementApplyService
+from services.placements.schemas import PlacementAppliedState
 from shared.database.session import AsyncDatabase, WriteAwareAsyncSession
 from shared.nats.client import NatsClient
 from shared.utils.logger import StructuredLogger
@@ -217,41 +222,35 @@ class NodeAgentRuntime:
     def _has_leader_lock(self) -> bool:
         return self._leader_connection is not None
 
-    def get_runtime_status(self) -> dict:
+    @property
+    def is_leader(self) -> bool:
+        return self._leader_connection is not None
+
+    def get_runtime_status(self) -> RuntimeStatus:
         now = datetime.now(timezone.utc)
-        uptime_s = None
-        if self._started_at is not None:
-            uptime_s = (now - self._started_at).total_seconds()
-        tasks = []
-        for task in self._tasks:
-            error = None
-            if task.done() and task.exception() is not None:
-                try:
-                    error = str(task.exception())
-                except Exception:
-                    error = "unknown error"
-            tasks.append({
-                "name": task.get_name(),
-                "running": not task.done(),
-                "error": error,
-            })
+        uptime_s = (now - self._started_at).total_seconds() if self._started_at is not None else None
+        tasks = [self._task_status(t) for t in self._tasks]
         if self._leader_task is not None:
-            error = None
-            if self._leader_task.done() and self._leader_task.exception() is not None:
-                try:
-                    error = str(self._leader_task.exception())
-                except Exception:
-                    error = "unknown error"
-            tasks.append({
-                "name": self._leader_task.get_name(),
-                "running": not self._leader_task.done(),
-                "error": error,
-            })
-        return {
-            "nats_connected": self._nats.is_connected,
-            "uptime_s": uptime_s,
-            "tasks": tasks,
-        }
+            tasks.append(self._task_status(self._leader_task))
+        return RuntimeStatus(
+            nats_connected=self._nats.is_connected,
+            uptime_s=uptime_s,
+            tasks=tasks,
+        )
+
+    @staticmethod
+    def _task_status(task: asyncio.Task) -> RuntimeTaskStatus:
+        error: str | None = None
+        if task.done() and task.exception() is not None:
+            try:
+                error = str(task.exception())
+            except Exception:
+                error = "unknown error"
+        return RuntimeTaskStatus(
+            name=task.get_name(),
+            running=not task.done(),
+            error=error,
+        )
 
     async def trigger_snapshot_for_node(self, *, node_id: UUID, reason: str = "admin_requested") -> None:
         session_maker = AsyncDatabase.get_session_maker()
@@ -298,7 +297,7 @@ class NodeAgentRuntime:
                     epoch=epoch, chunk_index=0, is_last_chunk=True, items=[],
                 )
             else:
-                chunked = self._chunk_items(snapshot_items, chunk_size=200)
+                chunked = self._chunk_items(snapshot_items, chunk_size=NODE_AGENT_SNAPSHOT_CHUNK_SIZE)
                 for index, chunk in enumerate(chunked):
                     is_last = index == len(chunked) - 1
                     for item in chunk:
@@ -367,8 +366,6 @@ class NodeAgentRuntime:
                 command_payload: PlacementCommandPayload | None = None
 
                 if row.event_type in ("upstream_changed", "pool_changed"):
-                    # Passthrough events: payload already holds the full wire
-                    # envelope. Agents decode based on event_type or by subject.
                     publish_payload = row.payload
                 else:
                     command_payload = PlacementCommandPayload.model_validate(row.payload)
@@ -497,12 +494,10 @@ class NodeAgentRuntime:
                 await asyncio.gather(*[_handle(msg) for msg in messages])
 
     async def _handle_result_batch(self, messages: list) -> list[bool]:
-        """Process a batch of placement results with bulk DB operations."""
         if not messages:
             return []
 
-        # 1. Parse all events
-        parsed: list[tuple] = []  # (msg, event, node_id)
+        parsed: list[tuple] = []
         ack_flags: list[bool] = [False] * len(messages)
         ack_statuses: list[TransportReportStatus | None] = [None] * len(messages)
 
@@ -525,7 +520,6 @@ class NodeAgentRuntime:
 
         session_maker = AsyncDatabase.get_session_maker()
         async with session_maker() as session:
-            # 2. Bulk resolve nodes (one SELECT with IN)
             unique_node_ids = {nid for _, _, _, nid in parsed}
             node_repo = VpnNodeRepository(session)
             nodes: dict[UUID, object] = {}
@@ -534,7 +528,6 @@ class NodeAgentRuntime:
                 if node:
                     nodes[nid] = node
 
-            # Filter out unknown nodes
             valid: list[tuple] = []
             for i, msg, event, node_id in parsed:
                 if node_id not in nodes:
@@ -547,23 +540,23 @@ class NodeAgentRuntime:
                 await session.rollback()
                 return ack_flags
 
-            # 3. Bulk insert event_log (one INSERT ... ON CONFLICT DO NOTHING RETURNING)
             now = datetime.now(timezone.utc)
             event_log_items = [
-                {
-                    "node_id": node_id,
-                    "event_type": "placement_result",
-                    "event_id": event.event_id,
-                    "subject": getattr(msg, "subject", None),
-                    "payload": event.model_dump(mode="json"),
-                    "processed_at": now,
-                }
+                TransportEventLogInsert(
+                    node_id=node_id,
+                    event_type="placement_result",
+                    event_id=event.event_id,
+                    subject=getattr(msg, "subject", None),
+                    payload=event.model_dump(mode="json"),
+                    processed_at=now,
+                )
                 for _, msg, event, node_id in valid
             ]
             event_log_repo = NodeTransportEventLogRepository(session)
-            new_event_ids = await event_log_repo.bulk_record_if_new(event_log_items)
+            new_event_ids = await event_log_repo.bulk_record_if_new(
+                [item.model_dump(mode="python") for item in event_log_items]
+            )
 
-            # Separate new vs duplicate
             new_items: list[tuple] = []
             for i, msg, event, node_id in valid:
                 if event.event_id not in new_event_ids:
@@ -572,23 +565,23 @@ class NodeAgentRuntime:
                 else:
                     new_items.append((i, msg, event, node_id))
 
-            # 4. Bulk update placements (one UPDATE per applied_state)
-            updated_placement_ids: set[UUID] = set()
             if new_items:
                 from services.placements.repository import UserPlacementRepository
                 placement_repo = UserPlacementRepository(session)
                 bulk_items = [
-                    {
-                        "id": UUID(event.placement_id),
-                        "op_version": event.op_version,
-                        "backend_node_id": nodes[node_id].id,
-                        "applied_state": event.applied_state.value,
-                        "applied_version": event.op_version,
-                        "updated_at": now,
-                    }
+                    PlacementResultApply(
+                        id=UUID(event.placement_id),
+                        op_version=event.op_version,
+                        backend_node_id=nodes[node_id].id,
+                        applied_state=event.applied_state.value,
+                        applied_version=event.op_version,
+                        updated_at=now,
+                    )
                     for _, _, event, node_id in new_items
                 ]
-                updated_placement_ids = await placement_repo.bulk_apply_backend_report(bulk_items)
+                updated_placement_ids = await placement_repo.bulk_apply_backend_report(
+                    [item.model_dump(mode="python") for item in bulk_items]
+                )
 
                 for i, msg, event, node_id in new_items:
                     pid = UUID(event.placement_id)
@@ -604,7 +597,6 @@ class NodeAgentRuntime:
                         ack_statuses[i] = TransportReportStatus.skipped_stale
                     ack_flags[i] = True
 
-            # 5. Touch transport state per node (few queries — 2-3 nodes max)
             state_repo = NodeTransportStateRepository(session)
             last_events: dict[UUID, tuple[str, datetime]] = {}
             for _, _, event, node_id in valid:
@@ -614,7 +606,6 @@ class NodeAgentRuntime:
 
             await self._finish_session(session)
 
-        # 6. Publish all acks
         for i, _, event, _ in parsed:
             if ack_statuses[i] is not None:
                 await self._publish_result_ack(
@@ -624,65 +615,6 @@ class NodeAgentRuntime:
                 )
 
         return ack_flags
-
-    async def _handle_result_message(self, msg) -> bool:
-        event = PlacementApplyResultEvent.model_validate_json(msg.data.decode())
-        node_id = self._parse_node_id(event.node_id)
-        if node_id is None:
-            logger_transport.warning("placement_result_invalid_node_id", node_id=event.node_id)
-            return True
-
-        session_maker = AsyncDatabase.get_session_maker()
-        async with session_maker() as session:
-            node = await VpnNodeRepository(session).get_by_id(node_id)
-            if node is None:
-                logger_transport.warning("placement_result_unknown_node", node_id=str(node_id))
-                await session.rollback()
-                return True
-
-            event_log_repo = NodeTransportEventLogRepository(session)
-            is_new = await event_log_repo.record_if_new(
-                node_id=node_id,
-                event_type="placement_result",
-                event_id=event.event_id,
-                subject=getattr(msg, "subject", None),
-                payload=event.model_dump(mode="json"),
-                processed_at=datetime.now(timezone.utc),
-            )
-            if not is_new:
-                await session.rollback()
-                return await self._publish_result_ack(
-                    node_id=event.node_id,
-                    result_event=event,
-                    status=TransportReportStatus.skipped_idempotent,
-                )
-
-            service = PlacementApplyService(session)
-            try:
-                ack_status = await service.apply_result(
-                    node=node,
-                    placement_id=UUID(event.placement_id),
-                    payload=PlacementApplyResultIn(
-                        op_version=event.op_version,
-                        applied_state=PlacementAppliedState(event.applied_state.value),
-                    ),
-                )
-            except HTTPException as exc:
-                if exc.status_code in {403, 404}:
-                    ack_status = "skipped_stale"
-                else:
-                    raise
-            await NodeTransportStateRepository(session).touch_result(
-                node_id=node_id,
-                event_id=event.event_id,
-                at=event.emitted_at,
-            )
-            await self._finish_session(session)
-            return await self._publish_result_ack(
-                node_id=event.node_id,
-                result_event=event,
-                status=TransportReportStatus(ack_status),
-            )
 
     async def _handle_snapshot_request_message(self, msg) -> bool:
         event = SnapshotRequestEvent.model_validate_json(msg.data.decode())
@@ -744,7 +676,7 @@ class NodeAgentRuntime:
                     items=[],
                 )
             else:
-                chunked = self._chunk_items(snapshot_items, chunk_size=200)
+                chunked = self._chunk_items(snapshot_items, chunk_size=NODE_AGENT_SNAPSHOT_CHUNK_SIZE)
                 for index, chunk in enumerate(chunked):
                     is_last = index == len(chunked) - 1
                     for item in chunk:
@@ -786,6 +718,14 @@ class NodeAgentRuntime:
                 return True
 
             service = VpnNodeService(session)
+            pool_details = (
+                HeartbeatPool(**event.pool.model_dump())
+                if event.pool is not None else None
+            )
+            upstream_details = (
+                HeartbeatUpstream(**event.upstream.model_dump())
+                if event.upstream is not None else None
+            )
             await service.handle_heartbeat(
                 node=node,
                 payload=NodeHeartbeatIn(
@@ -798,6 +738,8 @@ class NodeAgentRuntime:
                             applied=event.applied,
                             failed=event.failed,
                         ),
+                        pool=pool_details,
+                        upstream=upstream_details,
                     ),
                 ),
             )
@@ -947,8 +889,3 @@ class NodeAgentRuntime:
     @staticmethod
     def _chunk_items(items: list[PlacementCommandEvent], *, chunk_size: int) -> list[list[PlacementCommandEvent]]:
         return [items[idx: idx + chunk_size] for idx in range(0, len(items), chunk_size)]
-
-    @staticmethod
-    async def _resolve_node(session: WriteAwareAsyncSession, node_id: UUID) -> bool:
-        node = await VpnNodeRepository(session).get_by_id(node_id)
-        return node is not None

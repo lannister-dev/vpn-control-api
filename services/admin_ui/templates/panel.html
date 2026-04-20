@@ -32,43 +32,33 @@
       </section>
       <nav class="nav">
         <section class="nav-group">
-          <div class="nav-group-title">Overview</div>
-          <button class="active" data-tab="overview"><span class="nav-icon">H</span><span>Home</span></button>
+          <div class="nav-group-title">Обзор</div>
+          <button class="active" data-tab="overview"><span class="nav-icon">🏠</span><span>Главная</span></button>
         </section>
         <section class="nav-group">
-          <div class="nav-group-title">Management</div>
-          <button data-tab="nodes"><span class="nav-icon">N</span><span>Servers</span></button>
-          <button data-tab="transport"><span class="nav-icon">Z</span><span>Transport</span></button>
-          <button data-tab="routes"><span class="nav-icon">R</span><span>Routes</span></button>
-          <button data-tab="placements"><span class="nav-icon">P</span><span>Placements</span></button>
-          <button data-tab="users"><span class="nav-icon">W</span><span>Users</span></button>
-          <button data-tab="plans"><span class="nav-icon">$</span><span>Plans</span></button>
-          <button data-tab="subscriptions"><span class="nav-icon">S</span><span>Subscriptions</span></button>
-          <button data-tab="traffic"><span class="nav-icon">T</span><span>Traffic</span></button>
-          <button data-tab="traffic-nodes"><span class="nav-icon">N</span><span>Traffic · Nodes</span></button>
-          <button data-tab="admin-users"><span class="nav-icon">U</span><span>Admins</span></button>
-          <button disabled><span class="nav-icon">A</span><span>API Tokens</span></button>
+          <div class="nav-group-title">Инфраструктура</div>
+          <button data-tab="nodes"><span class="nav-icon">🖥</span><span>Серверы</span></button>
+          <button data-tab="transport"><span class="nav-icon">🚀</span><span>Transport</span></button>
+          <button data-tab="routes"><span class="nav-icon">🛣</span><span>Маршруты</span></button>
+          <button data-tab="placements"><span class="nav-icon">📍</span><span>Плейсменты</span></button>
+          <button data-tab="probes"><span class="nav-icon">🔍</span><span>Probes</span></button>
         </section>
         <section class="nav-group">
-          <div class="nav-group-title">Monitoring</div>
-          <button data-tab="probes"><span class="nav-icon">Q</span><span>Probes</span></button>
+          <div class="nav-group-title">Бизнес</div>
+          <button data-tab="users"><span class="nav-icon">👥</span><span>Пользователи</span></button>
+          <button data-tab="plans"><span class="nav-icon">💰</span><span>Тарифы</span></button>
+          <button data-tab="subscriptions"><span class="nav-icon">🔐</span><span>Подписки</span></button>
+          <button data-tab="traffic"><span class="nav-icon">📊</span><span>Трафик</span></button>
         </section>
         <section class="nav-group">
-          <div class="nav-group-title">Utilities</div>
-          <button data-tab="ops"><span class="nav-icon">O</span><span>Ops</span></button>
-          <button disabled><span class="nav-icon">S</span><span>Subscription Page</span></button>
+          <div class="nav-group-title">Система</div>
+          <button data-tab="admin-users"><span class="nav-icon">⚙</span><span>Админы</span></button>
+          <button data-tab="ops"><span class="nav-icon">🛠</span><span>Операции</span></button>
         </section>
       </nav>
-      <section class="row muted">
-        <label><input id="live-refresh" type="checkbox" checked /> Автообновление</label>
-        <select id="refresh-interval" class="select">
-          <option value="5000">5 сек</option>
-          <option value="15000" selected>15 сек</option>
-          <option value="30000">30 сек</option>
-          <option value="60000">60 сек</option>
-        </select>
+      <section class="sidebar-footer muted">
+        <div class="shortcut-hint"><kbd>⌘K</kbd> команды · <kbd>?</kbd> помощь</div>
         <div>Readiness: <span id="readiness-text">unknown</span></div>
-        <div>Последнее обновление: <span id="last-sync">-</span></div>
       </section>
     </aside>
 
@@ -80,50 +70,86 @@
             <div id="crumbs" class="crumbs">Dashboard &bull; Home</div>
             <div id="hero-status" class="muted">Выберите раздел и обновите данные.</div>
           </div>
-          <div class="mono muted">Control API /api/v1</div>
+          <div class="hero-controls">
+            <label class="auto-refresh-toggle"><input id="live-refresh" type="checkbox" checked /> Автообновление</label>
+            <select id="refresh-interval" class="select">
+              <option value="5000">5с</option>
+              <option value="15000" selected>15с</option>
+              <option value="30000">30с</option>
+              <option value="60000">60с</option>
+            </select>
+            <div class="hero-last-sync mono muted">Обновлено: <span id="last-sync">-</span></div>
+          </div>
         </div>
         <div class="kpis">
           <div class="kpi"><div class="kpi-icon blue">🖥</div><div class="kpi-content"><div class="kpi-name">Серверы</div><div id="kpi-nodes" class="kpi-value">-</div></div></div>
           <div class="kpi"><div class="kpi-icon green">✓</div><div class="kpi-content"><div class="kpi-name">Здоровые</div><div id="kpi-healthy" class="kpi-value">-</div></div></div>
-          <div class="kpi"><div class="kpi-icon amber">⏳</div><div class="kpi-content"><div class="kpi-name">Draining</div><div id="kpi-draining" class="kpi-value">-</div></div></div>
-          <div class="kpi"><div class="kpi-icon cyan">◎</div><div class="kpi-content"><div class="kpi-name">Плейсменты</div><div id="kpi-placements" class="kpi-value">-</div></div></div>
           <div class="kpi"><div class="kpi-icon purple">⇄</div><div class="kpi-content"><div class="kpi-name">Маршруты</div><div id="kpi-routes" class="kpi-value">-</div></div></div>
           <div class="kpi"><div class="kpi-icon red">✕</div><div class="kpi-content"><div class="kpi-name">Сбои probe</div><div id="kpi-probe-fail" class="kpi-value">-</div></div></div>
-          <div class="kpi"><div class="kpi-icon">🔑</div><div class="kpi-content"><div class="kpi-name">Ключей (трафик)</div><div id="kpi-traffic-keys" class="kpi-value">-</div></div></div>
-          <div class="kpi"><div class="kpi-icon red">⊘</div><div class="kpi-content"><div class="kpi-name">Отозвано</div><div id="kpi-traffic-revoked" class="kpi-value">-</div></div></div>
-          <div class="kpi"><div class="kpi-icon cyan">↕</div><div class="kpi-content"><div class="kpi-name">Суммарный трафик</div><div id="kpi-traffic-total" class="kpi-value">-</div></div></div>
+          <div class="kpi"><div class="kpi-icon cyan">↕</div><div class="kpi-content"><div class="kpi-name">Трафик</div><div id="kpi-traffic-total" class="kpi-value">-</div></div></div>
           <div class="kpi"><div class="kpi-icon green">⚡</div><div class="kpi-content"><div class="kpi-name">NATS</div><div id="kpi-nats" class="kpi-value">-</div></div></div>
         </div>
       </header>
 
       <section id="tab-overview" class="panel active">
-        <div class="panel-head"><div class="panel-title">Общее состояние системы</div></div>
-        <div class="panel-body two-col">
-          <div class="stack">
-            <div class="card"><div class="card-title"><span class="card-icon green">✓</span> Проверки готовности</div><div id="readiness-list" class="stack"></div></div>
-            <div class="card"><div class="card-title"><span class="card-icon purple">⇄</span> Распределение маршрутов</div><div id="route-health-list" class="stack"></div></div>
-            <div class="card"><div class="card-title"><span class="card-icon red">✕</span> Последние сбои probe</div><div id="probe-fail-list" class="stack"></div></div>
-            <div class="card"><div class="card-title"><span class="card-icon amber">⚠</span> Серверы, требующие внимания</div><div id="node-alert-list" class="stack"></div></div>
-            <div class="card"><div class="card-title"><span class="card-icon cyan">⚡</span> Transport Health</div><div id="transport-alert-list" class="stack"></div></div>
+        <div class="panel-body dashboard">
+          <div id="dash-tiles" class="dash-tiles"></div>
+          <div id="dash-banner" class="dash-banner"></div>
+          <div id="dash-quick-actions" class="dash-quick-actions"></div>
+          <div class="dash-columns">
+            <div class="dash-col">
+              <div class="dash-section-title"><span>Требуют внимания</span><span id="dash-issues-count" class="dash-section-count"></span></div>
+              <div id="dash-issues" class="dash-issues"></div>
+            </div>
+            <div class="dash-col">
+              <div class="dash-section-title">Последняя активность</div>
+              <div id="dash-activity" class="dash-activity"></div>
+            </div>
           </div>
-          <div class="stack">
-            <div class="card"><div class="card-title"><span class="card-icon">📋</span> Журнал операций</div><div id="action-log" class="log"></div></div>
-          </div>
+          <div id="dash-compact" class="dash-compact"></div>
         </div>
       </section>
       <section id="tab-nodes" class="panel">
         <div class="panel-head"><div class="panel-title">Серверы</div><div class="actions"><button id="nodes-add" class="btn btn-primary">+ Добавить сервер</button><button id="nodes-reload" class="btn btn-ghost">Перезагрузить</button></div></div>
         <div class="panel-body">
-          <div class="filters">
-            <input id="nodes-search" class="input" placeholder="Поиск: имя, UUID, домен, reality IP, регион" />
-            <select id="nodes-health" class="select"><option value="">Любое здоровье</option><option value="healthy">Здоров</option><option value="unhealthy">Нездоров</option></select>
-            <select id="nodes-state" class="select"><option value="">Любое состояние</option><option value="active">Активен</option><option value="draining">Draining</option><option value="disabled">Отключен</option></select>
-            <button id="nodes-clear" class="btn btn-ghost">Сброс</button>
+          <div class="nodes-master-detail">
+            <div class="nodes-list-wrap">
+              <div class="filters">
+                <input id="nodes-search" class="input" placeholder="Поиск: имя, UUID, домен, reality IP, регион" />
+                <select id="nodes-health" class="select"><option value="">Любое здоровье</option><option value="healthy">Здоров</option><option value="unhealthy">Нездоров</option></select>
+                <select id="nodes-state" class="select"><option value="">Любое состояние</option><option value="active">Активен</option><option value="draining">Draining</option><option value="disabled">Отключен</option></select>
+                <button id="nodes-clear" class="btn btn-ghost">Сброс</button>
+              </div>
+              <table>
+                <thead id="nodes-head"><tr><th>Сервер</th><th>Гео</th><th>Здоровье</th><th>Состояние</th><th>Нагрузка</th><th>Heartbeat</th><th></th></tr></thead>
+                <tbody id="nodes-body"></tbody>
+              </table>
+            </div>
+            <aside id="node-detail" class="node-detail" hidden>
+              <div class="node-detail-header">
+                <div class="node-detail-title-row">
+                  <div class="node-detail-title" id="nd-title"></div>
+                  <div class="node-detail-subtitle muted" id="nd-subtitle"></div>
+                </div>
+                <button id="nd-close" class="btn-mini nd-close-btn" title="Закрыть" aria-label="Закрыть">×</button>
+              </div>
+              <div class="node-detail-quick" id="nd-quick-actions"></div>
+              <div class="node-detail-tabs t-tabs">
+                <button class="t-tab-btn node-sub active" data-nsub="overview">Обзор</button>
+                <button class="t-tab-btn node-sub" data-nsub="routes">Маршруты<span id="nd-routes-count" class="nd-count">0</span></button>
+                <button class="t-tab-btn node-sub" data-nsub="placements">Плейсменты<span id="nd-placements-count" class="nd-count">0</span></button>
+                <button class="t-tab-btn node-sub" data-nsub="probes">Probes</button>
+                <button class="t-tab-btn node-sub" data-nsub="transport">Transport</button>
+              </div>
+              <div class="node-detail-content">
+                <div id="nd-overview" class="node-sub-content"></div>
+                <div id="nd-routes" class="node-sub-content" hidden></div>
+                <div id="nd-placements" class="node-sub-content" hidden></div>
+                <div id="nd-probes" class="node-sub-content" hidden></div>
+                <div id="nd-transport" class="node-sub-content" hidden></div>
+              </div>
+            </aside>
           </div>
-          <table>
-            <thead id="nodes-head"><tr><th>Сервер</th><th>Гео</th><th>Здоровье</th><th>Состояние</th><th>Нагрузка</th><th>Heartbeat</th><th>Действия</th></tr></thead>
-            <tbody id="nodes-body"></tbody>
-          </table>
         </div>
       </section>
 
@@ -170,24 +196,24 @@
                 </div>
               </div>
               <div id="tnd-snapshot-bar" class="t-snapshot-bar"></div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-                <div>
-                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-                    <span class="muted" style="font-weight:600;text-transform:uppercase;letter-spacing:0.06em;font-size:10px">Последние события</span>
-                    <select id="tnd-event-filter" class="select" style="width:auto;padding:4px 8px;font-size:11px;border-radius:6px">
+              <div class="t-detail-grid">
+                <div class="t-detail-col">
+                  <div class="t-detail-col-head">
+                    <span>Последние события</span>
+                    <select id="tnd-event-filter" class="select">
                       <option value="">Все типы</option>
                       <option value="snapshot_request">Snapshot</option>
                       <option value="placement_result">Результат</option>
                     </select>
                   </div>
-                  <div id="tnd-events" class="stack" style="max-height:400px;overflow-y:auto"></div>
+                  <div id="tnd-events" class="stack t-detail-scroll"></div>
                 </div>
-                <div>
-                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-                    <span class="muted" style="font-weight:600;text-transform:uppercase;letter-spacing:0.06em;font-size:10px">Очередь команд</span>
+                <div class="t-detail-col">
+                  <div class="t-detail-col-head">
+                    <span>Очередь команд</span>
                     <button id="tnd-retry-all" class="btn-mini btn-warn" style="display:none">Перезапустить все</button>
                   </div>
-                  <div id="tnd-outbox" class="stack" style="max-height:400px;overflow-y:auto"></div>
+                  <div id="tnd-outbox" class="stack t-detail-scroll"></div>
                 </div>
               </div>
             </div>
@@ -216,7 +242,6 @@
             </table>
             <div id="events-pagination" class="muted" style="margin-top:8px"></div>
           </div>
-          <div id="payload-modal" class="t-payload-modal" style="display:none"></div>
         </div>
       </section>
 
@@ -376,127 +401,127 @@
       <section id="tab-traffic" class="panel">
         <div class="panel-head">
           <div class="panel-title">Трафик</div>
-          <div class="actions">
-            <input id="traffic-search" class="input mono" placeholder="UUID ключа, client_id" style="max-width:220px" />
-            <input id="traffic-user-id" class="input mono" placeholder="UUID пользователя" style="max-width:220px" />
-            <select id="traffic-revoked" class="select" style="max-width:150px">
-              <option value="">Все ключи</option>
-              <option value="false">Активные</option>
-              <option value="true">Отозванные</option>
-            </select>
-            <button id="traffic-reload" class="btn btn-primary">Загрузить</button>
-          </div>
+          <div class="muted">Использование по ключам и серверам</div>
         </div>
         <div class="panel-body">
-          <div id="traffic-meta" class="card muted" style="margin-bottom:10px">Нажмите «Загрузить» для получения данных о трафике.</div>
-          <div style="overflow-x:auto">
-            <table>
-              <thead id="traffic-head"><tr>
-                <th>Ключ / client_id</th>
-                <th>Пользователь</th>
-                <th>Протокол</th>
-                <th>Использовано</th>
-                <th>Лимит</th>
-                <th>Остаток</th>
-                <th>Использование</th>
-                <th>Статус</th>
-                <th>Истекает</th>
-                <th>Действия</th>
-              </tr></thead>
-              <tbody id="traffic-body"></tbody>
-            </table>
+          <div class="t-tabs">
+            <button class="t-tab-btn traffic-sub active" data-tsub="keys">По ключам</button>
+            <button class="t-tab-btn traffic-sub" data-tsub="nodes">По серверам</button>
           </div>
-          <div id="traffic-pagination" class="actions" style="margin-top:10px;justify-content:center"></div>
-        </div>
-        <div id="traffic-history-section" style="display:none">
-          <div class="panel-head" style="border-top:1px solid var(--line)">
-            <div class="panel-title">История трафика: <span id="traffic-history-key-label" class="mono"></span></div>
-            <div class="actions">
-              <input id="traffic-history-from" class="input" type="date" title="Дата от" style="max-width:150px" />
-              <input id="traffic-history-to" class="input" type="date" title="Дата до" style="max-width:150px" />
-              <button id="traffic-history-reload" class="btn btn-ghost">Обновить</button>
-              <button id="traffic-history-close" class="btn btn-ghost">Закрыть</button>
+
+          <div class="traffic-section is-active" id="traffic-sub-keys">
+            <div class="filters" style="margin-bottom:10px">
+              <input id="traffic-search" class="input mono" placeholder="UUID ключа, client_id" />
+              <input id="traffic-user-id" class="input mono" placeholder="UUID пользователя" />
+              <select id="traffic-revoked" class="select">
+                <option value="">Все ключи</option>
+                <option value="false">Активные</option>
+                <option value="true">Отозванные</option>
+              </select>
+              <button id="traffic-reload" class="btn btn-primary">Загрузить</button>
+            </div>
+            <div id="traffic-meta" class="card muted" style="margin-bottom:10px">Нажмите «Загрузить» для получения данных о трафике.</div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead id="traffic-head"><tr>
+                  <th>Ключ / client_id</th>
+                  <th>Пользователь</th>
+                  <th>Протокол</th>
+                  <th>Использовано</th>
+                  <th>Лимит</th>
+                  <th>Остаток</th>
+                  <th>Использование</th>
+                  <th>Статус</th>
+                  <th>Истекает</th>
+                  <th>Действия</th>
+                </tr></thead>
+                <tbody id="traffic-body"></tbody>
+              </table>
+            </div>
+            <div id="traffic-pagination" class="actions" style="margin-top:10px;justify-content:center"></div>
+            <div id="traffic-history-section" style="display:none;margin-top:16px;border-top:1px solid var(--line);padding-top:12px">
+              <div class="panel-head" style="border-bottom:0;padding:0 0 10px">
+                <div class="panel-title">История трафика: <span id="traffic-history-key-label" class="mono"></span></div>
+                <div class="actions">
+                  <input id="traffic-history-from" class="input" type="date" title="Дата от" style="max-width:150px" />
+                  <input id="traffic-history-to" class="input" type="date" title="Дата до" style="max-width:150px" />
+                  <button id="traffic-history-reload" class="btn btn-ghost">Обновить</button>
+                  <button id="traffic-history-close" class="btn btn-ghost">Закрыть</button>
+                </div>
+              </div>
+              <div id="traffic-history-key-info" class="card muted" style="margin-bottom:10px"></div>
+              <div id="traffic-chart-container" style="margin-bottom:12px;border:1px solid var(--line);border-radius:12px;background:rgba(15,23,42,0.44);padding:10px;display:none">
+                <div class="muted" style="font-size:11px;margin-bottom:6px">Дельта трафика за период</div>
+                <canvas id="traffic-chart" height="120" style="width:100%;display:block"></canvas>
+              </div>
+              <div style="overflow-x:auto">
+                <table>
+                  <thead><tr><th>Дата</th><th>Дельта</th><th>Всего (reported)</th></tr></thead>
+                  <tbody id="traffic-history-body"></tbody>
+                </table>
+              </div>
+              <div id="traffic-history-pagination" class="actions" style="margin-top:10px;justify-content:center"></div>
             </div>
           </div>
-          <div class="panel-body">
-            <div id="traffic-history-key-info" class="card muted" style="margin-bottom:10px"></div>
-            <div id="traffic-chart-container" style="margin-bottom:12px;border:1px solid var(--line);border-radius:12px;background:rgba(15,23,42,0.44);padding:10px;display:none">
-              <div class="muted" style="font-size:11px;margin-bottom:6px">Дельта трафика за период</div>
-              <canvas id="traffic-chart" height="120" style="width:100%;display:block"></canvas>
+
+          <div class="traffic-section" id="traffic-sub-nodes">
+            <div class="filters" style="margin-bottom:10px">
+              <select id="traffic-nodes-period" class="select">
+                <option value="1h">1 час</option>
+                <option value="24h" selected>24 часа</option>
+                <option value="7d">7 дней</option>
+                <option value="30d">30 дней</option>
+              </select>
+              <select id="traffic-nodes-role" class="select">
+                <option value="">Все роли</option>
+                <option value="entry">Entry</option>
+                <option value="whitelist_entry">Whitelist Entry</option>
+                <option value="backend">Backend</option>
+              </select>
+              <button id="traffic-nodes-reload" class="btn btn-primary">Обновить</button>
+            </div>
+            <div id="traffic-nodes-meta" class="card muted" style="margin-bottom:10px">Нажмите «Обновить», чтобы загрузить данные.</div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead><tr>
+                  <th>Сервер</th><th>Роль</th><th>Регион</th>
+                  <th>Трафик IN</th><th>Трафик OUT</th><th>Итого</th>
+                  <th>Активные</th><th>Сессий (всего)</th><th>Статус</th><th></th>
+                </tr></thead>
+                <tbody id="traffic-nodes-body"><tr><td colspan="10" class="empty">Нет данных.</td></tr></tbody>
+              </table>
+            </div>
+
+            <div class="panel-head" style="border-top:1px solid var(--line);margin-top:16px">
+              <div class="panel-title">Матрица Entry × Backend</div>
+              <div class="muted">Сколько байт прошло через каждую пару за выбранный период</div>
             </div>
             <div style="overflow-x:auto">
               <table>
-                <thead><tr><th>Дата</th><th>Дельта</th><th>Всего (reported)</th></tr></thead>
-                <tbody id="traffic-history-body"></tbody>
+                <thead><tr>
+                  <th>Entry</th><th>Backend</th>
+                  <th>Трафик IN</th><th>Трафик OUT</th><th>Итого</th><th>Сессий</th>
+                </tr></thead>
+                <tbody id="traffic-pairs-body"><tr><td colspan="6" class="empty">Нет данных.</td></tr></tbody>
               </table>
             </div>
-            <div id="traffic-history-pagination" class="actions" style="margin-top:10px;justify-content:center"></div>
-          </div>
-        </div>
-      </section>
 
-      <section id="tab-traffic-nodes" class="panel">
-        <div class="panel-head">
-          <div class="panel-title">Трафик по серверам</div>
-          <div class="actions">
-            <select id="traffic-nodes-period" class="select" style="max-width:120px">
-              <option value="1h">1 час</option>
-              <option value="24h" selected>24 часа</option>
-              <option value="7d">7 дней</option>
-              <option value="30d">30 дней</option>
-            </select>
-            <select id="traffic-nodes-role" class="select" style="max-width:160px">
-              <option value="">Все роли</option>
-              <option value="entry">Entry</option>
-              <option value="whitelist_entry">Whitelist Entry</option>
-              <option value="backend">Backend</option>
-            </select>
-            <button id="traffic-nodes-reload" class="btn btn-primary">Обновить</button>
-          </div>
-        </div>
-        <div class="panel-body">
-          <div id="traffic-nodes-meta" class="card muted" style="margin-bottom:10px">Нажмите «Обновить», чтобы загрузить данные.</div>
-          <div style="overflow-x:auto">
-            <table>
-              <thead><tr>
-                <th>Сервер</th><th>Роль</th><th>Регион</th>
-                <th>Трафик IN</th><th>Трафик OUT</th><th>Итого</th>
-                <th>Активные</th><th>Сессий (всего)</th><th>Статус</th><th></th>
-              </tr></thead>
-              <tbody id="traffic-nodes-body"><tr><td colspan="10" class="empty">Нет данных.</td></tr></tbody>
-            </table>
-          </div>
-
-          <div class="panel-head" style="border-top:1px solid var(--line);margin-top:16px">
-            <div class="panel-title">Матрица Entry × Backend</div>
-            <div class="muted">Сколько байт прошло через каждую пару за выбранный период</div>
-          </div>
-          <div style="overflow-x:auto">
-            <table>
-              <thead><tr>
-                <th>Entry</th><th>Backend</th>
-                <th>Трафик IN</th><th>Трафик OUT</th><th>Итого</th><th>Сессий</th>
-              </tr></thead>
-              <tbody id="traffic-pairs-body"><tr><td colspan="6" class="empty">Нет данных.</td></tr></tbody>
-            </table>
-          </div>
-        </div>
-        <div id="traffic-node-detail-section" style="display:none">
-          <div class="panel-head" style="border-top:1px solid var(--line)">
-            <div class="panel-title">Динамика: <span id="traffic-node-detail-label" class="mono"></span></div>
-            <div class="actions">
-              <select id="traffic-node-side" class="select" style="max-width:140px">
-                <option value="auto">Авто</option>
-                <option value="entry">Как entry</option>
-                <option value="backend">Как backend</option>
-              </select>
-              <button id="traffic-node-detail-close" class="btn btn-ghost">Закрыть</button>
-            </div>
-          </div>
-          <div class="panel-body">
-            <div id="traffic-node-timeseries-meta" class="muted" style="font-size:11px;margin-bottom:6px"></div>
-            <div id="traffic-node-chart-container" style="border:1px solid var(--line);border-radius:12px;background:rgba(15,23,42,0.44);padding:10px;display:none">
-              <canvas id="traffic-node-chart" height="180" style="width:100%;display:block"></canvas>
+            <div id="traffic-node-detail-section" style="display:none;margin-top:16px;border-top:1px solid var(--line);padding-top:12px">
+              <div class="panel-head" style="border-bottom:0;padding:0 0 10px">
+                <div class="panel-title">Динамика: <span id="traffic-node-detail-label" class="mono"></span></div>
+                <div class="actions">
+                  <select id="traffic-node-side" class="select" style="max-width:140px">
+                    <option value="auto">Авто</option>
+                    <option value="entry">Как entry</option>
+                    <option value="backend">Как backend</option>
+                  </select>
+                  <button id="traffic-node-detail-close" class="btn btn-ghost">Закрыть</button>
+                </div>
+              </div>
+              <div id="traffic-node-timeseries-meta" class="muted" style="font-size:11px;margin-bottom:6px"></div>
+              <div id="traffic-node-chart-container" style="border:1px solid var(--line);border-radius:12px;background:rgba(15,23,42,0.44);padding:10px;display:none">
+                <canvas id="traffic-node-chart" height="180" style="width:100%;display:block"></canvas>
+              </div>
             </div>
           </div>
         </div>
@@ -519,45 +544,6 @@
             <th>Username</th><th>Role</th><th>Status</th><th>Telegram</th><th>Sessions</th><th>Создан</th><th style="white-space:nowrap;">Действия</th>
           </tr></thead><tbody id="au-body"><tr><td colspan="7" class="empty">Загрузите данные.</td></tr></tbody></table>
           <div id="au-meta" class="muted" style="margin-top:8px;"></div>
-        </div>
-        <div id="au-create-modal" style="display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;">
-          <div class="card" style="width:420px;max-width:90vw;padding:24px;">
-            <div style="font-weight:700;font-size:16px;margin-bottom:16px;">Новый admin user</div>
-            <form id="au-create-form" class="stack" style="display:grid;gap:12px;">
-              <input class="input mono" name="username" placeholder="Username" required minlength="1" maxlength="64" />
-              <input class="input mono" name="password" type="password" placeholder="Пароль (мин. 8 символов)" minlength="8" maxlength="256" />
-              <input class="input mono" name="telegram_id" type="number" placeholder="Telegram ID (опционально)" />
-              <select class="select" name="role"><option value="viewer">viewer</option><option value="operator">operator</option><option value="admin">admin</option></select>
-              <div class="row-2"><button class="btn btn-primary" type="submit">Создать</button><button class="btn btn-ghost" type="button" id="au-create-cancel">Отмена</button></div>
-            </form>
-          </div>
-        </div>
-        <div id="au-edit-modal" style="display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.6);align-items:center;justify-content:center;">
-          <div class="card" style="width:420px;max-width:90vw;padding:24px;">
-            <div style="font-weight:700;font-size:16px;margin-bottom:16px;">Редактировать: <span id="au-edit-name"></span></div>
-            <form id="au-edit-form" class="stack" style="display:grid;gap:12px;">
-              <input type="hidden" name="user_id" id="au-edit-uid" />
-              <label class="muted" style="font-size:12px;">Роль</label>
-              <select class="select" name="role" id="au-edit-role"><option value="viewer">viewer</option><option value="operator">operator</option><option value="admin">admin</option></select>
-              <label class="muted" style="font-size:12px;">Статус</label>
-              <select class="select" name="is_active" id="au-edit-active"><option value="true">Активен</option><option value="false">Деактивирован</option></select>
-              <div class="row-2"><button class="btn btn-primary" type="submit">Сохранить</button><button class="btn btn-ghost" type="button" id="au-edit-cancel">Отмена</button></div>
-            </form>
-            <div style="border-top:1px solid var(--line);margin-top:16px;padding-top:16px;display:grid;gap:8px;">
-              <div style="font-weight:600;font-size:13px;">Пароль</div>
-              <form id="au-pw-form" style="display:grid;gap:8px;">
-                <input class="input mono" name="new_password" type="password" placeholder="Новый пароль (мин. 8 символов)" minlength="8" required />
-                <button class="btn btn-warn" type="submit">Сбросить пароль</button>
-              </form>
-              <div style="border-top:1px solid var(--line);margin-top:8px;padding-top:12px;display:grid;gap:8px;">
-                <div style="font-weight:600;font-size:13px;">Сессии: <span id="au-edit-sessions-count">0</span></div>
-                <button class="btn btn-warn" type="button" id="au-revoke-sessions">Отозвать все сессии</button>
-              </div>
-              <div style="border-top:1px solid var(--line);margin-top:8px;padding-top:12px;">
-                <button class="btn btn-danger" type="button" id="au-delete-user">Удалить пользователя</button>
-              </div>
-            </div>
-          </div>
         </div>
       </section>
 
@@ -607,9 +593,6 @@
   </main>
   <div id="toast-container" class="toast-container"></div>
   <div id="confirm-modal"></div>
-  <div id="node-config-modal"></div>
-  <div id="add-node-modal"></div>
-  <div id="selected-node-card" style="display:none"></div>
 
   <!-- Accessibility: sr-only announcements -->
   <div id="aria-announce" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>

@@ -1,11 +1,12 @@
 export const REFRESH_MS = 15000;
 export const TABLE_LIMIT = 500;
-export const TAB_LABELS = { overview: "Home", nodes: "Серверы", transport: "Transport", routes: "Маршруты", placements: "Плейсменты", users: "Пользователи", plans: "Тарифы", subscriptions: "Подписки", traffic: "Трафик", "traffic-nodes": "Трафик · Серверы", "admin-users": "Админы", probes: "Probes", ops: "Ops" };
+export const TAB_LABELS = { overview: "Главная", nodes: "Серверы", transport: "Transport", routes: "Маршруты", placements: "Плейсменты", users: "Пользователи", plans: "Тарифы", subscriptions: "Подписки", traffic: "Трафик", "admin-users": "Админы", probes: "Probes", ops: "Операции" };
 
 export const $ = (id) => document.getElementById(id);
 
 export const state = {
-  timer: null, selectedNode: null, status: null, readiness: null,
+  timer: null, selectedNode: null, selectedNodeSubTab: "overview",
+  status: null, readiness: null,
   routes: [], placements: [], probes: [], subscriptions: [], subscriptionDevices: [],
   logs: [], activeTab: "overview", loading: false,
   users: [], usersTotal: 0, usersLimit: 50, usersOffset: 0,
@@ -13,12 +14,14 @@ export const state = {
   trafficKeys: [], trafficTotal: 0, trafficLimit: 50, trafficOffset: 0,
   trafficHistory: [], trafficHistoryTotal: 0, trafficHistoryLimit: 50, trafficHistoryOffset: 0,
   trafficHistoryKeyId: null, trafficHistoryKeyData: null,
+  trafficSubTab: "keys",
   trafficNodesPeriod: "24h", trafficNodesRole: "",
   trafficNodes: [], trafficPairs: [],
   trafficNodeSelectedId: null, trafficNodeSelectedSide: "auto",
   trafficNodeTimeseries: null,
   adminUsers: [], adminUsersTotal: 0,
   transportOverview: null, transportNodes: [], transportNodeDetail: null,
+  natsLastOnlineAt: null,
   outboxItems: [], outboxTotal: 0, outboxOffset: 0,
   eventsItems: [], eventsTotal: 0, eventsOffset: 0,
   transportSubTab: "nodes",
@@ -48,20 +51,16 @@ export function initRefs() {
   refs.contentArea = $("content-area");
   refs.kpiNodes = $("kpi-nodes");
   refs.kpiHealthy = $("kpi-healthy");
-  refs.kpiDraining = $("kpi-draining");
-  refs.kpiPlacements = $("kpi-placements");
   refs.kpiRoutes = $("kpi-routes");
   refs.kpiProbeFail = $("kpi-probe-fail");
-  refs.kpiTrafficKeys = $("kpi-traffic-keys");
-  refs.kpiTrafficRevoked = $("kpi-traffic-revoked");
   refs.kpiTrafficTotal = $("kpi-traffic-total");
-  refs.readinessList = $("readiness-list");
-  refs.routeHealthList = $("route-health-list");
-  refs.probeFailList = $("probe-fail-list");
-  refs.nodeAlertList = $("node-alert-list");
-  refs.selectedNodeCard = $("selected-node-card");
-  refs.actionLog = $("action-log");
-  refs.nodeConfigModal = $("node-config-modal");
+  refs.dashTiles = $("dash-tiles");
+  refs.dashBanner = $("dash-banner");
+  refs.dashQuickActions = $("dash-quick-actions");
+  refs.dashIssues = $("dash-issues");
+  refs.dashIssuesCount = $("dash-issues-count");
+  refs.dashActivity = $("dash-activity");
+  refs.dashCompact = $("dash-compact");
   refs.nodesHead = $("nodes-head");
   refs.nodesBody = $("nodes-body");
   refs.routesHead = $("routes-head");
@@ -88,7 +87,18 @@ export function initRefs() {
   refs.nodesClear = $("nodes-clear");
   refs.nodesReload = $("nodes-reload");
   refs.nodesAdd = $("nodes-add");
-  refs.addNodeModal = $("add-node-modal");
+  refs.nodeDetail = $("node-detail");
+  refs.ndTitle = $("nd-title");
+  refs.ndSubtitle = $("nd-subtitle");
+  refs.ndClose = $("nd-close");
+  refs.ndQuickActions = $("nd-quick-actions");
+  refs.ndOverview = $("nd-overview");
+  refs.ndRoutes = $("nd-routes");
+  refs.ndPlacements = $("nd-placements");
+  refs.ndProbes = $("nd-probes");
+  refs.ndTransport = $("nd-transport");
+  refs.ndRoutesCount = $("nd-routes-count");
+  refs.ndPlacementsCount = $("nd-placements-count");
   refs.routesStatus = $("routes-status");
   refs.routesSearch = $("routes-search");
   refs.routesReload = $("routes-reload");
@@ -165,7 +175,6 @@ export function initRefs() {
     overview: $("tab-overview"), nodes: $("tab-nodes"), transport: $("tab-transport"),
     routes: $("tab-routes"), placements: $("tab-placements"), users: $("tab-users"),
     plans: $("tab-plans"), subscriptions: $("tab-subscriptions"), traffic: $("tab-traffic"),
-    "traffic-nodes": $("tab-traffic-nodes"),
     "admin-users": $("tab-admin-users"), probes: $("tab-probes"), ops: $("tab-ops"),
   };
 }

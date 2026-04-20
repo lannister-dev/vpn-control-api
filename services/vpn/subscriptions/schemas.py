@@ -164,6 +164,7 @@ class ResolvedDeviceBundle(BaseModel):
 class ResolvedSubscriptionRoute(BaseModel):
     route_id: UUID
     backend_node_id: UUID
+    entry_node_id: UUID | None = None
     vpn_key_id: UUID | None = None
     vpn_transport: str = ""
     client_id: str = ""
@@ -175,6 +176,8 @@ class ResolvedSubscriptionRoute(BaseModel):
     is_entry_route: bool = False
     preferred_backend: bool = False
     selection_rank: int = 0
+    effective_weight: int = 0
+    selection_score: float = 0.0
     uri: str
     route: Any
     node: Any

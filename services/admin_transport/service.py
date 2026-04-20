@@ -29,8 +29,10 @@ from services.admin_transport.schemas import (
     TransportOverviewOut,
 )
 from services.config import get_settings
+from services.nodes.agent.admin_snapshot import AdminSnapshotPublisher
 from services.nodes.agent.repository import NodeTransportStateRepository
 from shared.database.session import AsyncDatabase
+from shared.nats.client import NatsClient
 
 
 class AdminTransportService:
@@ -38,28 +40,54 @@ class AdminTransportService:
         self.session = session
         self.repo = AdminTransportRepository(session)
         self._request = request
-        self._transport_settings = get_settings().transport
+        settings = get_settings()
+        self._transport_settings = settings.transport
+        self._nats_config = settings.nats
 
     def _get_runtime(self):
         if self._request is None:
             return None
         return getattr(self._request.app.state, "node_agent_runtime", None)
 
+    def _get_admin_nats_client(self) -> NatsClient | None:
+        if self._request is None:
+            return None
+        return getattr(self._request.app.state, "nats_client", None)
+
+    async def _derive_nats_from_activity(self, now: datetime) -> bool:
+        latest_hb = await self.repo.get_latest_heartbeat_received_at()
+        if latest_hb is None:
+            return False
+        if latest_hb.tzinfo is None:
+            latest_hb = latest_hb.replace(tzinfo=timezone.utc)
+        return (now - latest_hb).total_seconds() < 90
+
     async def get_overview(self) -> TransportOverviewOut:
         now = datetime.now(timezone.utc)
         since_24h = now - timedelta(hours=24)
 
         runtime = self._get_runtime()
+        admin_nats = self._get_admin_nats_client()
         nats_connected = False
         uptime_s = None
         consumer_tasks: list[ConsumerTaskStatus] = []
         if runtime is not None:
             status = runtime.get_runtime_status()
-            nats_connected = status["nats_connected"]
-            uptime_s = status["uptime_s"]
+            uptime_s = status.uptime_s
             consumer_tasks = [
-                ConsumerTaskStatus(**t) for t in status["tasks"]
+                ConsumerTaskStatus(name=t.name, running=t.running, error=t.error)
+                for t in status.tasks
             ]
+            if runtime.is_leader:
+                nats_connected = status.nats_connected
+            else:
+                nats_connected = await self._derive_nats_from_activity(now)
+        elif admin_nats is not None:
+            nats_connected = admin_nats.is_connected
+            if not nats_connected:
+                nats_connected = await self._derive_nats_from_activity(now)
+        else:
+            nats_connected = await self._derive_nats_from_activity(now)
 
         outbox_summary = await self.repo.get_outbox_summary(since=since_24h)
         event_summary = await self.repo.get_event_log_summary(since=since_24h)
@@ -174,12 +202,31 @@ class AdminTransportService:
         )
 
     async def force_snapshot(self, node_id: UUID) -> ForceSnapshotOut:
-        runtime = self._get_runtime()
-        if runtime is None:
-            from fastapi import HTTPException
-            raise HTTPException(status_code=503, detail="NATS runtime not available")
+        from fastapi import HTTPException
 
-        await runtime.trigger_snapshot_for_node(node_id=node_id, reason="admin_requested")
+        runtime = self._get_runtime()
+        admin_nats = self._get_admin_nats_client()
+
+        if runtime is not None and runtime.is_leader and runtime._nats.is_connected:
+            try:
+                await runtime.trigger_snapshot_for_node(node_id=node_id, reason="admin_requested")
+            except HTTPException:
+                raise
+            except Exception as exc:
+                raise HTTPException(status_code=502, detail=f"Snapshot publish failed: {exc}") from exc
+        elif admin_nats is not None and admin_nats.is_connected:
+            publisher = AdminSnapshotPublisher(nats_client=admin_nats, config=self._nats_config)
+            try:
+                await publisher.execute(node_id=node_id, reason="admin_requested")
+            except HTTPException:
+                raise
+            except Exception as exc:
+                raise HTTPException(status_code=502, detail=f"Snapshot publish failed: {exc}") from exc
+        else:
+            raise HTTPException(
+                status_code=503,
+                detail="NATS is not available on this process. Ensure NATS is enabled and reachable.",
+            )
 
         state_repo = NodeTransportStateRepository(self.session)
         state = await state_repo.get_or_create(node_id=node_id)

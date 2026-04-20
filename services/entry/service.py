@@ -7,9 +7,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.config import get_settings
 from services.entry.constants import ENTRY_ROLES, RELAY_POOL_TTL_SEC, ROLE_BACKEND, POOL_CHANGED_EVENT_TYPE
-from services.entry.exceptions import EntryNotFoundError, EntryRoleError, BackendNotFoundError
+from services.entry.exceptions import (
+    BackendNotFoundError,
+    EntryNotFoundError,
+    EntryRoleError,
+    EntryZoneMismatchError,
+)
 from services.entry.models import EntryBackendAssignment
 from services.entry.repository import EntryBackendAssignmentRepository
+from services.routes.model import Route
+from services.routes.repository import RouteRepository, TransportProfileRepository
 from services.entry.schemas import (
     EntryBackendAssignIn,
     EntryBackendAssignmentCreate,
@@ -25,6 +32,7 @@ from services.nodes.models import VpnNode
 from services.nodes.repository import VpnNodeRepository
 from shared.database.session import AsyncDatabase
 from shared.utils.logger import StructuredLogger
+from shared.utils.node_display import effective_zone
 
 logger_entry = StructuredLogger(logging.getLogger("entry-service"))
 
@@ -35,6 +43,8 @@ class EntryService:
         self.assignment_repo = EntryBackendAssignmentRepository(session)
         self.node_repo = VpnNodeRepository(session)
         self.outbox_repo = NodeTransportOutboxRepository(session)
+        self.route_repo = RouteRepository(session)
+        self.transport_profile_repo = TransportProfileRepository(session)
         settings = get_settings()
         self.reality_port = int(settings.probe.target_port)
         self._subjects = AgentSubjects(
@@ -112,8 +122,9 @@ class EntryService:
             entry_node_id: UUID,
             payload: EntryBackendAssignIn,
     ) -> EntryBackendAssignment:
-        await self._require_entry(entry_node_id)
-        await self._require_backend(payload.backend_node_id)
+        entry = await self._require_entry(entry_node_id)
+        backend = await self._require_backend(payload.backend_node_id)
+        self._require_zone_match(entry=entry, backend=backend)
 
         existing = await self.assignment_repo.get_by_entry_and_backend(
             entry_node_id=entry_node_id,
@@ -139,6 +150,10 @@ class EntryService:
             )
             result = await self.assignment_repo.create(create.model_dump())
 
+        await self._ensure_routes_for_assignment(
+            entry_node_id=entry_node_id,
+            backend_node_id=payload.backend_node_id,
+        )
         await self._enqueue_pool_snapshot(entry_node_id)
         return result
 
@@ -211,6 +226,96 @@ class EntryService:
                 f"node {backend_node_id} has role '{backend.role}', expected '{ROLE_BACKEND}'"
             )
         return backend
+
+    async def _ensure_routes_for_assignment(
+        self,
+        *,
+        entry_node_id: UUID,
+        backend_node_id: UUID,
+    ) -> int:
+        try:
+            profiles = await self.transport_profile_repo.list_active()
+        except Exception:
+            logger_entry.exception(
+                "entry_auto_route_profiles_fetch_failed",
+                entry_id=str(entry_node_id),
+                backend_id=str(backend_node_id),
+            )
+            return 0
+        if not profiles:
+            return 0
+        backend = await self.node_repo.get_by_id(backend_node_id)
+        entry = await self.node_repo.get_by_id(entry_node_id)
+        if backend is None or entry is None:
+            return 0
+        created = 0
+        for profile in profiles:
+            existing = await self.route_repo.get_by_triple(
+                backend_node_id=backend_node_id,
+                entry_node_id=entry_node_id,
+                transport_profile_id=profile.id,
+            )
+            if existing is not None:
+                if not existing.is_active:
+                    await self.route_repo.update_by_id(existing.id, {"is_active": True})
+                continue
+            base_weight = 50
+            name = self._compose_auto_route_name(
+                entry=entry, backend=backend, profile=profile,
+            )
+            try:
+                await self.route_repo.create(
+                    {
+                        "name": name,
+                        "node_id": backend_node_id,
+                        "entry_node_id": entry_node_id,
+                        "transport_profile_id": profile.id,
+                        "health_status": "warming_up",
+                        "base_weight": base_weight,
+                        "effective_weight": max(1, base_weight // 2),
+                        "warmup_stage": 1,
+                    }
+                )
+                created += 1
+            except Exception:
+                logger_entry.exception(
+                    "entry_auto_route_create_failed",
+                    entry_id=str(entry_node_id),
+                    backend_id=str(backend_node_id),
+                    transport_profile_id=str(profile.id),
+                )
+        if created:
+            logger_entry.info(
+                "entry_auto_routes_created",
+                entry_id=str(entry_node_id),
+                backend_id=str(backend_node_id),
+                created=created,
+            )
+        return created
+
+    @staticmethod
+    def _compose_auto_route_name(
+        *, entry: VpnNode, backend: VpnNode, profile,
+    ) -> str:
+        base = f"{entry.name}→{backend.name}·{profile.name}"
+        return base[:100]
+
+    @staticmethod
+    def _require_zone_match(*, entry: VpnNode, backend: VpnNode) -> None:
+        entry_zone = effective_zone(
+            explicit_zone=getattr(entry, "zone", None),
+            region=getattr(entry, "region", None),
+        )
+        backend_zone = effective_zone(
+            explicit_zone=getattr(backend, "zone", None),
+            region=getattr(backend, "region", None),
+        )
+        if entry_zone == "unknown" or backend_zone == "unknown":
+            return
+        if entry_zone != backend_zone:
+            raise EntryZoneMismatchError(
+                f"entry zone '{entry_zone}' does not match backend zone '{backend_zone}'"
+            )
 
     @staticmethod
     def _resolve_backend_address(backend: VpnNode) -> str | None:
