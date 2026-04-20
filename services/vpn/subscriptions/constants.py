@@ -3,6 +3,9 @@ import json
 from services.vpn.keys.schemas import VpnTransport
 
 
+WHITELIST_SUFFIX = " + WL unblock"
+WHITELIST_SERVER_DESCRIPTION = "🔓 глушилки"
+
 RATE_LIMIT_REQUESTS = 300
 RATE_LIMIT_WINDOW_SEC = 3600
 DEFAULT_ROTATION_GRACE_SEC = 3600

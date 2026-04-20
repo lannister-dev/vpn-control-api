@@ -29,6 +29,7 @@ from services.routes.router import router as routes_router
 from services.traffic.users.router import router as traffic_admin_router
 from services.traffic.nodes.router import router as nodes_traffic_admin_router
 from services.plans.router import router as plans_router
+from services.zones.router import router as zones_router
 from services.users.router import router as users_router
 from services.vpn.subscriptions.router import router as subscriptions_router
 
@@ -93,6 +94,7 @@ api_router.include_router(routes_router)
 api_router.include_router(traffic_admin_router)
 api_router.include_router(nodes_traffic_admin_router)
 api_router.include_router(plans_router)
+api_router.include_router(zones_router)
 api_router.include_router(users_router)
 api_router.include_router(subscriptions_router)
 

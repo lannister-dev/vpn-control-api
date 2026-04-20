@@ -52,6 +52,7 @@
         </section>
         <section class="nav-group">
           <div class="nav-group-title">Система</div>
+          <button data-tab="zones"><span class="nav-icon">🌍</span><span>Зоны</span></button>
           <button data-tab="admin-users"><span class="nav-icon">⚙</span><span>Админы</span></button>
           <button data-tab="ops"><span class="nav-icon">🛠</span><span>Операции</span></button>
         </section>
@@ -524,6 +525,33 @@
               </div>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section id="tab-zones" class="panel">
+        <div class="panel-head">
+          <div class="panel-title">Зоны</div>
+          <div class="muted">Регионы для отображения entry-нод в Happ (эмодзи + название). Код зоны задаётся при создании и не меняется.</div>
+          <div class="actions">
+            <button id="zones-reload" class="btn btn-primary">Загрузить</button>
+            <button id="zones-create-btn" class="btn btn-info">Создать зону</button>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div style="overflow-x:auto">
+            <table>
+              <thead><tr>
+                <th>Код</th>
+                <th>Эмодзи</th>
+                <th>Название</th>
+                <th>Сортировка</th>
+                <th>Статус</th>
+                <th>Действия</th>
+              </tr></thead>
+              <tbody id="zones-body"></tbody>
+            </table>
+          </div>
+          <div id="zones-meta" class="muted" style="margin-top:8px"></div>
         </div>
       </section>
 

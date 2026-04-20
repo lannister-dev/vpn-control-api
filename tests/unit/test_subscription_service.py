@@ -284,6 +284,65 @@ class TestBuildRouteUri:
         assert "serviceName=vl" in uri
 
 
+class TestSubscriptionDisplayForRoute:
+    def _entry(self, *, role, zone_ref=None, name="entry1", region="de"):
+        e = MagicMock()
+        e.name = name
+        e.region = region
+        e.role = role
+        e.zone_ref = zone_ref
+        return e
+
+    def _zone(self, *, emoji="🇪🇺", name="Europe", is_active=True):
+        return SimpleNamespace(emoji=emoji, name=name, is_active=is_active)
+
+    def test_no_entry_node_falls_back_to_country(self, service):
+        backend = _make_node(region="de")
+        display, desc = service._subscription_display_for_route(
+            backend_node=backend, entry_node=None
+        )
+        assert "Germany" in display
+        assert desc is None
+
+    def test_entry_with_zone_uses_zone_display(self, service):
+        backend = _make_node(region="de")
+        entry = self._entry(role="entry", zone_ref=self._zone())
+        display, desc = service._subscription_display_for_route(
+            backend_node=backend, entry_node=entry
+        )
+        assert display == "🇪🇺 Europe"
+        assert desc is None
+
+    def test_whitelist_entry_appends_suffix_and_description(self, service):
+        backend = _make_node(region="de")
+        entry = self._entry(role="whitelist_entry", zone_ref=self._zone())
+        display, desc = service._subscription_display_for_route(
+            backend_node=backend, entry_node=entry
+        )
+        assert display == "🇪🇺 Europe + WL unblock"
+        assert desc == "🔓 глушилки"
+
+    def test_entry_without_zone_ref_falls_back_to_node_region(self, service):
+        backend = _make_node(region="de")
+        entry = self._entry(role="entry", zone_ref=None, region="nl")
+        display, _ = service._subscription_display_for_route(
+            backend_node=backend, entry_node=entry
+        )
+        assert "Netherlands" in display
+
+    def test_inactive_zone_is_ignored(self, service):
+        backend = _make_node(region="de")
+        entry = self._entry(
+            role="entry",
+            zone_ref=self._zone(is_active=False),
+            region="fi",
+        )
+        display, _ = service._subscription_display_for_route(
+            backend_node=backend, entry_node=entry
+        )
+        assert "Finland" in display
+
+
 class TestCalcEtag:
     def test_deterministic(self, service):
         sub = _make_sub()
