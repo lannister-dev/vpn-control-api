@@ -749,6 +749,7 @@ class SubscriptionService:
                 transport=key.transport,
                 is_entry_route=is_entry,
                 backend_node_id=backend_node_id,
+                entry_node_id=entry_node_id,
             )
             if logical_key in seen_logical_keys:
                 continue
@@ -861,6 +862,7 @@ class SubscriptionService:
                     transport=route.vpn_transport,
                     is_entry_route=route.is_entry_route,
                     backend_node_id=route.backend_node_id,
+                    entry_node_id=route.entry_node_id,
                 )
                 if route.uri in seen_uris or logical_key in seen_logical_keys:
                     continue
@@ -952,6 +954,7 @@ class SubscriptionService:
                 transport=r.vpn_transport,
                 is_entry_route=r.is_entry_route,
                 backend_node_id=r.backend_node_id,
+                entry_node_id=r.entry_node_id,
             )
             for r in resolved_routes
         }
@@ -1015,6 +1018,7 @@ class SubscriptionService:
                     transport=key.transport,
                     is_entry_route=True,
                     backend_node_id=backend_id,
+                    entry_node_id=entry_node_id,
                 )
                 if logical_key in seen_logical_keys:
                     continue
@@ -1113,11 +1117,13 @@ class SubscriptionService:
             transport: str,
             is_entry_route: bool = False,
             backend_node_id: UUID | None = None,
+            entry_node_id: UUID | None = None,
     ) -> tuple:
         location_key = country_code or ((region or "").strip().lower() or None)
         norm_transport = self._normalize_transport_value(transport)
         if is_entry_route:
-            return (location_key, norm_transport, True, "entry")
+            entry_key = str(entry_node_id) if entry_node_id else "_noentry"
+            return (norm_transport, True, "entry", entry_key)
         return (location_key, norm_transport, False, str(backend_node_id) if backend_node_id else "")
 
     def _number_routes_display(
