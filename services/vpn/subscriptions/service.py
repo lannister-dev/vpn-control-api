@@ -1185,17 +1185,6 @@ class SubscriptionService:
                         "uri": self._update_uri_remark(route.uri, new_name),
                     })
 
-            for i in entry_indices:
-                route = routes[i]
-                base = format_node_display_name(
-                    node_name=str(route.node.name), region=route.node.region,
-                )
-                new_name = f"{base} WL"
-                routes[i] = route.model_copy(update={
-                    "display_name": new_name,
-                    "uri": self._update_uri_remark(route.uri, new_name),
-                })
-
         return routes
 
     @staticmethod
