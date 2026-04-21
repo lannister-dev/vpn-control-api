@@ -1830,19 +1830,15 @@
       td { font-size: 12px; padding: 6px 4px; }
     }
 
+
     /* ── Topology (routes) ───────────────────────────── */
     .topo-toolbar {
-      display: flex; align-items: center; gap: 18px; padding: 8px 10px;
+      display: flex; align-items: center; gap: 18px; padding: 8px 12px;
       border: 1px solid var(--line); border-radius: 10px;
-      background: rgba(15,23,42,0.4); margin-bottom: 12px;
+      background: rgba(15,23,42,0.4); margin-bottom: 10px;
     }
-    .topo-legend {
-      display: flex; align-items: center; gap: 10px; font-size: 11px; color: rgba(228,236,255,0.75);
-    }
-    .topo-dot {
-      display: inline-block; width: 8px; height: 8px; border-radius: 50%;
-      margin-right: 3px; vertical-align: middle;
-    }
+    .topo-legend { display: flex; align-items: center; gap: 10px; font-size: 11px; color: rgba(228,236,255,0.75); }
+    .topo-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 3px; vertical-align: middle; }
     .topo-dot.ok   { background: #22c55e; box-shadow: 0 0 6px rgba(34,197,94,0.6); }
     .topo-dot.warn { background: #f59e0b; box-shadow: 0 0 6px rgba(245,158,11,0.6); }
     .topo-dot.bad  { background: #ef4444; box-shadow: 0 0 6px rgba(239,68,68,0.6); }
@@ -1850,45 +1846,59 @@
 
     .topo-canvas {
       border: 1px solid var(--line); border-radius: 12px;
-      background: linear-gradient(180deg, rgba(15,23,42,0.6), rgba(15,23,42,0.3));
-      padding: 10px; overflow-x: auto;
-    }
-    .topo-svg { width: 100%; display: block; font-family: inherit; }
-
-    .topo-node { cursor: pointer; transition: transform 120ms ease; }
-    .topo-node:hover { transform: translate(0,-2px); }
-    .topo-node rect.topo-node-bg {
-      fill: rgba(15,23,42,0.72); stroke: var(--line-strong); stroke-width: 1;
-      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));
-    }
-    .topo-node-ok  rect.topo-node-bg { stroke: rgba(34,197,94,0.55); }
-    .topo-node-warn rect.topo-node-bg { stroke: rgba(245,158,11,0.6); }
-    .topo-node-bad rect.topo-node-bg { stroke: rgba(239,68,68,0.7); }
-    .topo-node-idle rect.topo-node-bg { stroke: rgba(100,116,139,0.55); }
-
-    .topo-node-dot { fill: #64748b; }
-    .topo-node-ok .topo-node-dot   { fill: #22c55e; filter: drop-shadow(0 0 4px rgba(34,197,94,0.7)); }
-    .topo-node-warn .topo-node-dot { fill: #f59e0b; filter: drop-shadow(0 0 4px rgba(245,158,11,0.7)); }
-    .topo-node-bad .topo-node-dot  { fill: #ef4444; filter: drop-shadow(0 0 4px rgba(239,68,68,0.7)); }
-
-    .topo-node-ok .topo-node-dot, .topo-node-warn .topo-node-dot, .topo-node-bad .topo-node-dot {
-      animation: topo-pulse 2.4s ease-in-out infinite;
-    }
-    @keyframes topo-pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.55; }
+      background: linear-gradient(180deg, rgba(15,23,42,0.48), rgba(15,23,42,0.24));
+      padding: 4px; display: flex; flex-direction: column; gap: 3px;
     }
 
-    .topo-node-icon { font-size: 13px; fill: rgba(228,236,255,0.55); }
-    .topo-node-title { font-size: 13px; font-weight: 600; fill: var(--text); }
-    .topo-node-sub { font-size: 10px; fill: rgba(228,236,255,0.55); }
-    .topo-meta { fill: #22c55e; }
+    .topo-row {
+      display: grid;
+      grid-template-columns: 22px minmax(220px, 1fr) auto 150px;
+      align-items: center; gap: 12px;
+      padding: 6px 12px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      background: rgba(15,23,42,0.28);
+      cursor: default;
+      transition: background 120ms ease, border-color 120ms ease;
+    }
+    .topo-row:hover { background: rgba(15,23,42,0.5); border-color: var(--line-strong); }
+    .topo-row-ok  { border-left: 3px solid rgba(34,197,94,0.55); }
+    .topo-row-warn{ border-left: 3px solid rgba(245,158,11,0.6); }
+    .topo-row-bad { border-left: 3px solid rgba(239,68,68,0.7); }
+    .topo-row-idle{ border-left: 3px solid rgba(100,116,139,0.55); }
 
-    .topo-edge { fill: none; stroke-width: 2; }
-    .topo-edge-ok   { stroke: #22c55e; }
-    .topo-edge-warn { stroke: #f59e0b; stroke-dasharray: 6 4; }
-    .topo-edge-bad  { stroke: #ef4444; stroke-dasharray: 4 4; }
-    .topo-edge-idle { stroke: #64748b; stroke-dasharray: 2 4; opacity: 0.5; }
+    .topo-flag { font-size: 16px; }
+    .topo-row-title { font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .topo-arrow { color: rgba(228,236,255,0.55); font-weight: 400; margin: 0 4px; font-size: 11px; }
+
+    .topo-chain-pips { display: flex; align-items: center; }
+    .topo-pip {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 22px; height: 22px; border-radius: 50%;
+      font-size: 11px;
+      background: rgba(15,23,42,0.8);
+      border: 1.5px solid transparent;
+      cursor: pointer;
+      position: relative; z-index: 1;
+      transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+    }
+    .topo-pip:hover { z-index: 2; box-shadow: 0 0 0 3px rgba(255,255,255,0.06); }
+    .topo-pip-ok   { border-color: #22c55e; color: #86efac; }
+    .topo-pip-warn { border-color: #f59e0b; color: #fcd34d; }
+    .topo-pip-bad  { border-color: #ef4444; color: #fca5a5; }
+    .topo-pip-idle { border-color: #64748b; color: #cbd5e1; }
+
+    .topo-link {
+      display: inline-block; width: 16px; height: 2px; vertical-align: middle; margin: 0 1px;
+      border-radius: 1px;
+    }
+    .topo-link-ok   { background: #22c55e; }
+    .topo-link-warn { background: #f59e0b; }
+    .topo-link-bad  { background: #ef4444; }
+    .topo-link-idle { background: #64748b; opacity: 0.5; }
+
+    .topo-row-meta { display: flex; align-items: center; gap: 8px; justify-content: flex-end; font-size: 11px; }
+    .topo-lat { color: #86efac; font-weight: 600; font-variant-numeric: tabular-nums; }
 
     .topo-chip { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; letter-spacing: 0.4px; text-transform: uppercase; }
     .topo-chip-ok { background: rgba(34,197,94,0.18); color: #86efac; }
