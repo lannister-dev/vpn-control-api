@@ -106,6 +106,7 @@ from shared.redis.client import RedisClient, get_redis_client
 from shared.utils.node_display import (
     COUNTRY_CODE_TO_NAME,
     country_code_from_region,
+    effective_zone,
     format_node_display_name,
 )
 from shared.utils.logger import StructuredLogger
@@ -687,8 +688,10 @@ class SubscriptionService:
             limit=max_fetch,
             backend_node_ids=allowed_backend_ids_sorted,
             node_seen_after=self._resolved_route_node_seen_after(),
+            allow_dead_entry=True,
         )
         entry_nodes_by_id = await self._entry_nodes_by_id(route_rows=route_rows)
+        entries_by_zone = await self._safe_entries_by_zone()
 
         has_allowed = any(
             self._as_uuid(node.id) in allowed_backend_ids
@@ -701,6 +704,7 @@ class SubscriptionService:
                 limit=max_fetch,
                 backend_node_ids=allowed_backend_ids_sorted,
                 node_seen_after=None,
+                allow_dead_entry=True,
             )
             entry_nodes_by_id = await self._entry_nodes_by_id(route_rows=route_rows)
 
@@ -722,8 +726,22 @@ class SubscriptionService:
             backend_node_id = self._as_uuid(node.id)
             if backend_node_id not in allowed_backend_ids:
                 continue
-            entry_node_id = self._route_entry_node_id(route)
-            entry_node = entry_nodes_by_id.get(entry_node_id) if entry_node_id is not None else None
+            raw_entry_node_id = self._route_entry_node_id(route)
+            raw_entry_node = entry_nodes_by_id.get(raw_entry_node_id) if raw_entry_node_id is not None else None
+
+            if raw_entry_node_id is not None:
+                entry_node = self._select_entry_for_backend(
+                    backend_node=node,
+                    current_entry=raw_entry_node,
+                    user_id=getattr(subscription, "user_id", None),
+                    entries_by_zone=entries_by_zone,
+                )
+                if entry_node is not None:
+                    entry_nodes_by_id[self._as_uuid(entry_node.id)] = entry_node
+                entry_node_id = self._as_uuid(entry_node.id) if entry_node is not None else None
+            else:
+                entry_node = None
+                entry_node_id = None
 
             if entry_node is not None:
                 entry_role = getattr(entry_node, "role", "")
@@ -731,6 +749,8 @@ class SubscriptionService:
                     continue
                 if entry_role == ROLE_ENTRY and not entry_relay_enabled:
                     continue
+            elif raw_entry_node_id is not None:
+                continue
 
             transport_security = transport_profile.security
             transport_network = transport_profile.network
@@ -815,6 +835,7 @@ class SubscriptionService:
             resolved_routes=resolved_routes,
             allowed_backend_ids=allowed_backend_ids,
             entry_nodes_by_id=entry_nodes_by_id,
+            entries_by_zone=entries_by_zone,
             subscription=subscription,
             key=key,
             selected_backend_id=selected_backend_id,
@@ -916,6 +937,7 @@ class SubscriptionService:
             resolved_routes: list[ResolvedSubscriptionRoute],
             allowed_backend_ids: set[UUID],
             entry_nodes_by_id: dict,
+            entries_by_zone: dict[str, list[VpnNode]] | None = None,
             subscription,
             key: ResolvedDeviceKey,
             selected_backend_id: UUID,
@@ -924,8 +946,7 @@ class SubscriptionService:
             backend_loads: dict,
             entry_loads: dict,
     ) -> list[ResolvedSubscriptionRoute]:
-        from shared.utils.node_display import effective_zone
-
+        entries_by_zone = entries_by_zone or {}
         backends_with_routes = {r.backend_node_id for r in resolved_routes}
         missing_backends = [bid for bid in allowed_backend_ids if bid not in backends_with_routes]
         if not missing_backends:
@@ -974,16 +995,26 @@ class SubscriptionService:
             for route, node, transport_profile in rows:
                 if self._as_uuid(route.id) in seen_route_ids:
                     continue
-                entry_node_id = self._route_entry_node_id(route)
-                entry_node = entry_nodes_by_id.get(entry_node_id) if entry_node_id else None
-                if entry_node is None:
+                raw_entry_node_id = self._route_entry_node_id(route)
+                raw_entry_node = entry_nodes_by_id.get(raw_entry_node_id) if raw_entry_node_id else None
+                if raw_entry_node is None and raw_entry_node_id is not None:
                     try:
-                        entry_node = await self.node_repository.get_by_id(entry_node_id)
+                        raw_entry_node = await self.node_repository.get_by_id(raw_entry_node_id)
                     except Exception:
-                        entry_node = None
-                    if entry_node is None:
-                        continue
-                    entry_nodes_by_id[entry_node_id] = entry_node
+                        raw_entry_node = None
+                    if raw_entry_node is not None:
+                        entry_nodes_by_id[raw_entry_node_id] = raw_entry_node
+
+                entry_node = self._select_entry_for_backend(
+                    backend_node=node,
+                    current_entry=raw_entry_node,
+                    user_id=getattr(subscription, "user_id", None),
+                    entries_by_zone=entries_by_zone,
+                )
+                if entry_node is None:
+                    continue
+                entry_node_id = self._as_uuid(entry_node.id)
+                entry_nodes_by_id[entry_node_id] = entry_node
 
                 entry_role = getattr(entry_node, "role", "")
                 if entry_role == ROLE_WHITELIST_ENTRY and not whitelist_enabled:
@@ -1594,6 +1625,60 @@ class SubscriptionService:
         if isinstance(raw, str):
             return UUID(raw)
         return None
+
+    @staticmethod
+    def _is_entry_usable(entry) -> bool:
+        if entry is None:
+            return False
+        if not getattr(entry, "is_active", True):
+            return False
+        if not getattr(entry, "is_enabled", True):
+            return False
+        if getattr(entry, "is_draining", False):
+            return False
+        agent = getattr(entry, "agent_state", None)
+        if agent is not None and getattr(agent, "is_healthy", True) is False:
+            return False
+        return True
+
+    @staticmethod
+    def _user_hash_index(user_id, size: int) -> int:
+        if size <= 0:
+            return 0
+        digest = hashlib.sha256(str(user_id).encode("utf-8")).digest()
+        return int.from_bytes(digest[:8], "big") % size
+
+    async def _safe_entries_by_zone(self) -> dict[str, list[VpnNode]]:
+        fn = getattr(self.node_repository, "list_healthy_entries_by_zone", None)
+        if fn is None:
+            return {}
+        try:
+            result = fn()
+            if hasattr(result, "__await__"):
+                result = await result
+        except Exception:
+            return {}
+        return result if isinstance(result, dict) else {}
+
+    def _select_entry_for_backend(
+            self,
+            *,
+            backend_node: VpnNode,
+            current_entry: VpnNode | None,
+            user_id,
+            entries_by_zone: dict[str, list[VpnNode]],
+    ) -> VpnNode | None:
+        if self._is_entry_usable(current_entry):
+            return current_entry
+        zone = effective_zone(
+            explicit_zone=getattr(backend_node, "zone", None),
+            region=getattr(backend_node, "region", None),
+        )
+        candidates = entries_by_zone.get(zone) or []
+        if not candidates:
+            return None
+        idx = self._user_hash_index(user_id, len(candidates))
+        return candidates[idx]
 
     async def _set_placement_desired_state(
             self,

@@ -343,6 +343,77 @@ class TestSubscriptionDisplayForRoute:
         assert "Finland" in display
 
 
+class TestEntrySelection:
+    def _entry(self, *, node_id=None, is_active=True, is_enabled=True, is_draining=False, is_healthy=True, role="entry", zone="europe", region="de"):
+        e = MagicMock()
+        e.id = node_id or uuid4()
+        e.is_active = is_active
+        e.is_enabled = is_enabled
+        e.is_draining = is_draining
+        e.role = role
+        e.zone = zone
+        e.region = region
+        agent = MagicMock()
+        agent.is_healthy = is_healthy
+        e.agent_state = agent
+        return e
+
+    def _backend(self, *, zone="europe", region="de"):
+        b = MagicMock()
+        b.zone = zone
+        b.region = region
+        return b
+
+    def test_live_explicit_entry_is_kept(self, service):
+        backend = self._backend()
+        chosen = self._entry(node_id=uuid4())
+        pool = {"europe": [self._entry(node_id=uuid4()) for _ in range(3)]}
+        result = service._select_entry_for_backend(
+            backend_node=backend, current_entry=chosen, user_id=uuid4(), entries_by_zone=pool,
+        )
+        assert result is chosen
+
+    def test_dead_entry_falls_back_to_pool(self, service):
+        backend = self._backend()
+        draining_entry = self._entry(is_draining=True)
+        alt1, alt2 = self._entry(node_id=uuid4()), self._entry(node_id=uuid4())
+        pool = {"europe": [alt1, alt2]}
+        result = service._select_entry_for_backend(
+            backend_node=backend, current_entry=draining_entry, user_id=uuid4(), entries_by_zone=pool,
+        )
+        assert result in (alt1, alt2)
+
+    def test_no_entry_in_zone_returns_none(self, service):
+        backend = self._backend(zone="asia", region="sg")
+        result = service._select_entry_for_backend(
+            backend_node=backend, current_entry=None, user_id=uuid4(), entries_by_zone={"europe": [self._entry()]},
+        )
+        assert result is None
+
+    def test_same_user_stable_across_calls(self, service):
+        backend = self._backend()
+        uid = uuid4()
+        pool = {"europe": [self._entry(node_id=uuid4()) for _ in range(5)]}
+        pick1 = service._select_entry_for_backend(
+            backend_node=backend, current_entry=None, user_id=uid, entries_by_zone=pool,
+        )
+        pick2 = service._select_entry_for_backend(
+            backend_node=backend, current_entry=None, user_id=uid, entries_by_zone=pool,
+        )
+        assert pick1 is pick2
+
+    def test_different_users_spread_across_pool(self, service):
+        backend = self._backend()
+        pool = {"europe": [self._entry(node_id=uuid4()) for _ in range(4)]}
+        picks = {
+            service._select_entry_for_backend(
+                backend_node=backend, current_entry=None, user_id=uuid4(), entries_by_zone=pool,
+            ).id
+            for _ in range(200)
+        }
+        assert len(picks) == 4
+
+
 class TestCalcEtag:
     def test_deterministic(self, service):
         sub = _make_sub()
