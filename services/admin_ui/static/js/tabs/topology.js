@@ -2,7 +2,7 @@ import { state, refs } from '../state.js';
 import { esc, nodeGeo, shortId, relTime } from '../utils.js';
 import { openModal } from '../ui.js';
 
-const SEV = { ok: 0, idle: 1, warn: 2, bad: 3 };
+const SEV = { ok: 0, off: 0, idle: 1, warn: 2, bad: 3 };
 const worstOf = (...severities) =>
   severities.reduce((acc, s) => (SEV[s] > SEV[acc] ? s : acc), "ok");
 
@@ -37,11 +37,12 @@ function _nodeStatus(node) {
 }
 
 function _routeStatus(route) {
+  if (route.is_active === false) return "off";
   const hs = String(route.health_status || "").toLowerCase();
   if (hs === "healthy") return "ok";
   if (hs === "warming_up") return "warn";
   if (hs === "degraded" || hs === "suspected") return "warn";
-  if (hs === "blocked") return "bad";
+  if (hs === "blocked") return "off";
   return "idle";
 }
 
@@ -60,7 +61,7 @@ export function buildTopologyGraph() {
 
   const byBackend = new Map();
   for (const r of routes) {
-    if (!r || !r.is_active) continue;
+    if (!r) continue;
     const backendNode = nodesById[r.node_id];
     if (!backendNode) continue;
     if (!byBackend.has(backendNode.id)) {
@@ -146,7 +147,7 @@ const TYPE_LABEL = { probe: "Probe", entry: "Entry", backend: "Backend", profile
 function renderTopology() {
   if (!refs.topoCanvas) return;
   let chains = buildTopologyGraph();
-  if (state.topoOnlyIssues) chains = chains.filter((c) => c.status !== "ok");
+  if (state.topoOnlyIssues) chains = chains.filter((c) => c.status === "warn" || c.status === "bad");
 
   if (!chains.length) {
     refs.topoCanvas.innerHTML = "";

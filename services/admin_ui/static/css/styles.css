@@ -1843,6 +1843,7 @@
     .topo-dot.warn { background: #f59e0b; box-shadow: 0 0 6px rgba(245,158,11,0.6); }
     .topo-dot.bad  { background: #ef4444; box-shadow: 0 0 6px rgba(239,68,68,0.6); }
     .topo-dot.idle { background: #64748b; }
+    .topo-dot.off  { background: transparent; border: 1px dashed rgba(148,163,184,0.6); box-sizing: border-box; }
 
     .topo-canvas {
       border: 1px solid var(--line); border-radius: 12px;
@@ -1866,6 +1867,7 @@
     .topo-row-warn{ border-left: 3px solid rgba(245,158,11,0.6); }
     .topo-row-bad { border-left: 3px solid rgba(239,68,68,0.7); }
     .topo-row-idle{ border-left: 3px solid rgba(100,116,139,0.55); }
+    .topo-row-off { border-left: 3px solid rgba(148,163,184,0.35); opacity: 0.55; background: rgba(15,23,42,0.12); }
 
     .topo-flag { font-size: 16px; }
     .topo-row-title { font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1887,6 +1889,7 @@
     .topo-pip-warn { border-color: #f59e0b; color: #fcd34d; }
     .topo-pip-bad  { border-color: #ef4444; color: #fca5a5; }
     .topo-pip-idle { border-color: #64748b; color: #cbd5e1; }
+    .topo-pip-off  { border-color: rgba(148,163,184,0.35); color: rgba(148,163,184,0.85); border-style: dashed; }
 
     .topo-link {
       display: inline-block; width: 16px; height: 2px; vertical-align: middle; margin: 0 1px;
@@ -1896,6 +1899,7 @@
     .topo-link-warn { background: #f59e0b; }
     .topo-link-bad  { background: #ef4444; }
     .topo-link-idle { background: #64748b; opacity: 0.5; }
+    .topo-link-off  { background: transparent; border-top: 1px dashed rgba(148,163,184,0.45); height: 0; margin-top: 10px; }
 
     .topo-row-meta { display: flex; align-items: center; gap: 8px; justify-content: flex-end; font-size: 11px; }
     .topo-lat { color: #86efac; font-weight: 600; font-variant-numeric: tabular-nums; }
