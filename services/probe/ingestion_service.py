@@ -188,6 +188,8 @@ class ProbeIngestionService:
                 include_draining=include_draining,
                 include_disabled=include_disabled,
                 role=role,
+                route_rows=rows,
+                probe_client_ids_by_target=probe_client_ids_by_target,
             )
         )
         targets.sort(key=lambda item: (item.region, item.node_name, item.route_name or ""))
@@ -520,26 +522,108 @@ class ProbeIngestionService:
             include_draining: bool,
             include_disabled: bool,
             role: ProbeTargetRole | None,
+            route_rows: list[tuple] | None = None,
+            probe_client_ids_by_target: dict[tuple[UUID, str], str] | None = None,
     ) -> list[ProbeTargetOut]:
         if role not in {None, "all", "whitelist_entry", "entry"}:
             return []
 
         nodes = await self.node_repository.list_public()
+        nodes_by_id: dict[UUID, object] = {n.id: n for n in nodes}
+        routes_by_entry: dict[UUID, list[tuple]] = {}
+        for row in route_rows or []:
+            route = row[0]
+            entry_id = getattr(route, "entry_node_id", None)
+            if entry_id is None:
+                continue
+            routes_by_entry.setdefault(entry_id, []).append(row)
+        probe_ids = probe_client_ids_by_target or {}
+
         targets: list[ProbeTargetOut] = []
         for node in nodes:
             if node.role not in {"whitelist_entry", "entry"}:
                 continue
             if role is not None and not self._matches_target_role(node=node, role=role):
                 continue
-            target = self._build_node_probe_target(
+            tcp_target = self._build_node_probe_target(
                 node=node,
                 include_disabled=include_disabled,
                 include_draining=include_draining,
             )
-            if target is None:
-                continue
-            targets.append(target)
+            if tcp_target is not None:
+                targets.append(tcp_target)
+            synth = self._build_entry_synthetic_target(
+                entry_node=node,
+                entry_routes=routes_by_entry.get(node.id, []),
+                nodes_by_id=nodes_by_id,
+                probe_client_ids_by_target=probe_ids,
+                include_disabled=include_disabled,
+                include_draining=include_draining,
+            )
+            if synth is not None:
+                targets.append(synth)
         return targets
+
+    def _build_entry_synthetic_target(
+            self,
+            *,
+            entry_node,
+            entry_routes: list[tuple],
+            nodes_by_id: dict[UUID, object],
+            probe_client_ids_by_target: dict[tuple[UUID, str], str],
+            include_disabled: bool,
+            include_draining: bool,
+    ) -> ProbeTargetOut | None:
+        if not include_disabled and not entry_node.is_enabled:
+            return None
+        if not include_draining and entry_node.is_draining:
+            return None
+
+        entry_host = entry_node.public_domain or entry_node.reality_ip
+        if not entry_host:
+            return None
+
+        chosen: tuple | None = None
+        for row in entry_routes:
+            route, backend, transport_profile, _agent_state = row
+            if getattr(transport_profile, "security", None) != "reality":
+                continue
+            if getattr(transport_profile, "network", None) != "tcp":
+                continue
+            if not backend.is_active or not backend.is_enabled or backend.is_draining:
+                continue
+            probe_client_id = probe_client_ids_by_target.get((backend.id, "reality"))
+            if not probe_client_id:
+                continue
+            if not (transport_profile.reality_public_key and transport_profile.reality_short_id and transport_profile.reality_server_name):
+                continue
+            chosen = (route, backend, transport_profile, probe_client_id)
+            break
+
+        if chosen is None:
+            return None
+        route, backend, transport_profile, probe_client_id = chosen
+
+        return ProbeTargetOut(
+            node_id=entry_node.id,
+            route_id=route.id,
+            route_name=f"{entry_node.name}→{backend.name}·{transport_profile.name}·pool",
+            transport_profile_id=transport_profile.id,
+            transport_profile_name=transport_profile.name,
+            transport_kind="reality",
+            probe_kind="synthetic_vpn",
+            node_name=entry_node.name,
+            region=entry_node.region,
+            probe_client_id=probe_client_id,
+            target_host=entry_host,
+            target_port=self.target_port,
+            tls_sni=transport_profile.reality_server_name,
+            tls_fingerprint=transport_profile.tls_fingerprint or "chrome",
+            reality_public_key=transport_profile.reality_public_key,
+            reality_short_id=transport_profile.reality_short_id,
+            reality_server_name=transport_profile.reality_server_name,
+            flow=transport_profile.flow,
+        )
 
     def _build_node_probe_target(
             self,
