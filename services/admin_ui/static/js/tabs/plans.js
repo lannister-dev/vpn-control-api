@@ -43,7 +43,7 @@ export function renderPlans() {
         <td><span class="mono">${esc(p.included_devices || 1)}</span></td>
         <td>${p.device_price_rub > 0 ? `<span class="mono">${Number(p.device_price_rub).toFixed(2)} \u20BD</span>` : `<span class="muted">\u2014</span>`}</td>
         <td><span class="mono">${esc(p.duration_days)}</span> \u0434\u043D.</td>
-        <td>${p.whitelist_enabled ? chip("info", "WL") : ""} ${p.is_active ? chip("ok", "active") : chip("bad", "inactive")}</td>
+        <td>${p.whitelist_enabled ? chip("info", "WL") : ""} ${p.entry_relay_enabled ? chip("info", "Entry") : ""} ${p.is_active ? chip("ok", "active") : chip("bad", "inactive")}</td>
         <td><div class="actions"><button class="btn-mini plan-edit-btn" data-plan-id="${esc(p.id)}">Edit</button></div></td>
       </tr>`;
     }).join("")
@@ -98,8 +98,9 @@ function _planFormBody(plan) {
     <div class="form-section"><div class="form-section-title">Цена</div>
       <div class="form-group"><label class="form-label">Цена (руб.)</label><input class="input mono" id="pf-price" type="number" min="0" step="0.01" value="${esc(p.price_rub || 0)}" /></div>
     </div>
-    <div class="form-section"><div class="form-section-title">Whitelist</div>
-      <div class="form-group"><label class="checkbox-inline"><input type="checkbox" id="pf-wl" ${p.whitelist_enabled ? "checked" : ""} /> Whitelist-маршруты (entry ноды)</label></div>
+    <div class="form-section"><div class="form-section-title">Entry / Whitelist</div>
+      <div class="form-group"><label class="checkbox-inline"><input type="checkbox" id="pf-er" ${p.entry_relay_enabled ? "checked" : ""} /> Умная маршрутизация (entry pool)</label></div>
+      <div class="form-group"><label class="checkbox-inline"><input type="checkbox" id="pf-wl" ${p.whitelist_enabled ? "checked" : ""} /> Whitelist-маршруты (обход глушилок)</label></div>
     </div>`;
 }
 
@@ -119,6 +120,7 @@ function _readPlanForm(root) {
     device_price_rub: parseFloat(root.querySelector("#pf-device-price").value) || 0,
     is_active: root.querySelector("#pf-active").checked,
     whitelist_enabled: root.querySelector("#pf-wl").checked,
+    entry_relay_enabled: root.querySelector("#pf-er").checked,
     price_rub: parseFloat(root.querySelector("#pf-price").value) || 0,
   };
   const dps = root.querySelector("#pf-device-price-stars").value.trim();
