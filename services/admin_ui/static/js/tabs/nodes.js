@@ -13,7 +13,7 @@ let _refreshAll = () => {};
 let _render = () => {};
 export function setCallbacks(refreshAll, render) { _refreshAll = refreshAll; _render = render; }
 
-const SUBS = ["overview", "routes", "placements", "probes", "transport"];
+const SUBS = ["overview", "routes", "placements", "probes", "transport", "pool"];
 const isEntryNode = (n) => ["whitelist_entry", "entry"].includes(String(n.role || "").toLowerCase());
 let _lastOverviewRenderNodeId = null;
 
@@ -154,7 +154,10 @@ export function renderNodeDetail() {
   if (refs.ndRoutesCount) refs.ndRoutesCount.textContent = String(routesForNode.length);
   if (refs.ndPlacementsCount) refs.ndPlacementsCount.textContent = String(placementsForNode.length);
 
-  const active = SUBS.includes(state.selectedNodeSubTab) ? state.selectedNodeSubTab : "overview";
+  if (refs.ndPoolTab) refs.ndPoolTab.hidden = !isEntryNode(node);
+
+  let active = SUBS.includes(state.selectedNodeSubTab) ? state.selectedNodeSubTab : "overview";
+  if (active === "pool" && !isEntryNode(node)) active = "overview";
   switchNodeSub(active);
 }
 
@@ -179,6 +182,7 @@ function switchNodeSub(sub, opts) {
   else if (sub === "placements") renderNdPlacements(node);
   else if (sub === "probes") renderNdProbes(node);
   else if (sub === "transport") renderNdTransport(node);
+  else if (sub === "pool") renderNdPool(node);
 }
 
 /* ── Quick actions bar ─────────────────────────────── */
@@ -375,6 +379,164 @@ function renderNdTransport(node) {
   `;
 }
 
+/* ── Sub: Pool (entry backends) ────────────────────── */
+const _poolCache = new Map();
+
+function renderNdPool(node) {
+  if (!isEntryNode(node)) {
+    refs.ndPool.innerHTML = `<div class="muted">Pool виден только для entry-нод.</div>`;
+    return;
+  }
+  const cached = _poolCache.get(node.id);
+  refs.ndPool.innerHTML = `
+    <div class="panel-head" style="padding:0 0 10px;border:0">
+      <div class="muted">Backend'ы, закреплённые за этой entry. HAProxy балансит запросы клиента по всему живому пулу.</div>
+      <div class="actions">
+        <button class="btn btn-ghost nd-pool-reload" data-node-id="${esc(node.id)}">Обновить</button>
+        <button class="btn btn-primary nd-pool-add" data-node-id="${esc(node.id)}">+ Добавить backend</button>
+      </div>
+    </div>
+    <div id="nd-pool-body">${cached ? _renderPoolRows(node.id, cached) : `<div class="muted">Загрузка…</div>`}</div>
+  `;
+  if (!cached) loadNdPool(node.id).catch(() => {});
+}
+
+function _renderPoolRows(entryId, assignments) {
+  if (!assignments.length) {
+    return `<div class="empty-state"><div class="empty-state-icon">🧩</div><div class="empty-state-title">Пул пуст</div><div class="empty-state-hint">Добавьте backend-ноду — она попадёт в HAProxy-слоты entry.</div></div>`;
+  }
+  const rows = assignments.map((a) => {
+    const backend = ((state.status && state.status.nodes) || []).find((n) => n.id === a.backend_node_id);
+    const name = backend ? backend.name : shortId(a.backend_node_id);
+    const g = backend ? nodeGeo(backend.region) : { flag: "🏳", country: "?" };
+    const enabledChip = a.enabled ? chip("ok", "enabled") : chip("warn", "disabled");
+    return `<tr>
+      <td><strong>${esc(name)}</strong><div class="muted" style="font-size:11px">${uuidCell(a.backend_node_id)}</div></td>
+      <td><span class="flag">${esc(g.flag)}</span>${esc(g.country)}</td>
+      <td class="mono">${esc(a.weight)}</td>
+      <td class="mono">${esc(a.rank)}</td>
+      <td>${enabledChip}</td>
+      <td><div class="actions">
+        <button class="btn-mini nd-pool-edit" data-entry-id="${esc(entryId)}" data-backend-id="${esc(a.backend_node_id)}">Edit</button>
+        <button class="btn-mini nd-pool-remove" data-entry-id="${esc(entryId)}" data-backend-id="${esc(a.backend_node_id)}">Remove</button>
+      </div></td>
+    </tr>`;
+  }).join("");
+  return `<div style="overflow-x:auto"><table>
+    <thead><tr><th>Backend</th><th>Регион</th><th>Вес</th><th>Rank</th><th>Статус</th><th>Действия</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table></div>`;
+}
+
+async function loadNdPool(entryId) {
+  try {
+    const data = await req(`/api/v1/entry/${encodeURIComponent(entryId)}/assignments`);
+    const items = Array.isArray(data) ? data : (data.items || []);
+    _poolCache.set(entryId, items);
+    if (state.selectedNode && state.selectedNode.id === entryId) {
+      const body = document.getElementById("nd-pool-body");
+      if (body) body.innerHTML = _renderPoolRows(entryId, items);
+    }
+    if (refs.ndPoolCount) refs.ndPoolCount.textContent = String(items.length);
+  } catch (e) {
+    const body = document.getElementById("nd-pool-body");
+    if (body) body.innerHTML = `<div class="card muted">Ошибка загрузки: ${esc(e.message)}</div>`;
+  }
+}
+
+function openPoolAddModal(entryId) {
+  const entryNode = ((state.status && state.status.nodes) || []).find((n) => n.id === entryId);
+  if (!entryNode) return;
+  const existing = (_poolCache.get(entryId) || []).map((a) => a.backend_node_id);
+  const candidates = ((state.status && state.status.nodes) || [])
+    .filter((n) => String(n.role || "").toLowerCase() === "backend")
+    .filter((n) => !existing.includes(n.id));
+  if (!candidates.length) {
+    notify("Нет доступных backend'ов", true);
+    return;
+  }
+  const options = candidates.map((n) => {
+    const g = nodeGeo(n.region);
+    return `<option value="${esc(n.id)}">${esc(g.flag)} ${esc(n.name)} · ${esc(g.country)}</option>`;
+  }).join("");
+  const bodyHtml = `
+    <div class="form-group"><label class="form-label">Backend</label>
+      <select id="pa-backend" class="select">${options}</select>
+    </div>
+    <div class="row-2">
+      <div class="form-group"><label class="form-label">Вес</label>
+        <input id="pa-weight" class="input mono" type="number" min="0" max="1000" value="100" />
+      </div>
+      <div class="form-group"><label class="form-label">Rank</label>
+        <input id="pa-rank" class="input mono" type="number" min="0" max="1000" value="0" />
+      </div>
+    </div>
+    <div class="form-group"><label class="checkbox-inline"><input type="checkbox" id="pa-enabled" checked /> Enabled</label></div>
+  `;
+  const footerHtml = `<button class="btn btn-ghost" data-act="cancel">Отмена</button><button class="btn btn-primary" data-act="save">Добавить</button>`;
+  openModal({
+    title: `Добавить backend в пул: ${entryNode.name}`,
+    bodyHtml,
+    footerHtml,
+    onMount: ({ root, close }) => {
+      root.querySelector('[data-act="cancel"]').addEventListener("click", close);
+      root.querySelector('[data-act="save"]').addEventListener("click", () => {
+        const payload = {
+          backend_node_id: root.querySelector("#pa-backend").value,
+          weight: parseInt(root.querySelector("#pa-weight").value) || 100,
+          rank: parseInt(root.querySelector("#pa-rank").value) || 0,
+          enabled: root.querySelector("#pa-enabled").checked,
+        };
+        close();
+        runAction("Pool add", () => req(`/api/v1/entry/${encodeURIComponent(entryId)}/assignments`, { method: "POST", body: payload }))
+          .then(() => loadNdPool(entryId)).catch(() => {});
+      });
+    },
+  });
+}
+
+function openPoolEditModal(entryId, backendId) {
+  const assignment = (_poolCache.get(entryId) || []).find((a) => a.backend_node_id === backendId);
+  if (!assignment) return;
+  const bodyHtml = `
+    <div class="row-2">
+      <div class="form-group"><label class="form-label">Вес</label>
+        <input id="pe-weight" class="input mono" type="number" min="0" max="1000" value="${esc(assignment.weight)}" />
+      </div>
+      <div class="form-group"><label class="form-label">Rank</label>
+        <input id="pe-rank" class="input mono" type="number" min="0" max="1000" value="${esc(assignment.rank)}" />
+      </div>
+    </div>
+    <div class="form-group"><label class="checkbox-inline"><input type="checkbox" id="pe-enabled" ${assignment.enabled ? "checked" : ""} /> Enabled</label></div>
+  `;
+  const footerHtml = `<button class="btn btn-ghost" data-act="cancel">Отмена</button><button class="btn btn-primary" data-act="save">Сохранить</button>`;
+  openModal({
+    title: `Backend ${shortId(backendId)} в пуле ${shortId(entryId)}`,
+    bodyHtml,
+    footerHtml,
+    onMount: ({ root, close }) => {
+      root.querySelector('[data-act="cancel"]').addEventListener("click", close);
+      root.querySelector('[data-act="save"]').addEventListener("click", () => {
+        const payload = {
+          weight: parseInt(root.querySelector("#pe-weight").value) || 100,
+          rank: parseInt(root.querySelector("#pe-rank").value) || 0,
+          enabled: root.querySelector("#pe-enabled").checked,
+        };
+        close();
+        runAction("Pool update", () => req(`/api/v1/entry/${encodeURIComponent(entryId)}/assignments/${encodeURIComponent(backendId)}`, { method: "PATCH", body: payload }))
+          .then(() => loadNdPool(entryId)).catch(() => {});
+      });
+    },
+  });
+}
+
+async function removePoolAssignment(entryId, backendId) {
+  const ok = await confirmAction("Удалить backend из пула", `Убрать backend ${shortId(backendId)} из пула entry?`);
+  if (!ok) return;
+  runAction("Pool remove", () => req(`/api/v1/entry/${encodeURIComponent(entryId)}/assignments/${encodeURIComponent(backendId)}`, { method: "DELETE" }))
+    .then(() => loadNdPool(entryId)).catch(() => {});
+}
+
 /* ── Save overview config ──────────────────────────── */
 async function saveOverviewConfig(node) {
   const body = {};
@@ -550,6 +712,15 @@ export function bindNodeEvents() {
         if (btn) btn.click();
         return;
       }
+
+      const poolReload = t.closest(".nd-pool-reload");
+      if (poolReload) { loadNdPool(poolReload.dataset.nodeId).catch(() => {}); return; }
+      const poolAdd = t.closest(".nd-pool-add");
+      if (poolAdd) { openPoolAddModal(poolAdd.dataset.nodeId); return; }
+      const poolEdit = t.closest(".nd-pool-edit");
+      if (poolEdit) { openPoolEditModal(poolEdit.dataset.entryId, poolEdit.dataset.backendId); return; }
+      const poolRemove = t.closest(".nd-pool-remove");
+      if (poolRemove) { removePoolAssignment(poolRemove.dataset.entryId, poolRemove.dataset.backendId); return; }
     });
   }
 

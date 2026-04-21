@@ -218,6 +218,7 @@ class RouteRepository(BaseRepository[Route]):
             limit: int,
             backend_node_ids: list[UUID] | None = None,
             node_seen_after: datetime | None = None,
+            allow_dead_entry: bool = False,
     ) -> list[tuple[Route, VpnNode, TransportProfile]]:
         if backend_node_ids is not None and not backend_node_ids:
             return []
@@ -232,22 +233,18 @@ class RouteRepository(BaseRepository[Route]):
                 else_=4,
             )
         )
-        stmt = (
-            select(Route, VpnNode, TransportProfile)
-            .join(VpnNode, VpnNode.id == Route.node_id)
-            .join(TransportProfile, TransportProfile.id == Route.transport_profile_id)
-            .join(NodeAgentState, NodeAgentState.node_id == VpnNode.id)
-            .outerjoin(entry_node, entry_node.id == Route.entry_node_id)
-            .outerjoin(entry_agent_state, entry_agent_state.node_id == entry_node.id)
-            .where(
-                Route.is_active.is_(True),
-                Route.effective_weight > 0,
-                Route.health_status.in_(("healthy", "warming_up", "degraded", "suspected")),
-                TransportProfile.is_active.is_(True),
-                VpnNode.is_active.is_(True),
-                VpnNode.is_enabled.is_(True),
-                VpnNode.is_draining.is_(False),
-                NodeAgentState.is_healthy.is_(True),
+        where_clauses = [
+            Route.is_active.is_(True),
+            Route.effective_weight > 0,
+            Route.health_status.in_(("healthy", "warming_up", "degraded", "suspected")),
+            TransportProfile.is_active.is_(True),
+            VpnNode.is_active.is_(True),
+            VpnNode.is_enabled.is_(True),
+            VpnNode.is_draining.is_(False),
+            NodeAgentState.is_healthy.is_(True),
+        ]
+        if not allow_dead_entry:
+            where_clauses.append(
                 or_(
                     Route.entry_node_id.is_(None),
                     (
@@ -259,8 +256,16 @@ class RouteRepository(BaseRepository[Route]):
                             | entry_agent_state.is_healthy.is_(True)
                         )
                     ),
-                ),
+                )
             )
+        stmt = (
+            select(Route, VpnNode, TransportProfile)
+            .join(VpnNode, VpnNode.id == Route.node_id)
+            .join(TransportProfile, TransportProfile.id == Route.transport_profile_id)
+            .join(NodeAgentState, NodeAgentState.node_id == VpnNode.id)
+            .outerjoin(entry_node, entry_node.id == Route.entry_node_id)
+            .outerjoin(entry_agent_state, entry_agent_state.node_id == entry_node.id)
+            .where(*where_clauses)
         )
         if backend_node_ids is not None:
             stmt = stmt.where(Route.node_id.in_(backend_node_ids))

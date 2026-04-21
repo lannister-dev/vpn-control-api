@@ -105,6 +105,7 @@ class SubscriptionsConfig:
 class EntryRelayConfig:
     listen_port: int = 443
     api_poll_sec: int = 300
+    user_entry_bucket_seconds: int = 0
 
 @dataclass
 class K3sConfig:
@@ -581,6 +582,7 @@ def get_settings() -> Settings:
     entry_relay = EntryRelayConfig(
         listen_port=env.int("ENTRY_RELAY_LISTEN_PORT", default=443),
         api_poll_sec=env.int("ENTRY_RELAY_API_POLL_SEC", default=300),
+        user_entry_bucket_seconds=max(0, env.int("ENTRY_RELAY_USER_BUCKET_SECONDS", default=0)),
     )
 
     _tg_allowed_raw = env.str("ADMIN_TELEGRAM_ALLOWED_IDS", default="")
