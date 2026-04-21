@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 
 from fastapi import Depends, HTTPException
 from sqlalchemy import select
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1636,9 +1637,14 @@ class SubscriptionService:
             return False
         if getattr(entry, "is_draining", False):
             return False
-        agent = getattr(entry, "agent_state", None)
-        if agent is not None and getattr(agent, "is_healthy", True) is False:
-            return False
+        try:
+            insp = sa_inspect(entry)
+        except Exception:
+            insp = None
+        if insp is None or "agent_state" not in getattr(insp, "unloaded", set()):
+            agent = getattr(entry, "agent_state", None)
+            if agent is not None and getattr(agent, "is_healthy", True) is False:
+                return False
         return True
 
     @staticmethod
