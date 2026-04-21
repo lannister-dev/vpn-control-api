@@ -163,12 +163,24 @@ class ProbeIngestionService:
         rows = await self.route_repository.list_active_detailed(limit=5000)
         probe_client_ids_by_target = await self._resolve_probe_client_ids_by_target(rows=rows)
 
-        targets: list[ProbeTargetOut] = []
-        for route, node, transport_profile, _agent_state in rows:
+        backend_row_by_key: dict[tuple[UUID, UUID], tuple] = {}
+        for row in rows:
+            route, node, transport_profile, _agent_state = row
             if node.role in {"whitelist_entry", "entry"}:
                 continue
             if role is not None and not self._matches_target_role(node=node, role=role):
                 continue
+            key = (node.id, transport_profile.id)
+            current = backend_row_by_key.get(key)
+            if current is None:
+                backend_row_by_key[key] = row
+                continue
+            if getattr(route, "entry_node_id", None) is None and getattr(current[0], "entry_node_id", None) is not None:
+                backend_row_by_key[key] = row
+
+        targets: list[ProbeTargetOut] = []
+        for row in backend_row_by_key.values():
+            route, node, transport_profile, _agent_state = row
             target = self._build_probe_target(
                 route=route,
                 node=node,
