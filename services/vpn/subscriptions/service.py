@@ -1388,7 +1388,7 @@ class SubscriptionService:
                 None,
             )
 
-        zone_ref = getattr(entry_node, "zone_ref", None)
+        zone_ref = getattr(backend_node, "zone_ref", None) or getattr(entry_node, "zone_ref", None)
         if zone_ref is not None and getattr(zone_ref, "is_active", True):
             emoji = (getattr(zone_ref, "emoji", "") or "").strip()
             name = (getattr(zone_ref, "name", "") or "").strip()
@@ -1397,8 +1397,8 @@ class SubscriptionService:
             base = ""
         if not base:
             base = format_node_display_name(
-                node_name=str(entry_node.name),
-                region=entry_node.region,
+                node_name=str(backend_node.name),
+                region=backend_node.region,
             )
 
         if entry_role == ROLE_WHITELIST_ENTRY:
@@ -1694,6 +1694,9 @@ class SubscriptionService:
             region=getattr(backend_node, "region", None),
         )
         candidates = entries_by_zone.get(zone) or []
+        required_role = getattr(current_entry, "role", None) if current_entry is not None else None
+        if required_role:
+            candidates = [e for e in candidates if getattr(e, "role", None) == required_role]
         if not candidates:
             return None
         idx = self._user_hash_index(user_id, len(candidates), bucket=self._current_entry_bucket())

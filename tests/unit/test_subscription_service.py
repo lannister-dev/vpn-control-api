@@ -75,6 +75,8 @@ def _make_node(*, public_domain="vpn.example.com", reality_ip=None, name="node1"
     n.reality_ip = public_domain if reality_ip is None else reality_ip
     n.name = name
     n.region = region
+    n.zone_ref = None
+    n.zone = None
     return n
 
 
@@ -322,15 +324,15 @@ class TestSubscriptionDisplayForRoute:
         assert display == "🇪🇺 Europe + WL unblock"
         assert desc == "🔓 глушилки"
 
-    def test_entry_without_zone_ref_falls_back_to_node_region(self, service):
+    def test_entry_without_zone_ref_falls_back_to_backend_country(self, service):
         backend = _make_node(region="de")
         entry = self._entry(role="entry", zone_ref=None, region="nl")
         display, _ = service._subscription_display_for_route(
             backend_node=backend, entry_node=entry
         )
-        assert "Netherlands" in display
+        assert "Germany" in display
 
-    def test_inactive_zone_is_ignored(self, service):
+    def test_inactive_zone_falls_back_to_backend_country(self, service):
         backend = _make_node(region="de")
         entry = self._entry(
             role="entry",
@@ -340,7 +342,17 @@ class TestSubscriptionDisplayForRoute:
         display, _ = service._subscription_display_for_route(
             backend_node=backend, entry_node=entry
         )
-        assert "Finland" in display
+        assert "Germany" in display
+
+    def test_whitelist_entry_in_ru_uses_backend_zone_label(self, service):
+        backend = _make_node(region="fr")
+        backend.zone_ref = self._zone()  # europe
+        entry = self._entry(role="whitelist_entry", zone_ref=None, region="ru")
+        display, desc = service._subscription_display_for_route(
+            backend_node=backend, entry_node=entry
+        )
+        assert display == "🇪🇺 Europe + WL unblock"
+        assert desc == "🔓 глушилки"
 
 
 class TestEntrySelection:
