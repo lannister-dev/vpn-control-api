@@ -98,6 +98,9 @@ export function initRefs() {
   refs.ndPlacements = $("nd-placements");
   refs.ndProbes = $("nd-probes");
   refs.ndTransport = $("nd-transport");
+  refs.ndPool = $("nd-pool");
+  refs.ndPoolTab = $("nd-pool-tab");
+  refs.ndPoolCount = $("nd-pool-count");
   refs.ndRoutesCount = $("nd-routes-count");
   refs.ndPlacementsCount = $("nd-placements-count");
   refs.routesStatus = $("routes-status");

@@ -6,6 +6,7 @@ from sqlalchemy import select, func, update, or_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.nodes.constants import ROLE_ENTRY, ROLE_WHITELIST_ENTRY
 from services.nodes.models import VpnNode, NodeAgentState, NodeAgentIdentity
 from shared.database.base_repository import BaseRepository
 from shared.database.session import AsyncDatabase
@@ -58,6 +59,36 @@ class VpnNodeRepository(BaseRepository[VpnNode]):
         result = await self.session.execute(stmt)
 
         return list(result.scalars().all())
+
+    async def list_healthy_entries_by_zone(
+            self,
+    ) -> dict[str, list[VpnNode]]:
+        from shared.utils.node_display import effective_zone
+
+        stmt = (
+            select(self.model)
+            .outerjoin(NodeAgentState, NodeAgentState.node_id == self.model.id)
+            .where(
+                self.model.role.in_((ROLE_ENTRY, ROLE_WHITELIST_ENTRY)),
+                self.model.is_active.is_(True),
+                self.model.is_enabled.is_(True),
+                self.model.is_draining.is_(False),
+                or_(
+                    NodeAgentState.id.is_(None),
+                    NodeAgentState.is_healthy.is_(True),
+                ),
+            )
+            .order_by(self.model.id.asc())
+        )
+        result = await self.session.execute(stmt)
+        grouped: dict[str, list[VpnNode]] = {}
+        for node in result.scalars().all():
+            zone = effective_zone(
+                explicit_zone=getattr(node, "zone", None),
+                region=getattr(node, "region", None),
+            )
+            grouped.setdefault(zone, []).append(node)
+        return grouped
 
     async def list_active_with_agent_state(self) -> list[tuple[VpnNode, NodeAgentState | None]]:
         stmt = (
