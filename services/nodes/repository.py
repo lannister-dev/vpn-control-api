@@ -5,6 +5,7 @@ from fastapi import Depends
 from sqlalchemy import select, func, update, or_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from services.nodes.constants import ROLE_ENTRY, ROLE_WHITELIST_ENTRY
 from services.nodes.models import VpnNode, NodeAgentState, NodeAgentIdentity
@@ -44,9 +45,13 @@ class VpnNodeRepository(BaseRepository[VpnNode]):
     async def list_by_ids(self, node_ids: list[UUID]) -> list[VpnNode]:
         if not node_ids:
             return []
-        stmt = select(self.model).where(self.model.id.in_(node_ids))
+        stmt = (
+            select(self.model)
+            .options(joinedload(self.model.agent_state))
+            .where(self.model.id.in_(node_ids))
+        )
         result = await self.session.execute(stmt)
-        return list(result.scalars().all())
+        return list(result.unique().scalars().all())
 
 
     async def list_public(
@@ -68,6 +73,7 @@ class VpnNodeRepository(BaseRepository[VpnNode]):
         stmt = (
             select(self.model)
             .outerjoin(NodeAgentState, NodeAgentState.node_id == self.model.id)
+            .options(joinedload(self.model.agent_state))
             .where(
                 self.model.role.in_((ROLE_ENTRY, ROLE_WHITELIST_ENTRY)),
                 self.model.is_active.is_(True),
@@ -82,7 +88,7 @@ class VpnNodeRepository(BaseRepository[VpnNode]):
         )
         result = await self.session.execute(stmt)
         grouped: dict[str, list[VpnNode]] = {}
-        for node in result.scalars().all():
+        for node in result.unique().scalars().all():
             zone = effective_zone(
                 explicit_zone=getattr(node, "zone", None),
                 region=getattr(node, "region", None),
