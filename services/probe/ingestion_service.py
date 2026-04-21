@@ -618,9 +618,9 @@ class ProbeIngestionService:
 
         return ProbeTargetOut(
             node_id=entry_node.id,
-            route_id=route.id,
-            route_name=f"{entry_node.name}→{backend.name}·{transport_profile.name}·pool",
-            transport_profile_id=transport_profile.id,
+            route_id=None,
+            route_name=f"{entry_node.name}→{backend.name}·pool",
+            transport_profile_id=None,
             transport_profile_name=transport_profile.name,
             transport_kind="reality",
             probe_kind="synthetic_vpn",
