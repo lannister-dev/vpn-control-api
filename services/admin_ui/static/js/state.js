@@ -31,6 +31,8 @@ export const state = {
   selectedSubscription: null,
   subCreateOpen: false,
   transportProfiles: [],
+  routesView: "list",
+  topoOnlyIssues: false,
 };
 
 export const refs = {};
@@ -106,6 +108,12 @@ export function initRefs() {
   refs.routesStatus = $("routes-status");
   refs.routesSearch = $("routes-search");
   refs.routesReload = $("routes-reload");
+  refs.routesViewToggle = $("routes-view-toggle");
+  refs.routesViewList = $("routes-view-list");
+  refs.routesViewTopology = $("routes-view-topology");
+  refs.topoCanvas = $("topo-canvas");
+  refs.topoEmpty = $("topo-empty");
+  refs.topoOnlyIssues = $("topo-only-issues");
   refs.placementsNode = $("placements-node");
   refs.placementsKey = $("placements-key");
   refs.placementsDesired = $("placements-desired");

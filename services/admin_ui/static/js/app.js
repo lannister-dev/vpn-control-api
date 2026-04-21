@@ -14,6 +14,7 @@ import { loadProbes, filteredProbes, renderProbes, bindProbeEvents } from './tab
 import { loadUsers, renderUsers, openUserEditModal, navigateToUserSubscriptions, bindUserEvents, setCallbacks as setUserCallbacks } from './tabs/users.js';
 import { loadPlans, renderPlanSelect, renderPlans, openPlanEditModal, bindPlanEvents } from './tabs/plans.js';
 import { loadZones, renderZones, bindZoneEvents } from './tabs/zones.js';
+import { bindTopologyEvents, rerenderTopologyIfVisible } from './tabs/topology.js';
 import { loadTrafficKeys, updateTrafficKpis, loadTrafficHistory, renderTraffic, renderTrafficHistory, renderTrafficChart, bindTrafficEvents, switchTrafficSub } from './tabs/traffic.js';
 import { loadNodesTraffic, bindTrafficNodesEvents } from './tabs/traffic-nodes.js';
 import { loadAdminUsers, renderAdminUsers, openEditModal, bindAdminUserEvents } from './tabs/admin-users.js';
@@ -67,6 +68,7 @@ function render() {
   renderPlacements();
   renderSubscriptions();
   renderSubPlanFilter();
+  rerenderTopologyIfVisible();
 }
 
 // ── RefreshAll + Timer ──
@@ -152,6 +154,7 @@ bindProbeEvents();
 bindUserEvents();
 bindPlanEvents();
 bindZoneEvents();
+bindTopologyEvents();
 bindTrafficEvents();
 bindTrafficNodesEvents();
 bindAdminUserEvents();
