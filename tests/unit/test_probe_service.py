@@ -391,6 +391,8 @@ async def test_list_targets_emits_synthetic_for_entry_pool(async_session):
     assert target.reality_server_name == tp.reality_server_name
     assert target.probe_client_id == "probe-reality-cid"
     assert target.transport_kind == "reality"
+    assert target.route_id is None
+    assert target.transport_profile_id is None
 
 
 @pytest.mark.asyncio
