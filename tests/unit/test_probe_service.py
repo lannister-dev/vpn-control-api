@@ -413,6 +413,36 @@ async def test_list_targets_skips_entry_synthetic_without_configured_client(asyn
 
 
 @pytest.mark.asyncio
+async def test_list_targets_deduplicates_backend_direct_probes(async_session):
+    svc = _ingestion_service()
+    svc.route_repository = AsyncMock()
+
+    backend = _node(role="backend", name="backend-fi")
+    entry_a = _node(role="whitelist_entry", name="wl")
+    entry_b = _node(role="entry", name="pool-entry")
+    tp = _transport_profile()
+
+    direct = _route(node_id=backend.id, transport_profile_id=tp.id, name="direct")
+    direct.entry_node_id = None
+    via_wl = _route(node_id=backend.id, transport_profile_id=tp.id, name="wl-suck-rkn")
+    via_wl.entry_node_id = entry_a.id
+    via_pool = _route(node_id=backend.id, transport_profile_id=tp.id, name="via-pool")
+    via_pool.entry_node_id = entry_b.id
+
+    svc.route_repository.list_active_detailed.return_value = [
+        (via_wl, backend, tp, None),
+        (via_pool, backend, tp, None),
+        (direct, backend, tp, None),
+    ]
+    svc.node_repository.list_public.return_value = [backend]
+
+    out = await svc.list_targets(role="backend")
+    direct_probes = [t for t in out if t.node_id == backend.id]
+    assert len(direct_probes) == 1
+    assert direct_probes[0].route_name == "direct"
+
+
+@pytest.mark.asyncio
 async def test_list_targets_skips_entry_synthetic_when_backend_unhealthy(async_session):
     svc, _, backend, _ = _entry_setup(role="entry")
     backend.is_draining = True
