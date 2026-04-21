@@ -30,8 +30,8 @@ function _probeStatus(probe) {
 
 function _nodeStatus(node) {
   if (!node) return "idle";
-  if (!node.is_active || !node.is_enabled) return "bad";
-  if (node.is_draining) return "warn";
+  if (node.is_enabled === false) return "bad";
+  if (node.is_draining === true) return "warn";
   if (node.is_healthy === false) return "bad";
   return "ok";
 }
@@ -194,7 +194,12 @@ function _openDetail(node, chain) {
     if (node.type === "backend" || node.type === "entry") {
       rows.push(["Роль", node.data.role]);
       rows.push(["Регион", node.data.region]);
-      rows.push(["Статус", node.data.is_active ? (node.data.is_draining ? "draining" : (node.data.is_enabled ? "active" : "disabled")) : "inactive"]);
+      const adminState = node.data.is_enabled === false
+        ? "disabled"
+        : node.data.is_draining === true
+          ? "draining"
+          : "active";
+      rows.push(["Статус", adminState]);
       if (node.data.is_healthy !== undefined) rows.push(["Healthy", String(node.data.is_healthy)]);
       if (node.data.public_domain) rows.push(["Public domain", node.data.public_domain]);
       if (node.data.reality_ip) rows.push(["Reality IP", node.data.reality_ip]);
@@ -220,7 +225,7 @@ function _openDetail(node, chain) {
     <div class="card" style="margin-bottom:10px">
       <div class="card-title">${esc(node.label)} <span class="muted" style="font-size:11px;margin-left:8px">${esc(node.type)} · <span class="topo-chip topo-chip-${node.status}">${node.status}</span></span></div>
     </div>
-    <table class="data-table">${rows.map(([k, v]) => `<tr><th style="text-align:left;padding:4px 10px 4px 0">${esc(k)}</th><td>${esc(String(v))}</td></tr>`).join("")}</table>
+    <table class="data-table" style="width:100%">${rows.map(([k, v]) => `<tr><th style="text-align:left;padding:6px 14px;color:rgba(228,236,255,0.65);font-weight:500;white-space:nowrap">${esc(k)}</th><td style="padding:6px 14px 6px 0">${esc(String(v))}</td></tr>`).join("")}</table>
     <div class="muted" style="font-size:11px;margin-top:10px">Chain: ${esc(chain.kind)} · ${esc(chain.backend.name)}${chain.entry ? " через " + esc(chain.entry.name) : ""}</div>
   `;
   openModal({
