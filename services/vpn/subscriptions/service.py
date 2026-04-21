@@ -1642,11 +1642,24 @@ class SubscriptionService:
         return True
 
     @staticmethod
-    def _user_hash_index(user_id, size: int) -> int:
+    def _user_hash_index(user_id, size: int, bucket: int | None = None) -> int:
         if size <= 0:
             return 0
-        digest = hashlib.sha256(str(user_id).encode("utf-8")).digest()
+        seed = str(user_id) if bucket is None else f"{user_id}:{bucket}"
+        digest = hashlib.sha256(seed.encode("utf-8")).digest()
         return int.from_bytes(digest[:8], "big") % size
+
+    def _current_entry_bucket(self) -> int | None:
+        bucket_sec = int(
+            getattr(
+                getattr(self.settings, "entry_relay", object()),
+                "user_entry_bucket_seconds",
+                0,
+            ) or 0
+        )
+        if bucket_sec <= 0:
+            return None
+        return int(time.time()) // bucket_sec
 
     async def _safe_entries_by_zone(self) -> dict[str, list[VpnNode]]:
         fn = getattr(self.node_repository, "list_healthy_entries_by_zone", None)
@@ -1677,7 +1690,7 @@ class SubscriptionService:
         candidates = entries_by_zone.get(zone) or []
         if not candidates:
             return None
-        idx = self._user_hash_index(user_id, len(candidates))
+        idx = self._user_hash_index(user_id, len(candidates), bucket=self._current_entry_bucket())
         return candidates[idx]
 
     async def _set_placement_desired_state(

@@ -413,6 +413,15 @@ class TestEntrySelection:
         }
         assert len(picks) == 4
 
+    def test_bucketed_hash_rotates_across_buckets(self, service):
+        uid = uuid4()
+        size = 5
+        a = service._user_hash_index(uid, size, bucket=100)
+        b = service._user_hash_index(uid, size, bucket=100)
+        assert a == b
+        picks = {service._user_hash_index(uid, size, bucket=bucket) for bucket in range(20)}
+        assert len(picks) > 1
+
 
 class TestCalcEtag:
     def test_deterministic(self, service):
