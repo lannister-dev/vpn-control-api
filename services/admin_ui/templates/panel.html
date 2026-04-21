@@ -249,12 +249,39 @@
       </section>
 
       <section id="tab-routes" class="panel">
-        <div class="panel-head"><div class="panel-title">Маршруты</div><div class="actions"><select id="routes-status" class="select"><option value="">Любой статус</option><option value="healthy">healthy</option><option value="degraded">degraded</option><option value="suspected">suspected</option><option value="blocked">blocked</option><option value="warming_up">warming_up</option></select><input id="routes-search" class="input mono" placeholder="Поиск UUID/имени" /><button id="routes-reload" class="btn btn-ghost">Перезагрузить</button><button id="routes-create-btn" class="btn btn-primary">Создать маршрут</button></div></div>
+        <div class="panel-head">
+          <div class="panel-title">Маршруты</div>
+          <div class="actions">
+            <div class="t-tabs" id="routes-view-toggle" style="margin:0">
+              <button class="t-tab-btn active" data-routes-view="list">Список</button>
+              <button class="t-tab-btn" data-routes-view="topology">Топология</button>
+            </div>
+            <select id="routes-status" class="select"><option value="">Любой статус</option><option value="healthy">healthy</option><option value="degraded">degraded</option><option value="suspected">suspected</option><option value="blocked">blocked</option><option value="warming_up">warming_up</option></select>
+            <input id="routes-search" class="input mono" placeholder="Поиск UUID/имени" />
+            <button id="routes-reload" class="btn btn-ghost">Перезагрузить</button>
+            <button id="routes-create-btn" class="btn btn-primary">Создать маршрут</button>
+          </div>
+        </div>
         <div class="panel-body">
-          <table>
-            <thead id="routes-head"><tr><th>Маршрут</th><th>Нода</th><th>Статус</th><th>Вес</th><th>Прогрев</th><th>Действия</th></tr></thead>
-            <tbody id="routes-body"></tbody>
-          </table>
+          <div id="routes-view-list">
+            <table>
+              <thead id="routes-head"><tr><th>Маршрут</th><th>Нода</th><th>Статус</th><th>Вес</th><th>Прогрев</th><th>Действия</th></tr></thead>
+              <tbody id="routes-body"></tbody>
+            </table>
+          </div>
+          <div id="routes-view-topology" hidden>
+            <div class="topo-toolbar">
+              <label class="checkbox-inline muted"><input type="checkbox" id="topo-only-issues" /> Только проблемные</label>
+              <div class="topo-legend">
+                <span class="topo-dot ok"></span>OK
+                <span class="topo-dot warn"></span>degraded
+                <span class="topo-dot bad"></span>fail
+                <span class="topo-dot idle"></span>нет данных
+              </div>
+            </div>
+            <div id="topo-canvas" class="topo-canvas"></div>
+            <div id="topo-empty" class="muted" style="padding:20px;display:none">Нет маршрутов.</div>
+          </div>
         </div>
       </section>
 
