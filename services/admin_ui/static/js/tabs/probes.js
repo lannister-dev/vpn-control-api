@@ -101,8 +101,14 @@ export function renderProbes() {
     ? sorted.map((p) => {
       const nName = nodeNameById(p.node_id);
       const rName = p.route_id ? (state.routes.find((r) => r.id === p.route_id) || {}).name : null;
+      const probeNode = ((state.status && state.status.nodes) || []).find((n) => n.id === p.node_id);
+      const probeRole = probeNode ? String(probeNode.role || "").toLowerCase() : "";
+      const viaEntry = probeRole === "entry" || probeRole === "whitelist_entry";
       const statusChip = p.is_reachable ? chip("ok", "OK") : chip("bad", "FAIL");
-      const kindLabel = p.probe_kind === "synthetic_vpn" ? "Synthetic" : "TCP";
+      const baseKind = p.probe_kind === "synthetic_vpn" ? "Synthetic" : "TCP";
+      const kindLabel = p.probe_kind === "synthetic_vpn"
+        ? (viaEntry ? `${baseKind} · via entry` : `${baseKind} · direct`)
+        : baseKind;
       const tLabel = p.transport_kind || "";
       const latency = p.latency_ms != null ? `<span class="mono">${p.latency_ms}ms</span>` : `<span class="muted">-</span>`;
       const errorPhase = p.error_phase ? chip("warn", p.error_phase) : `<span class="muted">-</span>`;

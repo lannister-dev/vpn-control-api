@@ -340,6 +340,87 @@ async def test_list_targets_keeps_probe_client_id_when_special_key_is_pending(as
     assert out[0].probe_client_id == "probe-reality-cid"
 
 
+def _entry_setup(role: str, *, configure_client: bool = True, extra_routes=True):
+    svc = _ingestion_service()
+    svc.route_repository = AsyncMock()
+    svc.key_repository = AsyncMock()
+    svc.placement_repository = AsyncMock()
+    if configure_client:
+        svc.synthetic_probe_client_ids = ProbeSyntheticClientIds(reality="probe-reality-cid")
+
+    entry = _node(role=role, name="entry-eu-1", public_domain="entry.example.com", reality_ip="")
+    backend = _node(role="backend", name="backend-fi", public_domain="fi.example.com", reality_ip="1.2.3.4")
+    tp = _transport_profile()
+    entry_route = _route(node_id=backend.id, transport_profile_id=tp.id, name="entry→fi·reality")
+    entry_route.entry_node_id = entry.id
+
+    rows = [(entry_route, backend, tp, None)]
+    if extra_routes:
+        direct_route = _route(node_id=backend.id, transport_profile_id=tp.id, name="direct-fi·reality")
+        direct_route.entry_node_id = None
+        rows.append((direct_route, backend, tp, None))
+
+    key = MagicMock()
+    key.id = uuid4()
+    key.client_id = "probe-reality-cid"
+    key.transport = "reality"
+    placement = MagicMock()
+    placement.backend_node_id = backend.id
+    placement.applied_state = "applied"
+    placement.op_version = 1
+    placement.applied_version = 1
+
+    svc.route_repository.list_active_detailed.return_value = rows
+    svc.key_repository.list_by_client_ids.return_value = [key]
+    svc.placement_repository.list_by_key_id.return_value = [placement]
+    svc.node_repository.list_public.return_value = [entry, backend]
+    return svc, entry, backend, tp
+
+
+@pytest.mark.asyncio
+async def test_list_targets_emits_synthetic_for_entry_pool(async_session):
+    svc, entry, backend, tp = _entry_setup(role="entry")
+    out = await svc.list_targets(role="all")
+    synth = [t for t in out if t.probe_kind == "synthetic_vpn" and t.node_id == entry.id]
+    assert len(synth) == 1
+    target = synth[0]
+    assert target.target_host == "entry.example.com"
+    assert target.target_port == 443
+    assert target.reality_public_key == tp.reality_public_key
+    assert target.reality_short_id == tp.reality_short_id
+    assert target.reality_server_name == tp.reality_server_name
+    assert target.probe_client_id == "probe-reality-cid"
+    assert target.transport_kind == "reality"
+
+
+@pytest.mark.asyncio
+async def test_list_targets_emits_synthetic_for_whitelist_entry(async_session):
+    svc, entry, _, tp = _entry_setup(role="whitelist_entry")
+    out = await svc.list_targets(role="whitelist_entry")
+    synth = [t for t in out if t.probe_kind == "synthetic_vpn" and t.node_id == entry.id]
+    assert len(synth) == 1
+    assert synth[0].reality_server_name == tp.reality_server_name
+
+
+@pytest.mark.asyncio
+async def test_list_targets_skips_entry_synthetic_without_configured_client(async_session):
+    svc, entry, _, _ = _entry_setup(role="entry", configure_client=False)
+    out = await svc.list_targets(role="all")
+    synth = [t for t in out if t.probe_kind == "synthetic_vpn" and t.node_id == entry.id]
+    assert synth == []
+    tcp = [t for t in out if t.probe_kind == "tcp_connect" and t.node_id == entry.id]
+    assert len(tcp) == 1
+
+
+@pytest.mark.asyncio
+async def test_list_targets_skips_entry_synthetic_when_backend_unhealthy(async_session):
+    svc, _, backend, _ = _entry_setup(role="entry")
+    backend.is_draining = True
+    out = await svc.list_targets(role="all")
+    synth = [t for t in out if t.probe_kind == "synthetic_vpn"]
+    assert synth == []
+
+
 @pytest.mark.asyncio
 async def test_report_success(async_session):
     svc = _ingestion_service()
