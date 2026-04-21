@@ -139,12 +139,9 @@ export function buildTopologyGraph() {
 }
 
 /* ── Render ─────────────────────────────────────────── */
-const LANE_GAP_X = 220;
-const LANE_PAD_X = 40;
-const ROW_H = 92;
-const ROW_GAP = 14;
-const NODE_W = 176;
-const NODE_H = 64;
+
+const TYPE_ICON = { probe: "🛰", entry: "🛡", backend: "🖥", profile: "⚙" };
+const TYPE_LABEL = { probe: "Probe", entry: "Entry", backend: "Backend", profile: "Profile" };
 
 function renderTopology() {
   if (!refs.topoCanvas) return;
@@ -161,72 +158,32 @@ function renderTopology() {
   }
   refs.topoEmpty.style.display = "none";
 
-  const maxCols = Math.max(...chains.map((c) => c.nodes.length));
-  const widthPx = LANE_PAD_X * 2 + maxCols * NODE_W + (maxCols - 1) * (LANE_GAP_X - NODE_W);
-  const heightPx = chains.length * ROW_H + (chains.length + 1) * ROW_GAP;
+  refs.topoCanvas.innerHTML = chains.map((chain, rowIdx) => _renderChainRow(chain, rowIdx)).join("");
+}
 
-  const rowSvgs = chains.map((chain, rowIdx) => {
-    const y = ROW_GAP + rowIdx * (ROW_H + ROW_GAP);
-    const centerY = y + ROW_H / 2;
-    const nodeSvgs = chain.nodes.map((n, i) => {
-      const x = LANE_PAD_X + i * LANE_GAP_X;
-      return _nodeCard(n, x, centerY - NODE_H / 2, chain);
-    }).join("");
+function _renderChainRow(chain, rowIdx) {
+  const title = chain.kind === "via_entry"
+    ? `${esc(chain.backend.name)} <span class="topo-arrow">via</span> ${esc(chain.entry.name)}`
+    : `${esc(chain.backend.name)} <span class="muted" style="font-weight:500">direct</span>`;
+  const g = nodeGeo(chain.backend.region);
+  const latency = chain.probe && chain.probe.latency_ms != null ? `<span class="topo-lat">${chain.probe.latency_ms}ms</span>` : "";
+  const probeAge = chain.probe ? relTime(chain.probe.checked_at) : "нет probe";
 
-    const edgeSvgs = chain.nodes.slice(1).map((_, i) => {
-      const from = chain.nodes[i];
-      const to = chain.nodes[i + 1];
-      const x1 = LANE_PAD_X + i * LANE_GAP_X + NODE_W;
-      const x2 = LANE_PAD_X + (i + 1) * LANE_GAP_X;
-      const edgeStatus = worstOf(from.status, to.status);
-      return _edge(x1, centerY, x2, centerY, edgeStatus);
-    }).join("");
-
-    const chainColor = `topo-chain-${chain.status}`;
-    return `<g class="topo-row ${chainColor}" data-chain-idx="${rowIdx}">${edgeSvgs}${nodeSvgs}</g>`;
+  const pips = chain.nodes.map((n, i) => {
+    const link = i > 0
+      ? `<span class="topo-link topo-link-${worstOf(chain.nodes[i-1].status, n.status)}"></span>`
+      : "";
+    return `${link}<span class="topo-pip topo-pip-${n.status}" data-node-id="${esc(n.id)}" title="${esc(TYPE_LABEL[n.type])}: ${esc(n.label)}">${TYPE_ICON[n.type] || "•"}</span>`;
   }).join("");
 
-  refs.topoCanvas.innerHTML = `
-    <svg viewBox="0 0 ${widthPx} ${heightPx}" preserveAspectRatio="xMidYMin meet" class="topo-svg" style="min-height:${heightPx}px">
-      <defs>
-        <marker id="topo-arrow-ok" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#22c55e"/></marker>
-        <marker id="topo-arrow-warn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#f59e0b"/></marker>
-        <marker id="topo-arrow-bad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#ef4444"/></marker>
-        <marker id="topo-arrow-idle" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/></marker>
-      </defs>
-      ${rowSvgs}
-    </svg>
-  `;
-}
-
-function _nodeCard(node, x, y, chain) {
-  const icon = { probe: "🛰", entry: "🛡", backend: "🖥", profile: "⚙" }[node.type] || "•";
-  const sub = node.type === "profile" ? (node.data ? `${node.data.security}/${node.data.network}` : "")
-    : node.type === "backend" ? (node.data ? (nodeGeo(node.data.region).flag + " " + nodeGeo(node.data.region).country) : "")
-    : node.type === "entry" ? (node.data ? (nodeGeo(node.data.region).flag + " " + node.data.role) : "")
-    : node.type === "probe" ? (node.meta && node.meta.source ? node.meta.source : "")
-    : "";
-  const latency = node.meta && node.meta.latency != null ? `<tspan class="topo-meta">${node.meta.latency}ms</tspan>` : "";
   return `
-    <g class="topo-node topo-node-${node.status}" data-node-id="${esc(node.id)}" transform="translate(${x},${y})">
-      <rect class="topo-node-bg" width="${NODE_W}" height="${NODE_H}" rx="12" />
-      <circle class="topo-node-dot" cx="14" cy="14" r="6"/>
-      <text class="topo-node-icon" x="26" y="19">${icon}</text>
-      <text class="topo-node-title" x="14" y="38">${esc(_truncate(node.label, 20))}</text>
-      <text class="topo-node-sub" x="14" y="54">${esc(sub)} ${latency}</text>
-    </g>
+    <div class="topo-row topo-row-${chain.status}" data-chain-idx="${rowIdx}">
+      <span class="topo-flag">${esc(g.flag)}</span>
+      <span class="topo-row-title">${title}</span>
+      <span class="topo-chain-pips">${pips}</span>
+      <span class="topo-row-meta">${latency}<span class="muted">${esc(probeAge)}</span></span>
+    </div>
   `;
-}
-
-function _edge(x1, y1, x2, y2, status) {
-  const mx = (x1 + x2) / 2;
-  const path = `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`;
-  return `<path class="topo-edge topo-edge-${status}" d="${path}" marker-end="url(#topo-arrow-${status})"/>`;
-}
-
-function _truncate(s, n) {
-  s = String(s || "");
-  return s.length > n ? s.slice(0, n - 1) + "…" : s;
 }
 
 /* ── Detail drawer on click ─────────────────────────── */
