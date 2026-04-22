@@ -96,23 +96,29 @@ function RoutesList({ routesList, nodesById, search, setSearch, statusFilter, se
 
   return (
     <>
-      <div className="filter-row">
-        <input className="input" placeholder="Поиск UUID / имя" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+      <div className="filterbar">
+        <div className="input-search-wrap">
+          <Icon name="search" size={13} className="input-search-icon" />
+          <input className="input" placeholder="Поиск UUID / имя" value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
+        <select className="select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
           <option value="">Любой статус</option>
           {Object.keys(HEALTH_TONE).map((h) => <option key={h} value={h}>{h}</option>)}
         </select>
+        <div style={{ marginLeft: "auto" }}>
+          <span className="muted text-xs">{rows.length} / {routesList.length}</span>
+        </div>
       </div>
 
-      <div className="card" style={{ padding: 0, overflowX: "auto" }}>
-        <table className="data-table">
+      <div className="card">
+        <table className="tbl">
           <thead>
             <tr>
               <th>Маршрут</th>
               <th>Backend</th>
               <th>Entry</th>
               <th>Status</th>
-              <th>Weight</th>
+              <th style={{ textAlign: "right" }}>Weight</th>
               <th>Active</th>
               <th></th>
             </tr>
@@ -120,13 +126,13 @@ function RoutesList({ routesList, nodesById, search, setSearch, statusFilter, se
           <tbody>
             {rows.map((r) => (
               <tr key={r.id}>
-                <td><strong>{r.name}</strong><div className="small mono">{r.id.slice(0, 8)}…</div></td>
+                <td style={{ fontWeight: 500 }}>{r.name}<div className="mono muted" style={{ fontSize: 11 }}>{r.id.slice(0, 8)}…</div></td>
                 <td><span onClick={() => onOpenNode && onOpenNode(nodesById[r.node_id])} style={{ cursor: onOpenNode ? "pointer" : "default" }}>{nodeLabel(nodesById[r.node_id])}</span></td>
                 <td>{r.entry_node_id ? <span onClick={() => onOpenNode && onOpenNode(nodesById[r.entry_node_id])} style={{ cursor: onOpenNode ? "pointer" : "default" }}>{nodeLabel(nodesById[r.entry_node_id])}</span> : <span className="muted">—</span>}</td>
-                <td><span className={"chip chip-" + (HEALTH_TONE[r.health_status] || "muted")}>{r.health_status}</span></td>
-                <td className="mono">{r.effective_weight}/{r.base_weight}</td>
-                <td>{r.is_active ? <span className="chip chip-ok">active</span> : <span className="chip chip-muted">off</span>}</td>
-                <td><button className="row-btn" onClick={() => onEdit && onEdit(r)}>Edit</button></td>
+                <td><span className={"pill " + (HEALTH_TONE[r.health_status] || "")}><span className={`status-dot ${HEALTH_TONE[r.health_status] || "muted"}`} /> {r.health_status}</span></td>
+                <td className="tbl-num mono">{r.effective_weight}/{r.base_weight}</td>
+                <td>{r.is_active ? <span className="pill ok">active</span> : <span className="pill">off</span>}</td>
+                <td className="row-actions"><button className="row-btn" onClick={() => onEdit && onEdit(r)}>Edit</button></td>
               </tr>
             ))}
           </tbody>

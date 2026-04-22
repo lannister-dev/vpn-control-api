@@ -32,10 +32,10 @@ export function ZonesPage() {
 
       {error && <div className="card card-bad">Ошибка: {error.message}</div>}
 
-      <div className="card" style={{ padding: 0, overflowX: "auto" }}>
-        <table className="data-table">
+      <div className="card">
+        <table className="tbl">
           <thead>
-            <tr><th>Код</th><th>Эмодзи</th><th>Название</th><th>Sort</th><th>Статус</th><th></th></tr>
+            <tr><th>Код</th><th>Эмодзи</th><th>Название</th><th style={{ textAlign: "right" }}>Sort</th><th>Статус</th><th></th></tr>
           </thead>
           <tbody>
             {(loading && !items.length) && <SkeletonRows count={3} cols={6} />}
@@ -43,10 +43,10 @@ export function ZonesPage() {
               <tr key={z.id}>
                 <td className="mono">{z.code}</td>
                 <td style={{ fontSize: 20 }}>{z.emoji || "—"}</td>
-                <td>{z.name}</td>
-                <td className="mono">{z.sort_order}</td>
-                <td>{z.is_active ? <span className="chip chip-ok">active</span> : <span className="chip chip-muted">inactive</span>}</td>
-                <td><button className="row-btn" onClick={() => setEditing(z)}>Edit</button></td>
+                <td style={{ fontWeight: 500 }}>{z.name}</td>
+                <td className="tbl-num mono">{z.sort_order}</td>
+                <td>{z.is_active ? <span className="pill ok">active</span> : <span className="pill">inactive</span>}</td>
+                <td className="row-actions"><button className="row-btn" onClick={() => setEditing(z)}>Edit</button></td>
               </tr>
             ))}
           </tbody>

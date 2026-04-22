@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "./Icon.jsx";
+import { nodeGeo } from "../lib/geo.js";
 
 function edgeStatusClass(s) {
   if (s === "healthy") return "active";
@@ -201,10 +202,11 @@ export function Topology({ routes = [], nodes = [], probes = [], onOpenNode }) {
               >
                 <div className="topo-v2-node-main">
                   <span className={`status-dot ${healthTone(n)}`} />
+                  <span className="flag">{nodeGeo(n.region).flag}</span>
                   <span className="topo-v2-node-name">{n.name}</span>
                 </div>
                 <div className="topo-v2-node-meta">
-                  <span className="mono">{n.region}</span>
+                  <span className="mono">{Math.min(100, Math.round(((n.placements_backend || 0) / Math.max(n.capacity || 50, 1)) * 100))}%</span>
                   <span className="topo-v2-node-routes">
                     {stats.total} <Icon name="route" size={10} />
                     {stats.problems > 0 && <span className="topo-v2-node-prob">{stats.problems}</span>}
@@ -229,10 +231,11 @@ export function Topology({ routes = [], nodes = [], probes = [], onOpenNode }) {
               >
                 <div className="topo-v2-node-main">
                   <span className={`status-dot ${healthTone(n)}`} />
+                  <span className="flag">{nodeGeo(n.region).flag}</span>
                   <span className="topo-v2-node-name">{n.name}</span>
                 </div>
                 <div className="topo-v2-node-meta">
-                  <span className="mono">{n.region}</span>
+                  <span className="mono">{Math.min(100, Math.round(((n.placements_backend || 0) / Math.max(n.capacity || 50, 1)) * 100))}%</span>
                   <span className="topo-v2-node-routes">
                     {stats.total} <Icon name="route" size={10} />
                     {stats.problems > 0 && <span className="topo-v2-node-prob">{stats.problems}</span>}

@@ -8,6 +8,8 @@ import { toast } from "../components/Toast.jsx";
 
 const ROLE_TONE = { admin: "bad", operator: "warn", viewer: "ok" };
 
+const fmt = (s) => s ? new Date(s).toLocaleDateString() : "—";
+
 export function AdminUsersPage() {
   const { data, loading, error, refetch } = useQuery(() => api.get("/auth/admin/users?limit=100"), { interval: 60000 });
   const [editing, setEditing] = useState(null);
@@ -30,18 +32,18 @@ export function AdminUsersPage() {
 
       {error && <div className="card card-bad">Ошибка: {error.message}</div>}
 
-      <div className="card" style={{ padding: 0, overflowX: "auto" }}>
-        <table className="data-table">
+      <div className="card">
+        <table className="tbl">
           <thead><tr><th>Username</th><th>Роль</th><th>Telegram</th><th>Создан</th><th>Статус</th><th></th></tr></thead>
           <tbody>
             {items.map((u) => (
               <tr key={u.id}>
-                <td><strong>{u.username}</strong></td>
-                <td><span className={"chip chip-" + (ROLE_TONE[u.role] || "muted")}>{u.role}</span></td>
+                <td style={{ fontWeight: 500 }}>{u.username}</td>
+                <td><span className={"pill " + (ROLE_TONE[u.role] || "")}>{u.role}</span></td>
                 <td className="mono">{u.telegram_id || "—"}</td>
-                <td className="small muted">{u.created_at ? new Date(u.created_at).toLocaleString() : "—"}</td>
-                <td>{u.is_active ? <span className="chip chip-ok">active</span> : <span className="chip chip-muted">disabled</span>}</td>
-                <td><button className="row-btn" onClick={() => setEditing(u)}>Edit</button></td>
+                <td className="small muted">{fmt(u.created_at)}</td>
+                <td>{u.is_active ? <span className="pill ok">active</span> : <span className="pill">disabled</span>}</td>
+                <td className="row-actions"><button className="row-btn" onClick={() => setEditing(u)}>Edit</button></td>
               </tr>
             ))}
           </tbody>
