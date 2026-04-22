@@ -1,9 +1,12 @@
+import { useState } from "react";
 import { api } from "../api/client.js";
 import { useQuery } from "../hooks/useQuery.js";
+import { NodeDrawer } from "../components/NodeDrawer.jsx";
 
 export function NodesPage() {
   const { data: status, loading, error } = useQuery(() => api.get("/admin/status"), { interval: 15000 });
   const nodes = status?.nodes || [];
+  const [selected, setSelected] = useState(null);
 
   return (
     <div className="page">
@@ -14,7 +17,7 @@ export function NodesPage() {
 
       {error && <div className="card card-bad">Ошибка: {error.message}</div>}
 
-      <div className="card" style={{ overflowX: "auto" }}>
+      <div className="card" style={{ padding: 0, overflowX: "auto" }}>
         <table className="data-table">
           <thead>
             <tr>
@@ -29,7 +32,7 @@ export function NodesPage() {
           </thead>
           <tbody>
             {nodes.map((n) => (
-              <tr key={n.id}>
+              <tr key={n.id} style={{ cursor: "pointer" }} onClick={() => setSelected(n)}>
                 <td><strong>{n.name}</strong><div className="mono muted small">{n.id.slice(0, 8)}…</div></td>
                 <td>{n.role}</td>
                 <td className="mono">{n.region}</td>
@@ -44,6 +47,8 @@ export function NodesPage() {
         {loading && !nodes.length && <div className="muted" style={{ padding: 14 }}>Загрузка…</div>}
         {!loading && !nodes.length && <div className="muted" style={{ padding: 14 }}>Нет нод.</div>}
       </div>
+
+      {selected && <NodeDrawer node={selected} onClose={() => setSelected(null)} />}
     </div>
   );
 }

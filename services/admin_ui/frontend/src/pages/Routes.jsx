@@ -3,6 +3,7 @@ import { api } from "../api/client.js";
 import { useQuery } from "../hooks/useQuery.js";
 import { Topology } from "../components/Topology.jsx";
 import { Icon } from "../components/Icon.jsx";
+import { NodeDrawer } from "../components/NodeDrawer.jsx";
 
 const HEALTH_TONE = {
   healthy: "ok", warming_up: "warn", degraded: "warn", suspected: "warn", blocked: "bad",
@@ -12,6 +13,7 @@ export function RoutesPage() {
   const [view, setView] = useState("topology");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [drawerNode, setDrawerNode] = useState(null);
 
   const routes = useQuery(() => api.get("/routes?limit=500"), { interval: 15000 });
   const status = useQuery(() => api.get("/admin/status"), { interval: 15000 });
@@ -52,15 +54,17 @@ export function RoutesPage() {
       {routes.error && <div className="card card-bad">Ошибка: {routes.error.message}</div>}
 
       {view === "topology" ? (
-        <Topology routes={routesList} nodes={nodes} probes={probes.data || []} />
+        <Topology routes={routesList} nodes={nodes} probes={probes.data || []} onOpenNode={setDrawerNode} />
       ) : (
-        <RoutesList routesList={routesList} nodesById={nodesById} search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} loading={routes.loading} />
+        <RoutesList routesList={routesList} nodesById={nodesById} search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} loading={routes.loading} onOpenNode={setDrawerNode} />
       )}
+
+      {drawerNode && <NodeDrawer node={drawerNode} onClose={() => setDrawerNode(null)} />}
     </div>
   );
 }
 
-function RoutesList({ routesList, nodesById, search, setSearch, statusFilter, setStatusFilter, loading }) {
+function RoutesList({ routesList, nodesById, search, setSearch, statusFilter, setStatusFilter, loading, onOpenNode }) {
   const rows = useMemo(() => {
     let list = routesList;
     if (statusFilter) list = list.filter((r) => r.health_status === statusFilter);
@@ -97,8 +101,8 @@ function RoutesList({ routesList, nodesById, search, setSearch, statusFilter, se
             {rows.map((r) => (
               <tr key={r.id}>
                 <td><strong>{r.name}</strong><div className="small mono">{r.id.slice(0, 8)}…</div></td>
-                <td>{nodeLabel(nodesById[r.node_id])}</td>
-                <td>{r.entry_node_id ? nodeLabel(nodesById[r.entry_node_id]) : <span className="muted">—</span>}</td>
+                <td><span onClick={() => onOpenNode && onOpenNode(nodesById[r.node_id])} style={{ cursor: onOpenNode ? "pointer" : "default" }}>{nodeLabel(nodesById[r.node_id])}</span></td>
+                <td>{r.entry_node_id ? <span onClick={() => onOpenNode && onOpenNode(nodesById[r.entry_node_id])} style={{ cursor: onOpenNode ? "pointer" : "default" }}>{nodeLabel(nodesById[r.entry_node_id])}</span> : <span className="muted">—</span>}</td>
                 <td><span className={"chip chip-" + (HEALTH_TONE[r.health_status] || "muted")}>{r.health_status}</span></td>
                 <td className="mono">{r.effective_weight}/{r.base_weight}</td>
                 <td>{r.is_active ? <span className="chip chip-ok">active</span> : <span className="chip chip-muted">off</span>}</td>
