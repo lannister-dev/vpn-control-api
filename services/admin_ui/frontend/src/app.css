@@ -1,0 +1,78 @@
+/* Layout shell — only what the template doesn't cover */
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app-shell { display: flex; min-height: 100vh; }
+.app-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.app-content { flex: 1; padding: 20px 24px; overflow-y: auto; }
+
+.sidebar { width: 232px; border-right: 1px solid var(--border); background: var(--bg-elevated); display: flex; flex-direction: column; }
+.sidebar-brand { display: flex; align-items: center; gap: 8px; padding: 18px 18px 14px; font-weight: 600; font-size: 14px; border-bottom: 1px solid var(--border); }
+.sidebar-nav { padding: 10px 10px; overflow-y: auto; flex: 1; }
+.sidebar-group { margin-bottom: 12px; }
+.sidebar-group-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-muted); padding: 8px 10px 4px; }
+.sidebar-item { display: flex; align-items: center; gap: 8px; width: 100%; background: transparent; border: 0; color: var(--text-secondary); padding: 7px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; text-align: left; }
+.sidebar-item:hover { background: var(--surface-hover); color: var(--text); }
+.sidebar-item.active { background: var(--accent-soft); color: var(--accent-text); }
+
+.topbar { height: 52px; border-bottom: 1px solid var(--border); background: var(--bg-elevated); padding: 0 16px; display: flex; align-items: center; gap: 12px; justify-content: space-between; }
+.topbar-left { flex: 1; max-width: 460px; }
+.topbar-right { display: flex; gap: 6px; }
+.topbar-search { display: flex; align-items: center; gap: 8px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; color: var(--text-muted); }
+.topbar-search input { flex: 1; background: transparent; border: 0; color: var(--text); outline: none; font-size: 13px; }
+.topbar-search kbd { font-family: "JetBrains Mono", monospace; font-size: 10px; background: var(--surface); border: 1px solid var(--border); padding: 1px 5px; border-radius: 4px; color: var(--text-muted); }
+.icon-btn { background: transparent; border: 0; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; color: var(--text-secondary); border-radius: 6px; cursor: pointer; }
+.icon-btn:hover { background: var(--surface-hover); color: var(--text); }
+
+.page { max-width: 1440px; }
+.page-title { font-size: 22px; font-weight: 600; margin: 0; }
+.page-subtitle { color: var(--text-secondary); font-size: 13px; margin-top: 4px; }
+.page-head { margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+.card-bad { border-color: var(--bad); color: var(--bad); background: var(--bad-soft); }
+
+.kpi-grid { display: grid; grid-template-columns: 2fr repeat(4, 1fr); gap: 12px; }
+.kpi-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+.kpi-card.primary { grid-column: span 1; }
+.kpi-label { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+.kpi-value { font-size: 28px; font-weight: 600; color: var(--text); font-family: "JetBrains Mono", monospace; }
+.kpi-unit { font-size: 14px; color: var(--text-secondary); margin-left: 4px; font-weight: 500; }
+.kpi-card.tone-ok .kpi-value { color: var(--ok); }
+.kpi-card.tone-warn .kpi-value { color: var(--warn); }
+.kpi-card.tone-bad .kpi-value { color: var(--bad); }
+.kpi-card.tone-muted .kpi-value { color: var(--text-muted); }
+
+.health-ring { display: flex; align-items: center; gap: 16px; }
+.ring-svg { width: 72px; height: 72px; }
+.ring-bg { stroke: var(--border); }
+.ring-fg { stroke: var(--ok); transition: stroke-dasharray 400ms ease; }
+.ring-fg.warn { stroke: var(--warn); }
+.ring-fg.bad { stroke: var(--bad); }
+.health-sub { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--text-secondary); }
+
+.data-table { width: 100%; border-collapse: separate; border-spacing: 0; }
+.data-table th, .data-table td { text-align: left; padding: 10px 14px; font-size: 13px; border-bottom: 1px solid var(--border); }
+.data-table th { color: var(--text-muted); font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; background: var(--surface-2); }
+.data-table tbody tr:hover { background: var(--surface-hover); }
+.data-table .small { font-size: 11px; color: var(--text-muted); }
+
+.chip { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
+.chip-ok { background: var(--ok-soft); color: var(--ok); }
+.chip-warn { background: var(--warn-soft); color: var(--warn); }
+.chip-bad { background: var(--bad-soft); color: var(--bad); }
+
+.status-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+.status-dot.ok { background: var(--ok); }
+.status-dot.warn { background: var(--warn); }
+.status-dot.bad { background: var(--bad); }
+
+.tnum { font-variant-numeric: tabular-nums; }
+.mono { font-family: "JetBrains Mono", monospace; }
+.muted { color: var(--text-muted); }
+.small { font-size: 11px; }
