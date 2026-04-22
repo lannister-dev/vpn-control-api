@@ -43,7 +43,7 @@ class NodePlacementReconciler:
         self._stop_event = asyncio.Event()
         self._task: asyncio.Task | None = None
 
-    async def start(self) -> None:
+    async def start(self):
         if not self._enabled:
             logger.info("node_auto_heal_disabled")
             return
@@ -52,7 +52,7 @@ class NodePlacementReconciler:
         self._stop_event.clear()
         self._task = asyncio.create_task(self._run())
 
-    async def stop(self) -> None:
+    async def stop(self):
         if self._task is None:
             return
         self._stop_event.set()
@@ -68,7 +68,7 @@ class NodePlacementReconciler:
                 return NodeAutoHealTickOut()
             return await self._execute_tick()
 
-    async def _run(self) -> None:
+    async def _run(self):
         logger.info("node_auto_heal_loop_started")
         while not self._stop_event.is_set():
             try:
