@@ -103,3 +103,19 @@ class NodePairListOut(BaseModel):
     from_ts: datetime
     to_ts: datetime
     items: list[NodePairTrafficOut]
+
+
+class FleetTimeseriesBucket(BaseModel):
+    ts: datetime
+    bytes_in: int
+    bytes_out: int
+    by_region: dict[str, int]
+
+
+class FleetTimeseriesOut(BaseModel):
+    period: TrafficPeriod
+    from_ts: datetime
+    to_ts: datetime
+    resolution_seconds: int
+    regions: list[str]
+    points: list[FleetTimeseriesBucket]

@@ -24,7 +24,7 @@ export function AdminUsersPage() {
           <div className="page-subtitle">Пользователи панели, роли и статусы</div>
         </div>
         <div className="page-head-actions">
-          <button className="btn-primary" onClick={() => setCreating(true)}>
+          <button className="btn btn-primary" onClick={() => setCreating(true)}>
             <Icon name="plus" size={13} /> Создать
           </button>
         </div>
@@ -83,8 +83,8 @@ function AdminUserCreate({ onClose }) {
       onClose={onClose}
       footer={
         <>
-          <button className="btn-ghost" onClick={onClose}>Отмена</button>
-          <button className="btn-primary" onClick={save} disabled={busy}>Создать</button>
+          <button className="btn btn-ghost" onClick={onClose}>Отмена</button>
+          <button className="btn btn-primary" onClick={save} disabled={busy}>Создать</button>
         </>
       }
     >
@@ -155,9 +155,9 @@ function AdminUserEdit({ user, onClose }) {
       onClose={onClose}
       footer={
         <>
-          <button className="btn-danger" onClick={del} disabled={busy} style={{ marginRight: "auto" }}>Удалить</button>
-          <button className="btn-ghost" onClick={onClose}>Отмена</button>
-          <button className="btn-primary" onClick={save} disabled={busy}>Сохранить</button>
+          <button className="btn btn-danger" onClick={del} disabled={busy} style={{ marginRight: "auto" }}>Удалить</button>
+          <button className="btn btn-ghost" onClick={onClose}>Отмена</button>
+          <button className="btn btn-primary" onClick={save} disabled={busy}>Сохранить</button>
         </>
       }
     >
@@ -177,8 +177,8 @@ function AdminUserEdit({ user, onClose }) {
         <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
       </Field>
       <div style={{ display: "flex", gap: 8 }}>
-        <button className="btn-ghost" onClick={resetPass} disabled={busy || !newPassword}>Сбросить пароль</button>
-        <button className="btn-ghost" onClick={revokeSessions} disabled={busy}>Отозвать сессии</button>
+        <button className="btn btn-ghost" onClick={resetPass} disabled={busy || !newPassword}>Сбросить пароль</button>
+        <button className="btn btn-ghost" onClick={revokeSessions} disabled={busy}>Отозвать сессии</button>
       </div>
     </Modal>
   );

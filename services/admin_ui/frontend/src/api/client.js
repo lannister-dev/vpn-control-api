@@ -11,8 +11,9 @@ async function request(path, { method = "GET", body, headers } = {}) {
     body: body ? JSON.stringify(body) : undefined,
   });
   if (res.status === 401) {
-    window.location.href = "/api/v1/auth/admin/login";
-    throw new Error("unauthenticated");
+    const err = new Error("unauthenticated");
+    err.status = 401;
+    throw err;
   }
   const text = await res.text();
   let payload = null;

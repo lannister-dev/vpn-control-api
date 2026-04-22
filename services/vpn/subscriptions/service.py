@@ -249,6 +249,9 @@ class SubscriptionService:
         )
         return [self._sub_to_out(row) for row in rows]
 
+    async def get_stats(self) -> tuple[int, int, int]:
+        return await self.subscription_repository.count_stats()
+
     async def rotate_token(
             self,
             subscription_id: UUID,

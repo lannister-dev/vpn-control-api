@@ -3,6 +3,9 @@ import { api } from "../api/client.js";
 import { useQuery } from "../hooks/useQuery.js";
 import { Icon } from "../components/Icon.jsx";
 import { Spark } from "../components/Spark.jsx";
+import { Modal } from "../components/Modal.jsx";
+import { Field } from "../components/Field.jsx";
+import { toast } from "../components/Toast.jsx";
 import { nodeGeo, zoneFlag } from "../lib/geo.js";
 
 function spark(seed, len = 20, base = 50, vol = 30) {
@@ -44,6 +47,7 @@ export function NodesPage({ onOpenNode }) {
   const [filter, setFilter] = useState("");
   const [health, setHealth] = useState("");
   const [role, setRole] = useState("");
+  const [creating, setCreating] = useState(false);
 
   const { data: status, loading, error, refetch } = useQuery(() => api.get("/admin/status"), { interval: 15000 });
   const zones = useQuery(() => api.get("/zones"), { interval: 60000 });
@@ -80,7 +84,7 @@ export function NodesPage({ onOpenNode }) {
         <div className="page-head-actions">
           <button className="btn btn-ghost" onClick={refetch}><Icon name="refresh" size={13} /> Обновить</button>
           <button className="btn"><Icon name="download" size={13} /> Экспорт</button>
-          <button className="btn btn-primary"><Icon name="plus" size={13} /> Добавить сервер</button>
+          <button className="btn btn-primary" onClick={() => setCreating(true)}><Icon name="plus" size={13} /> Добавить сервер</button>
         </div>
       </div>
 
@@ -172,7 +176,128 @@ export function NodesPage({ onOpenNode }) {
         {loading && !nodes.length && <div className="muted" style={{ padding: 14 }}>Загрузка…</div>}
         {!loading && !list.length && <div className="muted" style={{ padding: 14 }}>Нет нод, подходящих под фильтр.</div>}
       </div>
+
+      {creating && <CreateNodeModal zones={zones.data?.items || []} onClose={() => { setCreating(false); refetch(); }} />}
     </div>
+  );
+}
+
+function CreateNodeModal({ zones, onClose }) {
+  const [f, setF] = useState({
+    name: "",
+    role: "backend",
+    region: "",
+    public_domain: "",
+    reality_ip: "",
+    internal_wg_ip: "",
+    capacity: 100,
+    zone: "",
+  });
+  const set = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.value }));
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [result, setResult] = useState(null);
+
+  const save = async () => {
+    setBusy(true); setErr("");
+    try {
+      if (!f.name) throw new Error("Имя обязательно");
+      if (!f.region) throw new Error("Регион обязателен");
+      const payload = {
+        name: f.name.trim(),
+        role: f.role,
+        region: f.region.trim(),
+        public_domain: f.public_domain.trim() || "",
+        internal_wg_ip: f.internal_wg_ip.trim() || "",
+        capacity: Number(f.capacity) || 100,
+      };
+      if (f.reality_ip.trim()) payload.reality_ip = f.reality_ip.trim();
+      if (f.zone) payload.zone = f.zone;
+      const r = await api.post("/admin/nodes", payload);
+      setResult(r);
+      toast.ok("Нода создана");
+    } catch (e) { setErr(e.message || String(e)); }
+    finally { setBusy(false); }
+  };
+
+  const copy = (text) => { navigator.clipboard.writeText(text).then(() => toast.ok("Скопировано")); };
+
+  if (result) {
+    return (
+      <Modal
+        title="Нода создана"
+        onClose={onClose}
+        footer={<button className="btn btn-primary" onClick={onClose}>Готово</button>}
+      >
+        <div className="muted small" style={{ marginBottom: 12 }}>
+          Скопируйте команду установки на сервер — токен одноразовый и истекает {new Date(result.bootstrap_token_expires_at).toLocaleString()}.
+        </div>
+        <Field label="Bootstrap token">
+          <div style={{ display: "flex", gap: 6 }}>
+            <input type="text" readOnly value={result.bootstrap_token} style={{ fontFamily: "var(--font-mono)", fontSize: 11 }} />
+            <button className="btn" onClick={() => copy(result.bootstrap_token)}>Copy</button>
+          </div>
+        </Field>
+        <Field label="Install command">
+          <div style={{ display: "flex", gap: 6, alignItems: "start" }}>
+            <textarea readOnly value={result.install_command} rows={3} style={{ fontFamily: "var(--font-mono)", fontSize: 11, width: "100%", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: 7 }} />
+            <button className="btn" onClick={() => copy(result.install_command)}>Copy</button>
+          </div>
+        </Field>
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal
+      title="Новый сервер"
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn btn-ghost" onClick={onClose}>Отмена</button>
+          <button className="btn btn-primary" onClick={save} disabled={busy}>Создать</button>
+        </>
+      }
+    >
+      {err && <div className="form-error">{err}</div>}
+      <Field label="Имя"><input type="text" value={f.name} onChange={set("name")} placeholder="fra-backend-01" /></Field>
+      <div className="form-row">
+        <Field label="Роль">
+          <select value={f.role} onChange={set("role")}>
+            <option value="backend">backend</option>
+            <option value="entry">entry</option>
+            <option value="whitelist_entry">whitelist_entry</option>
+          </select>
+        </Field>
+        <Field label="Регион" hint="fra, ams, nyc…">
+          <input type="text" value={f.region} onChange={set("region")} placeholder="fra" />
+        </Field>
+      </div>
+      <Field label="Public domain" hint="опционально">
+        <input type="text" value={f.public_domain} onChange={set("public_domain")} placeholder="fra-01.example.com" />
+      </Field>
+      <div className="form-row">
+        <Field label="Reality IP" hint="опционально">
+          <input type="text" value={f.reality_ip} onChange={set("reality_ip")} />
+        </Field>
+        <Field label="Internal WG IP" hint="опционально">
+          <input type="text" value={f.internal_wg_ip} onChange={set("internal_wg_ip")} />
+        </Field>
+      </div>
+      <div className="form-row">
+        <Field label="Capacity">
+          <input type="number" min={1} max={10000} value={f.capacity} onChange={set("capacity")} />
+        </Field>
+        <Field label="Зона">
+          <select value={f.zone} onChange={set("zone")}>
+            <option value="">—</option>
+            {zones.filter((z) => z.is_active).map((z) => (
+              <option key={z.code} value={z.code}>{z.emoji ? `${z.emoji} ` : ""}{z.name}</option>
+            ))}
+          </select>
+        </Field>
+      </div>
+    </Modal>
   );
 }
 

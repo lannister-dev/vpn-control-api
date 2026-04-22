@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import Depends
@@ -9,8 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.nodes.constants import ROLE_BACKEND
 from services.nodes.repository import VpnNodeRepository
+from services.traffic.nodes.constants import PERIOD_WINDOW
 from services.traffic.nodes.repository import NodeTrafficUsageRepository
 from services.traffic.nodes.schemas import (
+    FleetTimeseriesBucket,
+    FleetTimeseriesOut,
     NodePairListOut,
     NodePairTrafficOut,
     NodeTimeseriesOut,
@@ -26,22 +29,14 @@ from shared.utils.logger import StructuredLogger
 logger = StructuredLogger(logging.getLogger("node-traffic-service"))
 
 
-_PERIOD_WINDOW: dict[TrafficPeriod, tuple[timedelta, int]] = {
-    TrafficPeriod.HOUR: (timedelta(hours=1), 60),
-    TrafficPeriod.DAY: (timedelta(days=1), 300),
-    TrafficPeriod.WEEK: (timedelta(days=7), 3600),
-    TrafficPeriod.MONTH: (timedelta(days=30), 6 * 3600),
-}
-
-
 def _window(period: TrafficPeriod, now: datetime | None = None) -> tuple[datetime, datetime]:
     now = now or datetime.now(timezone.utc)
-    length, _ = _PERIOD_WINDOW[period]
+    length, _ = PERIOD_WINDOW[period]
     return now - length, now
 
 
 def _resolution_seconds(period: TrafficPeriod) -> int:
-    return _PERIOD_WINDOW[period][1]
+    return PERIOD_WINDOW[period][1]
 
 
 class NodeTrafficService:
@@ -132,6 +127,46 @@ class NodeTrafficService:
             from_ts=from_ts,
             to_ts=to_ts,
             resolution_seconds=resolution,
+            points=points,
+        )
+
+    async def fleet_timeseries(
+        self,
+        *,
+        period: TrafficPeriod,
+        resolution_seconds: int | None = None,
+    ) -> FleetTimeseriesOut:
+        resolution = resolution_seconds or _resolution_seconds(period)
+        from_ts, to_ts = _window(period)
+        rows = await self.usage_repo.fleet_timeseries_by_region(
+            from_ts=from_ts,
+            to_ts=to_ts,
+            resolution_seconds=resolution,
+        )
+        by_bucket: dict = {}
+        regions_set: set[str] = set()
+        for ts, region, bin_, bout in rows:
+            regions_set.add(region)
+            b = by_bucket.setdefault(ts, {"in": 0, "out": 0, "by_region": {}})
+            b["in"] += bin_
+            b["out"] += bout
+            b["by_region"][region] = b["by_region"].get(region, 0) + bin_ + bout
+        regions = sorted(regions_set)
+        points = [
+            FleetTimeseriesBucket(
+                ts=ts,
+                bytes_in=v["in"],
+                bytes_out=v["out"],
+                by_region={r: v["by_region"].get(r, 0) for r in regions},
+            )
+            for ts, v in sorted(by_bucket.items(), key=lambda kv: kv[0])
+        ]
+        return FleetTimeseriesOut(
+            period=period,
+            from_ts=from_ts,
+            to_ts=to_ts,
+            resolution_seconds=resolution,
+            regions=regions,
             points=points,
         )
 
