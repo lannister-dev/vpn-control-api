@@ -19,7 +19,7 @@ export function OpsPage() {
         <div className="page-head-main">
           <h1 className="page-title">Операции</h1>
           <div className="page-subtitle">
-            Readiness: {readiness.data?.ready ? <span className="chip chip-ok">ready</span> : <span className="chip chip-bad">not ready</span>}
+            Readiness: {readiness.data?.ready ? <span className="pill ok">ready</span> : <span className="pill bad">not ready</span>}
             {" · "}
             {status.data?.nodes?.length ?? "—"} нод в флоте
           </div>
@@ -56,7 +56,7 @@ function MigrateForm({ backends }) {
 
   return (
     <div className="card">
-      <div className="kpi-label" style={{ marginBottom: 10 }}>Миграция плейсментов</div>
+      <div className="sec-title" style={{ marginBottom: 10 }}>Миграция плейсментов</div>
       {err && <div className="form-error">{err}</div>}
       <Field label="Исходная нода">
         <select value={source} onChange={(e) => setSource(e.target.value)}>
@@ -71,7 +71,7 @@ function MigrateForm({ backends }) {
         </select>
       </Field>
       <Field label="Причина"><input type="text" value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
-      <button className="btn-primary" onClick={go} disabled={busy}>Запустить миграцию</button>
+      <button className="btn btn-primary" onClick={go} disabled={busy}>Запустить миграцию</button>
       {result && (
         <div style={{ marginTop: 10, padding: 10, background: "var(--surface-2)", borderRadius: 6, border: "1px solid var(--border)" }}>
           <pre className="mono small" style={{ margin: 0, whiteSpace: "pre-wrap" }}>{JSON.stringify(result, null, 2)}</pre>
@@ -101,7 +101,7 @@ function RouteHealthForm({ routes }) {
 
   return (
     <div className="card">
-      <div className="kpi-label" style={{ marginBottom: 10 }}>Управление health маршрута</div>
+      <div className="sec-title" style={{ marginBottom: 10 }}>Управление health маршрута</div>
       {err && <div className="form-error">{err}</div>}
       <Field label="Маршрут">
         <select value={routeId} onChange={(e) => setRouteId(e.target.value)}>
@@ -115,7 +115,7 @@ function RouteHealthForm({ routes }) {
         </select>
       </Field>
       <Field label="Cooldown, часов" hint="1–72"><input type="number" min={1} max={72} value={cooldown} onChange={(e) => setCooldown(e.target.value)} /></Field>
-      <button className="btn-primary" onClick={go} disabled={busy}>Применить</button>
+      <button className="btn btn-primary" onClick={go} disabled={busy}>Применить</button>
       {ok && <div className="muted small" style={{ marginTop: 8 }}>Применено.</div>}
     </div>
   );

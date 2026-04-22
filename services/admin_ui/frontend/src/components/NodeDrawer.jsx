@@ -65,14 +65,14 @@ function NodeRoutes({ node }) {
   if (loading && !routes.length) return <div className="muted">Загрузка…</div>;
   if (!routes.length) return <div className="muted">Маршрутов нет.</div>;
   return (
-    <table className="data-table">
+    <table className="tbl">
       <thead><tr><th>Маршрут</th><th>Направление</th><th>Status</th><th>Weight</th></tr></thead>
       <tbody>
         {routes.map((r) => (
           <tr key={r.id}>
             <td>{r.name}</td>
             <td className="small muted">{r.node_id === node.id ? "backend" : "entry"}</td>
-            <td><span className={"chip chip-" + toneOf(r.health_status)}>{r.health_status}</span></td>
+            <td><span className={"pill " + toneOf(r.health_status)}>{r.health_status}</span></td>
             <td className="mono">{r.effective_weight}</td>
           </tr>
         ))}
@@ -87,14 +87,14 @@ function NodeProbes({ node }) {
   if (loading && !rows.length) return <div className="muted">Загрузка…</div>;
   if (!rows.length) return <div className="muted">Probe-сигналов нет.</div>;
   return (
-    <table className="data-table">
+    <table className="tbl">
       <thead><tr><th>Источник</th><th>Тип</th><th>Status</th><th>Latency</th><th>Время</th></tr></thead>
       <tbody>
         {rows.slice(0, 30).map((p) => (
           <tr key={p.id}>
-            <td><span className="chip chip-muted">{p.source}</span></td>
+            <td><span className="pill">{p.source}</span></td>
             <td className="small">{p.probe_kind}</td>
-            <td>{p.is_reachable ? <span className="chip chip-ok">OK</span> : <span className="chip chip-bad">FAIL</span>}</td>
+            <td>{p.is_reachable ? <span className="pill ok">OK</span> : <span className="pill bad">FAIL</span>}</td>
             <td className="mono">{p.latency_ms ?? "—"}</td>
             <td className="small muted">{p.checked_at ? new Date(p.checked_at).toLocaleTimeString() : ""}</td>
           </tr>
@@ -134,7 +134,7 @@ function NodePool({ node }) {
       {loading && !items.length && <div className="muted">Загрузка…</div>}
       {!loading && !items.length && <div className="muted">Пул пуст.</div>}
       {items.length > 0 && (
-        <table className="data-table">
+        <table className="tbl">
           <thead><tr><th>Backend</th><th>Вес</th><th>Rank</th><th>Enabled</th><th></th></tr></thead>
           <tbody>
             {items.map((a) => {
@@ -144,7 +144,7 @@ function NodePool({ node }) {
                   <td>{n ? <span>{n.name}<div className="small muted">{n.region}</div></span> : <span className="mono small">{String(a.backend_node_id).slice(0, 12)}…</span>}</td>
                   <td className="mono">{a.weight}</td>
                   <td className="mono">{a.rank}</td>
-                  <td>{a.enabled ? <span className="chip chip-ok">enabled</span> : <span className="chip chip-muted">off</span>}</td>
+                  <td>{a.enabled ? <span className="pill ok">enabled</span> : <span className="pill">off</span>}</td>
                   <td>
                     <div className="row-actions">
                       <button className="row-btn" onClick={() => setEditing(a)}>Edit</button>

@@ -76,7 +76,7 @@ export function SubscriptionDrawer({ subscription, onClose, onChanged }) {
               <tr><th>Max devices</th><td className="mono">{sub.max_devices ?? "—"}</td></tr>
               <tr><th>Paid slots</th><td className="mono">{sub.paid_device_slots ?? 0}</td></tr>
               <tr><th>Expires</th><td>{sub.expires_at ? new Date(sub.expires_at).toLocaleString() : "—"}</td></tr>
-              <tr><th>Статус</th><td>{sub.is_active ? <span className="chip chip-ok">active</span> : <span className="chip chip-muted">inactive</span>}</td></tr>
+              <tr><th>Статус</th><td>{sub.is_active ? <span className="pill ok">active</span> : <span className="pill">inactive</span>}</td></tr>
             </tbody>
           </table>
           <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -101,7 +101,7 @@ function DevicesList({ data, loading, onRevoke }) {
   if (loading && !items.length) return <div className="muted">Загрузка…</div>;
   if (!items.length) return <div className="muted">Устройств нет.</div>;
   return (
-    <table className="data-table">
+    <table className="tbl">
       <thead><tr><th>Device ID</th><th>HWID</th><th>User-Agent</th><th>Last seen</th><th>Статус</th><th></th></tr></thead>
       <tbody>
         {items.map((d) => (
@@ -110,7 +110,7 @@ function DevicesList({ data, loading, onRevoke }) {
             <td className="mono small">{String(d.hwid_hash || "").slice(0, 12)}…</td>
             <td className="small">{d.user_agent || "—"}</td>
             <td className="small muted">{d.last_seen_at ? new Date(d.last_seen_at).toLocaleString() : "—"}</td>
-            <td>{d.is_active ? <span className="chip chip-ok">active</span> : <span className="chip chip-muted">revoked</span>}</td>
+            <td>{d.is_active ? <span className="pill ok">active</span> : <span className="pill">revoked</span>}</td>
             <td>{d.is_active && <button className="row-btn" onClick={() => onRevoke(d.id)}>Revoke</button>}</td>
           </tr>
         ))}

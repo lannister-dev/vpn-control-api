@@ -29,8 +29,8 @@ export function PlansPage() {
 
       {error && <div className="card card-bad">Ошибка: {error.message}</div>}
 
-      <div className="card" style={{ padding: 0, overflowX: "auto" }}>
-        <table className="data-table">
+      <div className="card">
+        <table className="tbl">
           <thead>
             <tr>
               <th>Название</th><th>Трафик</th><th>Сброс</th><th>Устройства</th><th>Длительность</th><th>Флаги</th><th>Статус</th><th></th>
@@ -39,17 +39,17 @@ export function PlansPage() {
           <tbody>
             {items.map((p) => (
               <tr key={p.id}>
-                <td><strong>{p.name}</strong><div className="small muted">{p.description || ""}</div></td>
+                <td style={{ fontWeight: 500 }}>{p.name}<div className="small muted">{p.description || ""}</div></td>
                 <td className="mono">{formatBytes(p.traffic_limit_bytes)}</td>
                 <td className="small">{p.reset_strategy}</td>
                 <td className="mono">{p.included_devices}/{p.max_devices}</td>
                 <td className="mono">{p.duration_days} дн.</td>
                 <td>
-                  {p.entry_relay_enabled && <span className="chip chip-ok" style={{ marginRight: 4 }}>Entry</span>}
-                  {p.whitelist_enabled && <span className="chip chip-ok">WL</span>}
+                  {p.entry_relay_enabled && <span className="pill ok" style={{ marginRight: 4 }}>Entry</span>}
+                  {p.whitelist_enabled && <span className="pill ok">WL</span>}
                 </td>
-                <td>{p.is_active ? <span className="chip chip-ok">active</span> : <span className="chip chip-muted">inactive</span>}</td>
-                <td><button className="row-btn" onClick={() => setEditing(p)}>Edit</button></td>
+                <td>{p.is_active ? <span className="pill ok">active</span> : <span className="pill">inactive</span>}</td>
+                <td className="row-actions"><button className="row-btn" onClick={() => setEditing(p)}>Edit</button></td>
               </tr>
             ))}
           </tbody>
