@@ -4,6 +4,8 @@ import { useQuery } from "../hooks/useQuery.js";
 import { Topology } from "../components/Topology.jsx";
 import { Icon } from "../components/Icon.jsx";
 import { NodeDrawer } from "../components/NodeDrawer.jsx";
+import { Modal } from "../components/Modal.jsx";
+import { Field } from "../components/Field.jsx";
 
 const HEALTH_TONE = {
   healthy: "ok", warming_up: "warn", degraded: "warn", suspected: "warn", blocked: "bad",
@@ -14,6 +16,8 @@ export function RoutesPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [drawerNode, setDrawerNode] = useState(null);
+  const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState(null);
 
   const routes = useQuery(() => api.get("/routes?limit=500"), { interval: 15000 });
   const status = useQuery(() => api.get("/admin/status"), { interval: 15000 });
@@ -48,6 +52,9 @@ export function RoutesPage() {
             <button data-active={view === "topology"} onClick={() => setView("topology")}>Поток</button>
             <button data-active={view === "list"} onClick={() => setView("list")}>Список</button>
           </div>
+          <button className="btn-primary" onClick={() => setCreating(true)}>
+            <Icon name="plus" size={13} /> Создать маршрут
+          </button>
         </div>
       </div>
 
@@ -56,15 +63,25 @@ export function RoutesPage() {
       {view === "topology" ? (
         <Topology routes={routesList} nodes={nodes} probes={probes.data || []} onOpenNode={setDrawerNode} />
       ) : (
-        <RoutesList routesList={routesList} nodesById={nodesById} search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} loading={routes.loading} onOpenNode={setDrawerNode} />
+        <RoutesList
+          routesList={routesList}
+          nodesById={nodesById}
+          search={search} setSearch={setSearch}
+          statusFilter={statusFilter} setStatusFilter={setStatusFilter}
+          loading={routes.loading}
+          onOpenNode={setDrawerNode}
+          onEdit={setEditing}
+        />
       )}
 
       {drawerNode && <NodeDrawer node={drawerNode} onClose={() => setDrawerNode(null)} />}
+      {creating && <RouteForm nodes={nodes} onClose={() => { setCreating(false); routes.refetch(); }} />}
+      {editing && <RouteForm route={editing} nodes={nodes} onClose={() => { setEditing(null); routes.refetch(); }} />}
     </div>
   );
 }
 
-function RoutesList({ routesList, nodesById, search, setSearch, statusFilter, setStatusFilter, loading, onOpenNode }) {
+function RoutesList({ routesList, nodesById, search, setSearch, statusFilter, setStatusFilter, loading, onOpenNode, onEdit }) {
   const rows = useMemo(() => {
     let list = routesList;
     if (statusFilter) list = list.filter((r) => r.health_status === statusFilter);
@@ -95,6 +112,7 @@ function RoutesList({ routesList, nodesById, search, setSearch, statusFilter, se
               <th>Status</th>
               <th>Weight</th>
               <th>Active</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -106,6 +124,7 @@ function RoutesList({ routesList, nodesById, search, setSearch, statusFilter, se
                 <td><span className={"chip chip-" + (HEALTH_TONE[r.health_status] || "muted")}>{r.health_status}</span></td>
                 <td className="mono">{r.effective_weight}/{r.base_weight}</td>
                 <td>{r.is_active ? <span className="chip chip-ok">active</span> : <span className="chip chip-muted">off</span>}</td>
+                <td><button className="row-btn" onClick={() => onEdit && onEdit(r)}>Edit</button></td>
               </tr>
             ))}
           </tbody>
@@ -120,4 +139,92 @@ function RoutesList({ routesList, nodesById, search, setSearch, statusFilter, se
 function nodeLabel(n) {
   if (!n) return <span className="muted small">—</span>;
   return <span>{n.name}<div className="small muted">{n.region}</div></span>;
+}
+
+function RouteForm({ route, nodes, onClose }) {
+  const isEdit = !!route;
+  const [name, setName] = useState(route?.name || "");
+  const [nodeId, setNodeId] = useState(route?.node_id || "");
+  const [entryNodeId, setEntryNodeId] = useState(route?.entry_node_id || "");
+  const [tpId, setTpId] = useState(route?.transport_profile_id || "");
+  const [baseWeight, setBaseWeight] = useState(route?.base_weight ?? 50);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const profiles = useQuery(() => api.get("/routes/transport-profiles?limit=200"), { interval: 0 });
+  const profilesList = profiles.data || [];
+
+  const backends = nodes.filter((n) => n.role === "backend");
+  const entries = nodes.filter((n) => n.role === "entry" || n.role === "whitelist_entry");
+
+  const save = async () => {
+    setBusy(true); setErr("");
+    try {
+      if (isEdit) {
+        const payload = {};
+        if (name && name !== route.name) payload.name = name;
+        if (nodeId && nodeId !== route.node_id) payload.node_id = nodeId;
+        const newEntry = entryNodeId || null;
+        if (newEntry !== (route.entry_node_id || null)) payload.entry_node_id = newEntry;
+        const w = Number(baseWeight);
+        if (!isNaN(w) && w !== route.base_weight) payload.base_weight = w;
+        if (Object.keys(payload).length) await api.patch(`/routes/${route.id}`, payload);
+      } else {
+        if (!name) throw new Error("Имя обязательно");
+        if (!nodeId) throw new Error("Backend обязателен");
+        if (!tpId) throw new Error("Transport profile обязателен");
+        const payload = { name, node_id: nodeId, transport_profile_id: tpId, base_weight: Number(baseWeight) || 50 };
+        if (entryNodeId) payload.entry_node_id = entryNodeId;
+        await api.post("/routes", payload);
+      }
+      onClose();
+    } catch (e) { setErr(e.message || String(e)); }
+    finally { setBusy(false); }
+  };
+
+  const deactivate = async () => {
+    if (!confirm(`Деактивировать маршрут ${route.name}?`)) return;
+    setBusy(true);
+    try { await api.del(`/routes/${route.id}`); onClose(); }
+    catch (e) { setErr(e.message || String(e)); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Modal
+      title={isEdit ? `Маршрут: ${route.name}` : "Новый маршрут"}
+      onClose={onClose}
+      footer={
+        <>
+          {isEdit && <button className="btn-danger" onClick={deactivate} disabled={busy} style={{ marginRight: "auto" }}>Деактивировать</button>}
+          <button className="btn-ghost" onClick={onClose}>Отмена</button>
+          <button className="btn-primary" onClick={save} disabled={busy}>{isEdit ? "Сохранить" : "Создать"}</button>
+        </>
+      }
+    >
+      {err && <div className="form-error">{err}</div>}
+      <Field label="Имя"><input type="text" value={name} onChange={(e) => setName(e.target.value)} /></Field>
+      <Field label="Backend">
+        <select value={nodeId} onChange={(e) => setNodeId(e.target.value)}>
+          <option value="">— выберите —</option>
+          {backends.map((n) => <option key={n.id} value={n.id}>{n.name} · {n.region}</option>)}
+        </select>
+      </Field>
+      <Field label="Entry" hint="опционально">
+        <select value={entryNodeId} onChange={(e) => setEntryNodeId(e.target.value)}>
+          <option value="">Без entry (direct)</option>
+          {entries.map((n) => <option key={n.id} value={n.id}>{n.name} · {n.region} ({n.role})</option>)}
+        </select>
+      </Field>
+      <Field label="Transport profile">
+        <select value={tpId} onChange={(e) => setTpId(e.target.value)} disabled={isEdit}>
+          <option value="">— выберите —</option>
+          {profilesList.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.security}/{p.network})</option>)}
+        </select>
+      </Field>
+      <Field label="Base weight" hint="0–100">
+        <input type="number" min={0} max={100} value={baseWeight} onChange={(e) => setBaseWeight(e.target.value)} />
+      </Field>
+    </Modal>
+  );
 }
