@@ -4,7 +4,13 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, status
 
 from services.auth.dependencies import admin_auth
-from services.traffic.users.schemas import TrafficHistoryListOut, TrafficKeySummaryListOut
+from services.traffic.nodes.schemas import FleetTimeseriesOut, TrafficPeriod
+from services.traffic.nodes.service import NodeTrafficService, get_node_traffic_service
+from services.traffic.users.schemas import (
+    TrafficHistoryListOut,
+    TrafficKeySummaryListOut,
+    UserTrafficSummaryListOut,
+)
 from services.traffic.users.service import TrafficAdminService, get_traffic_admin_service
 
 router = APIRouter(
@@ -12,6 +18,41 @@ router = APIRouter(
     tags=["Admin Traffic"],
     dependencies=[Depends(admin_auth)],
 )
+
+
+@router.get(
+    "/timeseries",
+    response_model=FleetTimeseriesOut,
+    status_code=status.HTTP_200_OK,
+    summary="Fleet-wide traffic timeseries bucketed by region",
+    description=(
+        "Returns bucketed timeseries of fleet traffic for the selected period, "
+        "with per-region breakdown. Used by the Traffic dashboard stacked area chart."
+    ),
+)
+async def fleet_timeseries(
+    period: TrafficPeriod = Query(TrafficPeriod.DAY),
+    node_service: NodeTrafficService = Depends(get_node_traffic_service),
+) -> FleetTimeseriesOut:
+    return await node_service.fleet_timeseries(period=period)
+
+
+@router.get(
+    "/users",
+    response_model=UserTrafficSummaryListOut,
+    status_code=status.HTTP_200_OK,
+    summary="Top users by traffic for the selected period",
+    description=(
+        "Aggregates per-user traffic (sum of delta_bytes across all their VPN keys) "
+        "for the selected period and returns top-N talkers."
+    ),
+)
+async def top_users_by_traffic(
+    period: str = Query("24h", pattern="^(1h|24h|7d|30d)$"),
+    limit: int = Query(10, ge=1, le=100),
+    service: TrafficAdminService = Depends(get_traffic_admin_service),
+) -> UserTrafficSummaryListOut:
+    return await service.top_users_by_traffic(period=period, limit=limit)
 
 
 @router.get(

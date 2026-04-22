@@ -6,8 +6,12 @@ from uuid import UUID
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.plans.models import Plan
 from services.traffic.users.model import TrafficUsage
 from services.traffic.users.schemas import TrafficUsageCreate
+from services.users.models import User
+from services.vpn.keys.models import VpnKey
+from services.vpn.subscriptions.model import Subscription
 from shared.database.base_repository import BaseRepository
 
 
@@ -51,6 +55,41 @@ class TrafficUsageRepository(BaseRepository[TrafficUsage]):
         result = await self.session.execute(stmt)
         rows = list(result.scalars().all())
         return rows, total
+
+    async def top_users_by_bytes(
+        self,
+        *,
+        from_ts: datetime,
+        to_ts: datetime,
+        limit: int,
+    ) -> list[tuple[UUID, int | None, str | None, str | None, int, int]]:
+        total_bytes = func.coalesce(func.sum(self.model.delta_bytes), 0).label("total_bytes")
+        key_count = func.count(func.distinct(VpnKey.id)).label("keys")
+
+        stmt = (
+            select(
+                User.id,
+                User.telegram_id,
+                User.username,
+                Plan.name.label("plan_name"),
+                total_bytes,
+                key_count,
+            )
+            .join(VpnKey, VpnKey.id == self.model.key_id)
+            .join(User, User.id == VpnKey.user_id)
+            .outerjoin(Subscription, Subscription.id == VpnKey.subscription_id)
+            .outerjoin(Plan, Plan.id == Subscription.plan_id)
+            .where(self.model.created_at >= from_ts)
+            .where(self.model.created_at < to_ts)
+            .group_by(User.id, User.telegram_id, User.username, Plan.name)
+            .order_by(total_bytes.desc())
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        return [
+            (row[0], row[1], row[2], row[3], int(row[4]), int(row[5]))
+            for row in result.all()
+        ]
 
     async def delete_older_than(self, *, cutoff: datetime) -> int:
         result = await self.session.execute(

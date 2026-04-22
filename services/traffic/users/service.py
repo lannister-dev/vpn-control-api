@@ -18,6 +18,8 @@ from services.traffic.users.schemas import (
     TrafficKeySummaryOut,
     TrafficUsageCreate,
     UserTrafficIn,
+    UserTrafficSummaryListOut,
+    UserTrafficSummaryOut,
 )
 from services.vpn.keys.repository import VpnKeyRepository
 from services.vpn.subscriptions.repository import SubscriptionRepository
@@ -197,6 +199,39 @@ class TrafficAdminService:
             limit=limit,
             offset=offset,
         )
+
+    async def top_users_by_traffic(
+        self,
+        *,
+        period: str,
+        limit: int = 10,
+    ) -> UserTrafficSummaryListOut:
+        window_map = {
+            "1h": timedelta(hours=1),
+            "24h": timedelta(days=1),
+            "7d": timedelta(days=7),
+            "30d": timedelta(days=30),
+        }
+        window = window_map.get(period, timedelta(days=1))
+        to_ts = datetime.now(timezone.utc)
+        from_ts = to_ts - window
+        rows = await self.traffic_usage_repository.top_users_by_bytes(
+            from_ts=from_ts,
+            to_ts=to_ts,
+            limit=max(1, min(limit, 100)),
+        )
+        items = [
+            UserTrafficSummaryOut(
+                user_id=row[0],
+                telegram_id=row[1],
+                username=row[2],
+                plan_name=row[3],
+                bytes=row[4],
+                keys=row[5],
+            )
+            for row in rows
+        ]
+        return UserTrafficSummaryListOut(period=period, from_ts=from_ts, to_ts=to_ts, items=items)
 
     async def get_key_traffic_history(
         self,

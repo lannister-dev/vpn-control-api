@@ -5,6 +5,7 @@ import { Sidebar } from "./components/Sidebar.jsx";
 import { Topbar } from "./components/Topbar.jsx";
 import { Palette } from "./components/Palette.jsx";
 import { NodeDrawer } from "./components/NodeDrawer.jsx";
+import { LoginPage } from "./pages/Login.jsx";
 import { OverviewPage } from "./pages/Overview.jsx";
 import { NodesPage } from "./pages/Nodes.jsx";
 import { RoutesPage } from "./pages/Routes.jsx";
@@ -61,10 +62,55 @@ function relSync(iso) {
 }
 
 export default function App() {
+  const [theme, setTheme] = useState(document.documentElement.getAttribute("data-theme") || "dark");
+  const [authState, setAuthState] = useState("checking");
+  const [me, setMe] = useState(null);
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    try {
+      const saved = JSON.parse(localStorage.getItem("vpn-ctrl-state") || "{}");
+      localStorage.setItem("vpn-ctrl-state", JSON.stringify({ ...saved, theme }));
+    } catch { /* ignore */ }
+  }, [theme]);
+
+  const checkAuth = async () => {
+    try {
+      const data = await api.get("/auth/admin/session");
+      if (data?.authenticated) {
+        setMe({ username: data.username, role: data.role });
+        setAuthState("authed");
+      } else {
+        setAuthState("guest");
+      }
+    } catch {
+      setAuthState("guest");
+    }
+  };
+
+  useEffect(() => { checkAuth(); }, []);
+
+  if (authState === "checking") {
+    return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)" }}>Загрузка…</div>;
+  }
+
+  if (authState === "guest") {
+    return (
+      <LoginPage
+        theme={theme}
+        onToggleTheme={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+        onSuccess={() => { setAuthState("checking"); checkAuth(); }}
+      />
+    );
+  }
+
+  return <AuthedApp theme={theme} setTheme={setTheme} me={me} onLogout={() => setAuthState("guest")} />;
+}
+
+function AuthedApp({ theme, setTheme, me, onLogout }) {
   const [tab, setTab] = useState(() => {
     try { return JSON.parse(localStorage.getItem("vpn-ctrl-state") || "{}").tab || "overview"; } catch { return "overview"; }
   });
-  const [theme, setTheme] = useState(document.documentElement.getAttribute("data-theme") || "dark");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [drawerNode, setDrawerNode] = useState(null);
   const [collapsed, setCollapsed] = useState(() => {
@@ -74,10 +120,9 @@ export default function App() {
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem("vpn-ctrl-state") || "{}");
-      localStorage.setItem("vpn-ctrl-state", JSON.stringify({ ...saved, tab, theme, collapsed }));
+      localStorage.setItem("vpn-ctrl-state", JSON.stringify({ ...saved, tab, collapsed }));
     } catch { /* ignore */ }
-    document.documentElement.setAttribute("data-theme", theme);
-  }, [tab, theme, collapsed]);
+  }, [tab, collapsed]);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -92,7 +137,6 @@ export default function App() {
 
   const status = useQuery(() => api.get("/admin/status"), { interval: 20000 });
   const routesData = useQuery(() => api.get("/routes?limit=500"), { interval: 30000 });
-  const me = useQuery(() => api.get("/auth/admin/me").catch(() => null), { interval: 0 });
 
   const counts = useMemo(() => {
     const out = {};
@@ -102,9 +146,13 @@ export default function App() {
   }, [status.data, routesData.data]);
 
   const lastSync = relSync(status.data?.generated_at);
-
   const Page = PAGES[tab] || PAGES.overview;
   const crumbs = CRUMBS[tab] || ["Workspace"];
+
+  const logout = async () => {
+    try { await api.post("/auth/admin/logout"); } catch { /* ignore */ }
+    onLogout();
+  };
 
   return (
     <div className="app-shell">
@@ -115,7 +163,8 @@ export default function App() {
         onToggle={() => setCollapsed((v) => !v)}
         onOpenPalette={() => setPaletteOpen(true)}
         counts={counts}
-        user={me.data}
+        user={me}
+        onLogout={logout}
       />
       <div className="app-main">
         <Topbar
