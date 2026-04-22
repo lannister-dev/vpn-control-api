@@ -205,9 +205,9 @@ function RouteForm({ route, nodes, onClose }) {
       onClose={onClose}
       footer={
         <>
-          {isEdit && <button className="btn-danger" onClick={deactivate} disabled={busy} style={{ marginRight: "auto" }}>Деактивировать</button>}
-          <button className="btn-ghost" onClick={onClose}>Отмена</button>
-          <button className="btn-primary" onClick={save} disabled={busy}>{isEdit ? "Сохранить" : "Создать"}</button>
+          {isEdit && <button className="btn btn-danger" onClick={deactivate} disabled={busy} style={{ marginRight: "auto" }}>Деактивировать</button>}
+          <button className="btn btn-ghost" onClick={onClose}>Отмена</button>
+          <button className="btn btn-primary" onClick={save} disabled={busy}>{isEdit ? "Сохранить" : "Создать"}</button>
         </>
       }
     >

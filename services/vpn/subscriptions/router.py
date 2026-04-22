@@ -20,6 +20,7 @@ from services.vpn.subscriptions.schemas import (
     SubscriptionOut,
     SubscriptionRotateOut,
     SubscriptionSetMaxDevicesIn,
+    SubscriptionStatsOut,
 )
 from services.vpn.subscriptions.exceptions import (
     SubscriptionNotFound,
@@ -112,6 +113,21 @@ async def get_subscription_config(
 
 
 #================== ADMINS ==================
+
+@router.get(
+    "/stats",
+    response_model=SubscriptionStatsOut,
+    status_code=status.HTTP_200_OK,
+    summary="Subscription counters",
+    description="Aggregate counts: total, active, expired (active with expires_at < now).",
+    dependencies=[Depends(admin_auth)],
+)
+async def get_subscription_stats(
+        service: SubscriptionService = Depends(get_subscription_service),
+):
+    total, active, expired = await service.get_stats()
+    return SubscriptionStatsOut(total=total, active=active, expired=expired)
+
 
 @router.post(
     "",

@@ -80,11 +80,11 @@ export function SubscriptionDrawer({ subscription, onClose, onChanged }) {
             </tbody>
           </table>
           <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button className="btn-ghost" onClick={() => setMaxDevOpen(true)} disabled={busy}>Изменить max devices</button>
-            <button className="btn-ghost" onClick={rotate} disabled={busy}>Ротировать токен</button>
+            <button className="btn btn-ghost" onClick={() => setMaxDevOpen(true)} disabled={busy}>Изменить max devices</button>
+            <button className="btn btn-ghost" onClick={rotate} disabled={busy}>Ротировать токен</button>
             {sub.is_active
-              ? <button className="btn-danger" onClick={deactivate} disabled={busy}>Деактивировать</button>
-              : <button className="btn-primary" onClick={activate} disabled={busy}>Активировать</button>}
+              ? <button className="btn btn-danger" onClick={deactivate} disabled={busy}>Деактивировать</button>
+              : <button className="btn btn-primary" onClick={activate} disabled={busy}>Активировать</button>}
           </div>
         </>
       )}
@@ -133,7 +133,7 @@ function MaxDevicesForm({ sub, onClose }) {
     <Modal
       title="Изменить max devices"
       onClose={onClose}
-      footer={<><button className="btn-ghost" onClick={onClose}>Отмена</button><button className="btn-primary" onClick={save} disabled={busy}>Сохранить</button></>}
+      footer={<><button className="btn btn-ghost" onClick={onClose}>Отмена</button><button className="btn btn-primary" onClick={save} disabled={busy}>Сохранить</button></>}
     >
       {err && <div className="form-error">{err}</div>}
       <Field label="Max devices" hint="1–100"><input type="number" min={1} max={100} value={v} onChange={(e) => setV(e.target.value)} /></Field>

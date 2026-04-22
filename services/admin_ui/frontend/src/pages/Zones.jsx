@@ -24,7 +24,7 @@ export function ZonesPage() {
           <div className="page-subtitle">Регионы для отображения entry-нод в Happ (код + эмодзи + название)</div>
         </div>
         <div className="page-head-actions">
-          <button className="btn-primary" onClick={() => setCreating(true)}>
+          <button className="btn btn-primary" onClick={() => setCreating(true)}>
             <Icon name="plus" size={13} /> Создать зону
           </button>
         </div>
@@ -101,9 +101,9 @@ function ZoneForm({ zone, onClose }) {
       onClose={onClose}
       footer={
         <>
-          {isEdit && <button className="btn-danger" onClick={deactivate} disabled={busy} style={{ marginRight: "auto" }}>Деактивировать</button>}
-          <button className="btn-ghost" onClick={onClose}>Отмена</button>
-          <button className="btn-primary" onClick={save} disabled={busy}>{isEdit ? "Сохранить" : "Создать"}</button>
+          {isEdit && <button className="btn btn-danger" onClick={deactivate} disabled={busy} style={{ marginRight: "auto" }}>Деактивировать</button>}
+          <button className="btn btn-ghost" onClick={onClose}>Отмена</button>
+          <button className="btn btn-primary" onClick={save} disabled={busy}>{isEdit ? "Сохранить" : "Создать"}</button>
         </>
       }
     >

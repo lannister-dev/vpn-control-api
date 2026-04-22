@@ -46,6 +46,12 @@ class SubscriptionSetMaxDevicesIn(BaseModel):
     max_devices: int = Field(gt=0, le=100)
 
 
+class SubscriptionStatsOut(BaseModel):
+    total: int
+    active: int
+    expired: int
+
+
 class SubscriptionCreatedOut(BaseModel):
     id: UUID
     vpn_key_id: UUID | None = None

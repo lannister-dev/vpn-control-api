@@ -37,7 +37,7 @@ export function OverviewPage({ onOpenNode, onGoto }) {
     () => api.get("/admin/traffic/nodes?period=24h&limit=500").catch((e) => (e.status === 404 ? { items: [] } : Promise.reject(e))),
     { interval: 60000 },
   );
-  const users = useQuery(() => api.get("/users?limit=1").catch(() => null), { interval: 60000 });
+  const subsStats = useQuery(() => api.get("/subscriptions/stats").catch(() => null), { interval: 60000 });
 
   const nodes = status.data?.nodes || [];
   const totals = status.data?.totals || {};
@@ -313,9 +313,9 @@ export function OverviewPage({ onOpenNode, onGoto }) {
 
           <KpiCell
             label="Активные подписки"
-            value={users.data?.total != null ? users.data.total.toLocaleString("ru-RU") : "—"}
-            delta={users.data?.total != null ? `+${Math.max(1, Math.round(users.data.total * 0.012))}` : "—"}
-            deltaTone="up"
+            value={subsStats.data?.active != null ? subsStats.data.active.toLocaleString("ru-RU") : "—"}
+            delta={subsStats.data?.expired ? `${subsStats.data.expired} истекли` : subsStats.data?.active != null ? `${subsStats.data.total} всего` : "—"}
+            deltaTone={subsStats.data?.expired ? "down" : "up"}
             icon="key"
             sparkSeed={13}
             sparkColor="var(--accent)"

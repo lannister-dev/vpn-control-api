@@ -83,6 +83,20 @@ class SubscriptionRepository(BaseRepository[Subscription]):
         sub.is_active = False
         await self.session.flush()
 
+    async def count_stats(self) -> tuple[int, int, int]:
+        total_res = await self.session.execute(select(func.count()).select_from(self.model))
+        active_res = await self.session.execute(
+            select(func.count()).select_from(self.model).where(self.model.is_active.is_(True)),
+        )
+        expired_res = await self.session.execute(
+            select(func.count()).select_from(self.model).where(
+                self.model.is_active.is_(True),
+                self.model.expires_at.isnot(None),
+                self.model.expires_at < func.now(),
+            ),
+        )
+        return int(total_res.scalar_one()), int(active_res.scalar_one()), int(expired_res.scalar_one())
+
     async def find_active_subscription(self, user_id: UUID, plan_id: UUID):
         result = await self.session.execute(
             select(self.model).where(
