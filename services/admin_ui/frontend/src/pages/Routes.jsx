@@ -46,15 +46,15 @@ export function RoutesPage() {
         <div className="page-head-main">
           <h1 className="page-title">Маршруты</h1>
           <div className="page-subtitle">
-            {counts.healthy} healthy · {counts.warn} degraded · {counts.bad} blocked · {counts.other} warming/other
+            {routesList.length} активных маршрутов{counts.bad ? ` · ${counts.bad} blocked` : ""}{counts.other ? ` · ${counts.other} warming up` : ""}
           </div>
         </div>
         <div className="page-head-actions">
           <div className="seg" style={{ minWidth: 160 }}>
-            <button data-active={view === "topology"} onClick={() => setView("topology")}>Поток</button>
-            <button data-active={view === "list"} onClick={() => setView("list")}>Список</button>
+            <button data-active={view === "topology"} onClick={() => setView("topology")}><Icon name="git-branch" size={12} /> Поток</button>
+            <button data-active={view === "list"} onClick={() => setView("list")}><Icon name="list" size={12} /> Список</button>
           </div>
-          <button className="btn-primary" onClick={() => setCreating(true)}>
+          <button className="btn btn-primary" onClick={() => setCreating(true)}>
             <Icon name="plus" size={13} /> Создать маршрут
           </button>
         </div>
