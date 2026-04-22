@@ -1,14 +1,14 @@
 import { Icon } from "./Icon.jsx";
 
-export function Topbar({ theme, onToggleTheme, onLogout }) {
+export function Topbar({ theme, onToggleTheme, onLogout, onOpenPalette }) {
   return (
     <header className="topbar">
       <div className="topbar-left">
-        <div className="topbar-search">
+        <button type="button" className="topbar-search" onClick={onOpenPalette} style={{ width: "100%", textAlign: "left", cursor: "pointer" }}>
           <Icon name="search" size={14} />
-          <input placeholder="Быстрый поиск (UUID, имя)…" />
+          <span style={{ flex: 1, color: "var(--text-muted)", fontSize: 13 }}>Быстрый поиск (⌘K)</span>
           <kbd>⌘K</kbd>
-        </div>
+        </button>
       </div>
       <div className="topbar-right">
         <button className="icon-btn" onClick={onToggleTheme} title="Тема">
