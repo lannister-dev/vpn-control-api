@@ -59,20 +59,22 @@ function ProbePolicyCard() {
   const save = async () => {
     setBusy(true);
     try {
-      const payload = {
-        route_suspected_after_failures: f.route_suspected_after_failures,
-        route_degraded_after_failures: f.route_degraded_after_failures,
-        route_block_after_failures: f.route_block_after_failures,
-        route_block_cooldown_hours: f.route_block_cooldown_hours,
-        auto_drain_enabled: f.auto_drain_enabled,
-        auto_drain_tick_sec: f.auto_drain_tick_sec,
-        auto_drain_min_consecutive_failures: f.auto_drain_min_consecutive_failures,
-        auto_drain_max_probe_age_sec: f.auto_drain_max_probe_age_sec,
-        auto_drain_max_nodes: f.auto_drain_max_nodes,
-        auto_undrain_enabled: f.auto_undrain_enabled,
-        auto_undrain_min_consecutive_successes: f.auto_undrain_min_consecutive_successes,
-        auto_undrain_max_probe_age_sec: f.auto_undrain_max_probe_age_sec,
-      };
+      const keys = [
+        "auto_route_health_enabled",
+        "route_suspected_after_failures", "route_degraded_after_failures", "route_block_after_failures",
+        "route_block_cooldown_hours",
+        "auto_drain_enabled", "auto_drain_tick_sec", "auto_drain_min_consecutive_failures",
+        "auto_drain_max_probe_age_sec", "auto_drain_max_nodes",
+        "auto_drain_source", "auto_drain_require_recent_failure", "auto_drain_include_already_draining",
+        "auto_drain_target_backend_id", "auto_drain_last_migration_reason",
+        "auto_undrain_enabled", "auto_undrain_min_consecutive_successes",
+        "auto_undrain_max_probe_age_sec", "auto_undrain_source",
+        "retention_days", "cleanup_enabled", "cleanup_tick_sec",
+        "synthetic_reconcile_enabled", "synthetic_reconcile_tick_sec",
+        "synthetic_key_valid_days", "synthetic_key_traffic_limit_mb",
+      ];
+      const payload = {};
+      for (const k of keys) if (f[k] !== undefined) payload[k] = f[k] === "" ? null : f[k];
       const updated = await api.patch("/admin/probe/policy", payload);
       setF(updated);
       toast.ok("Probe-политика обновлена");
@@ -88,6 +90,10 @@ function ProbePolicyCard() {
         <div className="sec-sub">пороги блокировки маршрутов + авто-drain</div>
       </div>
       <div className="card-body">
+        <label className="form-check" style={{ marginBottom: 14 }}>
+          <input type="checkbox" checked={!!f.auto_route_health_enabled} onChange={set("auto_route_health_enabled")} />
+          Общий kill-switch: автоматика route health включена
+        </label>
         <div className="split-2">
           <div>
             <div className="kpi-label" style={{ marginBottom: 8 }}>Пороги маршрутов (подряд неудачных probe)</div>
@@ -143,6 +149,74 @@ function ProbePolicyCard() {
               </Field>
             </div>
           </div>
+        </div>
+
+        <hr style={{ border: 0, borderTop: "1px solid var(--border)", margin: "18px 0" }} />
+
+        <div className="split-2">
+          <div>
+            <div className="kpi-label" style={{ marginBottom: 8 }}>Источники probe</div>
+            <div className="form-row">
+              <Field label="Drain source" hint="имя probe-агента">
+                <input type="text" value={f.auto_drain_source || ""} onChange={set("auto_drain_source")} placeholder="например, probe-prod-entry" />
+              </Field>
+              <Field label="Undrain source" hint="пусто = тот же">
+                <input type="text" value={f.auto_undrain_source || ""} onChange={set("auto_undrain_source")} />
+              </Field>
+            </div>
+            <div className="form-row">
+              <Field label="Reason label">
+                <input type="text" value={f.auto_drain_last_migration_reason || ""} onChange={set("auto_drain_last_migration_reason")} />
+              </Field>
+              <Field label="Target backend (UUID)" hint="пусто = auto">
+                <input type="text" value={f.auto_drain_target_backend_id || ""} onChange={set("auto_drain_target_backend_id")} />
+              </Field>
+            </div>
+            <label className="form-check">
+              <input type="checkbox" checked={!!f.auto_drain_require_recent_failure} onChange={set("auto_drain_require_recent_failure")} />
+              Требовать свежий probe failure
+            </label>
+            <label className="form-check" style={{ marginTop: 6 }}>
+              <input type="checkbox" checked={!!f.auto_drain_include_already_draining} onChange={set("auto_drain_include_already_draining")} />
+              Включать уже draining ноды в рассмотрение
+            </label>
+          </div>
+          <div>
+            <div className="kpi-label" style={{ marginBottom: 8 }}>Хранение и cleanup</div>
+            <div className="form-row">
+              <Field label="Retention, дней">
+                <input type="number" min={1} max={365} value={f.retention_days} onChange={set("retention_days")} />
+              </Field>
+              <Field label="Cleanup tick, сек">
+                <input type="number" min={60} max={86400} value={f.cleanup_tick_sec} onChange={set("cleanup_tick_sec")} />
+              </Field>
+            </div>
+            <label className="form-check">
+              <input type="checkbox" checked={!!f.cleanup_enabled} onChange={set("cleanup_enabled")} />
+              Включить cleanup старых probe-сигналов
+            </label>
+          </div>
+        </div>
+
+        <hr style={{ border: 0, borderTop: "1px solid var(--border)", margin: "18px 0" }} />
+
+        <div>
+          <div className="kpi-label" style={{ marginBottom: 8 }}>Synthetic probe (VPN-ключи от имени тест-юзера)</div>
+          <label className="form-check">
+            <input type="checkbox" checked={!!f.synthetic_reconcile_enabled} onChange={set("synthetic_reconcile_enabled")} />
+            Включить synthetic probe reconcile
+          </label>
+          <div className="form-row" style={{ marginTop: 8 }}>
+            <Field label="Tick, сек">
+              <input type="number" min={30} max={86400} value={f.synthetic_reconcile_tick_sec} onChange={set("synthetic_reconcile_tick_sec")} />
+            </Field>
+            <Field label="Срок действия ключа, дней">
+              <input type="number" min={1} max={36500} value={f.synthetic_key_valid_days} onChange={set("synthetic_key_valid_days")} />
+            </Field>
+          </div>
+          <Field label="Лимит трафика synthetic-ключа, MB">
+            <input type="number" min={1} max={10485760} value={f.synthetic_key_traffic_limit_mb} onChange={set("synthetic_key_traffic_limit_mb")} />
+          </Field>
         </div>
       </div>
       <div style={{ padding: "12px 14px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "flex-end", gap: 8 }}>

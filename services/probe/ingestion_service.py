@@ -53,8 +53,6 @@ class ProbeIngestionService:
             target_port: int,
             edge_public_domain: str,
             synthetic_probe_client_ids: ProbeSyntheticClientIds,
-            retention_days: int,
-            auto_route_health_enabled: bool,
     ):
         self.node_repository = node_repository
         self.probe_repository = probe_repository
@@ -67,8 +65,6 @@ class ProbeIngestionService:
         self.target_port = target_port
         self.edge_public_domain = edge_public_domain
         self.synthetic_probe_client_ids = synthetic_probe_client_ids
-        self.retention_days = retention_days
-        self.auto_route_health_enabled = auto_route_health_enabled
         self._policy_cache = None
 
     async def _policy(self):
@@ -257,19 +253,22 @@ class ProbeIngestionService:
         )
 
     async def cleanup_old_signals(self) -> int:
-        cutoff = datetime.now(timezone.utc) - timedelta(days=self.retention_days)
+        policy = await self._policy()
+        retention_days = max(1, int(policy.retention_days))
+        cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
         deleted_raw = await self.probe_repository.delete_older_than(cutoff=cutoff)
         deleted = deleted_raw if isinstance(deleted_raw, int) else 0
         if deleted > 0:
             logger_probe.info(
                 "probe_signal_cleanup",
                 deleted=deleted,
-                retention_days=self.retention_days,
+                retention_days=retention_days,
             )
         return deleted
 
     async def _apply_route_health_policy(self, *, node, signal) -> None:
-        if not self.auto_route_health_enabled:
+        policy = await self._policy()
+        if not policy.auto_route_health_enabled:
             return
         route_id = signal.route_id
         if route_id is None:
@@ -752,6 +751,4 @@ def get_probe_ingestion_service(
             reality=probe_settings.synthetic_reality_client_id,
             ws=probe_settings.synthetic_ws_client_id,
         ),
-        retention_days=probe_settings.retention_days,
-        auto_route_health_enabled=probe_settings.auto_route_health_enabled,
     )

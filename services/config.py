@@ -167,22 +167,8 @@ class ProbeConfig:
     target_port: int = 443
     synthetic_reality_client_id: str | None = None
     synthetic_ws_client_id: str | None = None
-    synthetic_reconcile_enabled: bool = False
-    synthetic_reconcile_tick_sec: int = 300
     synthetic_user_telegram_id: int = 0
     synthetic_user_username: str = "probe-synthetic"
-    synthetic_key_valid_days: int = 3650
-    synthetic_key_traffic_limit_mb: int = 102400
-    retention_days: int = 3
-    cleanup_enabled: bool = True
-    cleanup_tick_sec: int = 3600
-    auto_route_health_enabled: bool = True
-    auto_drain_source: str | None = None
-    auto_drain_require_recent_failure: bool = True
-    auto_drain_include_already_draining: bool = False
-    auto_drain_target_backend_id: str | None = None
-    auto_drain_last_migration_reason: str = "probe_auto_failure"
-    auto_undrain_source: str | None = None
 
 
 @dataclass
@@ -455,22 +441,8 @@ def get_settings() -> Settings:
         target_port=env.int("PROBE_TARGET_PORT", default=443),
         synthetic_reality_client_id=env.str("PROBE_SYNTHETIC_REALITY_CLIENT_ID", default=""),
         synthetic_ws_client_id=env.str("PROBE_SYNTHETIC_WS_CLIENT_ID", default=""),
-        synthetic_reconcile_enabled=env.bool("PROBE_SYNTHETIC_RECONCILE_ENABLED", default=False),
-        synthetic_reconcile_tick_sec=max(30, env.int("PROBE_SYNTHETIC_RECONCILE_TICK_SEC", default=300)),
         synthetic_user_telegram_id=env.int("PROBE_SYNTHETIC_USER_TELEGRAM_ID", default=0),
         synthetic_user_username=env.str("PROBE_SYNTHETIC_USER_USERNAME", default="probe-synthetic"),
-        synthetic_key_valid_days=max(1, env.int("PROBE_SYNTHETIC_KEY_VALID_DAYS", default=3650)),
-        synthetic_key_traffic_limit_mb=max(1, env.int("PROBE_SYNTHETIC_KEY_TRAFFIC_LIMIT_MB", default=102400)),
-        retention_days= env.int("PROBE_RETENTION_DAYS", default=3),
-        cleanup_enabled=env.bool("PROBE_CLEANUP_ENABLED", default=True),
-        cleanup_tick_sec=max(300, env.int("PROBE_CLEANUP_TICK_SEC", default=3600)),
-        auto_route_health_enabled=env.bool("PROBE_AUTO_ROUTE_HEALTH_ENABLED", default=True),
-        auto_drain_source=env.str("PROBE_AUTO_DRAIN_SOURCE", default=""),
-        auto_drain_require_recent_failure=env.bool("PROBE_AUTO_DRAIN_REQUIRE_RECENT_FAILURE", default=True),
-        auto_drain_include_already_draining=env.bool("PROBE_AUTO_DRAIN_INCLUDE_ALREADY_DRAINING", default=False),
-        auto_drain_target_backend_id=env.str("PROBE_AUTO_DRAIN_TARGET_BACKEND_ID", default="").strip() or None,
-        auto_drain_last_migration_reason=env.str("PROBE_AUTO_DRAIN_LAST_MIGRATION_REASON", default="probe_auto_failure"),
-        auto_undrain_source=env.str("PROBE_AUTO_UNDRAIN_SOURCE", default="").strip() or None,
     )
 
     routes = RoutesConfig(

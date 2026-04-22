@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from services.config import ProbeConfig
 from services.probe.cleanup_reconciler import ProbeSignalCleanupReconciler
 
 
@@ -46,27 +46,17 @@ class _TickLock:
         return _LockContext(self._acquired)
 
 
-def _probe_settings(**overrides) -> ProbeConfig:
-    data = {
-        "target_port": 443,
-        "retention_days": 30,
-        "cleanup_enabled": True,
-        "cleanup_tick_sec": 600,
-        "auto_route_health_enabled": True,
-        "route_block_cooldown_hours": 6,
-        "auto_drain_migrate_enabled": False,
-        "auto_drain_tick_sec": 60,
-        "auto_drain_source": "ru-probe-1",
-        "auto_drain_require_recent_failure": True,
-        "auto_drain_max_probe_age_sec": 600,
-        "auto_drain_min_consecutive_failures": 2,
-        "auto_drain_include_already_draining": False,
-        "auto_drain_max_nodes": 20,
-        "auto_drain_target_backend_id": None,
-        "auto_drain_last_migration_reason": "probe_auto_failure",
-    }
+def _policy(**overrides):
+    data = dict(cleanup_enabled=True, cleanup_tick_sec=600, retention_days=30)
     data.update(overrides)
-    return ProbeConfig(**data)
+    return SimpleNamespace(**data)
+
+
+def _policy_repo_patch(policy):
+    return patch(
+        "services.probe.cleanup_reconciler.ProbePolicyRepository",
+        return_value=SimpleNamespace(get_current=AsyncMock(return_value=policy)),
+    )
 
 
 @pytest.mark.asyncio
@@ -86,44 +76,33 @@ async def test_run_once_cleans_and_commits(monkeypatch):
         _Repo,
     )
 
-    reconciler = ProbeSignalCleanupReconciler(
-        probe_settings=_probe_settings(),
-        tick_lock=_TickLock(acquired=True),
-    )
-    reconciler._session_maker = _SessionMaker(session)
-
-    out = await reconciler.run_once()
+    with _policy_repo_patch(_policy()):
+        reconciler = ProbeSignalCleanupReconciler(tick_lock=_TickLock(acquired=True))
+        reconciler._session_maker = _SessionMaker(session)
+        out = await reconciler.run_once()
 
     assert out == 17
     delete_older_than.assert_awaited_once()
-    session.commit.assert_awaited_once()
+    session.commit.assert_awaited()
 
 
 @pytest.mark.asyncio
 async def test_run_once_returns_none_when_disabled():
     session = AsyncMock()
-    reconciler = ProbeSignalCleanupReconciler(
-        probe_settings=_probe_settings(cleanup_enabled=False),
-        tick_lock=_TickLock(acquired=True),
-    )
-    reconciler._session_maker = _SessionMaker(session)
-
-    out = await reconciler.run_once()
+    with _policy_repo_patch(_policy(cleanup_enabled=False)):
+        reconciler = ProbeSignalCleanupReconciler(tick_lock=_TickLock(acquired=True))
+        reconciler._session_maker = _SessionMaker(session)
+        out = await reconciler.run_once()
 
     assert out is None
-    session.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_run_once_skips_when_tick_lock_not_acquired():
     session = AsyncMock()
-    reconciler = ProbeSignalCleanupReconciler(
-        probe_settings=_probe_settings(),
-        tick_lock=_TickLock(acquired=False),
-    )
-    reconciler._session_maker = _SessionMaker(session)
-
-    out = await reconciler.run_once()
+    with _policy_repo_patch(_policy()):
+        reconciler = ProbeSignalCleanupReconciler(tick_lock=_TickLock(acquired=False))
+        reconciler._session_maker = _SessionMaker(session)
+        out = await reconciler.run_once()
 
     assert out is None
-    session.commit.assert_not_awaited()

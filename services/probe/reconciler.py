@@ -7,7 +7,6 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from services.config import ProbeConfig, get_settings
 from services.nodes.repository import NodeAgentStateRepository, VpnNodeRepository
 from services.placements.service import UserPlacementService
 from services.probe.drain_service import ProbeDrainService
@@ -24,10 +23,8 @@ logger = StructuredLogger(logging.getLogger("probe-auto-drain-reconciler"))
 class ProbeAutoDrainReconciler:
     """Periodically evaluates ProbePolicy from DB and auto-drains failing backends.
 
-    All thresholds (enabled, tick_sec, min_consecutive_failures, max_probe_age_sec,
-    max_nodes) are read from `probe_policy` table on every tick. Deployment-specific
-    knobs (source, require_recent_failure, target_backend_id, last_migration_reason,
-    include_already_draining) remain in env since they're infra wiring, not tunables.
+    Everything tunable lives in `probe_policy` table: enabled/tick/thresholds/source
+    /target/flags. Re-read on every tick so admin edits via UI are picked up.
     """
 
     _IDLE_WHEN_DISABLED_SEC = 60
@@ -35,12 +32,10 @@ class ProbeAutoDrainReconciler:
     def __init__(
             self,
             *,
-            probe_settings: ProbeConfig | None = None,
             session_maker: async_sessionmaker[AsyncSession] | None = None,
             service_factory: Callable[[AsyncSession], ProbeDrainService] | None = None,
             tick_lock: RedisTickLock | None = None,
     ):
-        self._settings = probe_settings or get_settings().probe
         self._session_maker = session_maker or AsyncDatabase.get_session_maker()
         self._service_factory = service_factory or self._default_service_factory
         self._tick_lock = tick_lock or RedisTickLock(
@@ -118,26 +113,16 @@ class ProbeAutoDrainReconciler:
                 return result
 
     def _build_payload(self, policy) -> ProbeAutoDrainMigrateIn:
-        target_backend_id: UUID | None = None
-        if self._settings.auto_drain_target_backend_id is not None:
-            try:
-                target_backend_id = UUID(self._settings.auto_drain_target_backend_id)
-            except ValueError:
-                logger.warning(
-                    "probe_auto_drain_invalid_target_backend_id",
-                    target_backend_id=self._settings.auto_drain_target_backend_id,
-                )
-
         return ProbeAutoDrainMigrateIn(
-            target_backend_id=target_backend_id,
-            source=self._settings.auto_drain_source,
-            require_recent_failure=bool(self._settings.auto_drain_require_recent_failure),
+            target_backend_id=policy.auto_drain_target_backend_id,
+            source=policy.auto_drain_source or None,
+            require_recent_failure=bool(policy.auto_drain_require_recent_failure),
             max_probe_age_sec=max(30, int(policy.auto_drain_max_probe_age_sec)),
             min_consecutive_failures=max(1, int(policy.auto_drain_min_consecutive_failures)),
-            include_already_draining=bool(self._settings.auto_drain_include_already_draining),
+            include_already_draining=bool(policy.auto_drain_include_already_draining),
             dry_run=False,
             max_nodes=min(500, max(1, int(policy.auto_drain_max_nodes))),
-            last_migration_reason=self._settings.auto_drain_last_migration_reason,
+            last_migration_reason=policy.auto_drain_last_migration_reason or "probe_auto_failure",
         )
 
     @staticmethod

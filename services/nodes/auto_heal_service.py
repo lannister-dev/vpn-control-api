@@ -67,8 +67,6 @@ class NodePlacementAutoHealService:
         self.max_nodes = min(500, max(1, int(max_nodes)))
         self.auto_undrain_enabled = bool(auto_undrain_enabled)
         self.drain_cooldown_sec = max(0, int(drain_cooldown_sec))
-        probe_settings = get_settings().probe
-        self.probe_auto_undrain_source = probe_settings.auto_undrain_source or probe_settings.auto_drain_source
         self._policy_cache = None
 
     async def run_once(self) -> NodeAutoHealTickOut:
@@ -398,9 +396,10 @@ class NodePlacementAutoHealService:
             return False
         max_age = max(30, int(policy.auto_undrain_max_probe_age_sec))
         min_successes = max(1, int(policy.auto_undrain_min_consecutive_successes))
+        source = policy.auto_undrain_source or policy.auto_drain_source or None
         latest = await self.probe_repository.get_latest_for_backend_node(
             node_id=node_id,
-            source=self.probe_auto_undrain_source,
+            source=source,
         )
         if latest is None or not latest.is_reachable:
             return False
@@ -414,7 +413,7 @@ class NodePlacementAutoHealService:
         recent = await self.probe_repository.list_recent_for_backend_node(
             limit=max(10, min_successes * 3),
             node_id=node_id,
-            source=self.probe_auto_undrain_source,
+            source=source,
         )
         consecutive_successes = 0
         for signal in recent:

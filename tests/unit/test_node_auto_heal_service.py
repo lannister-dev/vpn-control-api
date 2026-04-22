@@ -335,9 +335,13 @@ async def test_auto_undrains_probe_drained_node_after_successful_probes(async_se
 
     service = _make_service(async_session, auto_undrain_enabled=True)
     service.probe_repository = AsyncMock()
-    service.probe_auto_undrain_enabled = True
-    service.probe_auto_undrain_min_consecutive_successes = 2
-    service.probe_auto_undrain_max_probe_age_sec = 600
+    service._policy_cache = SimpleNamespace(
+        auto_undrain_enabled=True,
+        auto_undrain_min_consecutive_successes=2,
+        auto_undrain_max_probe_age_sec=600,
+        auto_undrain_source=None,
+        auto_drain_source=None,
+    )
 
     rows = [(recovering, recovering_state)]
     service.node_repository.list_active_with_agent_state = AsyncMock(side_effect=[rows, rows])
