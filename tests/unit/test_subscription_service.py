@@ -321,7 +321,7 @@ class TestSubscriptionDisplayForRoute:
         display, desc = service._subscription_display_for_route(
             backend_node=backend, entry_node=entry
         )
-        assert display == "🇪🇺 Europe | WL unblock"
+        assert display == "🇪🇺 Europe | WL"
         assert desc == "🔓 глушилки"
 
     def test_entry_without_zone_ref_falls_back_to_backend_country(self, service):
@@ -351,7 +351,7 @@ class TestSubscriptionDisplayForRoute:
         display, desc = service._subscription_display_for_route(
             backend_node=backend, entry_node=entry
         )
-        assert display == "🇪🇺 Europe | WL unblock"
+        assert display == "🇪🇺 Europe | WL"
         assert desc == "🔓 глушилки"
 
 
