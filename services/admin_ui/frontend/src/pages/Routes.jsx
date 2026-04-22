@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client.js";
 import { useQuery } from "../hooks/useQuery.js";
 import { Topology } from "../components/Topology.jsx";
@@ -13,13 +13,17 @@ const HEALTH_TONE = {
   healthy: "ok", warming_up: "warn", degraded: "warn", suspected: "warn", blocked: "bad",
 };
 
-export function RoutesPage() {
+export function RoutesPage({ initialAction, onActionConsumed }) {
   const [view, setView] = useState("topology");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [drawerNode, setDrawerNode] = useState(null);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState(null);
+
+  useEffect(() => {
+    if (initialAction === "create") { setCreating(true); onActionConsumed?.(); }
+  }, [initialAction, onActionConsumed]);
 
   const routes = useQuery(() => api.get("/routes?limit=500"), { interval: 15000 });
   const status = useQuery(() => api.get("/admin/status"), { interval: 15000 });

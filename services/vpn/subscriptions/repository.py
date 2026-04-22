@@ -76,6 +76,28 @@ class SubscriptionRepository(BaseRepository[Subscription]):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
+    async def list_paginated(
+            self,
+            *,
+            active_only: bool = False,
+            plan_id: UUID | None = None,
+            limit: int = 50,
+            offset: int = 0,
+    ) -> tuple[list[Subscription], int]:
+        base = select(self.model)
+        if active_only:
+            base = base.where(self.model.is_active.is_(True))
+        if plan_id is not None:
+            base = base.where(self.model.plan_id == plan_id)
+
+        count_stmt = select(func.count()).select_from(base.subquery())
+        total = int((await self.session.execute(count_stmt)).scalar_one())
+
+        stmt = base.options(joinedload(self.model.plan)).order_by(self.model.created_at.desc()).limit(limit).offset(offset)
+        result = await self.session.execute(stmt)
+        items = list(result.scalars().unique().all())
+        return items, total
+
     async def deactivate(self, subscription_id: UUID) -> None:
         sub = await self.get_by_id(subscription_id)
         if not sub:

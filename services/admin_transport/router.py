@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Query, status
 from services.admin_transport.schemas import (
     EventLogListOut,
     ForceSnapshotOut,
+    OutboxBreakdownOut,
     OutboxListOut,
     OutboxRetryAllOut,
     OutboxRetryOut,
@@ -100,6 +101,34 @@ async def transport_outbox_retry(
     service: AdminTransportService = Depends(get_admin_transport_service),
 ) -> OutboxRetryOut:
     return await service.retry_outbox_item(outbox_id)
+
+
+@router.get(
+    "/outbox/breakdown",
+    response_model=OutboxBreakdownOut,
+    status_code=status.HTTP_200_OK,
+    summary="Outbox counts grouped by event_type and status",
+)
+async def transport_outbox_breakdown(
+    node_id: UUID | None = Query(None, description="Filter by node"),
+    status_filter: str | None = Query(None, alias="status", description="Filter: pending/failed/publishing/published"),
+    service: AdminTransportService = Depends(get_admin_transport_service),
+) -> OutboxBreakdownOut:
+    items = await service.outbox_breakdown_by_type(node_id=node_id, status_filter=status_filter)
+    return OutboxBreakdownOut(items=items)
+
+
+@router.post(
+    "/outbox/{outbox_id}/cancel",
+    response_model=OutboxRetryOut,
+    status_code=status.HTTP_200_OK,
+    summary="Cancel a pending/failed outbox item (removes it from queue)",
+)
+async def transport_outbox_cancel(
+    outbox_id: UUID,
+    service: AdminTransportService = Depends(get_admin_transport_service),
+) -> OutboxRetryOut:
+    return await service.cancel_outbox_item(outbox_id)
 
 
 @router.post(

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client.js";
 import { useQuery } from "../hooks/useQuery.js";
 import { Icon } from "../components/Icon.jsx";
@@ -43,11 +43,15 @@ function loadOf(n) {
   return Math.min(1, (n.placements_backend || 0) / Math.max(n.capacity || 50, 1));
 }
 
-export function NodesPage({ onOpenNode }) {
+export function NodesPage({ onOpenNode, initialAction, onActionConsumed }) {
   const [filter, setFilter] = useState("");
   const [health, setHealth] = useState("");
   const [role, setRole] = useState("");
   const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    if (initialAction === "create") { setCreating(true); onActionConsumed?.(); }
+  }, [initialAction, onActionConsumed]);
 
   const { data: status, loading, error, refetch } = useQuery(() => api.get("/admin/status"), { interval: 15000 });
   const zones = useQuery(() => api.get("/zones"), { interval: 60000 });
@@ -164,9 +168,7 @@ export function NodesPage({ onOpenNode }) {
                   <td className="mono" style={{ color: hbBad ? "var(--bad)" : "var(--text-secondary)" }}>{hb}</td>
                   <td><Spark data={spark(seed, 20, 50, 30)} color="var(--accent)" w={90} h={22} /></td>
                   <td className="row-actions">
-                    <button className="btn btn-ghost btn-icon" onClick={(e) => e.stopPropagation()} style={{ width: 24, height: 24 }}>
-                      <Icon name="more-horizontal" size={13} />
-                    </button>
+                    <RowMenu node={n} />
                   </td>
                 </tr>
               );
@@ -310,6 +312,53 @@ function LoadBar({ v }) {
         <div style={{ width: `${pct}%`, height: "100%", background: `var(--${tone})` }} />
       </div>
       <span className="mono" style={{ color: `var(--${tone})`, fontWeight: 500 }}>{pct}%</span>
+    </div>
+  );
+}
+
+function RowMenu({ node }) {
+  const [open, setOpen] = useState(false);
+  const items = [
+    { icon: "pause", label: node.is_draining ? "Снять drain" : "Drain", action: "drain", disabled: false },
+    { icon: "arrow-right", label: "Мигрировать плейсменты", action: "migrate" },
+    { icon: "refresh", label: "Force resync", action: "resync" },
+    { icon: "terminal", label: "SSH команда", action: "ssh" },
+    { icon: "edit", label: "Редактировать", action: "edit" },
+    { icon: "power", label: node.is_enabled ? "Отключить" : "Включить", action: "toggle", danger: node.is_enabled },
+  ];
+  const run = (a) => {
+    setOpen(false);
+    toast.warn(`Действие "${a}" ещё не реализовано — скоро появится.`);
+  };
+  return (
+    <div style={{ position: "relative", display: "inline-block" }} onClick={(e) => e.stopPropagation()}>
+      <button className="btn btn-ghost btn-icon" onClick={() => setOpen((v) => !v)} style={{ width: 24, height: 24 }}>
+        <Icon name="more-horizontal" size={13} />
+      </button>
+      {open && (
+        <>
+          <div style={{ position: "fixed", inset: 0, zIndex: 50 }} onClick={() => setOpen(false)} />
+          <div style={{
+            position: "absolute", top: "100%", right: 0, marginTop: 4, minWidth: 200, zIndex: 51,
+            background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8,
+            boxShadow: "var(--shadow-lg)", padding: 4,
+          }}>
+            {items.map((it) => (
+              <button key={it.action} onClick={() => run(it.label)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "7px 10px",
+                  border: 0, background: "transparent", cursor: "pointer", borderRadius: 5,
+                  color: it.danger ? "var(--bad)" : "var(--text)", fontSize: 13, textAlign: "left",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+                <Icon name={it.icon} size={12} />
+                <span>{it.label}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
