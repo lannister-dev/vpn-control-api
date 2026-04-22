@@ -4,7 +4,7 @@ Moves operational knobs out of env into DB: retention, cleanup, synthetic
 reconcile, drain source/target/reason flags. Bootstrap-only items
 (PROBE_TARGET_PORT, synthetic client_ids, synthetic user identity) stay in env.
 
-Revision ID: d8e9f0a1b2c3
+Revision ID: b3c7a1f9d52e
 Revises: c7d8e9f0a1b2
 Create Date: 2026-04-23
 """
@@ -14,7 +14,7 @@ import sqlalchemy as sa
 from alembic import op
 
 
-revision: str = "d8e9f0a1b2c3"
+revision: str = "b3c7a1f9d52e"
 down_revision: Union[str, None] = "c7d8e9f0a1b2"
 branch_labels = None
 depends_on = None
