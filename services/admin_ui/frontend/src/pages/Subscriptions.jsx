@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { api } from "../api/client.js";
 import { useQuery } from "../hooks/useQuery.js";
+import { SubscriptionDrawer } from "../components/SubscriptionDrawer.jsx";
 
 export function SubscriptionsPage() {
   const [userId, setUserId] = useState("");
   const [activeOnly, setActiveOnly] = useState(false);
+  const [selected, setSelected] = useState(null);
 
-  const query = userId ? `/subscriptions?user_id=${encodeURIComponent(userId)}&active_only=${activeOnly}` : null;
-  const { data, loading, error } = useQuery(() => (query ? api.get(query) : Promise.resolve([])), {
+  const query = userId ? `/subscriptions/by-user/${encodeURIComponent(userId)}?active_only=${activeOnly}` : null;
+  const { data, loading, error, refetch } = useQuery(() => (query ? api.get(query) : Promise.resolve([])), {
     interval: 0,
     deps: [query],
   });
@@ -48,7 +50,7 @@ export function SubscriptionsPage() {
           </thead>
           <tbody>
             {items.map((s) => (
-              <tr key={s.id}>
+              <tr key={s.id} style={{ cursor: "pointer" }} onClick={() => setSelected(s)}>
                 <td className="mono small">{String(s.id).slice(0, 12)}…</td>
                 <td>{s.plan_id ? (plansById[s.plan_id]?.name || s.plan_id.slice(0, 8) + "…") : <span className="muted">—</span>}</td>
                 <td className="mono">{s.preferred_region || "—"}</td>
@@ -63,6 +65,8 @@ export function SubscriptionsPage() {
         {userId && loading && <div className="muted" style={{ padding: 14 }}>Загрузка…</div>}
         {userId && !loading && !items.length && <div className="muted" style={{ padding: 14 }}>У пользователя нет подписок.</div>}
       </div>
+
+      {selected && <SubscriptionDrawer subscription={selected} onClose={() => setSelected(null)} onChanged={refetch} />}
     </div>
   );
 }
