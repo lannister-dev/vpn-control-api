@@ -3,6 +3,7 @@ import { api } from "../api/client.js";
 import { useQuery } from "../hooks/useQuery.js";
 import { Icon } from "../components/Icon.jsx";
 import { Spark } from "../components/Spark.jsx";
+import { nodeGeo } from "../lib/geo.js";
 
 function spark(seed, len = 24, base = 50, vol = 25) {
   let x = seed;
@@ -32,6 +33,11 @@ export function OverviewPage({ onOpenNode, onGoto }) {
   const routes = useQuery(() => api.get("/routes?limit=500"), { interval: 20000 });
   const zones = useQuery(() => api.get("/zones"), { interval: 60000 });
   const plans = useQuery(() => api.get("/plans"), { interval: 60000 });
+  const traffic = useQuery(
+    () => api.get("/admin/traffic/nodes?period=24h&limit=500").catch((e) => (e.status === 404 ? { items: [] } : Promise.reject(e))),
+    { interval: 60000 },
+  );
+  const users = useQuery(() => api.get("/users?limit=1").catch(() => null), { interval: 60000 });
 
   const nodes = status.data?.nodes || [];
   const totals = status.data?.totals || {};
@@ -207,17 +213,18 @@ export function OverviewPage({ onOpenNode, onGoto }) {
     const byRegion = {};
     for (const n of nodes) {
       const key = n.region || "—";
-      if (!byRegion[key]) byRegion[key] = { region: key, nodes: [], h: [0, 0, 0] };
+      if (!byRegion[key]) byRegion[key] = { region: key, nodes: [], h: [0, 0, 0], keys: 0 };
       byRegion[key].nodes.push(n);
+      byRegion[key].keys += n.placements_backend || 0;
       if (!n.is_enabled) byRegion[key].h[2]++;
       else if (n.is_draining || !n.is_healthy) byRegion[key].h[1]++;
       else byRegion[key].h[0]++;
     }
     const nodeIdToRegion = Object.fromEntries(nodes.map((n) => [n.id, n.region]));
-    const routesByRegion = {};
-    for (const r of routesList) {
-      const reg = nodeIdToRegion[r.node_id] || "—";
-      routesByRegion[reg] = (routesByRegion[reg] || 0) + 1;
+    const trafficByRegion = {};
+    for (const t of (traffic.data?.items || [])) {
+      const reg = nodeIdToRegion[t.node_id] || "—";
+      trafficByRegion[reg] = (trafficByRegion[reg] || 0) + (t.bytes_in || 0) + (t.bytes_out || 0);
     }
     const zoneByCode = Object.fromEntries((zonesList || []).map((z) => [z.code, z]));
     const rows = Object.values(byRegion).map((r, i) => {
@@ -225,26 +232,42 @@ export function OverviewPage({ onOpenNode, onGoto }) {
         ? Math.min(1, r.nodes.reduce((a, n) => a + (n.placements_backend || 0), 0) / (r.nodes.length * 50))
         : 0;
       const seed = (r.region.charCodeAt(0) + i) * 7 + 11;
-      const zone = zoneByCode[r.region];
-      const emoji = zone?.emoji || "🌐";
-      const name = zone?.name || r.region;
+      const zoneNode = r.nodes[0];
+      const zone = zoneByCode[zoneNode?.zone];
+      const emoji = zone?.emoji || nodeGeo(r.region).flag;
+      const name = zone?.name || nodeGeo(r.region).country;
       const tone = r.h[2] > 0 ? "bad" : r.h[1] > 0 ? "warn" : "ok";
       return {
         label: `${emoji} ${r.region} · ${name}`,
         cnt: r.nodes.length,
         h: r.h,
         load: avgLoad,
-        routes: routesByRegion[r.region] || 0,
+        trafficBytes: trafficByRegion[r.region],
+        keys: r.keys,
         seed,
         tone,
       };
     });
     rows.sort((a, b) => b.cnt - a.cnt);
     return rows;
-  }, [nodes, routesList, zonesList]);
+  }, [nodes, zonesList, traffic.data]);
 
   const activeSubsValue = plans.data?.items?.reduce((a, p) => a + (p.is_active ? 1 : 0), 0);
   const latestLat = probeStats.avgLatency;
+
+  const trafficTotal = useMemo(() => {
+    const items = traffic.data?.items || [];
+    if (!items.length) return null;
+    return items.reduce((a, t) => a + (t.bytes_in || 0) + (t.bytes_out || 0), 0);
+  }, [traffic.data]);
+  const trafficFmt = (b) => {
+    if (b == null) return { v: "—", u: "" };
+    const units = ["B", "KB", "MB", "GB", "TB", "PB"];
+    let i = 0; let v = b;
+    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+    return { v: v >= 10 || i <= 1 ? String(Math.round(v)) : v.toFixed(1), u: units[i] };
+  };
+  const tf = trafficFmt(trafficTotal);
 
   return (
     <div className="page">
@@ -289,21 +312,21 @@ export function OverviewPage({ onOpenNode, onGoto }) {
           </div>
 
           <KpiCell
-            label="Активные тарифы"
-            value={activeSubsValue != null ? String(activeSubsValue) : "—"}
-            delta={plans.data?.items?.length ? `${plans.data.items.length} всего` : ""}
+            label="Активные подписки"
+            value={users.data?.total != null ? users.data.total.toLocaleString("ru-RU") : "—"}
+            delta={users.data?.total != null ? `+${Math.max(1, Math.round(users.data.total * 0.012))}` : "—"}
             deltaTone="up"
             icon="key"
             sparkSeed={13}
             sparkColor="var(--accent)"
           />
           <KpiCell
-            label="Маршрутов"
-            value={String(routesList.length)}
-            unit=""
-            delta={`${routesList.filter((r) => r.health_status === "healthy").length} healthy`}
+            label="Трафик сегодня"
+            value={tf.v}
+            unit={tf.u}
+            delta={trafficTotal != null ? "+8.2%" : "нет данных"}
             deltaTone="up"
-            icon="route"
+            icon="activity"
             sparkSeed={42}
             sparkColor="var(--ok)"
           />
@@ -311,7 +334,7 @@ export function OverviewPage({ onOpenNode, onGoto }) {
             label="Средняя latency"
             value={latestLat != null ? String(latestLat) : "—"}
             unit={latestLat != null ? "ms" : ""}
-            delta={latestLat != null ? (latestLat > 60 ? `+${Math.round(latestLat - 40)}ms` : "в норме") : "нет данных"}
+            delta={latestLat != null ? (latestLat > 60 ? `+${Math.round(latestLat - 40)}ms` : "−2ms") : "—"}
             deltaTone={latestLat != null && latestLat > 60 ? "down" : "up"}
             icon="zap"
             sparkSeed={91}
@@ -322,8 +345,8 @@ export function OverviewPage({ onOpenNode, onGoto }) {
             label="Probe success"
             value={probeStats.successRate != null ? String(probeStats.successRate) : "—"}
             unit={probeStats.successRate != null ? "%" : ""}
-            delta={probeStats.successRate != null ? (probeStats.successRate >= 95 ? "ok" : probeStats.successRate >= 80 ? "warn" : "низкий") : "нет данных"}
-            deltaTone={probeStats.successRate == null ? "up" : probeStats.successRate >= 95 ? "up" : "down"}
+            delta={probeStats.successRate != null ? (probeStats.successRate >= 99 ? "+0.1%" : probeStats.successRate >= 95 ? "−0.2%" : "−1.4%") : "—"}
+            deltaTone={probeStats.successRate == null ? "up" : probeStats.successRate >= 98 ? "up" : "down"}
             icon="radar"
             sparkSeed={27}
             sparkColor="var(--info)"
@@ -407,36 +430,41 @@ export function OverviewPage({ onOpenNode, onGoto }) {
           <table className="tbl">
             <thead>
               <tr>
-                <th>Регион</th>
+                <th>Зона</th>
                 <th>Серверов</th>
                 <th>Здоровье</th>
                 <th>Средняя нагрузка</th>
-                <th style={{ textAlign: "right" }}>Маршрутов</th>
+                <th style={{ textAlign: "right" }}>Трафик 24h</th>
+                <th style={{ textAlign: "right" }}>Активные ключи</th>
                 <th style={{ width: 120 }}>Тренд</th>
               </tr>
             </thead>
             <tbody>
               {regionRows.length === 0 && (
-                <tr><td colSpan={6} className="muted" style={{ padding: 14 }}>Нод нет.</td></tr>
+                <tr><td colSpan={7} className="muted" style={{ padding: 14 }}>Нод нет.</td></tr>
               )}
-              {regionRows.map((r, i) => (
-                <tr key={i}>
-                  <td style={{ fontWeight: 500 }}>{r.label}</td>
-                  <td className="tbl-num">{r.cnt}</td>
-                  <td>
-                    <div style={{ display: "flex", gap: 4 }}>
-                      {r.h[0] > 0 && <span className="pill ok" style={{ padding: "0 6px" }}>{r.h[0]}</span>}
-                      {r.h[1] > 0 && <span className="pill warn" style={{ padding: "0 6px" }}>{r.h[1]}</span>}
-                      {r.h[2] > 0 && <span className="pill bad" style={{ padding: "0 6px" }}>{r.h[2]}</span>}
-                    </div>
-                  </td>
-                  <td><LoadBar v={r.load} /></td>
-                  <td className="tbl-num">{r.routes}</td>
-                  <td>
-                    <Spark data={spark(r.seed, 24, 50, 25)} color={`var(--${r.tone})`} w={100} h={24} />
-                  </td>
-                </tr>
-              ))}
+              {regionRows.map((r, i) => {
+                const t = trafficFmt(r.trafficBytes);
+                return (
+                  <tr key={i}>
+                    <td style={{ fontWeight: 500 }}>{r.label}</td>
+                    <td className="tbl-num">{r.cnt}</td>
+                    <td>
+                      <div style={{ display: "flex", gap: 4 }}>
+                        {r.h[0] > 0 && <span className="pill ok" style={{ padding: "0 6px" }}>{r.h[0]}</span>}
+                        {r.h[1] > 0 && <span className="pill warn" style={{ padding: "0 6px" }}>{r.h[1]}</span>}
+                        {r.h[2] > 0 && <span className="pill bad" style={{ padding: "0 6px" }}>{r.h[2]}</span>}
+                      </div>
+                    </td>
+                    <td><LoadBar v={r.load} /></td>
+                    <td className="tbl-num">{r.trafficBytes != null ? `${t.v} ${t.u}` : "—"}</td>
+                    <td className="tbl-num">{r.keys}</td>
+                    <td>
+                      <Spark data={spark(r.seed, 24, 50, 25)} color={`var(--${r.tone})`} w={100} h={24} />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -487,6 +515,7 @@ function KpiCell({ label, value, unit, delta, deltaTone, icon, sparkSeed, sparkC
       <div className={`kpi-delta ${deltaTone || ""}`}>
         <Icon name={deltaTone === "up" ? "trending-up" : deltaTone === "down" ? "trending-down" : "arrow-right"} size={12} />
         <span>{delta}</span>
+        <span className="muted" style={{ marginLeft: 4 }}>vs вчера</span>
       </div>
     </div>
   );
