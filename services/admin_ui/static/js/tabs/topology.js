@@ -6,8 +6,8 @@ const SEV = { ok: 0, off: 0, idle: 1, warn: 2, bad: 3 };
 const worstOf = (...severities) =>
   severities.reduce((acc, s) => (SEV[s] > SEV[acc] ? s : acc), "ok");
 
-const PROBE_FRESH_SEC = 120;
-const PROBE_STALE_SEC = 600;
+const PROBE_FRESH_SEC = 300;
+const PROBE_STALE_SEC = 900;
 
 function _latestProbe(predicate) {
   const all = (state.probes || []).concat(state.probesAll || []);
@@ -78,18 +78,15 @@ export function buildTopologyGraph() {
 
   const chains = [];
   for (const { backend, directRoutes, entryRoutes } of byBackend.values()) {
-    const backendDirectProbe = _latestProbe(
-      (p) => p.node_id === backend.id && p.probe_kind === "synthetic_vpn" && p.source && p.source.includes("backend"),
-    );
-    const backendEntryProbe = _latestProbe(
-      (p) => p.node_id === backend.id && p.probe_kind === "synthetic_vpn" && p.source && p.source.includes("entry"),
+    const backendSyntheticProbe = _latestProbe(
+      (p) => p.node_id === backend.id && p.probe_kind === "synthetic_vpn",
     );
     const backendStatus = _nodeStatus(backend);
 
     for (const route of directRoutes) {
       const tp = profilesById[route.transport_profile_id];
       const routeStat = _routeStatus(route);
-      const probe = backendEntryProbe || backendDirectProbe;
+      const probe = backendSyntheticProbe;
       const probeStat = _probeStatus(probe);
       chains.push({
         kind: "direct",
@@ -99,8 +96,8 @@ export function buildTopologyGraph() {
         probeSources: Array.from(probeSources),
         probe,
         nodes: [
-          { id: `probe:${route.id}`, type: "probe", label: "Probe (РФ)", status: probeStat, meta: probe ? { latency: probe.latency_ms, age: probe.checked_at, reachable: probe.is_reachable, source: probe.source } : null },
-          { id: `backend:${backend.id}`, type: "backend", label: backend.name, status: worstOf(backendStatus, routeStat), data: backend, meta: { role: backend.role, region: backend.region, route_name: route.name, route_health: route.health_status, weight: route.effective_weight } },
+          { id: `probe:${route.id}`, type: "probe", label: "Probe", status: probeStat, meta: probe ? { latency: probe.latency_ms, age: probe.checked_at, reachable: probe.is_reachable, source: probe.source, probe_kind: probe.probe_kind } : null },
+          { id: `backend:${backend.id}`, type: "backend", label: backend.name, status: backendStatus, data: backend, meta: { role: backend.role, region: backend.region, route_name: route.name, route_health: route.health_status, weight: route.effective_weight } },
           { id: `profile:${route.id}`, type: "profile", label: tp ? tp.name : "profile?", status: tp ? "ok" : "bad", data: tp },
         ],
         status: worstOf(probeStat, backendStatus, routeStat),
@@ -125,9 +122,9 @@ export function buildTopologyGraph() {
         transportProfile: tp,
         probe: entryProbe,
         nodes: [
-          { id: `probe:${route.id}`, type: "probe", label: "Probe (РФ)", status: entryProbeStat, meta: entryProbe ? { latency: entryProbe.latency_ms, age: entryProbe.checked_at, reachable: entryProbe.is_reachable, source: entryProbe.source, probe_kind: entryProbe.probe_kind } : null },
-          { id: `entry:${entry.id}:${route.id}`, type: "entry", label: entry.name, status: worstOf(entryStat, entryProbeStat), data: entry, meta: { role: entry.role, region: entry.region } },
-          { id: `backend:${backend.id}:${route.id}`, type: "backend", label: backend.name, status: worstOf(backendStatus, routeStat), data: backend, meta: { role: backend.role, region: backend.region, route_name: route.name, weight: route.effective_weight, route_health: route.health_status } },
+          { id: `probe:${route.id}`, type: "probe", label: "Probe", status: entryProbeStat, meta: entryProbe ? { latency: entryProbe.latency_ms, age: entryProbe.checked_at, reachable: entryProbe.is_reachable, source: entryProbe.source, probe_kind: entryProbe.probe_kind } : null },
+          { id: `entry:${entry.id}:${route.id}`, type: "entry", label: entry.name, status: entryStat, data: entry, meta: { role: entry.role, region: entry.region } },
+          { id: `backend:${backend.id}:${route.id}`, type: "backend", label: backend.name, status: backendStatus, data: backend, meta: { role: backend.role, region: backend.region, route_name: route.name, weight: route.effective_weight, route_health: route.health_status } },
           { id: `profile:${route.id}`, type: "profile", label: tp ? tp.name : "profile?", status: tp ? "ok" : "bad", data: tp },
         ],
         status: worstOf(entryProbeStat, entryStat, backendStatus, routeStat),
