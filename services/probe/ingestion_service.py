@@ -12,6 +12,7 @@ from services.config import get_settings
 from services.nodes.repository import VpnNodeRepository
 from services.placements.repository import UserPlacementRepository
 from services.placements.transport import NodeAgentPlacementTransport
+from services.probe.policy.repository import ProbePolicyRepository
 from services.routes.repository import RouteRepository
 from services.routes.schemas import RouteHealthStatus, RouteStateResolution, RouteStateUpdate
 from services.routes.state_machine import resolve_probe_block, resolve_probe_recover
@@ -48,15 +49,12 @@ class ProbeIngestionService:
             placement_transport: NodeAgentPlacementTransport,
             key_repository: VpnKeyRepository,
             alert_service: AlertService,
+            policy_repository: ProbePolicyRepository,
             target_port: int,
             edge_public_domain: str,
             synthetic_probe_client_ids: ProbeSyntheticClientIds,
             retention_days: int,
             auto_route_health_enabled: bool,
-            route_block_cooldown_hours: int,
-            route_suspected_after_failures: int = 2,
-            route_degraded_after_failures: int = 3,
-            route_block_after_failures: int = 4,
     ):
         self.node_repository = node_repository
         self.probe_repository = probe_repository
@@ -65,15 +63,18 @@ class ProbeIngestionService:
         self.placement_transport = placement_transport
         self.key_repository = key_repository
         self.alert_service = alert_service
+        self.policy_repository = policy_repository
         self.target_port = target_port
         self.edge_public_domain = edge_public_domain
         self.synthetic_probe_client_ids = synthetic_probe_client_ids
         self.retention_days = retention_days
         self.auto_route_health_enabled = auto_route_health_enabled
-        self.route_block_cooldown_hours = max(1, route_block_cooldown_hours)
-        self.route_suspected_after_failures = max(1, route_suspected_after_failures)
-        self.route_degraded_after_failures = max(2, route_degraded_after_failures)
-        self.route_block_after_failures = max(3, route_block_after_failures)
+        self._policy_cache = None
+
+    async def _policy(self):
+        if self._policy_cache is None:
+            self._policy_cache = await self.policy_repository.get_current()
+        return self._policy_cache
 
     async def report(self, payload: ProbeReportIn) -> ProbeReportOut:
         node = await self.node_repository.get_by_id(payload.node_id)
@@ -84,7 +85,6 @@ class ProbeIngestionService:
         if checked_at.tzinfo is None:
             checked_at = checked_at.replace(tzinfo=timezone.utc)
 
-        route = None
         transport_profile = None
         target = None
         if payload.route_id is not None:
@@ -299,11 +299,12 @@ class ProbeIngestionService:
         if transport_kind not in configured_by_transport:
             return
 
+        policy = await self._policy()
         consecutive = await self.probe_repository.count_consecutive_route_failures(
             route_id=signal.route_id,
-            limit=self.route_block_after_failures + 2,
+            limit=policy.route_block_after_failures + 2,
         )
-        if consecutive < self.route_suspected_after_failures:
+        if consecutive < policy.route_suspected_after_failures:
             return
 
         client_id = configured_by_transport[transport_kind]
@@ -355,24 +356,25 @@ class ProbeIngestionService:
         if status == RouteHealthStatus.blocked.value:
             return
 
+        policy = await self._policy()
         consecutive = await self.probe_repository.count_consecutive_route_failures(
             route_id=route.id,
-            limit=self.route_block_after_failures + 2,
+            limit=policy.route_block_after_failures + 2,
         )
         logger_probe.info(
             "probe_route_health_consecutive_failures",
             route_id=str(route.id),
             consecutive=consecutive,
-            thresholds=f"{self.route_suspected_after_failures}/{self.route_degraded_after_failures}/{self.route_block_after_failures}",
+            thresholds=f"{policy.route_suspected_after_failures}/{policy.route_degraded_after_failures}/{policy.route_block_after_failures}",
         )
 
-        if consecutive >= self.route_block_after_failures:
+        if consecutive >= policy.route_block_after_failures:
             next_state = resolve_probe_block(
                 route=route,
                 checked_at=checked_at,
-                cooldown_hours=0,
+                cooldown_hours=policy.route_block_cooldown_hours,
             )
-        elif consecutive >= self.route_degraded_after_failures:
+        elif consecutive >= policy.route_degraded_after_failures:
             if status == RouteHealthStatus.degraded.value:
                 return
             next_state = RouteStateResolution(
@@ -382,7 +384,7 @@ class ProbeIngestionService:
                 warmup_stage=None,
                 warmup_started_at=None,
             )
-        elif consecutive >= self.route_suspected_after_failures:
+        elif consecutive >= policy.route_suspected_after_failures:
             if status == RouteHealthStatus.suspected.value:
                 return
             next_state = RouteStateResolution(
@@ -743,6 +745,7 @@ def get_probe_ingestion_service(
         placement_transport=NodeAgentPlacementTransport(session),
         key_repository=VpnKeyRepository(session),
         alert_service=alert_service,
+        policy_repository=ProbePolicyRepository(session),
         target_port=probe_settings.target_port,
         edge_public_domain=get_settings().edge.public_domain,
         synthetic_probe_client_ids=ProbeSyntheticClientIds(
@@ -751,8 +754,4 @@ def get_probe_ingestion_service(
         ),
         retention_days=probe_settings.retention_days,
         auto_route_health_enabled=probe_settings.auto_route_health_enabled,
-        route_block_cooldown_hours=probe_settings.route_block_cooldown_hours,
-        route_suspected_after_failures=probe_settings.route_suspected_after_failures,
-        route_degraded_after_failures=probe_settings.route_degraded_after_failures,
-        route_block_after_failures=probe_settings.route_block_after_failures,
     )

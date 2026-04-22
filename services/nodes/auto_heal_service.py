@@ -16,6 +16,7 @@ from services.nodes.repository import NodeAgentStateRepository, VpnNodeRepositor
 from services.nodes.schemas import NodeHeartbeatMeta
 from services.placements.repository import UserPlacementRepository
 from services.placements.schemas import PlacementDesiredState
+from services.probe.policy.repository import ProbePolicyRepository
 from services.probe.repository import ProbeSignalRepository
 from services.routing.service import RoutingService
 from services.placements.transport import NodeAgentPlacementTransport
@@ -61,18 +62,14 @@ class NodePlacementAutoHealService:
         self.node_agent_transport = NodeAgentPlacementTransport(session)
         self.probe_repository = ProbeSignalRepository(session)
         self.routing_service = RoutingService(session)
+        self.policy_repository = ProbePolicyRepository(session)
         self.stale_after_sec = max(30, int(stale_after_sec))
         self.max_nodes = min(500, max(1, int(max_nodes)))
         self.auto_undrain_enabled = bool(auto_undrain_enabled)
         self.drain_cooldown_sec = max(0, int(drain_cooldown_sec))
         probe_settings = get_settings().probe
-        self.probe_auto_undrain_enabled = bool(probe_settings.auto_undrain_enabled)
         self.probe_auto_undrain_source = probe_settings.auto_undrain_source or probe_settings.auto_drain_source
-        self.probe_auto_undrain_max_probe_age_sec = max(30, int(probe_settings.auto_undrain_max_probe_age_sec))
-        self.probe_auto_undrain_min_consecutive_successes = max(
-            1,
-            int(probe_settings.auto_undrain_min_consecutive_successes),
-        )
+        self._policy_cache = None
 
     async def run_once(self) -> NodeAutoHealTickOut:
         now = datetime.now(timezone.utc)
@@ -263,10 +260,7 @@ class NodePlacementAutoHealService:
             exclude_node_ids=[source_node_id],
         )
         if not candidates:
-            logger.info(
-                "smart_migrate_no_targets",
-                source_node_id=str(source_node_id),
-            )
+            logger.info("smart_migrate_no_targets", source_node_id=str(source_node_id))
             return 0
 
         healthy_node_ids = {c.id for c in candidates}
@@ -388,14 +382,22 @@ class NodePlacementAutoHealService:
             pass
         return False
 
+    async def _policy(self):
+        if self._policy_cache is None:
+            self._policy_cache = await self.policy_repository.get_current()
+        return self._policy_cache
+
     async def _has_recent_probe_recovery(
         self,
         *,
         node_id: UUID,
         now: datetime,
     ) -> bool:
-        if not self.probe_auto_undrain_enabled:
+        policy = await self._policy()
+        if not policy.auto_undrain_enabled:
             return False
+        max_age = max(30, int(policy.auto_undrain_max_probe_age_sec))
+        min_successes = max(1, int(policy.auto_undrain_min_consecutive_successes))
         latest = await self.probe_repository.get_latest_for_backend_node(
             node_id=node_id,
             source=self.probe_auto_undrain_source,
@@ -407,10 +409,10 @@ class NodePlacementAutoHealService:
             checked_at = checked_at.replace(tzinfo=timezone.utc)
         else:
             checked_at = checked_at.astimezone(timezone.utc)
-        if now - checked_at > timedelta(seconds=self.probe_auto_undrain_max_probe_age_sec):
+        if now - checked_at > timedelta(seconds=max_age):
             return False
         recent = await self.probe_repository.list_recent_for_backend_node(
-            limit=max(10, self.probe_auto_undrain_min_consecutive_successes * 3),
+            limit=max(10, min_successes * 3),
             node_id=node_id,
             source=self.probe_auto_undrain_source,
         )
@@ -419,7 +421,7 @@ class NodePlacementAutoHealService:
             if not signal.is_reachable:
                 break
             consecutive_successes += 1
-        return consecutive_successes >= self.probe_auto_undrain_min_consecutive_successes
+        return consecutive_successes >= min_successes
 
     async def _record_drain_reason(
         self,

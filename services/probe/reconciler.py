@@ -11,6 +11,7 @@ from services.config import ProbeConfig, get_settings
 from services.nodes.repository import NodeAgentStateRepository, VpnNodeRepository
 from services.placements.service import UserPlacementService
 from services.probe.drain_service import ProbeDrainService
+from services.probe.policy.repository import ProbePolicyRepository
 from services.probe.repository import ProbeSignalRepository
 from services.probe.schemas import ProbeAutoDrainMigrateIn, ProbeAutoDrainMigrateOut
 from shared.database.session import AsyncDatabase
@@ -21,6 +22,16 @@ logger = StructuredLogger(logging.getLogger("probe-auto-drain-reconciler"))
 
 
 class ProbeAutoDrainReconciler:
+    """Periodically evaluates ProbePolicy from DB and auto-drains failing backends.
+
+    All thresholds (enabled, tick_sec, min_consecutive_failures, max_probe_age_sec,
+    max_nodes) are read from `probe_policy` table on every tick. Deployment-specific
+    knobs (source, require_recent_failure, target_backend_id, last_migration_reason,
+    include_already_draining) remain in env since they're infra wiring, not tunables.
+    """
+
+    _IDLE_WHEN_DISABLED_SEC = 60
+
     def __init__(
             self,
             *,
@@ -29,26 +40,18 @@ class ProbeAutoDrainReconciler:
             service_factory: Callable[[AsyncSession], ProbeDrainService] | None = None,
             tick_lock: RedisTickLock | None = None,
     ):
-        settings = probe_settings or get_settings().probe
-
-        self._enabled = bool(settings.auto_drain_migrate_enabled)
-        self._interval_sec = max(30, int(settings.auto_drain_tick_sec))
-        self._payload = self._build_payload(settings)
-
+        self._settings = probe_settings or get_settings().probe
         self._session_maker = session_maker or AsyncDatabase.get_session_maker()
         self._service_factory = service_factory or self._default_service_factory
         self._tick_lock = tick_lock or RedisTickLock(
             key="reconciler:probe_auto_drain",
-            ttl_sec=max(30, self._interval_sec * 2),
+            ttl_sec=600,
             fail_open_if_client_unavailable=True,
         )
         self._stop_event = asyncio.Event()
         self._task: asyncio.Task | None = None
 
     async def start(self) -> None:
-        if not self._enabled:
-            logger.info("probe_auto_drain_disabled")
-            return
         if self._task is not None and not self._task.done():
             return
         self._stop_event.clear()
@@ -62,25 +65,34 @@ class ProbeAutoDrainReconciler:
         self._task = None
 
     async def run_once(self) -> ProbeAutoDrainMigrateOut | None:
-        if not self._enabled:
-            return None
-        return await self._execute_tick()
+        async with self._session_maker() as session:
+            policy = await ProbePolicyRepository(session).get_current()
+            await session.commit()
+            if not policy.auto_drain_enabled:
+                return None
+        return await self._execute_tick(policy)
 
     async def _run(self) -> None:
         while not self._stop_event.is_set():
+            sleep_sec = self._IDLE_WHEN_DISABLED_SEC
             try:
-                await self._execute_tick()
+                async with self._session_maker() as session:
+                    policy = await ProbePolicyRepository(session).get_current()
+                    await session.commit()
+                sleep_sec = max(30, int(policy.auto_drain_tick_sec))
+                if policy.auto_drain_enabled:
+                    await self._execute_tick(policy)
             except asyncio.CancelledError:
                 raise
             except Exception:
                 logger.exception("probe_auto_drain_tick_failed")
 
             try:
-                await asyncio.wait_for(self._stop_event.wait(), timeout=self._interval_sec)
+                await asyncio.wait_for(self._stop_event.wait(), timeout=sleep_sec)
             except TimeoutError:
                 continue
 
-    async def _execute_tick(self) -> ProbeAutoDrainMigrateOut:
+    async def _execute_tick(self, policy) -> ProbeAutoDrainMigrateOut:
         async with self._tick_lock.hold() as acquired:
             if not acquired:
                 return ProbeAutoDrainMigrateOut(
@@ -90,9 +102,10 @@ class ProbeAutoDrainReconciler:
                     dry_run=False,
                     items=[],
                 )
+            payload = self._build_payload(policy)
             async with self._session_maker() as session:
                 service = self._service_factory(session)
-                result = await service.auto_drain_and_migrate_backends(self._payload)
+                result = await service.auto_drain_and_migrate_backends(payload)
                 await session.commit()
                 if result.processed > 0:
                     logger.info(
@@ -104,27 +117,27 @@ class ProbeAutoDrainReconciler:
                     )
                 return result
 
-    def _build_payload(self, settings: ProbeConfig) -> ProbeAutoDrainMigrateIn:
+    def _build_payload(self, policy) -> ProbeAutoDrainMigrateIn:
         target_backend_id: UUID | None = None
-        if settings.auto_drain_target_backend_id is not None:
+        if self._settings.auto_drain_target_backend_id is not None:
             try:
-                target_backend_id = UUID(settings.auto_drain_target_backend_id)
+                target_backend_id = UUID(self._settings.auto_drain_target_backend_id)
             except ValueError:
                 logger.warning(
                     "probe_auto_drain_invalid_target_backend_id",
-                    target_backend_id=settings.auto_drain_target_backend_id,
+                    target_backend_id=self._settings.auto_drain_target_backend_id,
                 )
 
         return ProbeAutoDrainMigrateIn(
             target_backend_id=target_backend_id,
-            source=settings.auto_drain_source,
-            require_recent_failure=bool(settings.auto_drain_require_recent_failure),
-            max_probe_age_sec=max(30, int(settings.auto_drain_max_probe_age_sec)),
-            min_consecutive_failures=max(1, int(settings.auto_drain_min_consecutive_failures)),
-            include_already_draining=bool(settings.auto_drain_include_already_draining),
+            source=self._settings.auto_drain_source,
+            require_recent_failure=bool(self._settings.auto_drain_require_recent_failure),
+            max_probe_age_sec=max(30, int(policy.auto_drain_max_probe_age_sec)),
+            min_consecutive_failures=max(1, int(policy.auto_drain_min_consecutive_failures)),
+            include_already_draining=bool(self._settings.auto_drain_include_already_draining),
             dry_run=False,
-            max_nodes=min(200, max(1, int(settings.auto_drain_max_nodes))),
-            last_migration_reason=settings.auto_drain_last_migration_reason,
+            max_nodes=min(500, max(1, int(policy.auto_drain_max_nodes))),
+            last_migration_reason=self._settings.auto_drain_last_migration_reason,
         )
 
     @staticmethod
