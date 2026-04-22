@@ -626,6 +626,7 @@ button, input, select, textarea { color: inherit; font-family: inherit; }
 .pill.bad { background: var(--bad-soft); color: var(--bad); border-color: color-mix(in oklch, var(--bad) 30%, transparent); }
 .pill.info { background: var(--info-soft); color: var(--info); border-color: color-mix(in oklch, var(--info) 30%, transparent); }
 .pill.accent { background: var(--accent-soft); color: var(--accent-text); border-color: var(--accent-border); }
+.pill.muted { background: var(--surface-2); color: var(--text-muted); border-color: var(--border); }
 
 /* ─── Issues list ─── */
 .issue {

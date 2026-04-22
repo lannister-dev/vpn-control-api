@@ -252,6 +252,19 @@ class SubscriptionService:
     async def get_stats(self) -> tuple[int, int, int]:
         return await self.subscription_repository.count_stats()
 
+    async def list_paginated(
+            self,
+            *,
+            active_only: bool = False,
+            plan_id: UUID | None = None,
+            limit: int = 50,
+            offset: int = 0,
+    ) -> tuple[list[SubscriptionOut], int]:
+        rows, total = await self.subscription_repository.list_paginated(
+            active_only=active_only, plan_id=plan_id, limit=limit, offset=offset,
+        )
+        return [self._sub_to_out(r) for r in rows], total
+
     async def rotate_token(
             self,
             subscription_id: UUID,

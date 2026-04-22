@@ -52,6 +52,13 @@ class SubscriptionStatsOut(BaseModel):
     expired: int
 
 
+class SubscriptionListOut(BaseModel):
+    items: list["SubscriptionOut"]
+    total: int
+    limit: int
+    offset: int
+
+
 class SubscriptionCreatedOut(BaseModel):
     id: UUID
     vpn_key_id: UUID | None = None

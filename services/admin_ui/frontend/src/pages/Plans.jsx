@@ -41,7 +41,7 @@ export function PlansPage() {
               <tr key={p.id}>
                 <td style={{ fontWeight: 500 }}>{p.name}<div className="small muted">{p.description || ""}</div></td>
                 <td className="mono">{formatBytes(p.traffic_limit_bytes)}</td>
-                <td className="small">{p.reset_strategy}</td>
+                <td><ResetStrategyPill value={p.reset_strategy} /></td>
                 <td className="mono">{p.included_devices}/{p.max_devices}</td>
                 <td className="mono">{p.duration_days} дн.</td>
                 <td>
@@ -167,4 +167,21 @@ function formatBytes(n) {
   if (!n) return "Unlimited";
   if (n >= 1024 ** 3) return `${(n / 1024 ** 3).toFixed(1)} GB`;
   return `${(n / 1024 / 1024).toFixed(0)} MB`;
+}
+
+const RESET_META = {
+  NO_RESET:  { icon: "shield-check", tone: "muted",  label: "Без сброса" },
+  DAY:       { icon: "sun",          tone: "warn",   label: "Ежедневно" },
+  WEEK:      { icon: "clock",        tone: "info",   label: "Еженедельно" },
+  MONTH:     { icon: "refresh",      tone: "accent", label: "Ежемесячно" },
+};
+
+function ResetStrategyPill({ value }) {
+  const m = RESET_META[value] || { icon: "clock", tone: "muted", label: value };
+  return (
+    <span className={`pill ${m.tone}`} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+      <Icon name={m.icon} size={11} />
+      {m.label}
+    </span>
+  );
 }

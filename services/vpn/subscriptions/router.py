@@ -17,6 +17,7 @@ from services.vpn.subscriptions.schemas import (
     SubscriptionCreateIn,
     SubscriptionCreatedOut,
     SubscriptionDeviceOut,
+    SubscriptionListOut,
     SubscriptionOut,
     SubscriptionRotateOut,
     SubscriptionSetMaxDevicesIn,
@@ -113,6 +114,27 @@ async def get_subscription_config(
 
 
 #================== ADMINS ==================
+
+@router.get(
+    "",
+    response_model=SubscriptionListOut,
+    status_code=status.HTTP_200_OK,
+    summary="List subscriptions",
+    description="Paginated list with optional filters by plan_id and active_only.",
+    dependencies=[Depends(admin_auth)],
+)
+async def list_subscriptions(
+        active_only: bool = False,
+        plan_id: UUID | None = None,
+        limit: int = 50,
+        offset: int = 0,
+        service: SubscriptionService = Depends(get_subscription_service),
+):
+    items, total = await service.list_paginated(
+        active_only=active_only, plan_id=plan_id, limit=limit, offset=offset,
+    )
+    return SubscriptionListOut(items=items, total=total, limit=limit, offset=offset)
+
 
 @router.get(
     "/stats",

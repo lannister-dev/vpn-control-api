@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { api } from "../api/client.js";
 import { useQuery } from "../hooks/useQuery.js";
 import { Icon } from "../components/Icon.jsx";
@@ -27,15 +27,27 @@ function relTime(iso) {
   return `${Math.floor(h / 24)}d`;
 }
 
+const PERIOD_OPTS = [
+  { id: "1h", label: "1 час" },
+  { id: "24h", label: "24 часа" },
+  { id: "7d", label: "7 дней" },
+  { id: "30d", label: "30 дней" },
+];
+
 export function OverviewPage({ onOpenNode, onGoto }) {
+  const [period, setPeriod] = useState(() => localStorage.getItem("ov.period") || "24h");
+  const [periodOpen, setPeriodOpen] = useState(false);
+
+  const setP = (p) => { setPeriod(p); localStorage.setItem("ov.period", p); setPeriodOpen(false); };
+
   const status = useQuery(() => api.get("/admin/status"), { interval: 15000 });
   const probes = useQuery(() => api.get("/probe/reports/recent?limit=300"), { interval: 15000 });
   const routes = useQuery(() => api.get("/routes?limit=500"), { interval: 20000 });
   const zones = useQuery(() => api.get("/zones"), { interval: 60000 });
   const plans = useQuery(() => api.get("/plans"), { interval: 60000 });
   const traffic = useQuery(
-    () => api.get("/admin/traffic/nodes?period=24h&limit=500").catch((e) => (e.status === 404 ? { items: [] } : Promise.reject(e))),
-    { interval: 60000 },
+    () => api.get(`/admin/traffic/nodes?period=${period}&limit=500`).catch((e) => (e.status === 404 ? { items: [] } : Promise.reject(e))),
+    { interval: 60000, deps: [period] },
   );
   const subsStats = useQuery(() => api.get("/subscriptions/stats").catch(() => null), { interval: 60000 });
 
@@ -274,12 +286,38 @@ export function OverviewPage({ onOpenNode, onGoto }) {
       <div className="page-head">
         <div className="page-head-main">
           <h1 className="page-title">Fleet overview</h1>
-          <div className="page-subtitle">Сводка по инфраструктуре и бизнесу · последние 24 часа</div>
+          <div className="page-subtitle">Сводка по инфраструктуре и бизнесу · период {PERIOD_OPTS.find((o) => o.id === period)?.label}</div>
         </div>
         <div className="page-head-actions">
-          <button className="btn btn-ghost"><Icon name="download" size={13} /> Экспорт</button>
-          <button className="btn"><Icon name="clock" size={13} /> 24 часа <Icon name="chevron-down" size={12} /></button>
-          <button className="btn btn-primary" onClick={() => onGoto && onGoto("routes")}><Icon name="plus" size={13} /> Действие</button>
+          <div style={{ position: "relative" }}>
+            <button className="btn" onClick={() => setPeriodOpen((v) => !v)}>
+              <Icon name="clock" size={13} /> {PERIOD_OPTS.find((o) => o.id === period)?.label}
+              <Icon name="chevron-down" size={12} />
+            </button>
+            {periodOpen && (
+              <>
+                <div style={{ position: "fixed", inset: 0, zIndex: 50 }} onClick={() => setPeriodOpen(false)} />
+                <div style={{
+                  position: "absolute", top: "100%", right: 0, marginTop: 4, minWidth: 140, zIndex: 51,
+                  background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8,
+                  boxShadow: "var(--shadow-lg)", padding: 4,
+                }}>
+                  {PERIOD_OPTS.map((o) => (
+                    <button key={o.id} onClick={() => setP(o.id)}
+                      style={{
+                        display: "block", width: "100%", textAlign: "left", padding: "7px 10px",
+                        border: 0, background: period === o.id ? "var(--accent-soft)" : "transparent",
+                        cursor: "pointer", borderRadius: 5, color: "var(--text)", fontSize: 13,
+                      }}
+                      onMouseEnter={(e) => period !== o.id && (e.currentTarget.style.background = "var(--surface-hover)")}
+                      onMouseLeave={(e) => period !== o.id && (e.currentTarget.style.background = "transparent")}>
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -321,7 +359,7 @@ export function OverviewPage({ onOpenNode, onGoto }) {
             sparkColor="var(--accent)"
           />
           <KpiCell
-            label="Трафик сегодня"
+            label={period === "1h" ? "Трафик за час" : period === "24h" ? "Трафик сегодня" : period === "7d" ? "Трафик за 7д" : "Трафик за 30д"}
             value={tf.v}
             unit={tf.u}
             delta={trafficTotal != null ? "+8.2%" : "нет данных"}
@@ -401,7 +439,9 @@ export function OverviewPage({ onOpenNode, onGoto }) {
             <Icon name="activity" size={14} />
             <div className="sec-title">Последняя активность</div>
             <div className="sec-spacer" />
-            <button className="btn btn-ghost btn-xs">Полный аудит <Icon name="arrow-up-right" size={11} /></button>
+            <button className="btn btn-ghost btn-xs" onClick={() => onGoto && onGoto("ops")}>
+              Полный аудит <Icon name="arrow-up-right" size={11} />
+            </button>
           </div>
           <div>
             {activity.map((a, i) => (
@@ -477,16 +517,16 @@ export function OverviewPage({ onOpenNode, onGoto }) {
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
           {[
-            { i: "server", l: "Добавить сервер", s: "Новая нода и первичная конфигурация", tab: "nodes" },
-            { i: "route", l: "Создать маршрут", s: "Entry → Backend связка с весом", tab: "routes" },
-            { i: "arrow-right", l: "Мигрировать плейсменты", s: "Перенести нагрузку между нодами", tab: "placements" },
-            { i: "shield-check", l: "Probe-политика", s: "Dry run или применить", tab: "probes" },
+            { i: "server", l: "Добавить сервер", s: "Новая нода и первичная конфигурация", tab: "nodes", action: "create" },
+            { i: "route", l: "Создать маршрут", s: "Entry → Backend связка с весом", tab: "routes", action: "create" },
+            { i: "arrow-right", l: "Мигрировать плейсменты", s: "Перенести нагрузку между нодами", tab: "ops" },
+            { i: "shield-check", l: "Probe-политика", s: "Dry run или применить", tab: "ops" },
           ].map((a, i) => (
             <button
               key={i}
               className="card"
               style={{ textAlign: "left", border: "1px solid var(--border)", padding: 14, cursor: "pointer", background: "var(--surface)" }}
-              onClick={() => onGoto && onGoto(a.tab)}
+              onClick={() => onGoto && onGoto(a.tab, a.action ? { action: a.action } : undefined)}
             >
               <Icon name={a.i} size={16} style={{ color: "var(--accent)", marginBottom: 8 }} />
               <div style={{ fontWeight: 500, fontSize: 13 }}>{a.l}</div>

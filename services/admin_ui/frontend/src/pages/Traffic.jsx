@@ -279,10 +279,9 @@ function TopNodes({ nodes, onSelect }) {
           <th>Узел</th>
           <th>Регион</th>
           <th>Роль</th>
-          <th style={{ width: 200 }}>Трафик (in+out)</th>
+          <th style={{ minWidth: 160 }}>Трафик (in+out)</th>
           <th className="tbl-num">Сессии</th>
-          <th style={{ width: 96 }}>Тренд</th>
-          <th></th>
+          <th style={{ width: 80 }}>Тренд</th>
         </tr>
       </thead>
       <tbody>
@@ -293,7 +292,7 @@ function TopNodes({ nodes, onSelect }) {
           const tone = n.health === "healthy" || n.is_healthy ? "ok" : n.health === "degraded" ? "warn" : "bad";
           const geo = nodeGeo(n.region);
           return (
-            <tr key={n.node_id}>
+            <tr key={n.node_id} onClick={() => onSelect(n)} style={{ cursor: "pointer" }}>
               <td>
                 <div className="tf-node">
                   <span className={`status-dot ${tone}`} />
@@ -318,9 +317,6 @@ function TopNodes({ nodes, onSelect }) {
               </td>
               <td className="tbl-num">{fmtNum(n.sessions)}</td>
               <td><Spark data={spark} color="var(--accent)" w={80} h={22} /></td>
-              <td className="row-actions">
-                <button className="btn btn-xs" onClick={() => onSelect(n)}>Detail →</button>
-              </td>
             </tr>
           );
         })}
@@ -339,9 +335,8 @@ function TopUsers({ users }) {
           <th style={{ width: 28 }}>#</th>
           <th>Пользователь</th>
           <th>Тариф</th>
-          <th style={{ width: 220 }}>Трафик</th>
-          <th className="tbl-num" style={{ width: 90 }}>Сессии</th>
-          <th className="tbl-num" style={{ width: 90 }}>Устройства</th>
+          <th style={{ minWidth: 160 }}>Трафик</th>
+          <th className="tbl-num">Ключи</th>
         </tr>
       </thead>
       <tbody>
@@ -367,7 +362,6 @@ function TopUsers({ users }) {
               </div>
             </td>
             <td className="tbl-num">{u.sessions}</td>
-            <td className="tbl-num">{u.devices}</td>
           </tr>
         ))}
       </tbody>
@@ -534,7 +528,7 @@ export function TrafficPage({ onOpenNode }) {
       </div>
 
       <div className="split-2">
-        <div className="card">
+        <div className="card" style={{ overflowX: "auto" }}>
           <div className="card-head">
             <div className="sec-title">Топ узлов</div>
             <div className="sec-sub">{focusRegion ? `регион ${focusRegion}` : "по всему кластеру"}</div>
@@ -546,7 +540,7 @@ export function TrafficPage({ onOpenNode }) {
           </div>
           <TopNodes nodes={topNodes} onSelect={onNodeSelect} />
         </div>
-        <div className="card">
+        <div className="card" style={{ overflowX: "auto" }}>
           <div className="card-head">
             <div className="sec-title">Топ пользователей</div>
             <div className="sec-sub">по суммарному трафику</div>

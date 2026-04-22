@@ -111,8 +111,14 @@ function AuthedApp({ theme, setTheme, me, onLogout }) {
   const [tab, setTab] = useState(() => {
     try { return JSON.parse(localStorage.getItem("vpn-ctrl-state") || "{}").tab || "overview"; } catch { return "overview"; }
   });
+  const [pendingAction, setPendingAction] = useState(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [drawerNode, setDrawerNode] = useState(null);
+
+  const goto = (nextTab, opts) => {
+    setTab(nextTab);
+    setPendingAction(opts?.action || null);
+  };
   const [collapsed, setCollapsed] = useState(() => {
     try { return !!JSON.parse(localStorage.getItem("vpn-ctrl-state") || "{}").collapsed; } catch { return false; }
   });
@@ -177,7 +183,12 @@ function AuthedApp({ theme, setTheme, me, onLogout }) {
           notifCount={0}
         />
         <div className="app-content">
-          <Page onGoto={setTab} onOpenNode={setDrawerNode} />
+          <Page
+            onGoto={goto}
+            onOpenNode={setDrawerNode}
+            initialAction={pendingAction}
+            onActionConsumed={() => setPendingAction(null)}
+          />
         </div>
       </div>
       <Palette
