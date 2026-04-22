@@ -4,6 +4,8 @@ import { useQuery } from "../hooks/useQuery.js";
 import { Modal } from "../components/Modal.jsx";
 import { Field, Row } from "../components/Field.jsx";
 import { Icon } from "../components/Icon.jsx";
+import { toast } from "../components/Toast.jsx";
+import { Empty, SkeletonRows } from "../components/Empty.jsx";
 
 export function ZonesPage() {
   const { data, loading, error, refetch } = useQuery(() => api.get("/zones"), { interval: 30000 });
@@ -36,6 +38,7 @@ export function ZonesPage() {
             <tr><th>Код</th><th>Эмодзи</th><th>Название</th><th>Sort</th><th>Статус</th><th></th></tr>
           </thead>
           <tbody>
+            {(loading && !items.length) && <SkeletonRows count={3} cols={6} />}
             {items.map((z) => (
               <tr key={z.id}>
                 <td className="mono">{z.code}</td>
@@ -48,7 +51,7 @@ export function ZonesPage() {
             ))}
           </tbody>
         </table>
-        {(loading && !items.length) && <div className="muted" style={{ padding: 14 }}>Загрузка…</div>}
+        {(!loading && !items.length) && <Empty icon="globe" title="Зон нет" hint="Создайте первую зону, чтобы привязывать к ней entry-ноды." />}
       </div>
 
       {creating && <ZoneForm onClose={() => { setCreating(false); refetch(); }} />}
@@ -78,6 +81,7 @@ function ZoneForm({ zone, onClose }) {
         if (!code) throw new Error("Код обязателен");
         await api.post("/zones", { ...payload, code: code.trim().toLowerCase() });
       }
+      toast.ok(isEdit ? "Зона обновлена" : "Зона создана");
       onClose();
     } catch (e) { setErr(e.message || String(e)); }
     finally { setBusy(false); }
@@ -86,7 +90,7 @@ function ZoneForm({ zone, onClose }) {
   const deactivate = async () => {
     if (!confirm(`Деактивировать зону ${zone.code}?`)) return;
     setBusy(true); setErr("");
-    try { await api.del(`/zones/${encodeURIComponent(zone.code)}`); onClose(); }
+    try { await api.del(`/zones/${encodeURIComponent(zone.code)}`); toast.ok("Зона деактивирована"); onClose(); }
     catch (e) { setErr(e.message || String(e)); }
     finally { setBusy(false); }
   };

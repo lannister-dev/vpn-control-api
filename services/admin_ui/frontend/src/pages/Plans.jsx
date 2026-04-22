@@ -4,6 +4,8 @@ import { useQuery } from "../hooks/useQuery.js";
 import { Modal } from "../components/Modal.jsx";
 import { Field, Row } from "../components/Field.jsx";
 import { Icon } from "../components/Icon.jsx";
+import { toast } from "../components/Toast.jsx";
+import { Empty, SkeletonRows } from "../components/Empty.jsx";
 
 export function PlansPage() {
   const { data, loading, error, refetch } = useQuery(() => api.get("/plans"), { interval: 30000 });
@@ -53,6 +55,7 @@ export function PlansPage() {
           </tbody>
         </table>
         {(loading && !items.length) && <div className="muted" style={{ padding: 14 }}>Загрузка…</div>}
+        {(!loading && !items.length) && <Empty icon="wallet" title="Тарифов нет" hint="Создайте первый тарифный план." />}
       </div>
 
       {creating && <PlanForm onClose={() => { setCreating(false); refetch(); }} />}
@@ -104,6 +107,7 @@ function PlanForm({ plan, onClose }) {
         if (!payload.name) throw new Error("Название обязательно");
         await api.post("/plans", payload);
       }
+      toast.ok(isEdit ? "Тариф обновлён" : "Тариф создан");
       onClose();
     } catch (e) { setErr(e.message || String(e)); }
     finally { setBusy(false); }
@@ -112,7 +116,7 @@ function PlanForm({ plan, onClose }) {
   const deactivate = async () => {
     if (!confirm(`Деактивировать тариф ${plan.name}?`)) return;
     setBusy(true);
-    try { await api.del(`/plans/${plan.id}`); onClose(); }
+    try { await api.del(`/plans/${plan.id}`); toast.ok("Тариф деактивирован"); onClose(); }
     catch (e) { setErr(e.message || String(e)); }
     finally { setBusy(false); }
   };

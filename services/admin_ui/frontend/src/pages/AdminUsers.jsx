@@ -4,6 +4,7 @@ import { useQuery } from "../hooks/useQuery.js";
 import { Modal } from "../components/Modal.jsx";
 import { Field } from "../components/Field.jsx";
 import { Icon } from "../components/Icon.jsx";
+import { toast } from "../components/Toast.jsx";
 
 const ROLE_TONE = { admin: "bad", operator: "warn", viewer: "ok" };
 
@@ -67,6 +68,7 @@ function AdminUserCreate({ onClose }) {
       if (f.password) payload.password = f.password;
       if (f.telegram_id) payload.telegram_id = Number(f.telegram_id);
       await api.post("/auth/admin/users", payload);
+      toast.ok("Пользователь создан");
       onClose();
     } catch (e) { setErr(e.message || String(e)); }
     finally { setBusy(false); }
@@ -110,6 +112,7 @@ function AdminUserEdit({ user, onClose }) {
     setBusy(true); setErr("");
     try {
       await api.patch(`/auth/admin/users/${user.id}`, { role, is_active: active });
+      toast.ok("Обновлено");
       onClose();
     } catch (e) { setErr(e.message || String(e)); }
     finally { setBusy(false); }
@@ -121,8 +124,8 @@ function AdminUserEdit({ user, onClose }) {
     try {
       await api.post(`/auth/admin/users/${user.id}/reset-password`, { new_password: newPassword });
       setNewPassword("");
-      alert("Пароль сброшен");
-    } catch (e) { setErr(e.message || String(e)); }
+      toast.ok("Пароль сброшен");
+    } catch (e) { setErr(e.message || String(e)); toast.bad(e.message || String(e)); }
     finally { setBusy(false); }
   };
 
@@ -131,8 +134,8 @@ function AdminUserEdit({ user, onClose }) {
     setBusy(true);
     try {
       const r = await api.post(`/auth/admin/users/${user.id}/revoke-sessions`);
-      alert(`Отозвано сессий: ${r.revoked}`);
-    } catch (e) { setErr(e.message || String(e)); }
+      toast.ok(`Отозвано сессий: ${r.revoked}`);
+    } catch (e) { setErr(e.message || String(e)); toast.bad(e.message || String(e)); }
     finally { setBusy(false); }
   };
 

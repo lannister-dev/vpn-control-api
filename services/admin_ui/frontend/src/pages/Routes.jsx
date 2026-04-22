@@ -6,6 +6,8 @@ import { Icon } from "../components/Icon.jsx";
 import { NodeDrawer } from "../components/NodeDrawer.jsx";
 import { Modal } from "../components/Modal.jsx";
 import { Field } from "../components/Field.jsx";
+import { toast } from "../components/Toast.jsx";
+import { Empty } from "../components/Empty.jsx";
 
 const HEALTH_TONE = {
   healthy: "ok", warming_up: "warn", degraded: "warn", suspected: "warn", blocked: "bad",
@@ -130,7 +132,7 @@ function RoutesList({ routesList, nodesById, search, setSearch, statusFilter, se
           </tbody>
         </table>
         {(loading && !rows.length) && <div className="muted" style={{ padding: 14 }}>Загрузка…</div>}
-        {(!loading && !rows.length) && <div className="muted" style={{ padding: 14 }}>Нет маршрутов.</div>}
+        {(!loading && !rows.length) && <Empty icon="route" title="Маршрутов нет" hint="Создайте маршрут, чтобы он попал в подписку юзеров." />}
       </div>
     </>
   );
@@ -177,6 +179,7 @@ function RouteForm({ route, nodes, onClose }) {
         if (entryNodeId) payload.entry_node_id = entryNodeId;
         await api.post("/routes", payload);
       }
+      toast.ok(isEdit ? "Маршрут обновлён" : "Маршрут создан");
       onClose();
     } catch (e) { setErr(e.message || String(e)); }
     finally { setBusy(false); }
@@ -185,7 +188,7 @@ function RouteForm({ route, nodes, onClose }) {
   const deactivate = async () => {
     if (!confirm(`Деактивировать маршрут ${route.name}?`)) return;
     setBusy(true);
-    try { await api.del(`/routes/${route.id}`); onClose(); }
+    try { await api.del(`/routes/${route.id}`); toast.ok("Маршрут деактивирован"); onClose(); }
     catch (e) { setErr(e.message || String(e)); }
     finally { setBusy(false); }
   };

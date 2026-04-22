@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App.jsx";
+import { ToastProvider } from "./components/Toast.jsx";
 import "./styles.css";
 import "./app.css";
 
@@ -13,6 +14,8 @@ document.documentElement.setAttribute("data-density", saved.density || "comforta
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <App />
+    <ToastProvider>
+      <App />
+    </ToastProvider>
   </React.StrictMode>,
 );

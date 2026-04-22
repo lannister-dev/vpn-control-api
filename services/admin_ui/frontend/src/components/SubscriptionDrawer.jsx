@@ -4,6 +4,7 @@ import { useQuery } from "../hooks/useQuery.js";
 import { Drawer } from "./Drawer.jsx";
 import { Modal } from "./Modal.jsx";
 import { Field } from "./Field.jsx";
+import { toast } from "./Toast.jsx";
 
 export function SubscriptionDrawer({ subscription, onClose, onChanged }) {
   const [tab, setTab] = useState("overview");
@@ -23,9 +24,10 @@ export function SubscriptionDrawer({ subscription, onClose, onChanged }) {
     setBusy(true); setErr("");
     try {
       const r = await api.post(`/subscriptions/${sub.id}/rotate-token`);
-      alert("Новый токен:\n" + (r.token || "—"));
+      if (r?.token) navigator.clipboard?.writeText(r.token);
+      toast.ok("Токен обновлён, скопирован в буфер");
       onChanged && onChanged();
-    } catch (e) { setErr(e.message || String(e)); }
+    } catch (e) { setErr(e.message || String(e)); toast.bad(e.message || String(e)); }
     finally { setBusy(false); }
   };
   const deactivate = async () => {
@@ -43,8 +45,8 @@ export function SubscriptionDrawer({ subscription, onClose, onChanged }) {
   };
   const revokeDevice = async (deviceId) => {
     if (!confirm("Отозвать это устройство?")) return;
-    try { await api.post(`/subscriptions/${sub.id}/devices/${deviceId}/revoke`); devices.refetch(); }
-    catch (e) { alert(e.message); }
+    try { await api.post(`/subscriptions/${sub.id}/devices/${deviceId}/revoke`); toast.ok("Устройство отозвано"); devices.refetch(); }
+    catch (e) { toast.bad(e.message); }
   };
 
   const tabs = [

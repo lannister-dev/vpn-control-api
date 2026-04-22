@@ -4,6 +4,7 @@ import { useQuery } from "../hooks/useQuery.js";
 import { Drawer } from "./Drawer.jsx";
 import { Modal } from "./Modal.jsx";
 import { Field } from "./Field.jsx";
+import { toast } from "./Toast.jsx";
 
 const isEntryRole = (n) => ["entry", "whitelist_entry"].includes(String(n?.role || "").toLowerCase());
 
@@ -120,8 +121,8 @@ function NodePool({ node }) {
 
   const remove = async (backendId) => {
     if (!confirm("Убрать backend из пула этого entry?")) return;
-    try { await api.del(`/entry/${node.id}/assignments/${backendId}`); refetch(); }
-    catch (e) { alert(e.message); }
+    try { await api.del(`/entry/${node.id}/assignments/${backendId}`); toast.ok("Backend удалён из пула"); refetch(); }
+    catch (e) { toast.bad(e.message); }
   };
 
   return (

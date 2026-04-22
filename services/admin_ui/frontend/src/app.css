@@ -122,3 +122,23 @@ body {
 .row-btn:hover { background: var(--surface-hover); color: var(--text); }
 
 .form-error { background: var(--bad-soft); color: var(--bad); padding: 8px 12px; border-radius: 6px; font-size: 12px; margin-bottom: 12px; }
+
+/* Toast */
+.toast-stack { position: fixed; top: 20px; right: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 200; pointer-events: none; }
+.toast { pointer-events: auto; padding: 10px 14px; border-radius: 8px; font-size: 13px; display: flex; align-items: center; gap: 8px; box-shadow: var(--shadow-lg); border: 1px solid var(--border); cursor: pointer; animation: toast-in 180ms ease-out; }
+.toast-ok   { background: var(--ok-soft); color: var(--ok); border-color: var(--ok); }
+.toast-warn { background: var(--warn-soft); color: var(--warn); border-color: var(--warn); }
+.toast-bad  { background: var(--bad-soft); color: var(--bad); border-color: var(--bad); }
+@keyframes toast-in { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: translateX(0); } }
+
+/* Skeletons */
+.skel { background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-hover) 50%, var(--surface-2) 75%); background-size: 200% 100%; animation: skel 1.2s ease-in-out infinite; border-radius: 4px; display: inline-block; }
+.skel-row { height: 14px; width: 100%; margin: 4px 0; }
+.skel-cell { height: 12px; width: 60px; }
+@keyframes skel { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+/* Empty state */
+.empty-state { padding: 30px 20px; text-align: center; color: var(--text-muted); }
+.empty-state .empty-icon { display: inline-flex; width: 40px; height: 40px; border-radius: 50%; background: var(--surface-2); align-items: center; justify-content: center; margin-bottom: 10px; }
+.empty-state .empty-title { font-size: 13px; font-weight: 500; color: var(--text-secondary); margin-bottom: 4px; }
+.empty-state .empty-hint { font-size: 12px; color: var(--text-faint); }
