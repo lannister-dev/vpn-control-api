@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../api/client.js";
 import { useQuery } from "../hooks/useQuery.js";
 import { Field } from "../components/Field.jsx";
 import { Icon } from "../components/Icon.jsx";
+import { toast } from "../components/Toast.jsx";
 
 const ACTIONS = ["set_healthy", "set_degraded", "set_suspected", "block", "recover"];
 
@@ -30,6 +31,123 @@ export function OpsPage() {
       <div className="split-2">
         <MigrateForm backends={backends} />
         <RouteHealthForm routes={routesList} />
+      </div>
+
+      <div className="sec" style={{ marginTop: 20 }}>
+        <ProbePolicyCard />
+      </div>
+    </div>
+  );
+}
+
+function ProbePolicyCard() {
+  const q = useQuery(() => api.get("/admin/probe/policy"), { interval: 0 });
+  const [f, setF] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => { if (q.data) setF(q.data); }, [q.data]);
+
+  if (!f) return (
+    <div className="card"><div className="card-body muted">Загрузка policy…</div></div>
+  );
+
+  const set = (k) => (e) => {
+    const val = e.target.type === "checkbox" ? e.target.checked : (e.target.type === "number" ? Number(e.target.value) : e.target.value);
+    setF((s) => ({ ...s, [k]: val }));
+  };
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      const payload = {
+        route_suspected_after_failures: f.route_suspected_after_failures,
+        route_degraded_after_failures: f.route_degraded_after_failures,
+        route_block_after_failures: f.route_block_after_failures,
+        route_block_cooldown_hours: f.route_block_cooldown_hours,
+        auto_drain_enabled: f.auto_drain_enabled,
+        auto_drain_tick_sec: f.auto_drain_tick_sec,
+        auto_drain_min_consecutive_failures: f.auto_drain_min_consecutive_failures,
+        auto_drain_max_probe_age_sec: f.auto_drain_max_probe_age_sec,
+        auto_drain_max_nodes: f.auto_drain_max_nodes,
+        auto_undrain_enabled: f.auto_undrain_enabled,
+        auto_undrain_min_consecutive_successes: f.auto_undrain_min_consecutive_successes,
+        auto_undrain_max_probe_age_sec: f.auto_undrain_max_probe_age_sec,
+      };
+      const updated = await api.patch("/admin/probe/policy", payload);
+      setF(updated);
+      toast.ok("Probe-политика обновлена");
+    } catch (e) { toast.bad(e.message || "Ошибка"); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="card">
+      <div className="card-head">
+        <Icon name="shield-check" size={14} />
+        <div className="sec-title">Probe-политика</div>
+        <div className="sec-sub">пороги блокировки маршрутов + авто-drain</div>
+      </div>
+      <div className="card-body">
+        <div className="split-2">
+          <div>
+            <div className="kpi-label" style={{ marginBottom: 8 }}>Пороги маршрутов (подряд неудачных probe)</div>
+            <div className="form-row">
+              <Field label="Suspected после">
+                <input type="number" min={1} max={50} value={f.route_suspected_after_failures} onChange={set("route_suspected_after_failures")} />
+              </Field>
+              <Field label="Degraded после">
+                <input type="number" min={2} max={50} value={f.route_degraded_after_failures} onChange={set("route_degraded_after_failures")} />
+              </Field>
+            </div>
+            <div className="form-row">
+              <Field label="Block после">
+                <input type="number" min={3} max={50} value={f.route_block_after_failures} onChange={set("route_block_after_failures")} />
+              </Field>
+              <Field label="Cooldown, часов">
+                <input type="number" min={1} max={168} value={f.route_block_cooldown_hours} onChange={set("route_block_cooldown_hours")} />
+              </Field>
+            </div>
+          </div>
+          <div>
+            <div className="kpi-label" style={{ marginBottom: 8 }}>Авто-drain нод</div>
+            <label className="form-check" style={{ marginBottom: 10 }}>
+              <input type="checkbox" checked={f.auto_drain_enabled} onChange={set("auto_drain_enabled")} />
+              Включить авто-drain при деградации
+            </label>
+            <div className="form-row">
+              <Field label="Тик, секунд">
+                <input type="number" min={30} max={3600} value={f.auto_drain_tick_sec} onChange={set("auto_drain_tick_sec")} />
+              </Field>
+              <Field label="Мин. подряд fail">
+                <input type="number" min={1} max={50} value={f.auto_drain_min_consecutive_failures} onChange={set("auto_drain_min_consecutive_failures")} />
+              </Field>
+            </div>
+            <div className="form-row">
+              <Field label="Макс. возраст probe, сек">
+                <input type="number" min={60} max={86400} value={f.auto_drain_max_probe_age_sec} onChange={set("auto_drain_max_probe_age_sec")} />
+              </Field>
+              <Field label="Макс. нод за тик">
+                <input type="number" min={1} max={500} value={f.auto_drain_max_nodes} onChange={set("auto_drain_max_nodes")} />
+              </Field>
+            </div>
+            <label className="form-check" style={{ marginTop: 10 }}>
+              <input type="checkbox" checked={f.auto_undrain_enabled} onChange={set("auto_undrain_enabled")} />
+              Авто-снятие drain при восстановлении
+            </label>
+            <div className="form-row" style={{ marginTop: 8 }}>
+              <Field label="Мин. подряд OK">
+                <input type="number" min={1} max={50} value={f.auto_undrain_min_consecutive_successes} onChange={set("auto_undrain_min_consecutive_successes")} />
+              </Field>
+              <Field label="Макс. возраст probe, сек">
+                <input type="number" min={60} max={86400} value={f.auto_undrain_max_probe_age_sec} onChange={set("auto_undrain_max_probe_age_sec")} />
+              </Field>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style={{ padding: "12px 14px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        <button className="btn btn-ghost" onClick={() => q.refetch()} disabled={busy}>Отменить</button>
+        <button className="btn btn-primary" onClick={save} disabled={busy}>Сохранить</button>
       </div>
     </div>
   );

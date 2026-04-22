@@ -168,7 +168,7 @@ export function NodesPage({ onOpenNode, initialAction, onActionConsumed }) {
                   <td className="mono" style={{ color: hbBad ? "var(--bad)" : "var(--text-secondary)" }}>{hb}</td>
                   <td><Spark data={spark(seed, 20, 50, 30)} color="var(--accent)" w={90} h={22} /></td>
                   <td className="row-actions">
-                    <RowMenu node={n} />
+                    <RowMenu node={n} onRefresh={refetch} />
                   </td>
                 </tr>
               );
@@ -316,20 +316,61 @@ function LoadBar({ v }) {
   );
 }
 
-function RowMenu({ node }) {
+function RowMenu({ node, onRefresh }) {
   const [open, setOpen] = useState(false);
-  const items = [
-    { icon: "pause", label: node.is_draining ? "Снять drain" : "Drain", action: "drain", disabled: false },
-    { icon: "arrow-right", label: "Мигрировать плейсменты", action: "migrate" },
-    { icon: "refresh", label: "Force resync", action: "resync" },
-    { icon: "terminal", label: "SSH команда", action: "ssh" },
-    { icon: "edit", label: "Редактировать", action: "edit" },
-    { icon: "power", label: node.is_enabled ? "Отключить" : "Включить", action: "toggle", danger: node.is_enabled },
-  ];
-  const run = (a) => {
+
+  const wrap = async (label, fn) => {
     setOpen(false);
-    toast.warn(`Действие "${a}" ещё не реализовано — скоро появится.`);
+    try { await fn(); toast.ok(label); onRefresh?.(); }
+    catch (e) { toast.bad(e.message || "Ошибка"); }
   };
+
+  const drain = () => wrap(
+    node.is_draining ? "Drain снят" : "Drain включён",
+    () => node.is_draining
+      ? api.post(`/agent/nodes/${node.id}/enable`)
+      : api.post(`/agent/nodes/${node.id}/drain`),
+  );
+  const toggleEnabled = () => {
+    if (node.is_enabled && !confirm(`Отключить ноду ${node.name}? Ключи перестанут на неё назначаться.`)) return;
+    return wrap(
+      node.is_enabled ? "Нода отключена" : "Нода включена",
+      () => api.patch(`/agent/nodes/${node.id}`, { is_enabled: !node.is_enabled }),
+    );
+  };
+  const forceSnapshot = () => wrap(
+    "Snapshot запрошен",
+    () => api.post(`/admin/transport/nodes/${node.id}/request-snapshot`),
+  );
+  const copyId = () => {
+    navigator.clipboard.writeText(node.id).then(() => toast.ok("UUID скопирован"));
+    setOpen(false);
+  };
+
+  const items = [
+    {
+      icon: "pause",
+      label: node.is_draining ? "Снять drain" : "Drain",
+      run: drain,
+    },
+    {
+      icon: "refresh",
+      label: "Force snapshot",
+      run: forceSnapshot,
+    },
+    {
+      icon: "command",
+      label: "Скопировать UUID",
+      run: copyId,
+    },
+    {
+      icon: "power",
+      label: node.is_enabled ? "Отключить ноду" : "Включить ноду",
+      run: toggleEnabled,
+      danger: node.is_enabled,
+    },
+  ];
+
   return (
     <div style={{ position: "relative", display: "inline-block" }} onClick={(e) => e.stopPropagation()}>
       <button className="btn btn-ghost btn-icon" onClick={() => setOpen((v) => !v)} style={{ width: 24, height: 24 }}>
@@ -343,8 +384,8 @@ function RowMenu({ node }) {
             background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8,
             boxShadow: "var(--shadow-lg)", padding: 4,
           }}>
-            {items.map((it) => (
-              <button key={it.action} onClick={() => run(it.label)}
+            {items.map((it, i) => (
+              <button key={i} onClick={it.run}
                 style={{
                   display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "7px 10px",
                   border: 0, background: "transparent", cursor: "pointer", borderRadius: 5,
