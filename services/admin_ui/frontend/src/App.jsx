@@ -3,22 +3,32 @@ import { Sidebar } from "./components/Sidebar.jsx";
 import { Topbar } from "./components/Topbar.jsx";
 import { OverviewPage } from "./pages/Overview.jsx";
 import { NodesPage } from "./pages/Nodes.jsx";
-import { Placeholder } from "./pages/Placeholder.jsx";
+import { RoutesPage } from "./pages/Routes.jsx";
+import { PlacementsPage } from "./pages/Placements.jsx";
+import { TransportPage } from "./pages/Transport.jsx";
+import { ProbesPage } from "./pages/Probes.jsx";
+import { TrafficPage } from "./pages/Traffic.jsx";
+import { UsersPage } from "./pages/Users.jsx";
+import { PlansPage } from "./pages/Plans.jsx";
+import { SubscriptionsPage } from "./pages/Subscriptions.jsx";
+import { ZonesPage } from "./pages/Zones.jsx";
+import { AdminUsersPage } from "./pages/AdminUsers.jsx";
+import { OpsPage } from "./pages/Ops.jsx";
 
 const PAGES = {
   overview: OverviewPage,
   nodes: NodesPage,
-  routes: () => <Placeholder title="Маршруты" hint="Переносим таблицу + топологию из старой панели." />,
-  placements: () => <Placeholder title="Плейсменты" />,
-  transport: () => <Placeholder title="Очередь" />,
-  probes: () => <Placeholder title="Probes" />,
-  traffic: () => <Placeholder title="Трафик" />,
-  users: () => <Placeholder title="Пользователи" />,
-  plans: () => <Placeholder title="Тарифы" />,
-  subscriptions: () => <Placeholder title="Подписки" />,
-  zones: () => <Placeholder title="Зоны" />,
-  "admin-users": () => <Placeholder title="Админы" />,
-  ops: () => <Placeholder title="Операции" />,
+  routes: RoutesPage,
+  placements: PlacementsPage,
+  transport: TransportPage,
+  probes: ProbesPage,
+  traffic: TrafficPage,
+  users: UsersPage,
+  plans: PlansPage,
+  subscriptions: SubscriptionsPage,
+  zones: ZonesPage,
+  "admin-users": AdminUsersPage,
+  ops: OpsPage,
 };
 
 export default function App() {

@@ -72,6 +72,13 @@ body {
 .status-dot.warn { background: var(--warn); }
 .status-dot.bad { background: var(--bad); }
 
+.filter-row { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.filter-row .input { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; color: var(--text); font-size: 13px; min-width: 220px; }
+.filter-row .input:focus { outline: none; border-color: var(--accent); }
+
+.chip-muted { background: var(--surface-2); color: var(--text-muted); }
+.input { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; color: var(--text); font-size: 13px; }
+
 .tnum { font-variant-numeric: tabular-nums; }
 .mono { font-family: "JetBrains Mono", monospace; }
 .muted { color: var(--text-muted); }
