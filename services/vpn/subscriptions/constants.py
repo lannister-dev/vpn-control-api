@@ -3,7 +3,7 @@ import json
 from services.vpn.keys.schemas import VpnTransport
 
 
-WHITELIST_SUFFIX = " | WL unblock"
+WHITELIST_SUFFIX = " | WL"
 WHITELIST_SERVER_DESCRIPTION = "🔓 глушилки"
 
 RATE_LIMIT_REQUESTS = 300
