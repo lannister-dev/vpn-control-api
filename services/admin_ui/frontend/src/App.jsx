@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Sidebar } from "./components/Sidebar.jsx";
 import { Topbar } from "./components/Topbar.jsx";
 import { Palette } from "./components/Palette.jsx";
+import { NodeDrawer } from "./components/NodeDrawer.jsx";
 import { OverviewPage } from "./pages/Overview.jsx";
 import { NodesPage } from "./pages/Nodes.jsx";
 import { RoutesPage } from "./pages/Routes.jsx";
@@ -38,6 +39,7 @@ export default function App() {
   });
   const [theme, setTheme] = useState(document.documentElement.getAttribute("data-theme") || "dark");
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [drawerNode, setDrawerNode] = useState(null);
 
   useEffect(() => {
     try {
@@ -71,7 +73,7 @@ export default function App() {
           onOpenPalette={() => setPaletteOpen(true)}
         />
         <div className="app-content">
-          <Page />
+          <Page onGoto={setTab} onOpenNode={setDrawerNode} />
         </div>
       </div>
       <Palette
@@ -79,6 +81,7 @@ export default function App() {
         onClose={() => setPaletteOpen(false)}
         onSelect={(item) => { setTab(item.id); setPaletteOpen(false); }}
       />
+      {drawerNode && <NodeDrawer node={drawerNode} onClose={() => setDrawerNode(null)} />}
     </div>
   );
 }
