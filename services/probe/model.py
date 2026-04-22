@@ -45,3 +45,4 @@ class ProbeSignal(Base):
         Index("ix_probe_signal_node_source_checked_at", "node_id", "source", "checked_at"),
         Index("ix_probe_signal_route_source_checked_at", "route_id", "source", "checked_at"),
     )
+

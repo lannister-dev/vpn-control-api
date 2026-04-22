@@ -98,6 +98,15 @@ def _transport_profile(
 
 
 def _ingestion_service() -> ProbeIngestionService:
+    policy_repo = AsyncMock()
+    policy_repo.get_current = AsyncMock(return_value=SimpleNamespace(
+        auto_route_health_enabled=True,
+        retention_days=30,
+        route_suspected_after_failures=2,
+        route_degraded_after_failures=3,
+        route_block_after_failures=4,
+        route_block_cooldown_hours=6,
+    ))
     service = ProbeIngestionService(
         node_repository=AsyncMock(),
         probe_repository=AsyncMock(),
@@ -106,12 +115,10 @@ def _ingestion_service() -> ProbeIngestionService:
         placement_transport=AsyncMock(),
         key_repository=AsyncMock(),
         alert_service=AsyncMock(),
+        policy_repository=policy_repo,
         target_port=443,
         edge_public_domain="",
         synthetic_probe_client_ids=ProbeSyntheticClientIds(),
-        retention_days=30,
-        auto_route_health_enabled=True,
-        route_block_cooldown_hours=6,
     )
     service.node_repository.list_public.return_value = []
     service.probe_repository.count_consecutive_route_failures = AsyncMock(return_value=1)

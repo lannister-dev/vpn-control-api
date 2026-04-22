@@ -12,6 +12,7 @@ from services.config import ProbeConfig, get_settings
 from services.placements.repository import UserPlacementRepository
 from services.placements.schemas import PlacementDesiredState
 from services.placements.transport import NodeAgentPlacementTransport
+from services.probe.policy.repository import ProbePolicyRepository
 from services.probe.schemas import (
     ProbeSyntheticClientIds,
     ProbeSyntheticDesiredBackends,
@@ -36,6 +37,13 @@ logger = StructuredLogger(logging.getLogger("probe-synthetic-reconciler"))
 
 
 class ProbeSyntheticCredentialReconciler:
+    """Reconciles synthetic probe credentials. Identity (client_ids, telegram_id,
+    username) stays in env. Operational tunables (enabled, tick, key lifetime,
+    traffic limit) come from `probe_policy` table on every tick.
+    """
+
+    _IDLE_WHEN_DISABLED_SEC = 300
+
     def __init__(
         self,
         *,
@@ -50,12 +58,6 @@ class ProbeSyntheticCredentialReconciler:
             reality=settings.synthetic_reality_client_id,
             ws=settings.synthetic_ws_client_id,
         )
-        self._enabled = bool(
-            settings.synthetic_reconcile_enabled
-            and settings.synthetic_user_telegram_id > 0
-            and self._synthetic_client_ids.configured_transports()
-        )
-        self._interval_sec = max(30, int(settings.synthetic_reconcile_tick_sec))
         self._session_maker = session_maker or AsyncDatabase.get_session_maker()
         self._service_factory = service_factory or (
             lambda session: _ProbeSyntheticCredentialService(
@@ -66,22 +68,26 @@ class ProbeSyntheticCredentialReconciler:
         )
         self._tick_lock = tick_lock or RedisTickLock(
             key="reconciler:probe_synthetic_credentials",
-            ttl_sec=max(60, self._interval_sec * 2),
+            ttl_sec=600,
             fail_open_if_client_unavailable=True,
         )
         self._stop_event = asyncio.Event()
         self._task: asyncio.Task | None = None
 
+    def _is_configured(self) -> bool:
+        return (
+            self._settings.synthetic_user_telegram_id > 0
+            and bool(self._synthetic_client_ids.configured_transports())
+        )
+
     async def start(self) -> None:
-        if not self._enabled:
-            if self._settings_requested_enabled():
-                logger.warning(
-                    "probe_synthetic_reconcile_misconfigured",
-                    synthetic_user_telegram_id=self._settings.synthetic_user_telegram_id,
-                    reality_client_id=self._synthetic_client_ids.reality is not None,
-                    ws_client_id=self._synthetic_client_ids.ws is not None,
-                )
-            logger.info("probe_synthetic_reconcile_disabled")
+        if not self._is_configured():
+            logger.info(
+                "probe_synthetic_reconcile_not_configured",
+                synthetic_user_telegram_id=self._settings.synthetic_user_telegram_id,
+                reality_client_id=self._synthetic_client_ids.reality is not None,
+                ws_client_id=self._synthetic_client_ids.ws is not None,
+            )
             return
         if self._task is not None and not self._task.done():
             return
@@ -96,31 +102,47 @@ class ProbeSyntheticCredentialReconciler:
         self._task = None
 
     async def run_once(self) -> ProbeSyntheticReconcileResult | None:
-        if not self._enabled:
+        if not self._is_configured():
+            return None
+        async with self._session_maker() as session:
+            policy = await ProbePolicyRepository(session).get_current()
+            await session.commit()
+        if not policy.synthetic_reconcile_enabled:
             return None
         async with self._tick_lock.hold() as acquired:
             if not acquired:
                 return ProbeSyntheticReconcileResult()
-            return await self._execute_tick()
+            return await self._execute_tick(policy)
 
     async def _run(self) -> None:
         while not self._stop_event.is_set():
+            sleep_sec = self._IDLE_WHEN_DISABLED_SEC
             try:
-                await self.run_once()
+                async with self._session_maker() as session:
+                    policy = await ProbePolicyRepository(session).get_current()
+                    await session.commit()
+                sleep_sec = max(30, int(policy.synthetic_reconcile_tick_sec))
+                if policy.synthetic_reconcile_enabled:
+                    async with self._tick_lock.hold() as acquired:
+                        if acquired:
+                            await self._execute_tick(policy)
             except asyncio.CancelledError:
                 raise
             except Exception:
                 logger.exception("probe_synthetic_reconcile_tick_failed")
 
             try:
-                await asyncio.wait_for(self._stop_event.wait(), timeout=self._interval_sec)
+                await asyncio.wait_for(self._stop_event.wait(), timeout=sleep_sec)
             except TimeoutError:
                 continue
 
-    async def _execute_tick(self) -> ProbeSyntheticReconcileResult:
+    async def _execute_tick(self, policy) -> ProbeSyntheticReconcileResult:
         async with self._session_maker() as session:
             service = self._service_factory(session)
-            result = await service.reconcile()
+            result = await service.reconcile(
+                key_valid_days=policy.synthetic_key_valid_days,
+                key_traffic_limit_mb=policy.synthetic_key_traffic_limit_mb,
+            )
             await session.commit()
             if (
                 result.processed_transports > 0
@@ -141,9 +163,6 @@ class ProbeSyntheticCredentialReconciler:
                 )
             return result
 
-    def _settings_requested_enabled(self) -> bool:
-        return bool(self._settings.synthetic_reconcile_enabled)
-
 
 class _ProbeSyntheticCredentialService:
     def __init__(
@@ -162,7 +181,12 @@ class _ProbeSyntheticCredentialService:
         self._placement_transport = NodeAgentPlacementTransport(session)
         self._edge_public_domain = get_settings().edge.public_domain
 
-    async def reconcile(self) -> ProbeSyntheticReconcileResult:
+    async def reconcile(
+        self,
+        *,
+        key_valid_days: int,
+        key_traffic_limit_mb: int,
+    ) -> ProbeSyntheticReconcileResult:
         configured_client_ids = self._synthetic_client_ids.configured_transports()
         if not configured_client_ids:
             return ProbeSyntheticReconcileResult()
@@ -184,6 +208,8 @@ class _ProbeSyntheticCredentialService:
                 user_id=user.id,
                 transport_kind=transport_kind,
                 client_id=client_id,
+                valid_days=key_valid_days,
+                traffic_limit_mb=key_traffic_limit_mb,
             )
             if key is None:
                 continue
@@ -296,10 +322,12 @@ class _ProbeSyntheticCredentialService:
         user_id: UUID,
         transport_kind: ProbeTransportKind,
         client_id: str,
+        valid_days: int,
+        traffic_limit_mb: int,
     ):
         rows = await self._key_repository.list_by_client_ids(client_ids=[client_id], active_only=False)
         existing = rows[0] if rows else None
-        valid_until = datetime.now(timezone.utc) + timedelta(days=int(self._settings.synthetic_key_valid_days))
+        valid_until = datetime.now(timezone.utc) + timedelta(days=max(1, int(valid_days)))
         if existing is None:
             created = await self._key_repository.create(
                 VpnKeyInternalCreate(
@@ -308,7 +336,7 @@ class _ProbeSyntheticCredentialService:
                     transport=VpnTransport(transport_kind),
                     client_id=client_id,
                     valid_until=valid_until,
-                    traffic_limit_mb=int(self._settings.synthetic_key_traffic_limit_mb),
+                    traffic_limit_mb=max(1, int(traffic_limit_mb)),
                     is_revoked=False,
                 ).model_dump()
             )
@@ -349,8 +377,7 @@ class _ProbeSyntheticCredentialService:
                 is_active=True,
                 is_revoked=False,
                 valid_until=valid_until,
-                traffic_limit_mb=int(self._settings.synthetic_key_traffic_limit_mb),
+                traffic_limit_mb=max(1, int(traffic_limit_mb)),
             ).model_dump(exclude_unset=True),
         )
         return updated, False, True
-
