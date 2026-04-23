@@ -21,6 +21,7 @@ const GROUPS = [
     { id: "zones", label: "Зоны", icon: "globe" },
     { id: "admin-users", label: "Админы", icon: "shield" },
     { id: "ops", label: "Операции", icon: "wrench" },
+    { id: "settings", label: "Настройки", icon: "sliders" },
   ]},
 ];
 
@@ -79,7 +80,7 @@ export function Sidebar({ activeTab, onTab, collapsed, onToggle, onOpenPalette, 
             <span>{user?.role || "admin"}</span>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 4 }}>
+        <div className="side-footer-actions" style={{ display: "flex", gap: 4 }}>
           <button className="btn btn-ghost btn-icon" title="Настройки" style={{ width: 24, height: 24 }}>
             <Icon name="settings" size={14} />
           </button>

@@ -19,6 +19,7 @@ import { SubscriptionsPage } from "./pages/Subscriptions.jsx";
 import { ZonesPage } from "./pages/Zones.jsx";
 import { AdminUsersPage } from "./pages/AdminUsers.jsx";
 import { OpsPage } from "./pages/Ops.jsx";
+import { SettingsPage } from "./pages/Settings.jsx";
 
 const PAGES = {
   overview: OverviewPage,
@@ -34,6 +35,7 @@ const PAGES = {
   zones: ZonesPage,
   "admin-users": AdminUsersPage,
   ops: OpsPage,
+  settings: SettingsPage,
 };
 
 const CRUMBS = {
@@ -50,6 +52,7 @@ const CRUMBS = {
   zones: ["Workspace", "Система", "Зоны"],
   "admin-users": ["Workspace", "Система", "Админы"],
   ops: ["Workspace", "Система", "Операции"],
+  settings: ["Workspace", "Система", "Настройки"],
 };
 
 function relSync(iso) {

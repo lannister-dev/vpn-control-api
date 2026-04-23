@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VPN Control — Redesigned</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/styles.css?v=14" />
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script src="assets/icons.js?v=14"></script>
+  <script src="assets/mock.js?v=14"></script>
+  <script type="text/babel" src="assets/chrome.jsx?v=14"></script>
+  <script type="text/babel" src="assets/pages.jsx?v=14"></script>
+
+  <script type="text/babel" data-presets="env,react">
+    const { useState, useEffect, useCallback } = React;
+
+    // Tweaks defaults — keep host-editable
+    const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+      "theme": "dark",
+      "density": "comfortable",
+      "accent": "indigo"
+    }/*EDITMODE-END*/;
+
+    const ACCENTS = {
+      indigo: { l: 'oklch(0.56 0.14 260)', lh: 'oklch(0.50 0.16 260)', ls: 'oklch(0.96 0.02 260)', lb: 'oklch(0.88 0.06 260)', lt: 'oklch(0.40 0.15 260)',
+                d: 'oklch(0.72 0.14 260)', dh: 'oklch(0.80 0.14 260)', ds: 'oklch(0.30 0.08 260 / 0.35)', db: 'oklch(0.55 0.12 260 / 0.5)', dt: 'oklch(0.82 0.12 260)' },
+      teal:   { l: 'oklch(0.58 0.13 190)', lh: 'oklch(0.52 0.15 190)', ls: 'oklch(0.96 0.03 190)', lb: 'oklch(0.88 0.07 190)', lt: 'oklch(0.42 0.14 190)',
+                d: 'oklch(0.74 0.14 190)', dh: 'oklch(0.82 0.14 190)', ds: 'oklch(0.30 0.08 190 / 0.35)', db: 'oklch(0.55 0.12 190 / 0.5)', dt: 'oklch(0.82 0.12 190)' },
+      amber:  { l: 'oklch(0.68 0.15 70)', lh: 'oklch(0.62 0.17 70)', ls: 'oklch(0.96 0.04 70)', lb: 'oklch(0.88 0.08 70)', lt: 'oklch(0.48 0.15 60)',
+                d: 'oklch(0.78 0.14 70)', dh: 'oklch(0.84 0.14 70)', ds: 'oklch(0.32 0.09 70 / 0.35)', db: 'oklch(0.58 0.12 70 / 0.5)', dt: 'oklch(0.85 0.13 75)' },
+      rose:   { l: 'oklch(0.60 0.17 20)', lh: 'oklch(0.54 0.19 20)', ls: 'oklch(0.96 0.03 20)', lb: 'oklch(0.88 0.08 20)', lt: 'oklch(0.42 0.17 20)',
+                d: 'oklch(0.74 0.17 20)', dh: 'oklch(0.80 0.17 20)', ds: 'oklch(0.32 0.10 20 / 0.35)', db: 'oklch(0.58 0.14 20 / 0.5)', dt: 'oklch(0.84 0.15 20)' },
+      mono:   { l: 'oklch(0.25 0 0)', lh: 'oklch(0.15 0 0)', ls: 'oklch(0.96 0 0)', lb: 'oklch(0.86 0 0)', lt: 'oklch(0.25 0 0)',
+                d: 'oklch(0.82 0 0)', dh: 'oklch(0.92 0 0)', ds: 'oklch(0.30 0 0)', db: 'oklch(0.55 0 0)', dt: 'oklch(0.85 0 0)' },
+    };
+
+    function applyAccent(name, theme) {
+      const a = ACCENTS[name] || ACCENTS.indigo;
+      const r = document.documentElement;
+      const suf = theme === 'dark' ? 'd' : 'l';
+      r.style.setProperty('--accent', a[suf]);
+      r.style.setProperty('--accent-hover', a[suf + 'h']);
+      r.style.setProperty('--accent-soft', a[suf + 's']);
+      r.style.setProperty('--accent-border', a[suf + 'b']);
+      r.style.setProperty('--accent-text', a[suf + 't']);
+    }
+
+    function App() {
+      const saved = (() => {
+        try { return JSON.parse(localStorage.getItem('vpn-ctrl-state') || 'null') || {}; } catch { return {}; }
+      })();
+
+      const [theme, setTheme] = useState(saved.theme || TWEAK_DEFAULTS.theme);
+      const [density, setDensity] = useState(saved.density || TWEAK_DEFAULTS.density);
+      const [accent, setAccent] = useState(saved.accent || TWEAK_DEFAULTS.accent);
+      const [collapsed, setCollapsed] = useState(saved.collapsed || false);
+      const [tab, setTab] = useState(saved.tab || 'overview');
+      const [paletteOpen, setPaletteOpen] = useState(false);
+      const [slideNode, setSlideNode] = useState(null);
+      const [lastSync, setLastSync] = useState('сейчас');
+      const [editMode, setEditMode] = useState(false);
+      const [toasts, setToasts] = useState([]);
+
+      // Apply theme + density + accent
+      useEffect(() => { document.documentElement.setAttribute('data-theme', theme); applyAccent(accent, theme); }, [theme, accent]);
+      useEffect(() => { document.documentElement.setAttribute('data-density', density); }, [density]);
+
+      // Persist
+      useEffect(() => {
+        localStorage.setItem('vpn-ctrl-state', JSON.stringify({ theme, density, accent, collapsed, tab }));
+      }, [theme, density, accent, collapsed, tab]);
+
+      // Last sync timer
+      useEffect(() => {
+        const t0 = Date.now();
+        const iv = setInterval(() => {
+          const s = Math.floor((Date.now() - t0) / 1000);
+          setLastSync(s < 5 ? 'сейчас' : `${s}с назад`);
+        }, 1000);
+        return () => clearInterval(iv);
+      }, []);
+
+      // ⌘K listener
+      useEffect(() => {
+        const onKey = (e) => {
+          const meta = e.metaKey || e.ctrlKey;
+          if (meta && e.key.toLowerCase() === 'k') { e.preventDefault(); setPaletteOpen(p => !p); }
+          else if (e.key === '/' && !['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) { e.preventDefault(); setPaletteOpen(true); }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+      }, []);
+
+      // Tweaks protocol
+      useEffect(() => {
+        const onMsg = (e) => {
+          if (e.data?.type === '__activate_edit_mode') setEditMode(true);
+          else if (e.data?.type === '__deactivate_edit_mode') setEditMode(false);
+        };
+        window.addEventListener('message', onMsg);
+        try { window.parent.postMessage({ type: '__edit_mode_available' }, '*'); } catch {}
+        return () => window.removeEventListener('message', onMsg);
+      }, []);
+
+      const persistTweak = (patch) => {
+        try { window.parent.postMessage({ type: '__edit_mode_set_keys', edits: patch }, '*'); } catch {}
+      };
+
+      const toast = (msg) => {
+        const id = Date.now();
+        setToasts(t => [...t, { id, msg }]);
+        setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 2400);
+      };
+
+      const handlePaletteSelect = (item) => {
+        setPaletteOpen(false);
+        if (item.tab) { setTab(item.tab); toast(`→ ${item.label}`); return; }
+        if (item.action === 'toggle-theme') { const n = theme === 'dark' ? 'light' : 'dark'; setTheme(n); persistTweak({ theme: n }); toast(`Тема: ${n}`); return; }
+        if (item.action?.startsWith('density-')) { const d = item.action.slice(8); setDensity(d); persistTweak({ density: d }); toast(`Плотность: ${d}`); return; }
+        if (item.action === 'incident' && item.target?.startsWith('nd_')) {
+          const n = MOCK.NODES.find(n => n.id === item.target); if (n) { setSlideNode(n); return; }
+        }
+        if (item.action === 'incident' && item.target?.startsWith('rt_')) { setTab('routes'); toast('Открыто: Маршруты'); return; }
+        toast(`Запущено: ${item.label}`);
+      };
+
+      const crumbMap = {
+        overview: ['Workspace', 'Главная'],
+        nodes: ['Workspace', 'Инфраструктура', 'Серверы'],
+        routes: ['Workspace', 'Инфраструктура', 'Маршруты'],
+        placements: ['Workspace', 'Инфраструктура', 'Плейсменты'],
+        transport: ['Workspace', 'Инфраструктура', 'Очередь'],
+        probes: ['Workspace', 'Мониторинг', 'Probes'],
+        traffic: ['Workspace', 'Мониторинг', 'Трафик'],
+        users: ['Workspace', 'Бизнес', 'Пользователи'],
+        plans: ['Workspace', 'Бизнес', 'Тарифы'],
+        subscriptions: ['Workspace', 'Бизнес', 'Подписки'],
+        zones: ['Workspace', 'Система', 'Зоны'],
+        'admin-users': ['Workspace', 'Система', 'Админы'],
+        ops: ['Workspace', 'Система', 'Операции'],
+      };
+
+      return (
+        <div className="app">
+          <Sidebar
+            activeTab={tab}
+            onTab={(t) => { setTab(t); }}
+            collapsed={collapsed}
+            onToggle={() => setCollapsed(c => !c)}
+            onOpenPalette={() => setPaletteOpen(true)}
+          />
+          <main className="main">
+            <Topbar
+              crumbs={crumbMap[tab] || [tab]}
+              onOpenPalette={() => setPaletteOpen(true)}
+              onRefresh={() => { toast('Данные обновлены'); }}
+              lastSync={lastSync}
+              theme={theme}
+              onToggleTheme={() => { const n = theme === 'dark' ? 'light' : 'dark'; setTheme(n); persistTweak({ theme: n }); }}
+              notifCount={3}
+            />
+            <div style={{ flex: 1 }}>
+              {tab === 'overview' && <OverviewPage onOpenNode={setSlideNode} onGoto={setTab} />}
+              {tab === 'nodes' && <NodesPage onOpenNode={setSlideNode} />}
+              {tab === 'routes' && <RoutesPage onOpenNode={setSlideNode} />}
+              {!['overview','nodes','routes'].includes(tab) && <PlaceholderPage tab={tab} />}
+            </div>
+          </main>
+
+          <Palette
+            open={paletteOpen}
+            onClose={() => setPaletteOpen(false)}
+            onSelect={handlePaletteSelect}
+          />
+          {slideNode && <NodeSlideover node={slideNode} onClose={() => setSlideNode(null)} onJumpRoutes={() => { setSlideNode(null); setTab('routes'); }} />}
+
+          {editMode && (
+            <TweaksPanel
+              theme={theme}
+              density={density}
+              accent={accent}
+              onTheme={(v) => { setTheme(v); persistTweak({ theme: v }); }}
+              onDensity={(v) => { setDensity(v); persistTweak({ density: v }); }}
+              onAccent={(v) => { setAccent(v); persistTweak({ accent: v }); }}
+              onClose={() => setEditMode(false)}
+            />
+          )}
+
+          {toasts.length > 0 && (
+            <div className="toast-stack">
+              {toasts.map(t => (
+                <div key={t.id} className="toast">
+                  <Icon name="check-circle" size={14} style={{color: 'var(--ok)'}} />
+                  <span>{t.msg}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

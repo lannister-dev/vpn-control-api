@@ -26,19 +26,23 @@ async def test_admin_migrate_backend_contract():
         )
     )
 
+    audit = SimpleNamespace(record=AsyncMock())
     out = await admin_migrate_backend(
         payload=PlacementMigrateBackendIn(
             source_backend_id=source_backend_id,
             target_backend_id=target_backend_id,
             last_migration_reason="admin_manual",
         ),
+        actor="test-admin",
         placement_service=placement_service,
+        audit=audit,
     )
 
     assert out.source_backend_id == source_backend_id
     assert out.target_backend_id == target_backend_id
     assert out.migrated_count == 3
     placement_service.migrate_backend.assert_awaited_once()
+    audit.record.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -64,13 +68,16 @@ async def test_admin_set_route_health_contract():
         )
     )
 
+    audit = SimpleNamespace(record=AsyncMock())
     out = await admin_set_route_health(
         payload=AdminSetRouteHealthIn(
             route_id=route_id,
             action=RouteHealthAction.block,
             cooldown_hours=6,
         ),
+        actor="test-admin",
         route_service=route_service,
+        audit=audit,
     )
 
     assert out.id == route_id
@@ -79,3 +86,4 @@ async def test_admin_set_route_health_contract():
     assert args[0] == route_id
     assert args[1].action == RouteHealthAction.block
     assert args[1].cooldown_hours == 6
+    audit.record.assert_awaited_once()
