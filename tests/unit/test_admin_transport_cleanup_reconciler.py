@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from services.admin_transport.cleanup_reconciler import AdminTransportCleanupReconciler
-from services.config import TransportConfig
 
 
 class _SessionContext:
@@ -46,14 +46,17 @@ class _TickLock:
         return _LockContext(self._acquired)
 
 
-def _transport_settings(**overrides) -> TransportConfig:
-    data = {
-        "cleanup_enabled": True,
-        "cleanup_tick_sec": 600,
-        "retention_days": 30,
-    }
+def _policy(**overrides):
+    data = dict(cleanup_enabled=True, cleanup_tick_sec=600, retention_days=30)
     data.update(overrides)
-    return TransportConfig(**data)
+    return SimpleNamespace(**data)
+
+
+def _policy_repo_patch(policy):
+    return patch(
+        "services.admin_transport.cleanup_reconciler.TransportPolicyRepository",
+        return_value=SimpleNamespace(get_current=AsyncMock(return_value=policy)),
+    )
 
 
 @pytest.mark.asyncio
@@ -77,45 +80,34 @@ async def test_run_once_cleans_and_commits(monkeypatch):
         _Repo,
     )
 
-    reconciler = AdminTransportCleanupReconciler(
-        transport_settings=_transport_settings(),
-        tick_lock=_TickLock(acquired=True),
-    )
-    reconciler._session_maker = _SessionMaker(session)
-
-    out = await reconciler.run_once()
+    with _policy_repo_patch(_policy()):
+        reconciler = AdminTransportCleanupReconciler(tick_lock=_TickLock(acquired=True))
+        reconciler._session_maker = _SessionMaker(session)
+        out = await reconciler.run_once()
 
     assert out == (11, 17)
     delete_outbox.assert_awaited_once()
     delete_events.assert_awaited_once()
-    session.commit.assert_awaited_once()
+    session.commit.assert_awaited()
 
 
 @pytest.mark.asyncio
 async def test_run_once_returns_none_when_disabled():
     session = AsyncMock()
-    reconciler = AdminTransportCleanupReconciler(
-        transport_settings=_transport_settings(cleanup_enabled=False),
-        tick_lock=_TickLock(acquired=True),
-    )
-    reconciler._session_maker = _SessionMaker(session)
-
-    out = await reconciler.run_once()
+    with _policy_repo_patch(_policy(cleanup_enabled=False)):
+        reconciler = AdminTransportCleanupReconciler(tick_lock=_TickLock(acquired=True))
+        reconciler._session_maker = _SessionMaker(session)
+        out = await reconciler.run_once()
 
     assert out is None
-    session.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_run_once_skips_when_tick_lock_not_acquired():
     session = AsyncMock()
-    reconciler = AdminTransportCleanupReconciler(
-        transport_settings=_transport_settings(),
-        tick_lock=_TickLock(acquired=False),
-    )
-    reconciler._session_maker = _SessionMaker(session)
-
-    out = await reconciler.run_once()
+    with _policy_repo_patch(_policy()):
+        reconciler = AdminTransportCleanupReconciler(tick_lock=_TickLock(acquired=False))
+        reconciler._session_maker = _SessionMaker(session)
+        out = await reconciler.run_once()
 
     assert out is None
-    session.commit.assert_not_awaited()

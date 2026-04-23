@@ -119,32 +119,11 @@ class K3sConfig:
 
 @dataclass
 class NodeAgentConfig:
+    # bootstrap/protocol — remain in env
     sync_report_debounce_sec: int = 10
     auth_token_rotation_grace_sec: int = 300
     bootstrap_allow_create: bool = True
-    heartbeat_unhealthy_drain_threshold: int = 5
-    heartbeat_healthy_undrain_threshold: int = 3
-    stale_after_sec: int = 90
-    auto_heal_enabled: bool = False
-    auto_heal_tick_sec: int = 60
-    auto_heal_max_nodes: int = 20
-    auto_heal_drain_cooldown_sec: int = 180
-    auto_undrain_enabled: bool = False
-    placement_error_retry_enabled: bool = True
-    placement_error_retry_tick_sec: int = 120
-    placement_error_retry_after_sec: int = 120
-    placement_rebalance_enabled: bool = False
-    placement_rebalance_tick_sec: int = 120
-    placement_rebalance_batch_size: int = 200
-    entry_apply_fail_threshold: int = 3
-    entry_apply_fail_unhealthy: bool = True
-    entry_auto_drain_enabled: bool = True
-    entry_auto_drain_tick_sec: int = 60
-    entry_auto_drain_probe_failures: int = 3
-    entry_auto_drain_max_nodes: int = 50
-    entry_auto_drain_reason: str = "entry_auto_drain"
-    entry_auto_undrain_enabled: bool = True
-    entry_auto_undrain_healthy_ticks: int = 3
+    # operational tunables moved to DB (node_policy)
 
 
 @dataclass
@@ -203,13 +182,6 @@ class TrafficConfig:
     history_retention_days: int = 14
     reset_enabled: bool = False
     reset_tick_sec: int = 300
-
-
-@dataclass
-class TransportConfig:
-    cleanup_enabled: bool = True
-    cleanup_tick_sec: int = 3600
-    retention_days: int = 30
 
 
 @dataclass
@@ -283,7 +255,6 @@ class Settings:
     routes: RoutesConfig
     edge: EdgeConfig
     traffic: TrafficConfig
-    transport: TransportConfig
     admin_auth: AdminAuthConfig
     vpn_key: VpnKeyConfig
     billing: BillingConfig
@@ -390,35 +361,6 @@ def get_settings() -> Settings:
             env.int("NODE_AUTH_TOKEN_ROTATION_GRACE_SEC", default=300),
         ),
         bootstrap_allow_create=env.bool("NODE_BOOTSTRAP_ALLOW_CREATE", default=True),
-        heartbeat_unhealthy_drain_threshold=max(
-            1,
-            env.int("NODE_HEARTBEAT_UNHEALTHY_DRAIN_THRESHOLD", default=5),
-        ),
-        heartbeat_healthy_undrain_threshold=max(
-            1,
-            env.int("NODE_HEARTBEAT_HEALTHY_UNDRAIN_THRESHOLD", default=3),
-        ),
-        stale_after_sec=max(30, env.int("NODE_STALE_AFTER_SEC", default=90)),
-        auto_heal_enabled=env.bool("NODE_AUTO_HEAL_ENABLED", default=False),
-        auto_heal_tick_sec=max(30, env.int("NODE_AUTO_HEAL_TICK_SEC", default=60)),
-        auto_heal_max_nodes=min(500, max(1, env.int("NODE_AUTO_HEAL_MAX_NODES", default=20))),
-        auto_heal_drain_cooldown_sec=max(0, env.int("NODE_AUTO_HEAL_DRAIN_COOLDOWN_SEC", default=180)),
-        auto_undrain_enabled=env.bool("NODE_AUTO_UNDRAIN_ENABLED", default=False),
-        placement_error_retry_enabled=env.bool("NODE_PLACEMENT_ERROR_RETRY_ENABLED", default=True),
-        placement_error_retry_tick_sec=max(30, env.int("NODE_PLACEMENT_ERROR_RETRY_TICK_SEC", default=120)),
-        placement_error_retry_after_sec=max(30, env.int("NODE_PLACEMENT_ERROR_RETRY_AFTER_SEC", default=120)),
-        placement_rebalance_enabled=env.bool("NODE_PLACEMENT_REBALANCE_ENABLED", default=False),
-        placement_rebalance_tick_sec=max(30, env.int("NODE_PLACEMENT_REBALANCE_TICK_SEC", default=120)),
-        placement_rebalance_batch_size=max(1, min(1000, env.int("NODE_PLACEMENT_REBALANCE_BATCH_SIZE", default=200))),
-        entry_apply_fail_threshold=max(1, env.int("NODE_ENTRY_APPLY_FAIL_THRESHOLD", default=3)),
-        entry_apply_fail_unhealthy=env.bool("NODE_ENTRY_APPLY_FAIL_UNHEALTHY", default=True),
-        entry_auto_drain_enabled=env.bool("NODE_ENTRY_AUTO_DRAIN_ENABLED", default=True),
-        entry_auto_drain_tick_sec=max(15, env.int("NODE_ENTRY_AUTO_DRAIN_TICK_SEC", default=60)),
-        entry_auto_drain_probe_failures=max(1, env.int("NODE_ENTRY_AUTO_DRAIN_PROBE_FAILURES", default=3)),
-        entry_auto_drain_max_nodes=min(500, max(1, env.int("NODE_ENTRY_AUTO_DRAIN_MAX_NODES", default=50))),
-        entry_auto_drain_reason=env.str("NODE_ENTRY_AUTO_DRAIN_REASON", default="entry_auto_drain"),
-        entry_auto_undrain_enabled=env.bool("NODE_ENTRY_AUTO_UNDRAIN_ENABLED", default=True),
-        entry_auto_undrain_healthy_ticks=max(1, env.int("NODE_ENTRY_AUTO_UNDRAIN_HEALTHY_TICKS", default=3)),
     )
 
     alerts = AlertsConfig(
@@ -473,12 +415,6 @@ def get_settings() -> Settings:
         reset_enabled=env.bool("TRAFFIC_RESET_ENABLED", default=False),
         reset_tick_sec=max(60, env.int("TRAFFIC_RESET_TICK_SEC", default=300)),
     )
-    transport = TransportConfig(
-        cleanup_enabled=env.bool("TRANSPORT_CLEANUP_ENABLED", default=True),
-        cleanup_tick_sec=max(300, env.int("TRANSPORT_CLEANUP_TICK_SEC", default=3600)),
-        retention_days=max(1, env.int("TRANSPORT_RETENTION_DAYS", default=30)),
-    )
-
     vpn_key = VpnKeyConfig(
         expiration_enabled=env.bool("VPN_KEY_EXPIRATION_ENABLED", default=True),
         expiration_tick_sec=max(30, env.int("VPN_KEY_EXPIRATION_TICK_SEC", default=60)),
@@ -570,7 +506,6 @@ def get_settings() -> Settings:
         routes=routes,
         edge=edge,
         traffic=traffic,
-        transport=transport,
         admin_auth=admin_auth,
         vpn_key=vpn_key,
         billing=billing,

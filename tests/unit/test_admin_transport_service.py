@@ -1,11 +1,26 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from services.admin_transport.service import AdminTransportService
-from services.config import TransportConfig
+
+
+def _policy(retention_days: int = 30):
+    return SimpleNamespace(
+        cleanup_enabled=True,
+        cleanup_tick_sec=600,
+        retention_days=retention_days,
+    )
+
+
+def _policy_repo_patch(policy):
+    return patch(
+        "services.admin_transport.policy.repository.TransportPolicyRepository",
+        return_value=SimpleNamespace(get_current=AsyncMock(return_value=policy)),
+    )
 
 
 @pytest.mark.asyncio
@@ -14,13 +29,9 @@ async def test_cleanup_old_data_returns_deleted_counts(async_session):
     svc.repo = AsyncMock()
     svc.repo.delete_published_outbox_older_than = AsyncMock(return_value=5)
     svc.repo.delete_events_older_than = AsyncMock(return_value=13)
-    svc._transport_settings = TransportConfig(
-        cleanup_enabled=True,
-        cleanup_tick_sec=600,
-        retention_days=30,
-    )
 
-    out = await svc.cleanup_old_data()
+    with _policy_repo_patch(_policy(retention_days=30)):
+        out = await svc.cleanup_old_data()
 
     assert out.deleted_outbox == 5
     assert out.deleted_events == 13
@@ -36,13 +47,9 @@ async def test_cleanup_old_data_skips_commit_when_nothing_deleted(async_session)
     svc.repo = AsyncMock()
     svc.repo.delete_published_outbox_older_than = AsyncMock(return_value=0)
     svc.repo.delete_events_older_than = AsyncMock(return_value=0)
-    svc._transport_settings = TransportConfig(
-        cleanup_enabled=True,
-        cleanup_tick_sec=600,
-        retention_days=30,
-    )
 
-    out = await svc.cleanup_old_data()
+    with _policy_repo_patch(_policy(retention_days=30)):
+        out = await svc.cleanup_old_data()
 
     assert out.deleted_outbox == 0
     assert out.deleted_events == 0

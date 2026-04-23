@@ -23,13 +23,21 @@ class AdminStatusService:
 
     def __init__(self, session: AsyncSession):
         self.settings = get_settings()
-        self.node_state_stale_after_sec = max(30, int(self.settings.node_agent.stale_after_sec))
+        self.session = session
         self.node_repository = VpnNodeRepository(session)
         self.placement_repository = UserPlacementRepository(session)
         self.route_repository = RouteRepository(session)
         self.profile_artifact_repository = ProfileArtifactRepository(session)
+        self._policy_cache = None
+
+    async def _stale_after_sec(self) -> int:
+        if self._policy_cache is None:
+            from services.nodes.policy.repository import NodePolicyRepository
+            self._policy_cache = await NodePolicyRepository(self.session).get_current()
+        return max(30, int(self._policy_cache.stale_after_sec))
 
     async def get_status(self) -> AdminStatusOut:
+        await self._stale_after_sec()
         node_rows = await self.node_repository.list_active_with_agent_state()
         placements_backend = await self.placement_repository.count_active_by_backend_node()
         now = datetime.now(timezone.utc)
@@ -91,6 +99,7 @@ class AdminStatusService:
         )
 
     async def get_readiness(self) -> AdminReadinessOut:
+        await self._stale_after_sec()
         node_rows = await self.node_repository.list_active_with_agent_state()
         active_artifact = await self.profile_artifact_repository.get_active()
         node_seen_after = self._node_seen_after(now=datetime.now(timezone.utc))
@@ -152,7 +161,11 @@ class AdminStatusService:
         )
 
     def _node_seen_after(self, *, now: datetime) -> datetime:
-        return now - timedelta(seconds=self.node_state_stale_after_sec)
+        # uses cached policy populated in get_status/get_readiness flows.
+        stale = 90
+        if self._policy_cache is not None:
+            stale = max(30, int(self._policy_cache.stale_after_sec))
+        return now - timedelta(seconds=stale)
 
     def _is_recent_healthy(self, agent_state, *, now: datetime) -> bool:
         if agent_state is None or not bool(agent_state.is_healthy):

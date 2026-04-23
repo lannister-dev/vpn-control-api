@@ -6,7 +6,6 @@ from uuid import UUID
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.config import get_settings
 from services.nodes.models import VpnNode, NodeAgentState
 from services.routing.repository import RoutingRepository
 from shared.database.session import AsyncDatabase
@@ -14,8 +13,16 @@ from shared.database.session import AsyncDatabase
 
 class RoutingService:
     def __init__(self, session: AsyncSession):
+        self.session = session
         self.repository = RoutingRepository(session)
-        self.node_state_stale_after_sec = max(30, int(get_settings().node_agent.stale_after_sec))
+        self._policy_cache = None
+        self.node_state_stale_after_sec = 90
+
+    async def _load_policy(self) -> None:
+        if self._policy_cache is None:
+            from services.nodes.policy.repository import NodePolicyRepository
+            self._policy_cache = await NodePolicyRepository(self.session).get_current()
+        self.node_state_stale_after_sec = max(30, int(self._policy_cache.stale_after_sec))
 
     async def select_nodes(
         self,
@@ -33,6 +40,7 @@ class RoutingService:
         5. Score: health_weight + load_weight (by capacity fill %)
         6. Sort by score DESC
         """
+        await self._load_policy()
         rows = await self.repository.list_available_nodes(
             preferred_region=preferred_region,
             exclude_node_ids=exclude_node_ids,

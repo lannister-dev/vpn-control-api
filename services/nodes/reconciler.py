@@ -6,8 +6,8 @@ from typing import Callable
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from services.config import NodeAgentConfig, get_settings
 from services.nodes.auto_heal_service import NodeAutoHealTickOut, NodePlacementAutoHealService
+from services.nodes.policy.repository import NodePolicyRepository
 from shared.database.session import AsyncDatabase
 from shared.redis.lock import RedisTickLock
 from shared.utils.logger import StructuredLogger
@@ -16,37 +16,30 @@ logger = StructuredLogger(logging.getLogger("node-auto-heal-reconciler"))
 
 
 class NodePlacementReconciler:
+    """Node auto-heal loop. Reads enabled / tick / thresholds from NodePolicy
+    on every tick so runtime edits picked up live.
+    """
+
+    _IDLE_WHEN_DISABLED_SEC = 60
+
     def __init__(
         self,
         *,
-        node_settings: NodeAgentConfig | None = None,
         session_maker: async_sessionmaker[AsyncSession] | None = None,
         service_factory: Callable[[AsyncSession, int, int, bool, int], NodePlacementAutoHealService] | None = None,
         tick_lock: RedisTickLock | None = None,
     ):
-        settings = node_settings or get_settings().node_agent
-
-        self._enabled = bool(settings.auto_heal_enabled)
-        self._interval_sec = max(30, int(settings.auto_heal_tick_sec))
-        self._stale_after_sec = max(30, int(settings.stale_after_sec))
-        self._max_nodes = min(500, max(1, int(settings.auto_heal_max_nodes)))
-        self._auto_undrain_enabled = bool(settings.auto_undrain_enabled)
-        self._drain_cooldown_sec = max(0, int(settings.auto_heal_drain_cooldown_sec))
-
         self._session_maker = session_maker or AsyncDatabase.get_session_maker()
         self._service_factory = service_factory or self._default_service_factory
         self._tick_lock = tick_lock or RedisTickLock(
             key="reconciler:node_auto_heal",
-            ttl_sec=max(30, self._interval_sec * 2),
+            ttl_sec=600,
             fail_open_if_client_unavailable=True,
         )
         self._stop_event = asyncio.Event()
         self._task: asyncio.Task | None = None
 
     async def start(self):
-        if not self._enabled:
-            logger.info("node_auto_heal_disabled")
-            return
         if self._task is not None and not self._task.done():
             return
         self._stop_event.clear()
@@ -60,38 +53,48 @@ class NodePlacementReconciler:
         self._task = None
 
     async def run_once(self) -> NodeAutoHealTickOut | None:
-        if not self._enabled:
+        async with self._session_maker() as session:
+            policy = await NodePolicyRepository(session).get_current()
+            await session.commit()
+        if not policy.auto_heal_enabled:
             return None
         async with self._tick_lock.hold() as acquired:
             if not acquired:
                 logger.debug("node_auto_heal_lock_not_acquired")
                 return NodeAutoHealTickOut()
-            return await self._execute_tick()
+            return await self._execute_tick(policy)
 
     async def _run(self) -> None:
         logger.info("node_auto_heal_loop_started")
         while not self._stop_event.is_set():
+            sleep_sec = self._IDLE_WHEN_DISABLED_SEC
             try:
-                await self.run_once()
+                async with self._session_maker() as session:
+                    policy = await NodePolicyRepository(session).get_current()
+                    await session.commit()
+                sleep_sec = max(30, int(policy.auto_heal_tick_sec))
+                if policy.auto_heal_enabled:
+                    async with self._tick_lock.hold() as acquired:
+                        if acquired:
+                            await self._execute_tick(policy)
             except asyncio.CancelledError:
                 raise
             except Exception:
                 logger.exception("node_auto_heal_tick_failed")
 
             try:
-                await asyncio.wait_for(self._stop_event.wait(), timeout=self._interval_sec)
+                await asyncio.wait_for(self._stop_event.wait(), timeout=sleep_sec)
             except TimeoutError:
                 continue
 
-    async def _execute_tick(self) -> NodeAutoHealTickOut:
-        logger.info("node_auto_heal_tick_start")
+    async def _execute_tick(self, policy) -> NodeAutoHealTickOut:
         async with self._session_maker() as session:
             service = self._service_factory(
                 session,
-                self._stale_after_sec,
-                self._max_nodes,
-                self._auto_undrain_enabled,
-                self._drain_cooldown_sec,
+                max(30, int(policy.stale_after_sec)),
+                min(500, max(1, int(policy.auto_heal_max_nodes))),
+                bool(policy.auto_undrain_enabled),
+                max(0, int(policy.auto_heal_drain_cooldown_sec)),
             )
             out = await service.run_once()
             await session.commit()
