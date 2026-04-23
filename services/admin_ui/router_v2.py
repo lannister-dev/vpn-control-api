@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 
 router = APIRouter(tags=["Admin UI"])
@@ -9,7 +9,19 @@ router = APIRouter(tags=["Admin UI"])
 STATIC_V2_DIR = Path(__file__).parent / "static" / "v2"
 _INDEX_PATH = STATIC_V2_DIR / "index.html"
 
-_RESERVED_PREFIXES = ("api/", "static/", "healthz", "metrics", "monitoring")
+_RESERVED_PREFIXES = ("api/", "static/", "healthz", "metrics", "monitoring", "admin/")
+
+
+@router.get("/admin/v2", include_in_schema=False)
+@router.get("/admin/v2/{full_path:path}", include_in_schema=False)
+async def legacy_v2_redirect(full_path: str = ""):
+    """Permanent redirect from old SPA location /admin/v2* → /."""
+    return RedirectResponse(url="/", status_code=308)
+
+
+@router.get("/admin", include_in_schema=False)
+async def legacy_admin_redirect():
+    return RedirectResponse(url="/", status_code=308)
 
 
 @router.get("/", response_class=HTMLResponse, include_in_schema=False)
