@@ -279,9 +279,9 @@ function NodeRoutes({ node, routes, onRefresh }) {
     try {
       if (action === "deactivate") {
         if (!confirm(`Деактивировать маршрут ${route.name}?`)) return;
-        await api.patch(`/routes/${route.id}`, { is_active: false });
+        await api.post(`/routes/${route.id}/deactivate`);
       } else if (action === "activate") {
-        await api.patch(`/routes/${route.id}`, { is_active: true });
+        await api.post(`/routes/${route.id}/activate`);
       } else {
         await api.post("/admin/set-route-health", {
           route_id: route.id,
@@ -307,13 +307,17 @@ function NodeRoutes({ node, routes, onRefresh }) {
       </thead>
       <tbody>
         {list.map((r) => (
-          <tr key={r.id}>
+          <tr key={r.id} style={{ opacity: r.is_active ? 1 : 0.55 }}>
             <td>
               {r.name}
-              {!r.is_active && <span className="pill" style={{ marginLeft: 6 }}>off</span>}
+              {!r.is_active && <span className="pill muted" style={{ marginLeft: 6 }}>off</span>}
             </td>
             <td className="small muted">{r.node_id === node.id ? "backend" : "entry"}</td>
-            <td><span className={"pill " + toneOf(r.health_status)}>{r.health_status}</span></td>
+            <td>
+              {r.is_active
+                ? <span className={"pill " + toneOf(r.health_status)}>{r.health_status}</span>
+                : <span className="pill muted">не активен</span>}
+            </td>
             <td className="tbl-num mono">{r.effective_weight}</td>
             <td className="row-actions" onClick={(e) => e.stopPropagation()}>
               <RouteRowMenu route={r} apply={apply} />
@@ -331,7 +335,7 @@ function RouteRowMenu({ route, apply }) {
   if (route.health_status !== "healthy") items.push({ icon: "check", label: "Set healthy", action: "set_healthy" });
   if (route.health_status !== "blocked") items.push({ icon: "alert-circle", label: "Block", action: "block", danger: true });
   if (route.health_status === "blocked") items.push({ icon: "refresh", label: "Recover", action: "recover" });
-  if (route.is_active) items.push({ icon: "pause", label: "Деактивировать", action: "deactivate", danger: true });
+  if (route.is_active) items.push({ icon: "pause", label: "Деактивировать", action: "deactivate" });
   else items.push({ icon: "play", label: "Активировать", action: "activate" });
 
   return (

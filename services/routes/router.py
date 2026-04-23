@@ -74,6 +74,34 @@ async def update_route(
     return await service.update_route(route_id, payload)
 
 
+@router.post(
+    "/{route_id}/deactivate",
+    response_model=RouteOut,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(admin_auth)],
+    summary="Deactivate route (soft-off)",
+)
+async def deactivate_route(
+        route_id: UUID,
+        service: RouteService = Depends(get_route_service),
+):
+    return await service.set_route_active(route_id, is_active=False)
+
+
+@router.post(
+    "/{route_id}/activate",
+    response_model=RouteOut,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(admin_auth)],
+    summary="Activate route",
+)
+async def activate_route(
+        route_id: UUID,
+        service: RouteService = Depends(get_route_service),
+):
+    return await service.set_route_active(route_id, is_active=True)
+
+
 @router.get(
     "",
     response_model=list[RouteOut],

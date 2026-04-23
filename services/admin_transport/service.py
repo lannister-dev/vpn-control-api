@@ -42,7 +42,6 @@ class AdminTransportService:
         self.repo = AdminTransportRepository(session)
         self._request = request
         settings = get_settings()
-        self._transport_settings = settings.transport
         self._nats_config = settings.nats
 
     def _get_runtime(self):
@@ -206,7 +205,10 @@ class AdminTransportService:
         )
 
     async def cleanup_old_data(self) -> TransportCleanupOut:
-        cutoff = datetime.now(timezone.utc) - timedelta(days=self._transport_settings.retention_days)
+        from services.admin_transport.policy.repository import TransportPolicyRepository
+        policy = await TransportPolicyRepository(self.session).get_current()
+        retention = max(1, int(policy.retention_days))
+        cutoff = datetime.now(timezone.utc) - timedelta(days=retention)
         deleted_outbox = await self.repo.delete_published_outbox_older_than(cutoff=cutoff)
         deleted_events = await self.repo.delete_events_older_than(cutoff=cutoff)
         if deleted_outbox > 0 or deleted_events > 0:
@@ -214,7 +216,7 @@ class AdminTransportService:
         return TransportCleanupOut(
             deleted_outbox=deleted_outbox,
             deleted_events=deleted_events,
-            retention_days=self._transport_settings.retention_days,
+            retention_days=retention,
         )
 
     async def force_snapshot(self, node_id: UUID) -> ForceSnapshotOut:

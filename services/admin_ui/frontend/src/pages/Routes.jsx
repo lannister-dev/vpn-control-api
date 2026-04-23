@@ -129,13 +129,17 @@ function RoutesList({ routesList, nodesById, search, setSearch, statusFilter, se
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id}>
+              <tr key={r.id} style={{ opacity: r.is_active ? 1 : 0.55 }}>
                 <td style={{ fontWeight: 500 }}>{r.name}<div className="mono muted" style={{ fontSize: 11 }}>{r.id.slice(0, 8)}…</div></td>
                 <td><span onClick={() => onOpenNode && onOpenNode(nodesById[r.node_id])} style={{ cursor: onOpenNode ? "pointer" : "default" }}>{nodeLabel(nodesById[r.node_id])}</span></td>
                 <td>{r.entry_node_id ? <span onClick={() => onOpenNode && onOpenNode(nodesById[r.entry_node_id])} style={{ cursor: onOpenNode ? "pointer" : "default" }}>{nodeLabel(nodesById[r.entry_node_id])}</span> : <span className="muted">—</span>}</td>
-                <td><span className={"pill " + (HEALTH_TONE[r.health_status] || "")}><span className={`status-dot ${HEALTH_TONE[r.health_status] || "muted"}`} /> {r.health_status}</span></td>
+                <td>
+                  {r.is_active
+                    ? <span className={"pill " + (HEALTH_TONE[r.health_status] || "")}><span className={`status-dot ${HEALTH_TONE[r.health_status] || "muted"}`} /> {r.health_status}</span>
+                    : <span className="pill muted">не активен</span>}
+                </td>
                 <td className="tbl-num mono">{r.effective_weight}/{r.base_weight}</td>
-                <td>{r.is_active ? <span className="pill ok">active</span> : <span className="pill">off</span>}</td>
+                <td>{r.is_active ? <span className="pill ok">active</span> : <span className="pill muted">off</span>}</td>
                 <td className="row-actions"><button className="row-btn" onClick={() => onEdit && onEdit(r)}>Edit</button></td>
               </tr>
             ))}
@@ -198,7 +202,7 @@ function RouteForm({ route, nodes, onClose }) {
   const deactivate = async () => {
     if (!confirm(`Деактивировать маршрут ${route.name}?`)) return;
     setBusy(true);
-    try { await api.patch(`/routes/${route.id}`, { is_active: false }); toast.ok("Маршрут деактивирован"); onClose(); }
+    try { await api.post(`/routes/${route.id}/deactivate`); toast.ok("Маршрут деактивирован"); onClose(); }
     catch (e) { setErr(e.message || String(e)); }
     finally { setBusy(false); }
   };
