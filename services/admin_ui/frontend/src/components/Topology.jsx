@@ -180,7 +180,17 @@ export function Topology({ routes = [], nodes = [], probes = [], onOpenNode }) {
         </div>
       </div>
 
-      <div className={`topo-v2 ${(focus || focusedRoute) ? "has-focus" : ""}`} ref={canvasRef}>
+      <div
+        className={`topo-v2 ${(focus || focusedRoute) ? "has-focus" : ""}`}
+        ref={canvasRef}
+        onClick={(e) => {
+          // click on empty canvas → reset focus (SVG hit-paths + node cards call stopPropagation)
+          if (e.target === e.currentTarget || e.target.classList?.contains("topo-v2-svg")) {
+            setFocus(null);
+            setFocusedRoute(null);
+          }
+        }}
+      >
         <div className="topo-v2-header topo-v2-header-left">
           <span>Entry · точка входа</span>
         </div>

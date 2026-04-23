@@ -198,7 +198,7 @@ function RouteForm({ route, nodes, onClose }) {
   const deactivate = async () => {
     if (!confirm(`Деактивировать маршрут ${route.name}?`)) return;
     setBusy(true);
-    try { await api.del(`/routes/${route.id}`); toast.ok("Маршрут деактивирован"); onClose(); }
+    try { await api.patch(`/routes/${route.id}`, { is_active: false }); toast.ok("Маршрут деактивирован"); onClose(); }
     catch (e) { setErr(e.message || String(e)); }
     finally { setBusy(false); }
   };
