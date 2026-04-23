@@ -287,6 +287,19 @@ class RouteService:
 
         return build_route_out(updated)
 
+    async def set_route_active(self, route_id: UUID, *, is_active: bool) -> RouteOut:
+        route = await self.route_repository.get_by_id(route_id)
+        if not route:
+            raise HTTPException(status_code=404, detail="Route not found")
+        if bool(route.is_active) == is_active:
+            return build_route_out(route)
+        updated = await self.route_repository.update_by_id(
+            route_id, {"is_active": is_active, "updated_at": datetime.now(timezone.utc)},
+        )
+        if not updated:
+            raise HTTPException(status_code=500, detail="Failed to update route")
+        return build_route_out(updated)
+
     async def list_routes(
             self,
             *,
