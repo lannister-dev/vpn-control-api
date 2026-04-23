@@ -228,6 +228,37 @@ class AdminTransportRepository:
         result = await self.session.execute(stmt)
         return result.rowcount or 0
 
+    async def cancel_outbox_item(self, outbox_id: UUID) -> bool:
+        result = await self.session.execute(
+            delete(NodeTransportOutbox).where(
+                NodeTransportOutbox.id == outbox_id,
+                NodeTransportOutbox.status.in_(("pending", "failed")),
+            )
+        )
+        return (result.rowcount or 0) > 0
+
+    async def outbox_breakdown_by_type(
+        self,
+        *,
+        node_id: UUID | None,
+        status_filter: str | None,
+    ) -> list[tuple[str, str, int]]:
+        stmt = (
+            select(
+                NodeTransportOutbox.event_type,
+                NodeTransportOutbox.status,
+                func.count().label("cnt"),
+            )
+            .group_by(NodeTransportOutbox.event_type, NodeTransportOutbox.status)
+            .order_by(func.count().desc())
+        )
+        if node_id is not None:
+            stmt = stmt.where(NodeTransportOutbox.node_id == node_id)
+        if status_filter is not None:
+            stmt = stmt.where(NodeTransportOutbox.status == status_filter)
+        rows = (await self.session.execute(stmt)).all()
+        return [(row[0], row[1], int(row[2])) for row in rows]
+
     # ── Event log browser ─────────────────────────────────────
 
     async def list_events(

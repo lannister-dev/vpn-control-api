@@ -56,3 +56,19 @@ class TrafficHistoryListOut(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class UserTrafficSummaryOut(BaseModel):
+    user_id: UUID
+    telegram_id: int | None = None
+    username: str | None = None
+    plan_name: str | None = None
+    bytes: int
+    keys: int
+
+
+class UserTrafficSummaryListOut(BaseModel):
+    period: str
+    from_ts: datetime
+    to_ts: datetime
+    items: list[UserTrafficSummaryOut]

@@ -6,6 +6,7 @@ from uuid import UUID
 from sqlalchemy import BigInteger, cast, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.nodes.models import VpnNode
 from services.traffic.nodes.model import NodeTrafficUsage
 from services.traffic.nodes.schemas import (
     NodePairAggregate,
@@ -167,6 +168,34 @@ class NodeTrafficUsageRepository(BaseRepository[NodeTrafficUsage]):
             )
             for row in result.all()
         ]
+
+    async def fleet_timeseries_by_region(
+        self,
+        *,
+        from_ts: datetime,
+        to_ts: datetime,
+        resolution_seconds: int,
+    ) -> list[tuple[datetime, str, int, int]]:
+        epoch = func.extract("epoch", self.model.created_at)
+        bucket_idx = cast(epoch / resolution_seconds, BigInteger)
+        bucket_ts = func.to_timestamp(bucket_idx * resolution_seconds)
+        self_node_id = func.coalesce(self.model.entry_node_id, self.model.backend_node_id)
+
+        stmt = (
+            select(
+                bucket_ts.label("ts"),
+                VpnNode.region.label("region"),
+                func.coalesce(func.sum(self.model.bytes_in), 0),
+                func.coalesce(func.sum(self.model.bytes_out), 0),
+            )
+            .join(VpnNode, VpnNode.id == self_node_id)
+            .where(self.model.created_at >= from_ts)
+            .where(self.model.created_at < to_ts)
+            .group_by(bucket_ts, VpnNode.region)
+            .order_by(bucket_ts.asc())
+        )
+        result = await self.session.execute(stmt)
+        return [(row[0], row[1], int(row[2]), int(row[3])) for row in result.all()]
 
     async def delete_older_than(self, *, cutoff: datetime) -> int:
         result = await self.session.execute(

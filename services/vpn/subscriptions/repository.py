@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -76,12 +76,55 @@ class SubscriptionRepository(BaseRepository[Subscription]):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
+    async def list_paginated(
+            self,
+            *,
+            active_only: bool = False,
+            plan_id: UUID | None = None,
+            limit: int = 50,
+            offset: int = 0,
+    ) -> tuple[list[Subscription], int]:
+        base = select(self.model)
+        if active_only:
+            base = base.where(self.model.is_active.is_(True))
+        if plan_id is not None:
+            base = base.where(self.model.plan_id == plan_id)
+
+        count_stmt = select(func.count()).select_from(base.subquery())
+        total = int((await self.session.execute(count_stmt)).scalar_one())
+
+        stmt = base.options(joinedload(self.model.plan)).order_by(self.model.created_at.desc()).limit(limit).offset(offset)
+        result = await self.session.execute(stmt)
+        items = list(result.scalars().unique().all())
+        return items, total
+
     async def deactivate(self, subscription_id: UUID) -> None:
         sub = await self.get_by_id(subscription_id)
         if not sub:
             raise SubscriptionNotFound
         sub.is_active = False
         await self.session.flush()
+
+    async def count_stats(self) -> tuple[int, int, int]:
+        active_int = case((self.model.is_active.is_(True), 1), else_=0)
+        expired_int = case(
+            (
+                and_(
+                    self.model.is_active.is_(True),
+                    self.model.expires_at.isnot(None),
+                    self.model.expires_at < func.now(),
+                ),
+                1,
+            ),
+            else_=0,
+        )
+        stmt = select(
+            func.count().label("total"),
+            func.coalesce(func.sum(active_int), 0).label("active"),
+            func.coalesce(func.sum(expired_int), 0).label("expired"),
+        ).select_from(self.model)
+        row = (await self.session.execute(stmt)).one()
+        return int(row.total), int(row.active), int(row.expired)
 
     async def find_active_subscription(self, user_id: UUID, plan_id: UUID):
         result = await self.session.execute(

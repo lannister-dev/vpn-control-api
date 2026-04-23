@@ -1,5 +1,13 @@
 ARG PYTHON_BUILD_IMAGE=python:3.10
 ARG PYTHON_RUNTIME_IMAGE=python:3.10-slim
+ARG NODE_BUILD_IMAGE=node:20-alpine
+
+FROM ${NODE_BUILD_IMAGE} AS ui-build
+WORKDIR /ui
+COPY services/admin_ui/frontend/package.json services/admin_ui/frontend/package-lock.json* ./
+RUN npm install --no-audit --no-fund
+COPY services/admin_ui/frontend/ ./
+RUN npm run build
 
 FROM ${PYTHON_BUILD_IMAGE} AS compile-image
 
@@ -19,6 +27,7 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 COPY . /app
+COPY --from=ui-build /ui/dist /app/services/admin_ui/static/v2
 
 EXPOSE 8000
 

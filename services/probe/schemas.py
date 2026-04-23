@@ -222,3 +222,4 @@ class ProbeAutoDrainMigrateOut(BaseModel):
 class ProbeCleanupOut(BaseModel):
     deleted: int = Field(ge=0)
     retention_days: int = Field(ge=1)
+

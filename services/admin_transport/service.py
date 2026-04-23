@@ -19,6 +19,7 @@ from services.admin_transport.schemas import (
     EventLogListOut,
     EventLogSummary,
     ForceSnapshotOut,
+    OutboxBreakdownItem,
     OutboxListOut,
     OutboxRetryAllOut,
     OutboxRetryOut,
@@ -161,6 +162,21 @@ class AdminTransportService:
         if count > 0:
             await self.session.commit()
         return OutboxRetryAllOut(retried_count=count)
+
+    async def cancel_outbox_item(self, outbox_id: UUID) -> OutboxRetryOut:
+        ok = await self.repo.cancel_outbox_item(outbox_id)
+        if ok:
+            await self.session.commit()
+        return OutboxRetryOut(ok=ok)
+
+    async def outbox_breakdown_by_type(
+        self,
+        *,
+        node_id: UUID | None = None,
+        status_filter: str | None = None,
+    ) -> list[OutboxBreakdownItem]:
+        rows = await self.repo.outbox_breakdown_by_type(node_id=node_id, status_filter=status_filter)
+        return [OutboxBreakdownItem(event_type=et, status=st, count=c) for et, st, c in rows]
 
     async def list_events(
         self,

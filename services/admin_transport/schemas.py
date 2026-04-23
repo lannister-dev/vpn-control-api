@@ -111,6 +111,16 @@ class OutboxRetryAllOut(BaseModel):
     retried_count: int
 
 
+class OutboxBreakdownItem(BaseModel):
+    event_type: str
+    status: str
+    count: int
+
+
+class OutboxBreakdownOut(BaseModel):
+    items: list[OutboxBreakdownItem]
+
+
 # ── Event log browser ────────────────────────────────────────
 
 class EventWithNodeOut(TransportEventOut):
