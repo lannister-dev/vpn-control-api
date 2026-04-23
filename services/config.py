@@ -206,13 +206,6 @@ class TrafficConfig:
 
 
 @dataclass
-class TransportConfig:
-    cleanup_enabled: bool = True
-    cleanup_tick_sec: int = 3600
-    retention_days: int = 30
-
-
-@dataclass
 class BillingConfig:
     crypto_api_url: str = "https://api.cryptocloud.plus/v2"
     crypto_api_key: str = ""
@@ -283,7 +276,6 @@ class Settings:
     routes: RoutesConfig
     edge: EdgeConfig
     traffic: TrafficConfig
-    transport: TransportConfig
     admin_auth: AdminAuthConfig
     vpn_key: VpnKeyConfig
     billing: BillingConfig
@@ -473,12 +465,6 @@ def get_settings() -> Settings:
         reset_enabled=env.bool("TRAFFIC_RESET_ENABLED", default=False),
         reset_tick_sec=max(60, env.int("TRAFFIC_RESET_TICK_SEC", default=300)),
     )
-    transport = TransportConfig(
-        cleanup_enabled=env.bool("TRANSPORT_CLEANUP_ENABLED", default=True),
-        cleanup_tick_sec=max(300, env.int("TRANSPORT_CLEANUP_TICK_SEC", default=3600)),
-        retention_days=max(1, env.int("TRANSPORT_RETENTION_DAYS", default=30)),
-    )
-
     vpn_key = VpnKeyConfig(
         expiration_enabled=env.bool("VPN_KEY_EXPIRATION_ENABLED", default=True),
         expiration_tick_sec=max(30, env.int("VPN_KEY_EXPIRATION_TICK_SEC", default=60)),
@@ -570,7 +556,6 @@ def get_settings() -> Settings:
         routes=routes,
         edge=edge,
         traffic=traffic,
-        transport=transport,
         admin_auth=admin_auth,
         vpn_key=vpn_key,
         billing=billing,

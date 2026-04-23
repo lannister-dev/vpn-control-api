@@ -23,6 +23,7 @@ from services.auth.admin.router import router as admin_auth_router
 from services.admin_ops.router import router as admin_ops_router
 from services.admin_status.router import router as admin_status_router
 from services.admin_transport.router import router as admin_transport_router
+from services.admin_transport.policy.router import router as admin_transport_policy_router
 from services.admin_nodes.router import (
     admin_router as nodes_admin_router,
     installer_router as nodes_installer_router,
@@ -94,6 +95,7 @@ api_router.include_router(admin_auth_router)
 api_router.include_router(admin_ops_router)
 api_router.include_router(admin_status_router)
 api_router.include_router(admin_transport_router)
+api_router.include_router(admin_transport_policy_router)
 api_router.include_router(nodes_admin_router)
 api_router.include_router(nodes_installer_router)
 api_router.include_router(entry_router)

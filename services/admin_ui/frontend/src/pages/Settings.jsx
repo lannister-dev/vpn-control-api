@@ -7,6 +7,7 @@ import { toast } from "../components/Toast.jsx";
 
 const SECTIONS = [
   { id: "probe", label: "Probe-политика", icon: "shield-check", hint: "пороги маршрутов + автодрейн" },
+  { id: "transport", label: "Транспорт (NATS)", icon: "activity", hint: "хранение событий и outbox" },
 ];
 
 export function SettingsPage() {
@@ -39,9 +40,100 @@ export function SettingsPage() {
 
         <div>
           {section === "probe" && <ProbePolicySection />}
+          {section === "transport" && <TransportPolicySection />}
         </div>
       </div>
     </div>
+  );
+}
+
+function TransportPolicySection() {
+  const q = useQuery(() => api.get("/admin/transport/policy"), { interval: 0 });
+  const [f, setF] = useState(null);
+  const [initial, setInitial] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (q.data) { setF(q.data); setInitial(q.data); }
+  }, [q.data]);
+
+  const set = (k) => (e) => {
+    const val = e.target.type === "checkbox" ? e.target.checked
+      : (e.target.type === "number" ? Number(e.target.value) : e.target.value);
+    setF((s) => ({ ...s, [k]: val }));
+  };
+
+  const dirtyFields = useMemo(() => {
+    if (!f || !initial) return [];
+    return Object.keys(f).filter((k) => {
+      if (k === "id" || k === "created_at" || k === "updated_at") return false;
+      return JSON.stringify(f[k]) !== JSON.stringify(initial[k]);
+    });
+  }, [f, initial]);
+  const dirty = dirtyFields.length > 0;
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      const payload = {};
+      for (const k of dirtyFields) payload[k] = f[k] === "" ? null : f[k];
+      const updated = await api.patch("/admin/transport/policy", payload);
+      setF(updated);
+      setInitial(updated);
+      toast.ok(`Сохранено · ${dirtyFields.length} изменений`);
+    } catch (e) { toast.bad(e.message || "Ошибка"); }
+    finally { setBusy(false); }
+  };
+
+  const cancel = () => setF(initial);
+
+  if (!f) return <div className="card"><div className="card-body muted">Загрузка…</div></div>;
+
+  return (
+    <>
+      <div className="card">
+        <div className="card-head">
+          <Icon name="activity" size={14} />
+          <div className="sec-title">Транспорт · cleanup</div>
+          <div className="sec-sub">удаление старых событий и опубликованных outbox-записей</div>
+          <div className="sec-spacer" />
+          <label className="form-check" style={{ margin: 0 }}>
+            <input type="checkbox" checked={!!f.cleanup_enabled} onChange={set("cleanup_enabled")} />
+            <span>Включено</span>
+          </label>
+        </div>
+        <div className="card-body" style={{ opacity: f.cleanup_enabled ? 1 : 0.55 }}>
+          <div className="form-row">
+            <Field label="Retention, дней" hint="хранение outbox + event_log">
+              <input type="number" min={1} max={365} value={f.retention_days} onChange={set("retention_days")} />
+            </Field>
+            <Field label="Cleanup tick, сек" hint="интервал фонового джоба">
+              <input type="number" min={60} max={86400} value={f.cleanup_tick_sec} onChange={set("cleanup_tick_sec")} />
+            </Field>
+          </div>
+          <div className="muted small">
+            Cleanup удаляет события типа heartbeat / sync_report и выполненные outbox-записи старше Retention дней. Не трогает failed outbox (их нужно разбирать явно).
+          </div>
+        </div>
+      </div>
+
+      {dirty && (
+        <div style={{
+          position: "sticky", bottom: 12, marginTop: 16, zIndex: 10,
+          display: "flex", alignItems: "center", gap: 12, padding: "10px 14px",
+          background: "var(--surface)", border: "1px solid var(--accent-border)",
+          borderRadius: 10, boxShadow: "var(--shadow-lg)",
+        }}>
+          <Icon name="alert-triangle" size={14} style={{ color: "var(--warn)" }} />
+          <span style={{ fontSize: 13, fontWeight: 500 }}>
+            Несохранённых изменений: {dirtyFields.length}
+          </span>
+          <span className="muted small" style={{ flex: 1 }}>{dirtyFields.join(", ")}</span>
+          <button className="btn btn-ghost" onClick={cancel} disabled={busy}>Отменить</button>
+          <button className="btn btn-primary" onClick={save} disabled={busy}>Сохранить</button>
+        </div>
+      )}
+    </>
   );
 }
 
