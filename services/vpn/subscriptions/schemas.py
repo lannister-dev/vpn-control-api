@@ -46,7 +46,7 @@ class SubscriptionSetMaxDevicesIn(BaseModel):
     max_devices: int = Field(gt=0, le=100)
 
 
-class SubscriptionStatsOut(BaseModel):
+class SubscriptionCountersOut(BaseModel):
     total: int
     active: int
     expired: int

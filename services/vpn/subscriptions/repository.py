@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -106,18 +106,25 @@ class SubscriptionRepository(BaseRepository[Subscription]):
         await self.session.flush()
 
     async def count_stats(self) -> tuple[int, int, int]:
-        total_res = await self.session.execute(select(func.count()).select_from(self.model))
-        active_res = await self.session.execute(
-            select(func.count()).select_from(self.model).where(self.model.is_active.is_(True)),
-        )
-        expired_res = await self.session.execute(
-            select(func.count()).select_from(self.model).where(
-                self.model.is_active.is_(True),
-                self.model.expires_at.isnot(None),
-                self.model.expires_at < func.now(),
+        active_int = case((self.model.is_active.is_(True), 1), else_=0)
+        expired_int = case(
+            (
+                and_(
+                    self.model.is_active.is_(True),
+                    self.model.expires_at.isnot(None),
+                    self.model.expires_at < func.now(),
+                ),
+                1,
             ),
+            else_=0,
         )
-        return int(total_res.scalar_one()), int(active_res.scalar_one()), int(expired_res.scalar_one())
+        stmt = select(
+            func.count().label("total"),
+            func.coalesce(func.sum(active_int), 0).label("active"),
+            func.coalesce(func.sum(expired_int), 0).label("expired"),
+        ).select_from(self.model)
+        row = (await self.session.execute(stmt)).one()
+        return int(row.total), int(row.active), int(row.expired)
 
     async def find_active_subscription(self, user_id: UUID, plan_id: UUID):
         result = await self.session.execute(
