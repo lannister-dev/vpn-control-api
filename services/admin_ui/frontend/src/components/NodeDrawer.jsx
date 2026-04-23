@@ -105,28 +105,42 @@ export function NodeDrawer({ node, onClose, onGoto }) {
 }
 
 function SshHintModal({ node, onClose }) {
-  const host = node.reality_ip || node.public_domain || node.internal_wg_ip || "—";
-  const cmd = host === "—" ? "—" : `ssh root@${host}`;
+  const host = node.reality_ip || node.public_domain || node.internal_wg_ip || "";
+  const user = "root";
+  const cmd = host ? `ssh ${user}@${host}` : "—";
+  const sshUrl = host ? `ssh://${user}@${host}` : null;
+
   const copy = () => {
+    if (!host) return;
     navigator.clipboard.writeText(cmd).then(() => toast.ok("Команда скопирована"));
   };
+
+  const openInTerminal = () => {
+    if (!sshUrl) return;
+    window.location.href = sshUrl;
+  };
+
   return (
     <Modal title={`SSH · ${node.name}`} onClose={onClose} footer={
       <>
         <button className="btn btn-ghost" onClick={onClose}>Закрыть</button>
-        <button className="btn btn-primary" onClick={copy} disabled={cmd === "—"}>
-          <Icon name="command" size={12} /> Copy
+        <button className="btn" onClick={copy} disabled={!host}>
+          <Icon name="command" size={12} /> Скопировать команду
+        </button>
+        <button className="btn btn-primary" onClick={openInTerminal} disabled={!sshUrl}>
+          <Icon name="terminal" size={12} /> Открыть в терминале
         </button>
       </>
     }>
       <Field label="Host">
-        <input type="text" readOnly value={host} style={{ fontFamily: "var(--font-mono)", fontSize: 12 }} />
+        <input type="text" readOnly value={host || "—"} style={{ fontFamily: "var(--font-mono)", fontSize: 12 }} />
       </Field>
       <Field label="Команда">
         <input type="text" readOnly value={cmd} style={{ fontFamily: "var(--font-mono)", fontSize: 12 }} />
       </Field>
       <div className="muted small">
-        Control-plane не проксирует SSH. Скопируйте команду и выполните из вашей рабочей машины — убедитесь что ваш публичный ключ заведён в authorized_keys ноды.
+        Кнопка «Открыть в терминале» использует системный <span className="mono">ssh://</span> handler — запускается iTerm / Terminal на macOS и настроенный SSH-клиент на Windows/Linux. Если ничего не открывается, скопируйте команду и запустите вручную.
+        Убедитесь что ваш публичный ключ лежит в <span className="mono">~root/.ssh/authorized_keys</span> на ноде.
       </div>
     </Modal>
   );
