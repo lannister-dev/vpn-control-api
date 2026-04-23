@@ -21,6 +21,7 @@ const GROUPS = [
     { id: "zones", label: "Зоны", icon: "globe" },
     { id: "admin-users", label: "Админы", icon: "shield" },
     { id: "ops", label: "Операции", icon: "wrench" },
+    { id: "settings", label: "Настройки", icon: "sliders" },
   ]},
 ];
 

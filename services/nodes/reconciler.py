@@ -68,7 +68,7 @@ class NodePlacementReconciler:
                 return NodeAutoHealTickOut()
             return await self._execute_tick()
 
-    async def _run(self):
+    async def _run(self) -> None:
         logger.info("node_auto_heal_loop_started")
         while not self._stop_event.is_set():
             try:

@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Трафик · Control Panel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/styles.css?v=1" />
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+<script src="assets/mock.js?v=2"></script>
+<script src="assets/icons.js?v=1"></script>
+<script type="text/babel" src="assets/chrome.jsx?v=1"></script>
+<script type="text/babel" src="assets/traffic.jsx?v=1"></script>
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+const TWEAK_DEFAULS = /*EDITMODE-BEGIN*/{
+  "theme": "dark",
+  "density": "comfortable",
+  "accent": "indigo"
+}/*EDITMODE-END*/;
+
+function App() {
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || TWEAK_DEFAULS.theme);
+  const [density, setDensity] = useState(() => localStorage.getItem('density') || TWEAK_DEFAULS.density);
+  const [accent, setAccent] = useState(() => localStorage.getItem('accent') || TWEAK_DEFAULS.accent);
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidecollapse') === '1');
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [tweaksOpen, setTweaksOpen] = useState(false);
+  const [lastSync, setLastSync] = useState('только что');
+
+  useEffect(() => { document.documentElement.setAttribute('data-theme', theme); localStorage.setItem('theme', theme); }, [theme]);
+  useEffect(() => { document.documentElement.setAttribute('data-density', density); localStorage.setItem('density', density); }, [density]);
+  useEffect(() => { document.documentElement.setAttribute('data-accent', accent); localStorage.setItem('accent', accent); }, [accent]);
+  useEffect(() => { localStorage.setItem('sidecollapse', collapsed ? '1' : '0'); }, [collapsed]);
+
+  // Cmd+K palette
+  useEffect(() => {
+    const h = e => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setPaletteOpen(o => !o); }
+      if (e.key === 'Escape') { setPaletteOpen(false); }
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, []);
+
+  // Tweaks host integration
+  useEffect(() => {
+    const onMsg = e => {
+      if (e.data?.type === '__activate_edit_mode') setTweaksOpen(true);
+      if (e.data?.type === '__deactivate_edit_mode') setTweaksOpen(false);
+    };
+    window.addEventListener('message', onMsg);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  const setTweak = (k, v) => window.parent.postMessage({ type: '__edit_mode_set_keys', edits: { [k]: v } }, '*');
+
+  return (
+    <div className="app">
+      <Sidebar
+        activeTab="traffic"
+        onTab={() => {}}
+        collapsed={collapsed}
+        onToggle={() => setCollapsed(c => !c)}
+        onOpenPalette={() => setPaletteOpen(true)} />
+      <div className="main">
+        <Topbar
+          crumbs={['Мониторинг', 'Трафик']}
+          onOpenPalette={() => setPaletteOpen(true)}
+          onRefresh={() => setLastSync('только что')}
+          lastSync={lastSync}
+          theme={theme}
+          onToggleTheme={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} />
+        <TrafficPage />
+      </div>
+      <Palette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onSelect={() => setPaletteOpen(false)}
+        theme={theme}
+        density={density} />
+      {tweaksOpen && (
+        <TweaksPanel
+          theme={theme} density={density} accent={accent}
+          onTheme={v => { setTheme(v); setTweak('theme', v); }}
+          onDensity={v => { setDensity(v); setTweak('density', v); }}
+          onAccent={v => { setAccent(v); setTweak('accent', v); }}
+          onClose={() => setTweaksOpen(false)} />
+      )}
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+</script>
+</body>
+</html>

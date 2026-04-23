@@ -144,6 +144,40 @@ async def admin_auth(
     )
 
 
+async def current_admin_actor(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Security(admin_bearer),
+) -> str:
+    """Best-effort admin identity label for audit records.
+
+    Returns:
+        - username from session cookie when available
+        - "api-key" when authenticated via bearer API key
+        - "system" otherwise (auth disabled / anonymous)
+    """
+    from services.auth.admin.constants import SESSION_COOKIE_NAME
+    from services.auth.admin.crypto import hash_session_id
+    from services.auth.admin.service import AdminAuthService
+    from shared.database.session import AsyncDatabase
+
+    settings = get_settings()
+    if settings.admin_auth.enabled:
+        session_id = request.cookies.get(SESSION_COOKIE_NAME)
+        if session_id:
+            session_hash = hash_session_id(session_id)
+            async with AsyncDatabase.get_session_maker()() as db_session:
+                svc = AdminAuthService(db_session)
+                result = await svc.validate_session(session_hash)
+                if result is not None:
+                    user, _session = result
+                    return user.username
+
+    if _admin_auth_api_key(credentials):
+        return "api-key"
+
+    return "system"
+
+
 connect_bearer = HTTPBearer(auto_error=False)
 
 

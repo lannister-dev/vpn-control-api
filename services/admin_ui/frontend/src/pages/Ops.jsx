@@ -1,287 +1,138 @@
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { api } from "../api/client.js";
 import { useQuery } from "../hooks/useQuery.js";
 import { Field } from "../components/Field.jsx";
 import { Icon } from "../components/Icon.jsx";
 import { toast } from "../components/Toast.jsx";
+import { nodeGeo } from "../lib/geo.js";
 
-const ACTIONS = ["set_healthy", "set_degraded", "set_suspected", "block", "recover"];
+const ACTION_META = {
+  set_healthy:   { label: "Вернуть healthy",  icon: "check",            tone: "ok"   },
+  set_suspected: { label: "Suspected",        icon: "alert-triangle",   tone: "warn" },
+  set_degraded:  { label: "Degraded",         icon: "alert-triangle",   tone: "warn" },
+  block:         { label: "Block",            icon: "alert-circle",     tone: "bad"  },
+  recover:       { label: "Recover",          icon: "refresh",          tone: "info" },
+};
+
+const ROUTE_HEALTH_TONE = {
+  healthy: "ok", warming_up: "info", degraded: "warn", suspected: "warn", blocked: "bad",
+};
+
+function relTime(iso) {
+  if (!iso) return "—";
+  const s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h`;
+  return `${Math.floor(s / 86400)}d`;
+}
 
 export function OpsPage() {
   const status = useQuery(() => api.get("/admin/status"), { interval: 30000 });
   const routes = useQuery(() => api.get("/routes?limit=500"), { interval: 30000 });
   const readiness = useQuery(() => api.get("/admin/readiness"), { interval: 15000 });
+  const audit = useQuery(() => api.get("/admin/audit?limit=20"), { interval: 15000 });
 
-  const backends = (status.data?.nodes || []).filter((n) => n.role === "backend");
+  const nodes = status.data?.nodes || [];
+  const backends = nodes.filter((n) => n.role === "backend");
   const routesList = routes.data || [];
+  const readinessReady = !!readiness.data?.ready;
+  const checks = readiness.data?.checks || [];
+  const failed = checks.filter((c) => !c.ok).length;
 
   return (
     <div className="page">
       <div className="page-head">
         <div className="page-head-main">
           <h1 className="page-title">Операции</h1>
-          <div className="page-subtitle">
-            Readiness: {readiness.data?.ready ? <span className="pill ok">ready</span> : <span className="pill bad">not ready</span>}
-            {" · "}
-            {status.data?.nodes?.length ?? "—"} нод в флоте
-          </div>
+          <div className="page-subtitle">Действия оператора и их история · настройки политик → раздел «Настройки»</div>
+        </div>
+        <div className="page-head-actions">
+          <button className="btn btn-ghost" onClick={() => { status.refetch(); routes.refetch(); readiness.refetch(); audit.refetch(); }}>
+            <Icon name="refresh" size={13} /> Обновить
+          </button>
         </div>
       </div>
 
+      {/* Readiness panel */}
+      <div className="sec">
+        <div className="kpi-hero">
+          <ReadinessCell
+            icon="shield-check"
+            label="Readiness"
+            value={readinessReady ? "ready" : "not ready"}
+            tone={readinessReady ? "up" : "down"}
+            hint={`${checks.length - failed}/${checks.length} checks`}
+          />
+          <ReadinessCell
+            icon="server"
+            label="Нод в флоте"
+            value={nodes.length}
+            hint={`${nodes.filter((n) => n.is_enabled && !n.is_draining).length} активных · ${nodes.filter((n) => n.is_draining).length} draining`}
+          />
+          <ReadinessCell
+            icon="route"
+            label="Маршрутов"
+            value={routesList.length}
+            hint={`${routesList.filter((r) => r.health_status === "blocked").length} blocked · ${routesList.filter((r) => ["degraded","suspected"].includes(r.health_status)).length} degraded`}
+          />
+          <ReadinessCell
+            icon="activity"
+            label="Админ-действий 24h"
+            value={audit.data?.items?.filter((a) => Date.now() - new Date(a.created_at).getTime() < 86400000).length ?? 0}
+            hint="миграции, health-override, policy изменения"
+          />
+        </div>
+
+        {!readinessReady && failed > 0 && (
+          <div className="card card-bad" style={{ marginTop: 10 }}>
+            <strong>Readiness not ready:</strong>
+            <ul style={{ margin: "6px 0 0 18px", padding: 0 }}>
+              {checks.filter((c) => !c.ok).map((c, i) => (
+                <li key={i} className="small">{c.name}: {c.detail || "failed"}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+
+      {/* Action forms */}
       <div className="split-2">
-        <MigrateForm backends={backends} />
-        <RouteHealthForm routes={routesList} />
+        <MigrateForm backends={backends} onDone={audit.refetch} />
+        <RouteHealthForm routes={routesList} onDone={audit.refetch} />
       </div>
 
+      {/* Audit feed */}
       <div className="sec" style={{ marginTop: 20 }}>
-        <ProbePolicyCard />
+        <AuditFeed items={audit.data?.items || []} loading={audit.loading} />
       </div>
     </div>
   );
 }
 
-function ProbePolicyCard() {
-  const q = useQuery(() => api.get("/admin/probe/policy"), { interval: 0 });
-  const [f, setF] = useState(null);
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => { if (q.data) setF(q.data); }, [q.data]);
-
-  if (!f) return (
-    <div className="card"><div className="card-body muted">Загрузка policy…</div></div>
-  );
-
-  const set = (k) => (e) => {
-    const val = e.target.type === "checkbox" ? e.target.checked : (e.target.type === "number" ? Number(e.target.value) : e.target.value);
-    setF((s) => ({ ...s, [k]: val }));
-  };
-
-  const save = async () => {
-    setBusy(true);
-    try {
-      const keys = [
-        "auto_route_health_enabled",
-        "route_suspected_after_failures", "route_degraded_after_failures", "route_block_after_failures",
-        "route_block_cooldown_hours",
-        "auto_drain_enabled", "auto_drain_tick_sec", "auto_drain_min_consecutive_failures",
-        "auto_drain_max_probe_age_sec", "auto_drain_max_nodes",
-        "auto_drain_source", "auto_drain_require_recent_failure", "auto_drain_include_already_draining",
-        "auto_drain_target_backend_id", "auto_drain_last_migration_reason",
-        "auto_undrain_enabled", "auto_undrain_min_consecutive_successes",
-        "auto_undrain_max_probe_age_sec", "auto_undrain_source",
-        "retention_days", "cleanup_enabled", "cleanup_tick_sec",
-        "synthetic_reconcile_enabled", "synthetic_reconcile_tick_sec",
-        "synthetic_key_valid_days", "synthetic_key_traffic_limit_mb",
-      ];
-      const payload = {};
-      for (const k of keys) if (f[k] !== undefined) payload[k] = f[k] === "" ? null : f[k];
-      const updated = await api.patch("/admin/probe/policy", payload);
-      setF(updated);
-      toast.ok("Probe-политика обновлена");
-    } catch (e) { toast.bad(e.message || "Ошибка"); }
-    finally { setBusy(false); }
-  };
-
-  const killSwitchOff = !f.auto_route_health_enabled;
-
+function ReadinessCell({ icon, label, value, hint, tone }) {
   return (
-    <div className="card">
-      <div className="card-head">
-        <Icon name="shield-check" size={14} />
-        <div className="sec-title">Probe-политика</div>
-        <div className="sec-sub">управление автоматикой probe · изменения применяются на лету</div>
-        <div className="sec-spacer" />
-        <label className="form-check" style={{ margin: 0 }}>
-          <input type="checkbox" checked={!!f.auto_route_health_enabled} onChange={set("auto_route_health_enabled")} />
-          <span>Автоматика включена</span>
-        </label>
+    <div className="kpi-cell">
+      <div className="kpi-label"><Icon name={icon} size={12} /> <span>{label}</span></div>
+      <div className="kpi-value-row">
+        <div className="kpi-value tnum">{value}</div>
       </div>
-
-      <div style={{ opacity: killSwitchOff ? 0.5 : 1, transition: "opacity 150ms ease" }}>
-        <Section
-          title="Пороги маршрутов"
-          subtitle="когда переводить route в suspected/degraded/blocked"
-          icon="route"
-          defaultOpen
-        >
-          <div className="form-row">
-            <Field label="Suspected после N подряд fail" hint="1–50">
-              <input type="number" min={1} max={50} value={f.route_suspected_after_failures} onChange={set("route_suspected_after_failures")} />
-            </Field>
-            <Field label="Degraded после" hint="2–50">
-              <input type="number" min={2} max={50} value={f.route_degraded_after_failures} onChange={set("route_degraded_after_failures")} />
-            </Field>
-          </div>
-          <div className="form-row">
-            <Field label="Blocked после" hint="3–50">
-              <input type="number" min={3} max={50} value={f.route_block_after_failures} onChange={set("route_block_after_failures")} />
-            </Field>
-            <Field label="Cooldown блокировки, часов" hint="1–168">
-              <input type="number" min={1} max={168} value={f.route_block_cooldown_hours} onChange={set("route_block_cooldown_hours")} />
-            </Field>
-          </div>
-        </Section>
-
-        <Section
-          title="Авто-drain нод"
-          subtitle={f.auto_drain_enabled ? "активен" : "выключен"}
-          icon="pause"
-          toneWhenClosed={f.auto_drain_enabled ? "ok" : "muted"}
-        >
-          <label className="form-check" style={{ marginBottom: 10 }}>
-            <input type="checkbox" checked={f.auto_drain_enabled} onChange={set("auto_drain_enabled")} />
-            Включить авто-drain при деградации
-          </label>
-          <div className="form-row">
-            <Field label="Тик, секунд">
-              <input type="number" min={30} max={3600} value={f.auto_drain_tick_sec} onChange={set("auto_drain_tick_sec")} />
-            </Field>
-            <Field label="Мин. подряд fail">
-              <input type="number" min={1} max={50} value={f.auto_drain_min_consecutive_failures} onChange={set("auto_drain_min_consecutive_failures")} />
-            </Field>
-          </div>
-          <div className="form-row">
-            <Field label="Макс. возраст probe, сек">
-              <input type="number" min={60} max={86400} value={f.auto_drain_max_probe_age_sec} onChange={set("auto_drain_max_probe_age_sec")} />
-            </Field>
-            <Field label="Макс. нод за тик">
-              <input type="number" min={1} max={500} value={f.auto_drain_max_nodes} onChange={set("auto_drain_max_nodes")} />
-            </Field>
-          </div>
-          <div className="form-row">
-            <Field label="Drain source" hint="имя probe-источника">
-              <input type="text" value={f.auto_drain_source || ""} onChange={set("auto_drain_source")} placeholder="probe-prod-entry" />
-            </Field>
-            <Field label="Reason label" hint="метка для логов миграции">
-              <input type="text" value={f.auto_drain_last_migration_reason || ""} onChange={set("auto_drain_last_migration_reason")} />
-            </Field>
-          </div>
-          <Field label="Target backend (UUID)" hint="пусто = автоматический выбор">
-            <input type="text" value={f.auto_drain_target_backend_id || ""} onChange={set("auto_drain_target_backend_id")} placeholder="—" />
-          </Field>
-          <label className="form-check">
-            <input type="checkbox" checked={!!f.auto_drain_require_recent_failure} onChange={set("auto_drain_require_recent_failure")} />
-            Требовать свежий probe failure
-          </label>
-          <label className="form-check" style={{ marginTop: 6 }}>
-            <input type="checkbox" checked={!!f.auto_drain_include_already_draining} onChange={set("auto_drain_include_already_draining")} />
-            Включать уже draining ноды в рассмотрение
-          </label>
-        </Section>
-
-        <Section
-          title="Авто-undrain нод"
-          subtitle={f.auto_undrain_enabled ? "активен" : "выключен"}
-          icon="play"
-          toneWhenClosed={f.auto_undrain_enabled ? "ok" : "muted"}
-        >
-          <label className="form-check" style={{ marginBottom: 10 }}>
-            <input type="checkbox" checked={f.auto_undrain_enabled} onChange={set("auto_undrain_enabled")} />
-            Включить авто-снятие drain при восстановлении
-          </label>
-          <div className="form-row">
-            <Field label="Мин. подряд OK">
-              <input type="number" min={1} max={50} value={f.auto_undrain_min_consecutive_successes} onChange={set("auto_undrain_min_consecutive_successes")} />
-            </Field>
-            <Field label="Макс. возраст probe, сек">
-              <input type="number" min={60} max={86400} value={f.auto_undrain_max_probe_age_sec} onChange={set("auto_undrain_max_probe_age_sec")} />
-            </Field>
-          </div>
-          <Field label="Undrain source" hint="пусто = тот же что и drain">
-            <input type="text" value={f.auto_undrain_source || ""} onChange={set("auto_undrain_source")} />
-          </Field>
-        </Section>
-
-        <Section
-          title="Хранение и cleanup"
-          subtitle={`retention ${f.retention_days}д · tick ${f.cleanup_tick_sec}s`}
-          icon="clock"
-        >
-          <div className="form-row">
-            <Field label="Retention, дней">
-              <input type="number" min={1} max={365} value={f.retention_days} onChange={set("retention_days")} />
-            </Field>
-            <Field label="Cleanup tick, сек">
-              <input type="number" min={60} max={86400} value={f.cleanup_tick_sec} onChange={set("cleanup_tick_sec")} />
-            </Field>
-          </div>
-          <label className="form-check">
-            <input type="checkbox" checked={!!f.cleanup_enabled} onChange={set("cleanup_enabled")} />
-            Включить cleanup старых probe-сигналов
-          </label>
-        </Section>
-
-        <Section
-          title="Synthetic probe"
-          subtitle={f.synthetic_reconcile_enabled ? "активен" : "выключен"}
-          icon="radar"
-          toneWhenClosed={f.synthetic_reconcile_enabled ? "ok" : "muted"}
-        >
-          <label className="form-check" style={{ marginBottom: 10 }}>
-            <input type="checkbox" checked={!!f.synthetic_reconcile_enabled} onChange={set("synthetic_reconcile_enabled")} />
-            Включить synthetic probe reconcile
-          </label>
-          <div className="form-row">
-            <Field label="Tick, сек">
-              <input type="number" min={30} max={86400} value={f.synthetic_reconcile_tick_sec} onChange={set("synthetic_reconcile_tick_sec")} />
-            </Field>
-            <Field label="Срок действия ключа, дней">
-              <input type="number" min={1} max={36500} value={f.synthetic_key_valid_days} onChange={set("synthetic_key_valid_days")} />
-            </Field>
-          </div>
-          <Field label="Лимит трафика synthetic-ключа, MB">
-            <input type="number" min={1} max={10485760} value={f.synthetic_key_traffic_limit_mb} onChange={set("synthetic_key_traffic_limit_mb")} />
-          </Field>
-        </Section>
-      </div>
-
-      <div style={{ padding: "12px 14px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "flex-end", gap: 8 }}>
-        <button className="btn btn-ghost" onClick={() => q.refetch()} disabled={busy}>Отменить</button>
-        <button className="btn btn-primary" onClick={save} disabled={busy}>Сохранить</button>
-      </div>
+      {hint && <div className={`kpi-delta ${tone || "flat"}`}>{hint}</div>}
     </div>
   );
 }
 
-function Section({ title, subtitle, icon, children, defaultOpen = false, toneWhenClosed = "" }) {
-  const [open, setOpen] = useState(defaultOpen);
-  return (
-    <div style={{ borderBottom: "1px solid var(--border)" }}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        style={{
-          width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "12px 14px",
-          background: "transparent", border: 0, cursor: "pointer", textAlign: "left",
-        }}
-      >
-        {icon && <Icon name={icon} size={13} style={{ color: "var(--text-muted)" }} />}
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 500, fontSize: 13 }}>{title}</div>
-          {subtitle && (
-            <div className={`small ${toneWhenClosed === "ok" ? "" : "muted"}`} style={{ color: toneWhenClosed === "ok" ? "var(--ok)" : undefined, marginTop: 2 }}>
-              {subtitle}
-            </div>
-          )}
-        </div>
-        <Icon name={open ? "chevron-down" : "chevron-right"} size={14} style={{ color: "var(--text-muted)" }} />
-      </button>
-      {open && (
-        <div style={{ padding: "4px 14px 16px" }}>
-          {children}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function MigrateForm({ backends }) {
+function MigrateForm({ backends, onDone }) {
   const [source, setSource] = useState("");
   const [target, setTarget] = useState("");
   const [reason, setReason] = useState("admin_manual");
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState(null);
   const [err, setErr] = useState("");
+  const [result, setResult] = useState(null);
+
+  const sourceNode = backends.find((n) => n.id === source);
+  const targetNode = target ? backends.find((n) => n.id === target) : null;
+  const capacityUsagePct = (n) => Math.min(100, Math.round(((n?.placements_backend || 0) / Math.max(n?.capacity || 50, 1)) * 100));
 
   const go = async () => {
     setBusy(true); setErr(""); setResult(null);
@@ -291,7 +142,9 @@ function MigrateForm({ backends }) {
       if (target) payload.target_backend_id = target;
       const r = await api.post("/admin/migrate-backend", payload);
       setResult(r);
-    } catch (e) { setErr(e.message || String(e)); }
+      toast.ok(`Мигрировано: ${r.migrated_count}`);
+      onDone?.();
+    } catch (e) { setErr(e.message || String(e)); toast.bad(e.message || "Ошибка"); }
     finally { setBusy(false); }
   };
 
@@ -300,6 +153,7 @@ function MigrateForm({ backends }) {
       <div className="card-head">
         <Icon name="arrow-right" size={14} />
         <div className="sec-title">Миграция плейсментов</div>
+        <div className="sec-sub">перенос активных ключей между backend-нодами</div>
       </div>
       <div className="card-body" style={{ flex: 1 }}>
         {err && <div className="form-error">{err}</div>}
@@ -309,41 +163,62 @@ function MigrateForm({ backends }) {
             {backends.map((n) => <option key={n.id} value={n.id}>{n.name} · {n.region}</option>)}
           </select>
         </Field>
-        <Field label="Целевая нода" hint="опционально (иначе авто)">
+        {sourceNode && (
+          <div className="muted small" style={{ marginTop: -8, marginBottom: 12 }}>
+            <Icon name="info" size={11} /> {sourceNode.placements_backend || 0} активных · {capacityUsagePct(sourceNode)}% capacity · {sourceNode.is_draining ? "draining" : "active"}
+          </div>
+        )}
+        <Field label="Целевая нода" hint="пусто = автоматический выбор">
           <select value={target} onChange={(e) => setTarget(e.target.value)}>
             <option value="">Авто</option>
-            {backends.map((n) => <option key={n.id} value={n.id}>{n.name} · {n.region}</option>)}
+            {backends.filter((n) => n.id !== source && n.is_enabled && !n.is_draining).map((n) => (
+              <option key={n.id} value={n.id}>{n.name} · {n.region} · {capacityUsagePct(n)}%</option>
+            ))}
           </select>
         </Field>
-        <Field label="Причина"><input type="text" value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
+        {targetNode && (
+          <div className="muted small" style={{ marginTop: -8, marginBottom: 12 }}>
+            <Icon name="info" size={11} /> Текущая загрузка: {capacityUsagePct(targetNode)}% · свободно capacity: {(targetNode.capacity || 0) - (targetNode.placements_backend || 0)}
+          </div>
+        )}
+        <Field label="Причина" hint="метка для логов">
+          <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} />
+        </Field>
         {result && (
-          <div style={{ marginTop: 10, padding: 10, background: "var(--surface-2)", borderRadius: 6, border: "1px solid var(--border)" }}>
-            <pre className="mono small" style={{ margin: 0, whiteSpace: "pre-wrap" }}>{JSON.stringify(result, null, 2)}</pre>
+          <div style={{ marginTop: 10, padding: 10, background: "var(--ok-soft)", borderRadius: 6, border: "1px solid var(--ok)" }}>
+            <div className="small" style={{ fontWeight: 500, color: "var(--ok)" }}>
+              <Icon name="check" size={12} /> Успех: мигрировано {result.migrated_count} плейсментов
+            </div>
           </div>
         )}
       </div>
       <div style={{ padding: "12px 14px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "flex-end" }}>
-        <button className="btn btn-primary" onClick={go} disabled={busy}>Запустить миграцию</button>
+        <button className="btn btn-primary" onClick={go} disabled={busy || !source}>
+          <Icon name="arrow-right" size={12} /> Запустить миграцию
+        </button>
       </div>
     </div>
   );
 }
 
-function RouteHealthForm({ routes }) {
+function RouteHealthForm({ routes, onDone }) {
   const [routeId, setRouteId] = useState("");
   const [action, setAction] = useState("set_healthy");
   const [cooldown, setCooldown] = useState(6);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  const [ok, setOk] = useState(false);
+
+  const route = routes.find((r) => r.id === routeId);
+  const currentTone = route ? (ROUTE_HEALTH_TONE[route.health_status] || "muted") : null;
 
   const go = async () => {
-    setBusy(true); setErr(""); setOk(false);
+    setBusy(true); setErr("");
     try {
       if (!routeId) throw new Error("Выберите маршрут");
       await api.post("/admin/set-route-health", { route_id: routeId, action, cooldown_hours: Number(cooldown) || 6 });
-      setOk(true);
-    } catch (e) { setErr(e.message || String(e)); }
+      toast.ok(`Маршрут ${route?.name} → ${ACTION_META[action]?.label}`);
+      onDone?.();
+    } catch (e) { setErr(e.message || String(e)); toast.bad(e.message || "Ошибка"); }
     finally { setBusy(false); }
   };
 
@@ -352,6 +227,7 @@ function RouteHealthForm({ routes }) {
       <div className="card-head">
         <Icon name="shield-check" size={14} />
         <div className="sec-title">Управление health маршрута</div>
+        <div className="sec-sub">override probe-политики вручную</div>
       </div>
       <div className="card-body" style={{ flex: 1 }}>
         {err && <div className="form-error">{err}</div>}
@@ -361,17 +237,87 @@ function RouteHealthForm({ routes }) {
             {routes.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
           </select>
         </Field>
-        <Field label="Действие">
-          <select value={action} onChange={(e) => setAction(e.target.value)}>
-            {ACTIONS.map((a) => <option key={a} value={a}>{a}</option>)}
-          </select>
+        {route && (
+          <div className="muted small" style={{ marginTop: -8, marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}>
+            Текущий статус: <span className={`pill ${currentTone}`}><span className={`status-dot ${currentTone}`} /> {route.health_status}</span>
+            <span>· weight {route.effective_weight}/{route.base_weight}</span>
+          </div>
+        )}
+        <div>
+          <div className="form-label">Действие</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
+            {Object.entries(ACTION_META).map(([key, meta]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setAction(key)}
+                className={`pill ${meta.tone}`}
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 4, cursor: "pointer",
+                  border: action === key ? `1px solid var(--${meta.tone})` : "1px solid transparent",
+                  outline: action === key ? `1px solid var(--${meta.tone})` : "none",
+                  outlineOffset: -1,
+                  fontWeight: action === key ? 600 : 400,
+                }}
+              >
+                <Icon name={meta.icon} size={11} />
+                {meta.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <Field label="Cooldown, часов" hint="1–72, применяется к block/recover">
+          <input type="number" min={1} max={72} value={cooldown} onChange={(e) => setCooldown(e.target.value)} />
         </Field>
-        <Field label="Cooldown, часов" hint="1–72"><input type="number" min={1} max={72} value={cooldown} onChange={(e) => setCooldown(e.target.value)} /></Field>
-        {ok && <div className="muted small" style={{ marginTop: 8 }}>Применено.</div>}
       </div>
       <div style={{ padding: "12px 14px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "flex-end" }}>
-        <button className="btn btn-primary" onClick={go} disabled={busy}>Применить</button>
+        <button className="btn btn-primary" onClick={go} disabled={busy || !routeId}>
+          Применить
+        </button>
       </div>
+    </div>
+  );
+}
+
+const AUDIT_ACTION_META = {
+  migrate_backend:     { icon: "arrow-right",   tone: "info",   label: "Миграция" },
+  set_route_health:    { icon: "shield-check",  tone: "warn",   label: "Route health" },
+  probe_policy_update: { icon: "sliders",       tone: "accent", label: "Policy" },
+};
+
+function AuditFeed({ items, loading }) {
+  return (
+    <div className="card">
+      <div className="card-head">
+        <Icon name="activity" size={14} />
+        <div className="sec-title">Недавние действия</div>
+        <div className="sec-sub">аудит лог мутаций за последние 24ч</div>
+        <div className="sec-spacer" />
+        <span className="muted text-xs">{items.length} записей</span>
+      </div>
+      {loading && !items.length && <div className="muted" style={{ padding: 14 }}>Загрузка…</div>}
+      {!loading && !items.length && <div className="muted" style={{ padding: 14 }}>Нет записей. Действия появятся здесь автоматически.</div>}
+      {items.map((r) => {
+        const meta = AUDIT_ACTION_META[r.action] || { icon: "activity", tone: "", label: r.action };
+        return (
+          <div key={r.id} className="activity" style={{ borderBottom: "1px solid var(--border)" }}>
+            <div className={`activity-dot ${meta.tone === "accent" ? "ok" : meta.tone}`} />
+            <div className="activity-main">
+              <div className="activity-text">
+                <span className={`pill ${meta.tone}`} style={{ marginRight: 8 }}>
+                  <Icon name={meta.icon} size={11} /> {meta.label}
+                </span>
+                {r.summary || r.action}
+              </div>
+              <div className="activity-meta">
+                <strong>{r.actor}</strong>
+                {r.target && <> · <span className="mono">{String(r.target).slice(0, 12)}…</span></>}
+                {" · "}{relTime(r.created_at)} назад
+              </div>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
