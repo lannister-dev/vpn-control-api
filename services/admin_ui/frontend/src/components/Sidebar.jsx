@@ -80,14 +80,12 @@ export function Sidebar({ activeTab, onTab, collapsed, onToggle, onOpenPalette, 
             <span>{user?.role || "admin"}</span>
           </div>
         </div>
-        <div className="side-footer-actions" style={{ display: "flex", gap: 4 }}>
-          <button className="btn btn-ghost btn-icon" title="Настройки" style={{ width: 24, height: 24 }}>
-            <Icon name="settings" size={14} />
-          </button>
-          <button className="btn btn-ghost btn-icon" title="Выход" style={{ width: 24, height: 24 }} onClick={onLogout}>
-            <Icon name="log-out" size={14} />
-          </button>
-        </div>
+        <button className="btn btn-ghost btn-icon" title="Настройки" style={{ width: 24, height: 24 }}>
+          <Icon name="settings" size={14} />
+        </button>
+        <button className="btn btn-ghost btn-icon" title="Выход" style={{ width: 24, height: 24 }} onClick={onLogout}>
+          <Icon name="log-out" size={14} />
+        </button>
       </div>
     </aside>
   );

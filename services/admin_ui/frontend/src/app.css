@@ -10,30 +10,6 @@ body {
 .app-content { flex: 1; overflow-y: auto; padding-top: 4px; display: flex; justify-content: center; }
 .app-content > .page { width: 100%; }
 
-.sidebar[data-collapsed="true"] .side-footer-actions { display: none; }
-.sidebar[data-collapsed="true"] .side-footer {
-  padding: 10px 0;
-  justify-content: center;
-  gap: 0;
-}
-.sidebar[data-collapsed="true"] .side-footer .user-avatar {
-  margin: 0 auto;
-  width: 28px;
-  height: 28px;
-  font-size: 11px;
-  position: relative;
-}
-.sidebar[data-collapsed="true"] .side-footer .user-avatar::after {
-  content: "";
-  position: absolute;
-  bottom: -1px;
-  right: -1px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--ok);
-  border: 2px solid var(--bg-elevated);
-}
 
 .card-bad { border-color: var(--bad); color: var(--bad); background: var(--bad-soft); padding: 12px 14px; }
 

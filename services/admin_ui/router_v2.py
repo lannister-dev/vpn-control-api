@@ -1,39 +1,33 @@
 from pathlib import Path
 
-from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import HTMLResponse
 
-from services.auth.admin.constants import SESSION_COOKIE_NAME
-from services.auth.admin.crypto import hash_session_id
-from services.auth.admin.service import AdminAuthService
-from shared.database.session import AsyncDatabase
 
-router = APIRouter(tags=["Admin UI v2"])
+router = APIRouter(tags=["Admin UI"])
 
 STATIC_V2_DIR = Path(__file__).parent / "static" / "v2"
 _INDEX_PATH = STATIC_V2_DIR / "index.html"
 
-
-async def _authorized(request: Request) -> bool:
-    session_id = request.cookies.get(SESSION_COOKIE_NAME)
-    if not session_id:
-        return False
-    session_hash = hash_session_id(session_id)
-    async with AsyncDatabase.get_session_maker()() as session:
-        result = await AdminAuthService(session).validate_session(session_hash)
-    return result is not None
+_RESERVED_PREFIXES = ("api/", "static/", "healthz", "metrics", "monitoring")
 
 
-@router.get("/admin/v2", response_class=HTMLResponse, include_in_schema=False)
-@router.get("/admin/v2/{full_path:path}", response_class=HTMLResponse, include_in_schema=False)
-async def admin_v2(request: Request, full_path: str = ""):
-    if not await _authorized(request):
-        return RedirectResponse(url="/api/v1/auth/admin/login", status_code=307)
+@router.get("/", response_class=HTMLResponse, include_in_schema=False)
+@router.get("/{full_path:path}", response_class=HTMLResponse, include_in_schema=False)
+async def admin_spa(request: Request, full_path: str = ""):
+    """Serves the React SPA as the root admin panel.
+
+    Auth is handled client-side via /api/v1/auth/admin/session — LoginPage
+    renders when unauthenticated. No server-side redirect.
+    """
+    if full_path.startswith(_RESERVED_PREFIXES):
+        raise HTTPException(status_code=404)
+
     if not _INDEX_PATH.exists():
         return HTMLResponse(
-            "<h1>Admin v2 not built</h1>"
+            "<h1>Admin panel not built</h1>"
             "<p>Run <code>cd services/admin_ui/frontend && npm install && npm run build</code> "
-            "then copy dist to static/v2/.</p>",
+            "then copy dist to services/admin_ui/static/v2/.</p>",
             status_code=503,
         )
     return HTMLResponse(_INDEX_PATH.read_text(encoding="utf-8"))
