@@ -82,131 +82,146 @@ function ProbePolicyCard() {
     finally { setBusy(false); }
   };
 
+  const killSwitchOff = !f.auto_route_health_enabled;
+
   return (
     <div className="card">
       <div className="card-head">
         <Icon name="shield-check" size={14} />
         <div className="sec-title">Probe-политика</div>
-        <div className="sec-sub">пороги блокировки маршрутов + авто-drain</div>
-      </div>
-      <div className="card-body">
-        <label className="form-check" style={{ marginBottom: 14 }}>
+        <div className="sec-sub">управление автоматикой probe · изменения применяются на лету</div>
+        <div className="sec-spacer" />
+        <label className="form-check" style={{ margin: 0 }}>
           <input type="checkbox" checked={!!f.auto_route_health_enabled} onChange={set("auto_route_health_enabled")} />
-          Общий kill-switch: автоматика route health включена
+          <span>Автоматика включена</span>
         </label>
-        <div className="split-2">
-          <div>
-            <div className="kpi-label" style={{ marginBottom: 8 }}>Пороги маршрутов (подряд неудачных probe)</div>
-            <div className="form-row">
-              <Field label="Suspected после">
-                <input type="number" min={1} max={50} value={f.route_suspected_after_failures} onChange={set("route_suspected_after_failures")} />
-              </Field>
-              <Field label="Degraded после">
-                <input type="number" min={2} max={50} value={f.route_degraded_after_failures} onChange={set("route_degraded_after_failures")} />
-              </Field>
-            </div>
-            <div className="form-row">
-              <Field label="Block после">
-                <input type="number" min={3} max={50} value={f.route_block_after_failures} onChange={set("route_block_after_failures")} />
-              </Field>
-              <Field label="Cooldown, часов">
-                <input type="number" min={1} max={168} value={f.route_block_cooldown_hours} onChange={set("route_block_cooldown_hours")} />
-              </Field>
-            </div>
-          </div>
-          <div>
-            <div className="kpi-label" style={{ marginBottom: 8 }}>Авто-drain нод</div>
-            <label className="form-check" style={{ marginBottom: 10 }}>
-              <input type="checkbox" checked={f.auto_drain_enabled} onChange={set("auto_drain_enabled")} />
-              Включить авто-drain при деградации
-            </label>
-            <div className="form-row">
-              <Field label="Тик, секунд">
-                <input type="number" min={30} max={3600} value={f.auto_drain_tick_sec} onChange={set("auto_drain_tick_sec")} />
-              </Field>
-              <Field label="Мин. подряд fail">
-                <input type="number" min={1} max={50} value={f.auto_drain_min_consecutive_failures} onChange={set("auto_drain_min_consecutive_failures")} />
-              </Field>
-            </div>
-            <div className="form-row">
-              <Field label="Макс. возраст probe, сек">
-                <input type="number" min={60} max={86400} value={f.auto_drain_max_probe_age_sec} onChange={set("auto_drain_max_probe_age_sec")} />
-              </Field>
-              <Field label="Макс. нод за тик">
-                <input type="number" min={1} max={500} value={f.auto_drain_max_nodes} onChange={set("auto_drain_max_nodes")} />
-              </Field>
-            </div>
-            <label className="form-check" style={{ marginTop: 10 }}>
-              <input type="checkbox" checked={f.auto_undrain_enabled} onChange={set("auto_undrain_enabled")} />
-              Авто-снятие drain при восстановлении
-            </label>
-            <div className="form-row" style={{ marginTop: 8 }}>
-              <Field label="Мин. подряд OK">
-                <input type="number" min={1} max={50} value={f.auto_undrain_min_consecutive_successes} onChange={set("auto_undrain_min_consecutive_successes")} />
-              </Field>
-              <Field label="Макс. возраст probe, сек">
-                <input type="number" min={60} max={86400} value={f.auto_undrain_max_probe_age_sec} onChange={set("auto_undrain_max_probe_age_sec")} />
-              </Field>
-            </div>
-          </div>
-        </div>
+      </div>
 
-        <hr style={{ border: 0, borderTop: "1px solid var(--border)", margin: "18px 0" }} />
-
-        <div className="split-2">
-          <div>
-            <div className="kpi-label" style={{ marginBottom: 8 }}>Источники probe</div>
-            <div className="form-row">
-              <Field label="Drain source" hint="имя probe-агента">
-                <input type="text" value={f.auto_drain_source || ""} onChange={set("auto_drain_source")} placeholder="например, probe-prod-entry" />
-              </Field>
-              <Field label="Undrain source" hint="пусто = тот же">
-                <input type="text" value={f.auto_undrain_source || ""} onChange={set("auto_undrain_source")} />
-              </Field>
-            </div>
-            <div className="form-row">
-              <Field label="Reason label">
-                <input type="text" value={f.auto_drain_last_migration_reason || ""} onChange={set("auto_drain_last_migration_reason")} />
-              </Field>
-              <Field label="Target backend (UUID)" hint="пусто = auto">
-                <input type="text" value={f.auto_drain_target_backend_id || ""} onChange={set("auto_drain_target_backend_id")} />
-              </Field>
-            </div>
-            <label className="form-check">
-              <input type="checkbox" checked={!!f.auto_drain_require_recent_failure} onChange={set("auto_drain_require_recent_failure")} />
-              Требовать свежий probe failure
-            </label>
-            <label className="form-check" style={{ marginTop: 6 }}>
-              <input type="checkbox" checked={!!f.auto_drain_include_already_draining} onChange={set("auto_drain_include_already_draining")} />
-              Включать уже draining ноды в рассмотрение
-            </label>
+      <div style={{ opacity: killSwitchOff ? 0.5 : 1, transition: "opacity 150ms ease" }}>
+        <Section
+          title="Пороги маршрутов"
+          subtitle="когда переводить route в suspected/degraded/blocked"
+          icon="route"
+          defaultOpen
+        >
+          <div className="form-row">
+            <Field label="Suspected после N подряд fail" hint="1–50">
+              <input type="number" min={1} max={50} value={f.route_suspected_after_failures} onChange={set("route_suspected_after_failures")} />
+            </Field>
+            <Field label="Degraded после" hint="2–50">
+              <input type="number" min={2} max={50} value={f.route_degraded_after_failures} onChange={set("route_degraded_after_failures")} />
+            </Field>
           </div>
-          <div>
-            <div className="kpi-label" style={{ marginBottom: 8 }}>Хранение и cleanup</div>
-            <div className="form-row">
-              <Field label="Retention, дней">
-                <input type="number" min={1} max={365} value={f.retention_days} onChange={set("retention_days")} />
-              </Field>
-              <Field label="Cleanup tick, сек">
-                <input type="number" min={60} max={86400} value={f.cleanup_tick_sec} onChange={set("cleanup_tick_sec")} />
-              </Field>
-            </div>
-            <label className="form-check">
-              <input type="checkbox" checked={!!f.cleanup_enabled} onChange={set("cleanup_enabled")} />
-              Включить cleanup старых probe-сигналов
-            </label>
+          <div className="form-row">
+            <Field label="Blocked после" hint="3–50">
+              <input type="number" min={3} max={50} value={f.route_block_after_failures} onChange={set("route_block_after_failures")} />
+            </Field>
+            <Field label="Cooldown блокировки, часов" hint="1–168">
+              <input type="number" min={1} max={168} value={f.route_block_cooldown_hours} onChange={set("route_block_cooldown_hours")} />
+            </Field>
           </div>
-        </div>
+        </Section>
 
-        <hr style={{ border: 0, borderTop: "1px solid var(--border)", margin: "18px 0" }} />
-
-        <div>
-          <div className="kpi-label" style={{ marginBottom: 8 }}>Synthetic probe (VPN-ключи от имени тест-юзера)</div>
+        <Section
+          title="Авто-drain нод"
+          subtitle={f.auto_drain_enabled ? "активен" : "выключен"}
+          icon="pause"
+          toneWhenClosed={f.auto_drain_enabled ? "ok" : "muted"}
+        >
+          <label className="form-check" style={{ marginBottom: 10 }}>
+            <input type="checkbox" checked={f.auto_drain_enabled} onChange={set("auto_drain_enabled")} />
+            Включить авто-drain при деградации
+          </label>
+          <div className="form-row">
+            <Field label="Тик, секунд">
+              <input type="number" min={30} max={3600} value={f.auto_drain_tick_sec} onChange={set("auto_drain_tick_sec")} />
+            </Field>
+            <Field label="Мин. подряд fail">
+              <input type="number" min={1} max={50} value={f.auto_drain_min_consecutive_failures} onChange={set("auto_drain_min_consecutive_failures")} />
+            </Field>
+          </div>
+          <div className="form-row">
+            <Field label="Макс. возраст probe, сек">
+              <input type="number" min={60} max={86400} value={f.auto_drain_max_probe_age_sec} onChange={set("auto_drain_max_probe_age_sec")} />
+            </Field>
+            <Field label="Макс. нод за тик">
+              <input type="number" min={1} max={500} value={f.auto_drain_max_nodes} onChange={set("auto_drain_max_nodes")} />
+            </Field>
+          </div>
+          <div className="form-row">
+            <Field label="Drain source" hint="имя probe-источника">
+              <input type="text" value={f.auto_drain_source || ""} onChange={set("auto_drain_source")} placeholder="probe-prod-entry" />
+            </Field>
+            <Field label="Reason label" hint="метка для логов миграции">
+              <input type="text" value={f.auto_drain_last_migration_reason || ""} onChange={set("auto_drain_last_migration_reason")} />
+            </Field>
+          </div>
+          <Field label="Target backend (UUID)" hint="пусто = автоматический выбор">
+            <input type="text" value={f.auto_drain_target_backend_id || ""} onChange={set("auto_drain_target_backend_id")} placeholder="—" />
+          </Field>
           <label className="form-check">
+            <input type="checkbox" checked={!!f.auto_drain_require_recent_failure} onChange={set("auto_drain_require_recent_failure")} />
+            Требовать свежий probe failure
+          </label>
+          <label className="form-check" style={{ marginTop: 6 }}>
+            <input type="checkbox" checked={!!f.auto_drain_include_already_draining} onChange={set("auto_drain_include_already_draining")} />
+            Включать уже draining ноды в рассмотрение
+          </label>
+        </Section>
+
+        <Section
+          title="Авто-undrain нод"
+          subtitle={f.auto_undrain_enabled ? "активен" : "выключен"}
+          icon="play"
+          toneWhenClosed={f.auto_undrain_enabled ? "ok" : "muted"}
+        >
+          <label className="form-check" style={{ marginBottom: 10 }}>
+            <input type="checkbox" checked={f.auto_undrain_enabled} onChange={set("auto_undrain_enabled")} />
+            Включить авто-снятие drain при восстановлении
+          </label>
+          <div className="form-row">
+            <Field label="Мин. подряд OK">
+              <input type="number" min={1} max={50} value={f.auto_undrain_min_consecutive_successes} onChange={set("auto_undrain_min_consecutive_successes")} />
+            </Field>
+            <Field label="Макс. возраст probe, сек">
+              <input type="number" min={60} max={86400} value={f.auto_undrain_max_probe_age_sec} onChange={set("auto_undrain_max_probe_age_sec")} />
+            </Field>
+          </div>
+          <Field label="Undrain source" hint="пусто = тот же что и drain">
+            <input type="text" value={f.auto_undrain_source || ""} onChange={set("auto_undrain_source")} />
+          </Field>
+        </Section>
+
+        <Section
+          title="Хранение и cleanup"
+          subtitle={`retention ${f.retention_days}д · tick ${f.cleanup_tick_sec}s`}
+          icon="clock"
+        >
+          <div className="form-row">
+            <Field label="Retention, дней">
+              <input type="number" min={1} max={365} value={f.retention_days} onChange={set("retention_days")} />
+            </Field>
+            <Field label="Cleanup tick, сек">
+              <input type="number" min={60} max={86400} value={f.cleanup_tick_sec} onChange={set("cleanup_tick_sec")} />
+            </Field>
+          </div>
+          <label className="form-check">
+            <input type="checkbox" checked={!!f.cleanup_enabled} onChange={set("cleanup_enabled")} />
+            Включить cleanup старых probe-сигналов
+          </label>
+        </Section>
+
+        <Section
+          title="Synthetic probe"
+          subtitle={f.synthetic_reconcile_enabled ? "активен" : "выключен"}
+          icon="radar"
+          toneWhenClosed={f.synthetic_reconcile_enabled ? "ok" : "muted"}
+        >
+          <label className="form-check" style={{ marginBottom: 10 }}>
             <input type="checkbox" checked={!!f.synthetic_reconcile_enabled} onChange={set("synthetic_reconcile_enabled")} />
             Включить synthetic probe reconcile
           </label>
-          <div className="form-row" style={{ marginTop: 8 }}>
+          <div className="form-row">
             <Field label="Tick, сек">
               <input type="number" min={30} max={86400} value={f.synthetic_reconcile_tick_sec} onChange={set("synthetic_reconcile_tick_sec")} />
             </Field>
@@ -217,12 +232,45 @@ function ProbePolicyCard() {
           <Field label="Лимит трафика synthetic-ключа, MB">
             <input type="number" min={1} max={10485760} value={f.synthetic_key_traffic_limit_mb} onChange={set("synthetic_key_traffic_limit_mb")} />
           </Field>
-        </div>
+        </Section>
       </div>
+
       <div style={{ padding: "12px 14px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "flex-end", gap: 8 }}>
         <button className="btn btn-ghost" onClick={() => q.refetch()} disabled={busy}>Отменить</button>
         <button className="btn btn-primary" onClick={save} disabled={busy}>Сохранить</button>
       </div>
+    </div>
+  );
+}
+
+function Section({ title, subtitle, icon, children, defaultOpen = false, toneWhenClosed = "" }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div style={{ borderBottom: "1px solid var(--border)" }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "12px 14px",
+          background: "transparent", border: 0, cursor: "pointer", textAlign: "left",
+        }}
+      >
+        {icon && <Icon name={icon} size={13} style={{ color: "var(--text-muted)" }} />}
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 500, fontSize: 13 }}>{title}</div>
+          {subtitle && (
+            <div className={`small ${toneWhenClosed === "ok" ? "" : "muted"}`} style={{ color: toneWhenClosed === "ok" ? "var(--ok)" : undefined, marginTop: 2 }}>
+              {subtitle}
+            </div>
+          )}
+        </div>
+        <Icon name={open ? "chevron-down" : "chevron-right"} size={14} style={{ color: "var(--text-muted)" }} />
+      </button>
+      {open && (
+        <div style={{ padding: "4px 14px 16px" }}>
+          {children}
+        </div>
+      )}
     </div>
   );
 }
