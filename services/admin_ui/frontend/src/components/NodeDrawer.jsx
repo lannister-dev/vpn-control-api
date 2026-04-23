@@ -95,7 +95,7 @@ export function NodeDrawer({ node, onClose, onGoto }) {
           onMigrateClick={() => { onGoto?.("ops"); onClose(); }}
         />
       )}
-      {tab === "routes" && <NodeRoutes node={node} routes={routes.data || []} />}
+      {tab === "routes" && <NodeRoutes node={node} routes={routes.data || []} onRefresh={routes.refetch} />}
       {tab === "probes" && <NodeProbes node={node} />}
       {tab === "transport" && <NodeTransport node={node} />}
       {tab === "pool" && entryRole && <NodePool node={node} />}
@@ -270,25 +270,101 @@ function QuickActions({ node, onSshClick, onMigrateClick }) {
   );
 }
 
-function NodeRoutes({ node, routes }) {
+function NodeRoutes({ node, routes, onRefresh }) {
   const list = routes.filter((r) => r.node_id === node.id || r.entry_node_id === node.id);
   if (!list.length) return <div className="muted" style={{ padding: 14 }}>Маршрутов нет.</div>;
+
+  const apply = async (route, action, opts = {}) => {
+    const label = opts.label || action;
+    try {
+      if (action === "deactivate") {
+        if (!confirm(`Деактивировать маршрут ${route.name}?`)) return;
+        await api.patch(`/routes/${route.id}`, { is_active: false });
+      } else if (action === "activate") {
+        await api.patch(`/routes/${route.id}`, { is_active: true });
+      } else {
+        await api.post("/admin/set-route-health", {
+          route_id: route.id,
+          action,
+          cooldown_hours: 6,
+        });
+      }
+      toast.ok(`${route.name} → ${label}`);
+      onRefresh?.();
+    } catch (e) { toast.bad(e.message || "Ошибка"); }
+  };
+
   return (
     <table className="tbl">
       <thead>
-        <tr><th>Маршрут</th><th>Направление</th><th>Status</th><th style={{ textAlign: "right" }}>Weight</th></tr>
+        <tr>
+          <th>Маршрут</th>
+          <th>Направление</th>
+          <th>Status</th>
+          <th style={{ textAlign: "right" }}>Weight</th>
+          <th style={{ width: 40 }}></th>
+        </tr>
       </thead>
       <tbody>
         {list.map((r) => (
           <tr key={r.id}>
-            <td>{r.name}</td>
+            <td>
+              {r.name}
+              {!r.is_active && <span className="pill" style={{ marginLeft: 6 }}>off</span>}
+            </td>
             <td className="small muted">{r.node_id === node.id ? "backend" : "entry"}</td>
             <td><span className={"pill " + toneOf(r.health_status)}>{r.health_status}</span></td>
             <td className="tbl-num mono">{r.effective_weight}</td>
+            <td className="row-actions" onClick={(e) => e.stopPropagation()}>
+              <RouteRowMenu route={r} apply={apply} />
+            </td>
           </tr>
         ))}
       </tbody>
     </table>
+  );
+}
+
+function RouteRowMenu({ route, apply }) {
+  const [open, setOpen] = useState(false);
+  const items = [];
+  if (route.health_status !== "healthy") items.push({ icon: "check", label: "Set healthy", action: "set_healthy" });
+  if (route.health_status !== "blocked") items.push({ icon: "alert-circle", label: "Block", action: "block", danger: true });
+  if (route.health_status === "blocked") items.push({ icon: "refresh", label: "Recover", action: "recover" });
+  if (route.is_active) items.push({ icon: "pause", label: "Деактивировать", action: "deactivate", danger: true });
+  else items.push({ icon: "play", label: "Активировать", action: "activate" });
+
+  return (
+    <div style={{ position: "relative", display: "inline-block" }}>
+      <button className="btn btn-ghost btn-icon" onClick={() => setOpen((v) => !v)} style={{ width: 24, height: 24 }}>
+        <Icon name="more-horizontal" size={13} />
+      </button>
+      {open && (
+        <>
+          <div style={{ position: "fixed", inset: 0, zIndex: 50 }} onClick={() => setOpen(false)} />
+          <div style={{
+            position: "absolute", top: "100%", right: 0, marginTop: 4, minWidth: 180, zIndex: 51,
+            background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8,
+            boxShadow: "var(--shadow-lg)", padding: 4,
+          }}>
+            {items.map((it, i) => (
+              <button key={i}
+                onClick={() => { setOpen(false); apply(route, it.action, { label: it.label }); }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "7px 10px",
+                  border: 0, background: "transparent", cursor: "pointer", borderRadius: 5,
+                  color: it.danger ? "var(--bad)" : "var(--text)", fontSize: 13, textAlign: "left",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-hover)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+                <Icon name={it.icon} size={12} />
+                <span>{it.label}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
