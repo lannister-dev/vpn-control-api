@@ -1,12 +1,26 @@
 const BASE = "/api/v1";
 
+function getCookie(name) {
+  const prefix = `${name}=`;
+  for (const part of document.cookie.split(";")) {
+    const s = part.trim();
+    if (s.startsWith(prefix)) return decodeURIComponent(s.slice(prefix.length));
+  }
+  return null;
+}
+
 async function request(path, { method = "GET", body, headers } = {}) {
+  const extra = { ...(headers || {}) };
+  if (method !== "GET" && method !== "HEAD") {
+    const csrf = getCookie("admin_csrf");
+    if (csrf) extra["x-csrf-token"] = csrf;
+  }
   const res = await fetch(BASE + path, {
     method,
     credentials: "include",
     headers: {
       "content-type": "application/json",
-      ...(headers || {}),
+      ...extra,
     },
     body: body ? JSON.stringify(body) : undefined,
   });
