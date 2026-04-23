@@ -14,7 +14,8 @@ from shared.utils.logger import StructuredLogger
 from services.config import get_settings
 
 # Admin UI (panel + static)
-from services.admin_ui.router import router as admin_ui_router, STATIC_DIR
+# legacy Jinja+vanilla-JS panel — disabled, replaced by React SPA at /
+# from services.admin_ui.router import router as admin_ui_router, STATIC_DIR
 from services.admin_ui.router_v2 import router as admin_ui_v2_router, STATIC_V2_DIR
 
 # Admin API routers used by the panel frontend
@@ -111,19 +112,20 @@ api_router.include_router(subscriptions_router)
 
 app.include_router(api_router)
 
-# Panel at root, static at /static
-app.include_router(admin_ui_router)
-app.include_router(admin_ui_v2_router)
-if STATIC_V2_DIR.exists():
-    app.mount("/static/v2", StaticFiles(directory=str(STATIC_V2_DIR)), name="admin-static-v2")
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="admin-static")
-
 Instrumentator().instrument(app).expose(app, endpoint="/api/monitoring")
 
 
 @app.get("/healthz")
 async def healthz():
     return {"status": "ok"}
+
+
+# React SPA at root. Legacy Jinja panel disabled.
+# app.include_router(admin_ui_router)
+if STATIC_V2_DIR.exists():
+    app.mount("/static/v2", StaticFiles(directory=str(STATIC_V2_DIR)), name="admin-static-v2")
+# SPA catchall — must be registered LAST so specific routes match first.
+app.include_router(admin_ui_v2_router)
 
 
 if __name__ == "__main__":
