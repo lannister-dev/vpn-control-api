@@ -47,8 +47,8 @@ class RouteService:
 
     def __init__(self, session: AsyncSession):
         self.settings = get_settings()
-        self.node_state_stale_after_sec = max(30, int(self.settings.node_agent.stale_after_sec))
         self.session = session
+        self._policy_cache = None
         self.node_repository = VpnNodeRepository(session)
         self.transport_repository = TransportProfileRepository(session)
         self.route_repository = RouteRepository(session)
@@ -309,7 +309,7 @@ class RouteService:
         rows = await self.route_repository.list_active_detailed(node_id=node_id, limit=limit)
         now = datetime.now(timezone.utc)
         return [
-            self._build_route_out(
+            await self._build_route_out(
                 route=route,
                 node=node,
                 transport_profile=transport_profile,
@@ -445,7 +445,7 @@ class RouteService:
         )
         await self.outbox_repository.enqueue_many([outbox_item])
 
-    def _build_route_out(
+    async def _build_route_out(
             self,
             *,
             route,
@@ -454,7 +454,7 @@ class RouteService:
             agent_state,
             now: datetime,
     ) -> RouteOut:
-        routing_reason = self._route_routing_reason(
+        routing_reason = await self._route_routing_reason(
             route=route,
             node=node,
             transport_profile=transport_profile,
@@ -467,7 +467,7 @@ class RouteService:
             routing_reason=routing_reason,
         )
 
-    def _route_routing_reason(
+    async def _route_routing_reason(
             self,
             *,
             route,
@@ -502,9 +502,16 @@ class RouteService:
         last_seen_at = to_utc_or_none(agent_state.last_seen_at)
         if last_seen_at is None:
             return "heartbeat_missing"
-        if last_seen_at < now - timedelta(seconds=self.node_state_stale_after_sec):
+        stale = await self._stale_after_sec()
+        if last_seen_at < now - timedelta(seconds=stale):
             return "heartbeat_stale"
         return None
+
+    async def _stale_after_sec(self) -> int:
+        if self._policy_cache is None:
+            from services.nodes.policy.repository import NodePolicyRepository
+            self._policy_cache = await NodePolicyRepository(self.session).get_current()
+        return max(30, int(self._policy_cache.stale_after_sec))
 
 
 def get_route_service(

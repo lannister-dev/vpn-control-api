@@ -21,6 +21,15 @@ from services.nodes.schemas import (
 from services.nodes.service import VpnNodeService
 
 
+def _inject_policy(service, *, unhealthy_drain_threshold: int, healthy_undrain_threshold: int) -> None:
+    service._policy_cache = SimpleNamespace(
+        heartbeat_unhealthy_drain_threshold=unhealthy_drain_threshold,
+        heartbeat_healthy_undrain_threshold=healthy_undrain_threshold,
+        entry_apply_fail_threshold=3,
+        entry_apply_fail_unhealthy=True,
+    )
+
+
 def _payload(*, is_healthy: bool, runtime_ready: bool | None = None) -> NodeHeartbeatIn:
     runtime_ready = is_healthy if runtime_ready is None else runtime_ready
     return NodeHeartbeatIn(
@@ -43,8 +52,7 @@ def _payload(*, is_healthy: bool, runtime_ready: bool | None = None) -> NodeHear
 @pytest.mark.asyncio
 async def test_handle_heartbeat_does_not_drain_below_unhealthy_threshold(async_session):
     service = VpnNodeService(async_session)
-    service.heartbeat_unhealthy_drain_threshold = 2
-    service.heartbeat_healthy_undrain_threshold = 3
+    _inject_policy(service, unhealthy_drain_threshold=2, healthy_undrain_threshold=3)
     service.node_agent_state_repository = AsyncMock()
     service.vpn_node_repository = AsyncMock()
     service.node_agent_state_repository.get_one_by = AsyncMock(
@@ -76,8 +84,7 @@ async def test_handle_heartbeat_does_not_drain_below_unhealthy_threshold(async_s
 @pytest.mark.asyncio
 async def test_handle_heartbeat_drains_on_unhealthy_threshold(async_session):
     service = VpnNodeService(async_session)
-    service.heartbeat_unhealthy_drain_threshold = 2
-    service.heartbeat_healthy_undrain_threshold = 3
+    _inject_policy(service, unhealthy_drain_threshold=2, healthy_undrain_threshold=3)
     service.node_agent_state_repository = AsyncMock()
     service.vpn_node_repository = AsyncMock()
     service.node_agent_state_repository.get_one_by = AsyncMock(
@@ -113,8 +120,7 @@ async def test_handle_heartbeat_drains_on_unhealthy_threshold(async_session):
 @pytest.mark.asyncio
 async def test_handle_heartbeat_undrains_when_recovered_after_threshold(async_session):
     service = VpnNodeService(async_session)
-    service.heartbeat_unhealthy_drain_threshold = 2
-    service.heartbeat_healthy_undrain_threshold = 3
+    _inject_policy(service, unhealthy_drain_threshold=2, healthy_undrain_threshold=3)
     service.node_agent_state_repository = AsyncMock()
     service.vpn_node_repository = AsyncMock()
     service.node_agent_state_repository.get_one_by = AsyncMock(
@@ -151,8 +157,7 @@ async def test_handle_heartbeat_undrains_when_recovered_after_threshold(async_se
 @pytest.mark.asyncio
 async def test_handle_heartbeat_does_not_undrain_for_non_heartbeat_reason(async_session):
     service = VpnNodeService(async_session)
-    service.heartbeat_unhealthy_drain_threshold = 2
-    service.heartbeat_healthy_undrain_threshold = 3
+    _inject_policy(service, unhealthy_drain_threshold=2, healthy_undrain_threshold=3)
     service.node_agent_state_repository = AsyncMock()
     service.vpn_node_repository = AsyncMock()
     service.node_agent_state_repository.get_one_by = AsyncMock(
@@ -185,8 +190,7 @@ async def test_handle_heartbeat_does_not_undrain_for_non_heartbeat_reason(async_
 @pytest.mark.asyncio
 async def test_handle_heartbeat_treats_runtime_not_ready_as_unhealthy(async_session):
     service = VpnNodeService(async_session)
-    service.heartbeat_unhealthy_drain_threshold = 1
-    service.heartbeat_healthy_undrain_threshold = 3
+    _inject_policy(service, unhealthy_drain_threshold=1, healthy_undrain_threshold=3)
     service.node_agent_state_repository = AsyncMock()
     service.vpn_node_repository = AsyncMock()
     service.node_agent_state_repository.get_one_by = AsyncMock(
@@ -218,8 +222,7 @@ async def test_handle_heartbeat_treats_runtime_not_ready_as_unhealthy(async_sess
 @pytest.mark.asyncio
 async def test_handle_heartbeat_does_not_undrain_when_runtime_not_ready(async_session):
     service = VpnNodeService(async_session)
-    service.heartbeat_unhealthy_drain_threshold = 2
-    service.heartbeat_healthy_undrain_threshold = 3
+    _inject_policy(service, unhealthy_drain_threshold=2, healthy_undrain_threshold=3)
     service.node_agent_state_repository = AsyncMock()
     service.vpn_node_repository = AsyncMock()
     service.node_agent_state_repository.get_one_by = AsyncMock(

@@ -8,8 +8,8 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.config import NodeAgentConfig, get_settings
 from services.nodes.models import NodeAgentState, VpnNode
+from services.nodes.policy.repository import NodePolicyRepository
 from services.placements.repository import UserPlacementRepository
 from services.placements.transport import NodeAgentPlacementTransport
 from shared.database.session import AsyncDatabase
@@ -26,35 +26,22 @@ logger = StructuredLogger(logging.getLogger("placement-rebalance-reconciler"))
 class PlacementRebalanceReconciler:
     """Ensures every active VPN key has placements on ALL healthy backend nodes.
 
-    After a node recovers from failure, auto_heal un-drains it but does not
-    restore the placements that were migrated away. This reconciler detects
-    missing (key_id, node_id) pairs and creates them via bulk upsert.
+    Reads placement_rebalance_* / stale_after_sec from NodePolicy on every tick.
     """
 
-    def __init__(
-        self,
-        *,
-        node_agent_settings: NodeAgentConfig | None = None,
-        tick_lock: RedisTickLock | None = None,
-    ):
-        settings = node_agent_settings or get_settings().node_agent
-        self._enabled = bool(settings.placement_rebalance_enabled)
-        self._interval_sec = max(30, int(settings.placement_rebalance_tick_sec))
-        self._batch_size = max(1, int(settings.placement_rebalance_batch_size))
-        self._stale_after_sec = max(30, int(settings.stale_after_sec))
+    _IDLE_WHEN_DISABLED_SEC = 120
+
+    def __init__(self, *, tick_lock: RedisTickLock | None = None):
         self._session_maker = AsyncDatabase.get_session_maker()
         self._tick_lock = tick_lock or RedisTickLock(
             key="reconciler:placement_rebalance",
-            ttl_sec=max(60, self._interval_sec * 2),
+            ttl_sec=600,
             fail_open_if_client_unavailable=True,
         )
         self._stop_event = asyncio.Event()
         self._task: asyncio.Task | None = None
 
     async def start(self) -> None:
-        if not self._enabled:
-            logger.info("placement_rebalance_disabled")
-            return
         if self._task is not None and not self._task.done():
             return
         self._stop_event.clear()
@@ -68,39 +55,50 @@ class PlacementRebalanceReconciler:
         self._task = None
 
     async def run_once(self) -> int | None:
-        if not self._enabled:
+        async with self._session_maker() as session:
+            policy = await NodePolicyRepository(session).get_current()
+            await session.commit()
+        if not policy.placement_rebalance_enabled:
             return None
         async with self._tick_lock.hold() as acquired:
             if not acquired:
                 return None
-            return await self._execute_tick()
+            return await self._execute_tick(policy)
 
     async def _run(self) -> None:
         while not self._stop_event.is_set():
+            sleep_sec = self._IDLE_WHEN_DISABLED_SEC
             try:
-                await self.run_once()
+                async with self._session_maker() as session:
+                    policy = await NodePolicyRepository(session).get_current()
+                    await session.commit()
+                sleep_sec = max(30, int(policy.placement_rebalance_tick_sec))
+                if policy.placement_rebalance_enabled:
+                    async with self._tick_lock.hold() as acquired:
+                        if acquired:
+                            await self._execute_tick(policy)
             except asyncio.CancelledError:
                 raise
             except Exception:
                 logger.exception("placement_rebalance_tick_failed")
 
             try:
-                await asyncio.wait_for(
-                    self._stop_event.wait(), timeout=self._interval_sec
-                )
+                await asyncio.wait_for(self._stop_event.wait(), timeout=sleep_sec)
             except TimeoutError:
                 continue
 
-    async def _execute_tick(self) -> int:
+    async def _execute_tick(self, policy) -> int:
+        batch_size = max(1, int(policy.placement_rebalance_batch_size))
+        stale_after_sec = max(30, int(policy.stale_after_sec))
         async with self._session_maker() as session:
-            healthy_node_ids = await self._find_healthy_backend_node_ids(session)
+            healthy_node_ids = await self._find_healthy_backend_node_ids(session, stale_after_sec)
             if len(healthy_node_ids) < 2:
                 return 0
 
             placement_repo = UserPlacementRepository(session)
             missing_pairs = await placement_repo.find_missing_placements(
                 healthy_node_ids=healthy_node_ids,
-                batch_size=self._batch_size,
+                batch_size=batch_size,
             )
 
             PLACEMENT_REBALANCE_MISSING_GAUGE.set(len(missing_pairs))
@@ -130,10 +128,10 @@ class PlacementRebalanceReconciler:
             return len(created_ids)
 
     async def _find_healthy_backend_node_ids(
-        self, session: AsyncSession,
+        self, session: AsyncSession, stale_after_sec: int,
     ) -> list[UUID]:
         now = datetime.now(timezone.utc)
-        cutoff = now - timedelta(seconds=self._stale_after_sec)
+        cutoff = now - timedelta(seconds=stale_after_sec)
 
         stmt = (
             select(VpnNode.id)

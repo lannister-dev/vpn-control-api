@@ -29,7 +29,8 @@ from services.config import get_settings
 get_settings.cache_clear()
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from shared.profiles.registry import ProfileRegistry
 
@@ -40,6 +41,44 @@ def _reset_profile_registry():
     ProfileRegistry.reset()
     yield
     ProfileRegistry.reset()
+
+
+_NODE_POLICY_DEFAULTS = dict(
+    stale_after_sec=90,
+    heartbeat_unhealthy_drain_threshold=5,
+    heartbeat_healthy_undrain_threshold=3,
+    auto_heal_enabled=False,
+    auto_heal_tick_sec=60,
+    auto_heal_max_nodes=20,
+    auto_heal_drain_cooldown_sec=180,
+    auto_undrain_enabled=False,
+    placement_error_retry_enabled=True,
+    placement_error_retry_tick_sec=120,
+    placement_error_retry_after_sec=120,
+    placement_rebalance_enabled=False,
+    placement_rebalance_tick_sec=120,
+    placement_rebalance_batch_size=200,
+    entry_apply_fail_threshold=3,
+    entry_apply_fail_unhealthy=True,
+    entry_auto_drain_enabled=True,
+    entry_auto_drain_tick_sec=60,
+    entry_auto_drain_probe_failures=3,
+    entry_auto_drain_max_nodes=50,
+    entry_auto_drain_reason="entry_auto_drain",
+    entry_auto_undrain_enabled=True,
+    entry_auto_undrain_healthy_ticks=3,
+)
+
+
+@pytest.fixture(autouse=True)
+def _stub_node_policy():
+    policy = SimpleNamespace(**_NODE_POLICY_DEFAULTS)
+    repo_stub = SimpleNamespace(get_current=AsyncMock(return_value=policy))
+    with patch(
+        "services.nodes.policy.repository.NodePolicyRepository",
+        return_value=repo_stub,
+    ):
+        yield
 
 
 @pytest.fixture()

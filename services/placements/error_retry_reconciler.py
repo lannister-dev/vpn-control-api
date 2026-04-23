@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select, update as sa_update
 
-from services.config import NodeAgentConfig, get_settings
+from services.nodes.policy.repository import NodePolicyRepository
 from services.placements.model import UserPlacement
 from services.placements.transport import NodeAgentPlacementTransport
 from shared.database.session import AsyncDatabase
@@ -19,34 +19,22 @@ logger = StructuredLogger(logging.getLogger("placement-error-retry-reconciler"))
 class PlacementErrorRetryReconciler:
     """Re-queues placements stuck in 'error' or stale 'pending' state.
 
-    - error: resets to pending, bumps op_version, creates outbox entries.
-    - stale pending: outbox entry was lost (e.g. NATS timeout during deploy),
-      re-creates outbox entries without changing state.
+    Reads placement_error_retry_* from NodePolicy on every tick.
     """
 
-    def __init__(
-        self,
-        *,
-        node_agent_settings: NodeAgentConfig | None = None,
-        tick_lock: RedisTickLock | None = None,
-    ):
-        settings = node_agent_settings or get_settings().node_agent
-        self._enabled = bool(settings.placement_error_retry_enabled)
-        self._interval_sec = max(30, int(settings.placement_error_retry_tick_sec))
-        self._retry_after_sec = max(30, int(settings.placement_error_retry_after_sec))
+    _IDLE_WHEN_DISABLED_SEC = 120
+
+    def __init__(self, *, tick_lock: RedisTickLock | None = None):
         self._session_maker = AsyncDatabase.get_session_maker()
         self._tick_lock = tick_lock or RedisTickLock(
             key="reconciler:placement_error_retry",
-            ttl_sec=max(60, self._interval_sec * 2),
+            ttl_sec=600,
             fail_open_if_client_unavailable=True,
         )
         self._stop_event = asyncio.Event()
         self._task: asyncio.Task | None = None
 
     async def start(self) -> None:
-        if not self._enabled:
-            logger.info("placement_error_retry_disabled")
-            return
         if self._task is not None and not self._task.done():
             return
         self._stop_event.clear()
@@ -60,34 +48,45 @@ class PlacementErrorRetryReconciler:
         self._task = None
 
     async def run_once(self) -> int | None:
-        if not self._enabled:
+        async with self._session_maker() as session:
+            policy = await NodePolicyRepository(session).get_current()
+            await session.commit()
+        if not policy.placement_error_retry_enabled:
             return None
         async with self._tick_lock.hold() as acquired:
             if not acquired:
                 return None
-            return await self._execute_tick()
+            return await self._execute_tick(policy)
 
     async def _run(self) -> None:
         while not self._stop_event.is_set():
+            sleep_sec = self._IDLE_WHEN_DISABLED_SEC
             try:
-                await self.run_once()
+                async with self._session_maker() as session:
+                    policy = await NodePolicyRepository(session).get_current()
+                    await session.commit()
+                sleep_sec = max(30, int(policy.placement_error_retry_tick_sec))
+                if policy.placement_error_retry_enabled:
+                    async with self._tick_lock.hold() as acquired:
+                        if acquired:
+                            await self._execute_tick(policy)
             except asyncio.CancelledError:
                 raise
             except Exception:
                 logger.exception("placement_error_retry_tick_failed")
 
             try:
-                await asyncio.wait_for(self._stop_event.wait(), timeout=self._interval_sec)
+                await asyncio.wait_for(self._stop_event.wait(), timeout=sleep_sec)
             except TimeoutError:
                 continue
 
-    async def _execute_tick(self) -> int:
-        cutoff = datetime.now(timezone.utc) - timedelta(seconds=self._retry_after_sec)
+    async def _execute_tick(self, policy) -> int:
+        retry_after_sec = max(30, int(policy.placement_error_retry_after_sec))
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=retry_after_sec)
         total = 0
         async with self._session_maker() as session:
             transport = NodeAgentPlacementTransport(session)
 
-            # 1) Error placements → reset to pending + bump op_version + outbox
             error_stmt = (
                 select(UserPlacement.id)
                 .where(UserPlacement.applied_state == "error")
@@ -108,12 +107,8 @@ class PlacementErrorRetryReconciler:
                 )
                 await transport.enqueue_for_placement_ids(error_ids)
                 total += len(error_ids)
-                logger.info(
-                    "placement_error_retry",
-                    retried=len(error_ids),
-                )
+                logger.info("placement_error_retry", retried=len(error_ids))
 
-            # 2) Stale pending placements → re-create outbox entries
             pending_stmt = (
                 select(UserPlacement.id)
                 .where(UserPlacement.applied_state == "pending")
@@ -125,10 +120,7 @@ class PlacementErrorRetryReconciler:
             if pending_ids:
                 await transport.enqueue_for_placement_ids(pending_ids)
                 total += len(pending_ids)
-                logger.info(
-                    "placement_stale_pending_retry",
-                    retried=len(pending_ids),
-                )
+                logger.info("placement_stale_pending_retry", retried=len(pending_ids))
 
             if total > 0:
                 await session.commit()

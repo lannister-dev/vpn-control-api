@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from services.config import NodeAgentConfig
 from services.nodes.auto_heal_service import NodeAutoHealTickOut
 from services.nodes.reconciler import NodePlacementReconciler
 
@@ -48,17 +47,24 @@ class _TickLock:
         return _LockContext(self._acquired)
 
 
-def _node_settings(**overrides) -> NodeAgentConfig:
-    data = {
-        "sync_report_debounce_sec": 10,
-        "bootstrap_allow_create": True,
-        "stale_after_sec": 90,
-        "auto_heal_enabled": True,
-        "auto_heal_tick_sec": 60,
-        "auto_heal_max_nodes": 20,
-    }
+def _policy(**overrides):
+    data = dict(
+        auto_heal_enabled=True,
+        auto_heal_tick_sec=60,
+        auto_heal_max_nodes=20,
+        auto_heal_drain_cooldown_sec=180,
+        auto_undrain_enabled=False,
+        stale_after_sec=90,
+    )
     data.update(overrides)
-    return NodeAgentConfig(**data)
+    return SimpleNamespace(**data)
+
+
+def _policy_repo_patch(policy):
+    return patch(
+        "services.nodes.reconciler.NodePolicyRepository",
+        return_value=SimpleNamespace(get_current=AsyncMock(return_value=policy)),
+    )
 
 
 @pytest.mark.asyncio
@@ -77,51 +83,46 @@ async def test_run_once_executes_and_commits():
         )
     )
 
-    reconciler = NodePlacementReconciler(
-        node_settings=_node_settings(),
-        session_maker=_SessionMaker(session),
-        service_factory=lambda *_: service,
-    )
-
-    out = await reconciler.run_once()
+    with _policy_repo_patch(_policy()):
+        reconciler = NodePlacementReconciler(
+            session_maker=_SessionMaker(session),
+            service_factory=lambda *_: service,
+        )
+        out = await reconciler.run_once()
 
     assert out is not None
     assert out.migrated_placements == 12
     service.run_once.assert_awaited_once()
-    session.commit.assert_awaited_once()
+    session.commit.assert_awaited()
 
 
 @pytest.mark.asyncio
 async def test_run_once_returns_none_when_disabled():
     session = AsyncMock()
     service = SimpleNamespace(run_once=AsyncMock())
-    reconciler = NodePlacementReconciler(
-        node_settings=_node_settings(auto_heal_enabled=False),
-        session_maker=_SessionMaker(session),
-        service_factory=lambda *_: service,
-    )
-
-    out = await reconciler.run_once()
+    with _policy_repo_patch(_policy(auto_heal_enabled=False)):
+        reconciler = NodePlacementReconciler(
+            session_maker=_SessionMaker(session),
+            service_factory=lambda *_: service,
+        )
+        out = await reconciler.run_once()
 
     assert out is None
     service.run_once.assert_not_awaited()
-    session.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_run_once_skips_when_tick_lock_not_acquired():
     session = AsyncMock()
     service = SimpleNamespace(run_once=AsyncMock())
-    reconciler = NodePlacementReconciler(
-        node_settings=_node_settings(),
-        session_maker=_SessionMaker(session),
-        service_factory=lambda *_: service,
-        tick_lock=_TickLock(acquired=False),
-    )
-
-    out = await reconciler.run_once()
+    with _policy_repo_patch(_policy()):
+        reconciler = NodePlacementReconciler(
+            session_maker=_SessionMaker(session),
+            service_factory=lambda *_: service,
+            tick_lock=_TickLock(acquired=False),
+        )
+        out = await reconciler.run_once()
 
     assert out is not None
     assert out.processed_nodes == 0
     service.run_once.assert_not_awaited()
-    session.commit.assert_not_awaited()

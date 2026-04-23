@@ -70,18 +70,15 @@ class VpnNodeService:
             int(node_agent_settings.auth_token_rotation_grace_sec),
         )
         self.bootstrap_allow_create = bool(node_agent_settings.bootstrap_allow_create)
-        self.entry_apply_fail_threshold = max(
-            1, int(getattr(node_agent_settings, "entry_apply_fail_threshold", 3))
-        )
-        self.entry_apply_fail_unhealthy = bool(
-            getattr(node_agent_settings, "entry_apply_fail_unhealthy", True)
-        )
-        self.heartbeat_unhealthy_drain_threshold = max(
-            1, int(node_agent_settings.heartbeat_unhealthy_drain_threshold)
-        )
-        self.heartbeat_healthy_undrain_threshold = max(
-            1, int(node_agent_settings.heartbeat_healthy_undrain_threshold)
-        )
+        self._node_policy_repository = None  # lazy — NodePolicyRepository(session)
+        self._policy_cache = None
+
+    async def _policy(self):
+        if self._policy_cache is None:
+            from services.nodes.policy.repository import NodePolicyRepository
+            repo = NodePolicyRepository(self.vpn_node_repository.session)
+            self._policy_cache = await repo.get_current()
+        return self._policy_cache
 
     async def initial(
             self,
@@ -200,7 +197,7 @@ class VpnNodeService:
             payload: NodeHeartbeatIn,
     ) -> None:
         now = datetime.now(timezone.utc)
-        effective_is_healthy = self._effective_heartbeat_health(payload)
+        effective_is_healthy = await self._effective_heartbeat_health(payload)
         existing_state = await self.node_agent_state_repository.get_one_by(node_id=node.id)
         existing_details = self._normalize_details(
             existing_state.details if existing_state is not None else None
@@ -215,10 +212,13 @@ class VpnNodeService:
             base_details=existing_details,
             is_healthy=effective_is_healthy,
         )
+        policy = await self._policy()
+        unhealthy_drain_threshold = max(1, int(policy.heartbeat_unhealthy_drain_threshold))
+        healthy_undrain_threshold = max(1, int(policy.heartbeat_healthy_undrain_threshold))
         should_drain = (
             not effective_is_healthy
             and not node.is_draining
-            and heartbeat_meta.consecutive_unhealthy >= self.heartbeat_unhealthy_drain_threshold
+            and heartbeat_meta.consecutive_unhealthy >= unhealthy_drain_threshold
         )
         if should_drain:
             await self.vpn_node_repository.update_by_id(
@@ -235,7 +235,7 @@ class VpnNodeService:
             logger_node.info(
                 "node set to draining after unhealthy heartbeat threshold",
                 node_id=str(node.id),
-                threshold=self.heartbeat_unhealthy_drain_threshold,
+                threshold=unhealthy_drain_threshold,
                 consecutive_unhealthy=heartbeat_meta.consecutive_unhealthy,
             )
         should_undrain = (
@@ -244,7 +244,7 @@ class VpnNodeService:
             and node.is_active
             and node.is_enabled
             and heartbeat_meta.drain_reason in (DRAIN_REASON_UNHEALTHY_HEARTBEAT, None)
-            and heartbeat_meta.consecutive_healthy >= self.heartbeat_healthy_undrain_threshold
+            and heartbeat_meta.consecutive_healthy >= healthy_undrain_threshold
         )
         if should_undrain:
             await self.vpn_node_repository.update_by_id(
@@ -261,7 +261,7 @@ class VpnNodeService:
             logger_node.info(
                 "node restored from draining after healthy heartbeat threshold",
                 node_id=str(node.id),
-                threshold=self.heartbeat_healthy_undrain_threshold,
+                threshold=healthy_undrain_threshold,
                 consecutive_healthy=heartbeat_meta.consecutive_healthy,
             )
         details_data = details.model_dump(mode="json", exclude_none=True)
@@ -377,19 +377,21 @@ class VpnNodeService:
             return False
         return True
 
-    def _effective_heartbeat_health(self, payload: NodeHeartbeatIn) -> bool:
+    async def _effective_heartbeat_health(self, payload: NodeHeartbeatIn) -> bool:
         if not bool(payload.is_healthy and payload.details.runtime.ready):
             return False
-        if not self.entry_apply_fail_unhealthy:
+        policy = await self._policy()
+        if not bool(policy.entry_apply_fail_unhealthy):
             return True
+        threshold = max(1, int(policy.entry_apply_fail_threshold))
         pool = payload.details.pool
-        if pool is not None and pool.consecutive_apply_failures >= self.entry_apply_fail_threshold:
+        if pool is not None and pool.consecutive_apply_failures >= threshold:
             return False
         upstream = payload.details.upstream
         if (
             upstream is not None
             and upstream.configured
-            and upstream.consecutive_apply_failures >= self.entry_apply_fail_threshold
+            and upstream.consecutive_apply_failures >= threshold
         ):
             return False
         return True
