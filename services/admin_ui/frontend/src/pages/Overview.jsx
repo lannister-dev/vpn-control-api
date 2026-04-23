@@ -520,7 +520,7 @@ export function OverviewPage({ onOpenNode, onGoto }) {
             { i: "server", l: "Добавить сервер", s: "Новая нода и первичная конфигурация", tab: "nodes", action: "create" },
             { i: "route", l: "Создать маршрут", s: "Entry → Backend связка с весом", tab: "routes", action: "create" },
             { i: "arrow-right", l: "Мигрировать плейсменты", s: "Перенести нагрузку между нодами", tab: "ops" },
-            { i: "shield-check", l: "Probe-политика", s: "Dry run или применить", tab: "ops" },
+            { i: "sliders", l: "Probe-политика", s: "Пороги маршрутов и авто-drain", tab: "settings" },
           ].map((a, i) => (
             <button
               key={i}

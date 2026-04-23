@@ -146,13 +146,17 @@ function AuthedApp({ theme, setTheme, me, onLogout }) {
 
   const status = useQuery(() => api.get("/admin/status"), { interval: 20000 });
   const routesData = useQuery(() => api.get("/routes?limit=500"), { interval: 30000 });
+  const usersData = useQuery(() => api.get("/users?limit=1").catch(() => null), { interval: 60000 });
+  const subsStats = useQuery(() => api.get("/subscriptions/stats").catch(() => null), { interval: 60000 });
 
   const counts = useMemo(() => {
     const out = {};
     if (status.data?.totals?.nodes_total != null) out.nodes = status.data.totals.nodes_total;
     if (routesData.data) out.routes = routesData.data.length;
+    if (usersData.data?.total != null) out.users = usersData.data.total;
+    if (subsStats.data?.active != null) out.subscriptions = subsStats.data.active;
     return out;
-  }, [status.data, routesData.data]);
+  }, [status.data, routesData.data, usersData.data, subsStats.data]);
 
   const lastSync = relSync(status.data?.generated_at);
   const Page = PAGES[tab] || PAGES.overview;
@@ -199,7 +203,7 @@ function AuthedApp({ theme, setTheme, me, onLogout }) {
         onClose={() => setPaletteOpen(false)}
         onSelect={(item) => { setTab(item.id); setPaletteOpen(false); }}
       />
-      {drawerNode && <NodeDrawer node={drawerNode} onClose={() => setDrawerNode(null)} />}
+      {drawerNode && <NodeDrawer node={drawerNode} onClose={() => setDrawerNode(null)} onGoto={goto} />}
     </div>
   );
 }

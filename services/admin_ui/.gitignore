@@ -1,0 +1,8 @@
+# design artifacts / handoff bundles — not part of the product
+assets/
+task*-*/
+*.png
+*.jpg
+*.jpeg
+VPN*.html
+Знімок*.png
