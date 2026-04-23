@@ -10,7 +10,7 @@ body {
 .app-content { flex: 1; overflow-y: auto; padding-top: 4px; display: flex; justify-content: center; }
 .app-content > .page { width: 100%; }
 
-.sidebar[data-collapsed="true"] .side-footer > div { display: none; }
+.sidebar[data-collapsed="true"] .side-footer-actions { display: none; }
 .sidebar[data-collapsed="true"] .side-footer .user-avatar { margin: 0 auto; }
 
 .card-bad { border-color: var(--bad); color: var(--bad); background: var(--bad-soft); padding: 12px 14px; }
