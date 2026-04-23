@@ -42,10 +42,12 @@ function stateOf(n) {
   return "active";
 }
 
-export function NodeDrawer({ node, onClose }) {
+export function NodeDrawer({ node, onClose, onGoto }) {
   const [tab, setTab] = useState("overview");
+  const [sshOpen, setSshOpen] = useState(false);
   const entryRole = isEntryRole(node);
   const routes = useQuery(() => api.get("/routes?limit=500"), { interval: 15000 });
+  const transport = useQuery(() => api.get("/admin/transport/nodes"), { interval: 30000 });
   const routesCount = (routes.data || []).filter((r) => r.node_id === node.id || r.entry_node_id === node.id).length;
 
   const tabs = [
@@ -84,45 +86,86 @@ export function NodeDrawer({ node, onClose }) {
       onTab={setTab}
       actions={<button className="btn btn-ghost btn-icon" title="Действия"><Icon name="more-horizontal" size={15} /></button>}
     >
-      {tab === "overview" && <NodeOverview node={node} routesCount={routesCount} />}
+      {tab === "overview" && (
+        <NodeOverview
+          node={node}
+          routesCount={routesCount}
+          transportData={transport.data}
+          onSshClick={() => setSshOpen(true)}
+          onMigrateClick={() => { onGoto?.("ops"); onClose(); }}
+        />
+      )}
       {tab === "routes" && <NodeRoutes node={node} routes={routes.data || []} />}
       {tab === "probes" && <NodeProbes node={node} />}
       {tab === "transport" && <NodeTransport node={node} />}
       {tab === "pool" && entryRole && <NodePool node={node} />}
+      {sshOpen && <SshHintModal node={node} onClose={() => setSshOpen(false)} />}
     </Drawer>
   );
 }
 
-function NodeOverview({ node, routesCount }) {
-  const seed = parseInt(String(node.id).replace(/-/g, "").slice(0, 6), 16) || 11;
-  const cpuValue = Math.min(95, Math.max(8, Math.round(((node.placements_backend || 0) / Math.max(node.capacity || 50, 1)) * 80 + (seed % 30))));
-  const cpuSpark = spark(seed * 7, 48, cpuValue, 15);
-  const netSpark = spark(seed * 11 + 3, 48, 50, 30);
-  const loadPct = Math.min(100, Math.round(((node.placements_backend || 0) / Math.max(node.capacity || 50, 1)) * 100));
+function SshHintModal({ node, onClose }) {
+  const host = node.reality_ip || node.public_domain || node.internal_wg_ip || "—";
+  const cmd = host === "—" ? "—" : `ssh root@${host}`;
+  const copy = () => {
+    navigator.clipboard.writeText(cmd).then(() => toast.ok("Команда скопирована"));
+  };
+  return (
+    <Modal title={`SSH · ${node.name}`} onClose={onClose} footer={
+      <>
+        <button className="btn btn-ghost" onClick={onClose}>Закрыть</button>
+        <button className="btn btn-primary" onClick={copy} disabled={cmd === "—"}>
+          <Icon name="command" size={12} /> Copy
+        </button>
+      </>
+    }>
+      <Field label="Host">
+        <input type="text" readOnly value={host} style={{ fontFamily: "var(--font-mono)", fontSize: 12 }} />
+      </Field>
+      <Field label="Команда">
+        <input type="text" readOnly value={cmd} style={{ fontFamily: "var(--font-mono)", fontSize: 12 }} />
+      </Field>
+      <div className="muted small">
+        Control-plane не проксирует SSH. Скопируйте команду и выполните из вашей рабочей машины — убедитесь что ваш публичный ключ заведён в authorized_keys ноды.
+      </div>
+    </Modal>
+  );
+}
 
+function NodeOverview({ node, routesCount, transportData, onSshClick, onMigrateClick }) {
+  const loadPct = Math.min(100, Math.round(((node.placements_backend || 0) / Math.max(node.capacity || 50, 1)) * 100));
   const loadTone = loadPct > 80 ? "bad" : loadPct > 65 ? "warn" : "ok";
   const tone = healthTone(node);
   const st = stateOf(node);
+
+  const transport = (transportData?.items || []).find((t) => t.node_id === node.id);
+  const epoch = transport?.current_epoch ?? null;
+  const outboxPending = transport?.outbox_pending ?? 0;
+  const outboxFailed = transport?.outbox_failed ?? 0;
 
   return (
     <div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 }}>
         <div className="card">
           <div className="card-body" style={{ padding: 14 }}>
-            <div className="kpi-label"><Icon name="cpu" size={12} /> CPU</div>
-            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
-              <div className="kpi-value" style={{ fontSize: 22 }}>{cpuValue}<span className="kpi-unit">%</span></div>
-              <Spark data={cpuSpark} color="var(--accent)" w={110} h={32} />
+            <div className="kpi-label"><Icon name="activity" size={12} /> Нагрузка</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div className="kpi-value" style={{ fontSize: 22 }}>{loadPct}<span className="kpi-unit">%</span></div>
+              <div style={{ flex: 1, height: 6, background: "var(--surface-2)", borderRadius: 4, overflow: "hidden" }}>
+                <div style={{ width: `${loadPct}%`, height: "100%", background: `var(--${loadTone})` }} />
+              </div>
             </div>
+            <div className="muted small" style={{ marginTop: 6 }}>{node.placements_backend || 0} / {node.capacity || "—"} placements</div>
           </div>
         </div>
         <div className="card">
           <div className="card-body" style={{ padding: 14 }}>
-            <div className="kpi-label"><Icon name="activity" size={12} /> Трафик 24h</div>
-            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
-              <div className="kpi-value" style={{ fontSize: 22 }}>—</div>
-              <Spark data={netSpark} color="var(--ok)" w={110} h={32} />
+            <div className="kpi-label"><Icon name="git-branch" size={12} /> Очередь команд</div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+              <div className="kpi-value" style={{ fontSize: 22 }}>{outboxPending}</div>
+              {outboxFailed > 0 && <span className="pill bad">err {outboxFailed}</span>}
             </div>
+            <div className="muted small" style={{ marginTop: 6 }}>ресинков: {epoch ?? "—"}</div>
           </div>
         </div>
       </div>
@@ -151,15 +194,64 @@ function NodeOverview({ node, routesCount }) {
       </dl>
 
       <div className="sec-head"><div className="sec-title">Быстрые действия</div></div>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        <button className="btn" disabled={node.is_draining} title={node.is_draining ? "Уже в draining" : "Включить drain"}>
-          <Icon name="pause" size={12} /> Drain
-        </button>
-        <button className="btn"><Icon name="arrow-right" size={12} /> Migrate</button>
-        <button className="btn"><Icon name="refresh" size={12} /> Snapshot</button>
-        <button className="btn"><Icon name="terminal" size={12} /> SSH</button>
-        <button className="btn"><Icon name="edit" size={12} /> Редактировать</button>
-      </div>
+      <QuickActions node={node} onSshClick={onSshClick} onMigrateClick={onMigrateClick} />
+    </div>
+  );
+}
+
+function QuickActions({ node, onSshClick, onMigrateClick }) {
+  const [busy, setBusy] = useState(null);
+  const run = async (key, fn) => {
+    setBusy(key);
+    try { await fn(); }
+    finally { setBusy(null); }
+  };
+
+  const drain = () => run("drain", async () => {
+    try {
+      if (node.is_draining) {
+        await api.post(`/agent/nodes/${node.id}/enable`);
+        toast.ok("Drain снят");
+      } else {
+        if (!confirm(`Включить drain для ${node.name}?\nКлючи перестанут на неё назначаться, существующие уйдут на другие ноды.`)) return;
+        await api.post(`/agent/nodes/${node.id}/drain`);
+        toast.ok("Drain включён");
+      }
+    } catch (e) { toast.bad(e.message || "Ошибка"); }
+  });
+
+  const snapshot = () => run("snapshot", async () => {
+    try {
+      const r = await api.post(`/admin/transport/nodes/${node.id}/request-snapshot`);
+      toast.ok(`Snapshot запрошен · ресинков ${r.epoch}`);
+    } catch (e) { toast.bad(e.message || "Ошибка"); }
+  });
+
+  const toggleEnabled = () => run("toggle", async () => {
+    try {
+      if (node.is_enabled && !confirm(`Отключить ${node.name}?\nВсе маршруты и назначения перестанут работать.`)) return;
+      await api.patch(`/agent/nodes/${node.id}`, { is_enabled: !node.is_enabled });
+      toast.ok(node.is_enabled ? "Нода отключена" : "Нода включена");
+    } catch (e) { toast.bad(e.message || "Ошибка"); }
+  });
+
+  return (
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+      <button className="btn" onClick={drain} disabled={busy === "drain"} title={node.is_draining ? "Снять drain" : "Включить drain"}>
+        <Icon name="pause" size={12} /> {node.is_draining ? "Снять drain" : "Drain"}
+      </button>
+      <button className="btn" onClick={onMigrateClick} title="Открыть страницу Операции с выбранной нодой в миграции">
+        <Icon name="arrow-right" size={12} /> Migrate
+      </button>
+      <button className="btn" onClick={snapshot} disabled={busy === "snapshot"}>
+        <Icon name="refresh" size={12} /> Snapshot
+      </button>
+      <button className="btn" onClick={onSshClick}>
+        <Icon name="terminal" size={12} /> SSH
+      </button>
+      <button className="btn" onClick={toggleEnabled} disabled={busy === "toggle"}>
+        <Icon name="power" size={12} /> {node.is_enabled ? "Отключить" : "Включить"}
+      </button>
     </div>
   );
 }
