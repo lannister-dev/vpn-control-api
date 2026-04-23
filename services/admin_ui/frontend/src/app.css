@@ -17,22 +17,9 @@ body {
   gap: 0;
 }
 .sidebar[data-collapsed="true"] .side-footer .user-avatar {
-  margin: 0 auto;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   font-size: 11px;
-  position: relative;
-}
-.sidebar[data-collapsed="true"] .side-footer .user-avatar::after {
-  content: "";
-  position: absolute;
-  bottom: -1px;
-  right: -1px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--ok);
-  border: 2px solid var(--bg-elevated);
 }
 
 .card-bad { border-color: var(--bad); color: var(--bad); background: var(--bad-soft); padding: 12px 14px; }
