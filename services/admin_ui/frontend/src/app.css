@@ -10,6 +10,19 @@ body {
 .app-content { flex: 1; overflow-y: auto; padding-top: 4px; display: flex; justify-content: center; }
 .app-content > .page { width: 100%; }
 
+.sidebar[data-collapsed="true"] .side-footer .user-avatar { position: relative; overflow: visible; }
+.sidebar[data-collapsed="true"] .side-footer .user-avatar::after {
+  content: "";
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ok);
+  border: 2px solid var(--bg-elevated);
+}
+
 
 .card-bad { border-color: var(--bad); color: var(--bad); background: var(--bad-soft); padding: 12px 14px; }
 
