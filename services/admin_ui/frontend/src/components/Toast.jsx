@@ -27,12 +27,17 @@ export function ToastProvider({ children }) {
     <ToastCtx.Provider value={{ show }}>
       {children}
       <div className="toast-stack">
-        {items.map((t) => (
-          <div key={t.id} className={"toast toast-" + (t.tone || "ok")} onClick={() => remove(t.id)}>
-            <Icon name={t.tone === "bad" ? "x" : t.tone === "warn" ? "clock" : "shield-check"} size={14} />
-            <span>{t.message}</span>
-          </div>
-        ))}
+        {items.map((t) => {
+          const tone = t.tone || "ok";
+          const icon = tone === "bad" ? "alert-circle" : tone === "warn" ? "alert-triangle" : "check";
+          return (
+            <div key={t.id} className={"toast toast-" + tone} onClick={() => remove(t.id)} role="status">
+              <span className={"toast-icon toast-icon-" + tone}><Icon name={icon} size={12} strokeWidth={2.5} /></span>
+              <span className="toast-msg">{t.message}</span>
+              <span className="toast-close"><Icon name="x" size={12} /></span>
+            </div>
+          );
+        })}
       </div>
     </ToastCtx.Provider>
   );
