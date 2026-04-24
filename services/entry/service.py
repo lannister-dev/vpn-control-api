@@ -15,6 +15,7 @@ from services.entry.exceptions import (
 )
 from services.entry.models import EntryBackendAssignment
 from services.entry.repository import EntryBackendAssignmentRepository
+from services.nodes.naming.registry import registry as naming_registry
 from services.routes.model import Route
 from services.routes.repository import RouteRepository, TransportProfileRepository
 from services.entry.schemas import (
@@ -297,8 +298,11 @@ class EntryService:
     def _compose_auto_route_name(
         *, entry: VpnNode, backend: VpnNode, profile,
     ) -> str:
-        base = f"{entry.name}→{backend.name}·{profile.name}"
-        return base[:100]
+        return naming_registry.canonical_route_name(
+            entry_name=entry.name,
+            backend_name=backend.name,
+            transport_profile_name=profile.name,
+        )
 
     @staticmethod
     def _require_zone_match(*, entry: VpnNode, backend: VpnNode) -> None:

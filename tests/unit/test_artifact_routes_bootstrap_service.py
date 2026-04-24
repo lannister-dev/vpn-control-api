@@ -218,7 +218,7 @@ async def test_bootstrap_creates_routes_via_selected_entry_nodes(async_session):
     create_payload = service.route_repository.create.await_args.args[0]
     assert create_payload["node_id"] == backend.id
     assert create_payload["entry_node_id"] == entry.id
-    assert create_payload["name"] == "auto-be-main-via-entry-main-reality-google"
+    assert create_payload["name"] == "entry-main-be-main-reality-google"
 
 
 @pytest.mark.asyncio
@@ -243,7 +243,7 @@ async def test_bootstrap_updates_inactive_transport_and_route(async_session):
     service.transport_repository.list_by_names.return_value = [existing_transport]
     service.transport_repository.update_by_id = AsyncMock(return_value=existing_transport)
 
-    route_name = "auto-be-main-reality-google"
+    route_name = "be-main-reality-google"
     existing_route = _route(
         name=route_name,
         node_id=backend.id,
@@ -294,7 +294,7 @@ async def test_bootstrap_recovers_unhealthy_route_into_warmup(async_session):
     service.transport_repository.list_by_names.return_value = [existing_transport]
     service.transport_repository.update_by_id = AsyncMock(return_value=existing_transport)
 
-    route_name = "auto-be-main-reality-google"
+    route_name = "be-main-reality-google"
     existing_route = _route(
         name=route_name,
         node_id=backend.id,
