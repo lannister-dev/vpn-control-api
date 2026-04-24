@@ -9,6 +9,6 @@ from services.nodes.constants import (
 
 SHORT_TO_ROLE: dict[str, str] = {
     "entry": ROLE_ENTRY,
-    "wl": ROLE_WHITELIST_ENTRY,
-    "be": ROLE_BACKEND,
+    "whitelist": ROLE_WHITELIST_ENTRY,
+    "backend": ROLE_BACKEND,
 }
