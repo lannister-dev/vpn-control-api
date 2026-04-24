@@ -1,14 +1,14 @@
 import logging
-from contextlib import asynccontextmanager
 
 import uvicorn
-from fastapi import FastAPI, APIRouter, status
+from fastapi import APIRouter, FastAPI, status
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from prometheus_fastapi_instrumentator import Instrumentator
-from shared.database.session import AsyncDatabase
-from shared.profiles.init import bootstrap_profiles_registry
-from shared.redis.client import redis_client
+
+from shared.app.bootstrap import configure_root_logging
+from shared.app.healthz import add_healthz
+from shared.app.lifespan import build_lifespan
 from shared.utils.logger import StructuredLogger
 
 from services.admin_transport.router import router as admin_transport_router
@@ -40,36 +40,18 @@ from services.billing.router import router as billing_router
 from services.bot_api.router import router as bot_api_router
 
 
-log = StructuredLogger(logging.getLogger("vpn-control-api"))
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Redis
-    await redis_client.connect()
-    log.info("Redis initialized")
-
-    # Profiles registry (DB artifacts)
-    session_maker = AsyncDatabase.get_session_maker()
-    async with session_maker() as session:
-        await bootstrap_profiles_registry(session)
-
-    try:
-        yield
-    finally:
-        pass
-    log.info("Application shutdown")
-
+configure_root_logging()
+logger = StructuredLogger(logging.getLogger("vpn-control-api"))
 
 app = FastAPI(
     title="VPN Control API",
     docs_url="/api/instruction",
     openapi_url="/api/openapi.json",
-    lifespan=lifespan,
+    lifespan=build_lifespan(logger=logger, ready_event="api_ready", shutdown_event="api_shutdown"),
 )
+
 runtime_readiness_service = RuntimeReadinessService()
 
-# Routers
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(admin_auth_router)
 api_router.include_router(auth_router)
@@ -111,16 +93,18 @@ async def runtime_readiness() -> RuntimeReadinessOut | JSONResponse:
         content=readiness.model_dump(mode="json"),
     )
 
-app.mount("/api/instruction", StaticFiles(directory="shared/static/instruction", html=True), name="instruction")
+
+add_healthz(app)
+
+app.mount(
+    "/api/instruction",
+    StaticFiles(directory="shared/static/instruction", html=True),
+    name="instruction",
+)
 
 app.add_middleware(DocsBasicAuthMiddleware)
 
 Instrumentator().instrument(app).expose(app, endpoint="/api/monitoring")
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s %(message)s",
-)
 
 
 if __name__ == "__main__":

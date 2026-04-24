@@ -1,12 +1,23 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI
+from prometheus_fastapi_instrumentator import Instrumentator
 
-from shared.database.session import AsyncDatabase
-from shared.profiles.init import bootstrap_profiles_registry
-from shared.redis.client import redis_client
+from shared.app.bootstrap import (
+    bootstrap_profiles,
+    configure_root_logging,
+    connect_redis,
+)
+from shared.app.healthz import add_healthz, add_reconciler_healthz
+from shared.monitoring.metrics import (
+    RECONCILER_ALIVE,
+    RECONCILER_MAX_SILENCE_SECONDS,
+    RECONCILER_SILENCE_SECONDS,
+)
+from shared.reconciler.watchdog import watchdog
 from shared.utils.logger import StructuredLogger
 from services.config import get_settings
 
@@ -47,25 +58,15 @@ from services.nodes.agent.model import (  # noqa: F401
 )
 from services.plans.models import Plan  # noqa: F401
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s %(message)s",
-)
-log = StructuredLogger(logging.getLogger("reconciler-worker"))
+
+configure_root_logging()
+logger = StructuredLogger(logging.getLogger("reconciler-worker"))
+
+_METRICS_EXPORT_INTERVAL_SEC = 10
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    await redis_client.connect()
-    log.info("redis_connected")
-
-    session_maker = AsyncDatabase.get_session_maker()
-    async with session_maker() as session:
-        await bootstrap_profiles_registry(session)
-
-    settings = get_settings()
-
-    reconcilers = [
+def _build_reconcilers() -> list:
+    return [
         RouteWarmupReconciler(),
         ProbeSignalCleanupReconciler(),
         ProbeAutoDrainReconciler(),
@@ -79,35 +80,66 @@ async def lifespan(app: FastAPI):
         VpnKeyExpirationReconciler(),
         EntryAutoDrainReconciler(),
     ]
-    runtimes = [
-        NodeAgentRuntime(settings.nats),
-        UserTrafficNatsConsumer(settings.nats),
-        NodeTrafficNatsConsumer(settings.nats),
+
+
+def _build_nats_runtimes(nats_settings) -> list:
+    return [
+        NodeAgentRuntime(nats_settings),
+        UserTrafficNatsConsumer(nats_settings),
+        NodeTrafficNatsConsumer(nats_settings),
     ]
 
+
+async def _export_watchdog_metrics(stop: asyncio.Event):
+    while not stop.is_set():
+        for s in watchdog.statuses():
+            RECONCILER_SILENCE_SECONDS.labels(name=s.name).set(s.silence_sec)
+            RECONCILER_MAX_SILENCE_SECONDS.labels(name=s.name).set(s.max_silence_sec)
+            RECONCILER_ALIVE.labels(name=s.name).set(1 if s.alive else 0)
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=_METRICS_EXPORT_INTERVAL_SEC)
+        except asyncio.TimeoutError:
+            continue
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await connect_redis(logger)
+    await bootstrap_profiles(logger)
+
+    settings = get_settings()
+    reconcilers = _build_reconcilers()
+    runtimes = _build_nats_runtimes(settings.nats)
+
     for r in reconcilers:
+        watchdog.register(r.__class__.__name__)
         await r.start()
     for r in runtimes:
         await r.start()
 
-    log.info("all_reconcilers_started", count=len(reconcilers) + len(runtimes))
+    logger.info("reconciler_worker_ready", count=len(reconcilers) + len(runtimes))
+
+    metrics_stop = asyncio.Event()
+    metrics_task = asyncio.create_task(_export_watchdog_metrics(metrics_stop))
 
     try:
         yield
     finally:
+        metrics_stop.set()
+        await metrics_task
         for r in reversed(runtimes):
             await r.stop()
         for r in reversed(reconcilers):
             await r.stop()
-        log.info("all_reconcilers_stopped")
+        logger.info("reconciler_worker_stopped")
 
 
 app = FastAPI(docs_url=None, openapi_url=None, lifespan=lifespan)
 
+Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
-@app.get("/healthz")
-async def healthz():
-    return {"status": "ok"}
+add_healthz(app)
+add_reconciler_healthz(app)
 
 
 if __name__ == "__main__":
