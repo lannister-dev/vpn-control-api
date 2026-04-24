@@ -39,6 +39,19 @@ function stateOf(n) {
   return "active";
 }
 
+const DRAIN_REASON_LABELS = {
+  probe_auto_failure: "probe: авто-дрейн",
+  unhealthy_heartbeat: "heartbeat: unhealthy",
+  manual_admin: "админ",
+  entry_auto_drain: "entry pool: авто",
+  probe_synthetic_self_heal: "synthetic self-heal",
+};
+
+function drainReasonLabel(reason) {
+  if (!reason) return "";
+  return DRAIN_REASON_LABELS[reason] || reason;
+}
+
 function loadOf(n) {
   return Math.min(1, (n.placements_backend || 0) / Math.max(n.capacity || 50, 1));
 }
@@ -161,6 +174,11 @@ export function NodesPage({ onOpenNode, initialAction, onActionConsumed }) {
                   <td><span className="pill">{n.role}</span></td>
                   <td>
                     <span className={`pill ${st === "active" ? "ok" : st === "draining" ? "warn" : "muted"}`}>{st}</span>
+                    {st === "draining" && n.drain_reason && (
+                      <div className="muted" style={{ fontSize: 11, marginTop: 2 }} title={n.drain_reason}>
+                        {drainReasonLabel(n.drain_reason)}
+                      </div>
+                    )}
                   </td>
                   <td><LoadBar v={load} /></td>
                   <td className="tbl-num">{n.capacity ?? "—"}</td>

@@ -42,6 +42,19 @@ function stateOf(n) {
   return "active";
 }
 
+const DRAIN_REASON_LABELS = {
+  probe_auto_failure: "probe: авто-дрейн",
+  unhealthy_heartbeat: "heartbeat: unhealthy",
+  manual_admin: "админ",
+  entry_auto_drain: "entry pool: авто",
+  probe_synthetic_self_heal: "synthetic self-heal",
+};
+
+function drainReasonLabel(reason) {
+  if (!reason) return "";
+  return DRAIN_REASON_LABELS[reason] || reason;
+}
+
 export function NodeDrawer({ node, onClose, onGoto }) {
   const [tab, setTab] = useState("overview");
   const [sshOpen, setSshOpen] = useState(false);
@@ -190,7 +203,14 @@ function NodeOverview({ node, routesCount, transportData, onSshClick, onMigrateC
         <dt>Регион</dt><dd>{nodeGeo(node.region).flag} {node.region}</dd>
         <dt>Зона</dt><dd>{node.zone || <span className="muted">—</span>}</dd>
         <dt>Роль</dt><dd>{node.role}</dd>
-        <dt>Статус</dt><dd><span className={`pill ${st === "active" ? "ok" : st === "draining" ? "warn" : ""}`}>{st}</span></dd>
+        <dt>Статус</dt><dd>
+          <span className={`pill ${st === "active" ? "ok" : st === "draining" ? "warn" : ""}`}>{st}</span>
+          {st === "draining" && node.drain_reason && (
+            <span className="mono muted" style={{ fontSize: 11, marginLeft: 8 }} title={node.drained_at ? `с ${new Date(node.drained_at).toLocaleString()}` : ""}>
+              {drainReasonLabel(node.drain_reason)}
+            </span>
+          )}
+        </dd>
         <dt>Здоровье</dt><dd><span className={`pill ${tone}`}><span className={`status-dot ${tone}`} /> {tone === "ok" ? "healthy" : tone === "warn" ? "degraded" : "unhealthy"}</span></dd>
         <dt>Нагрузка</dt><dd>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
