@@ -14,6 +14,7 @@ from services.probe.policy.repository import ProbePolicyRepository
 from services.probe.repository import ProbeSignalRepository
 from services.probe.schemas import ProbeAutoDrainMigrateIn, ProbeAutoDrainMigrateOut
 from shared.database.session import AsyncDatabase
+from shared.reconciler.watchdog import watchdog
 from shared.redis.lock import RedisTickLock
 from shared.utils.logger import StructuredLogger
 
@@ -82,6 +83,7 @@ class ProbeAutoDrainReconciler:
             except Exception:
                 logger.exception("probe_auto_drain_tick_failed")
 
+            watchdog.heartbeat(self.__class__.__name__, max_silence_sec=sleep_sec * 2 + 60)
             try:
                 await asyncio.wait_for(self._stop_event.wait(), timeout=sleep_sec)
             except TimeoutError:

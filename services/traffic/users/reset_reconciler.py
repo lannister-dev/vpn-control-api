@@ -13,6 +13,7 @@ from services.traffic.users.reset_policy import RESETTABLE_STRATEGIES, reset_cut
 from services.vpn.keys.repository import VpnKeyRepository
 from services.vpn.subscriptions.repository import SubscriptionRepository
 from shared.database.session import AsyncDatabase
+from shared.reconciler.watchdog import watchdog
 from shared.redis.lock import RedisTickLock
 from shared.utils.logger import StructuredLogger
 
@@ -63,6 +64,7 @@ class TrafficResetReconciler:
             except Exception:
                 logger.exception("traffic_reset_tick_failed")
 
+            watchdog.heartbeat(self.__class__.__name__, max_silence_sec=self._interval_sec * 2 + 60)
             try:
                 await asyncio.wait_for(self._stop_event.wait(), timeout=self._interval_sec)
             except TimeoutError:

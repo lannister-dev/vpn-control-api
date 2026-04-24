@@ -64,17 +64,17 @@ spec:
             {{- toYaml (.Values.reconciler.resources | default .Values.resources) | nindent 12 }}
           livenessProbe:
             httpGet:
-              path: /healthz
+              path: {{ .Values.reconciler.probes.liveness.path | default "/healthz/live" }}
               port: health
-            initialDelaySeconds: 10
-            periodSeconds: 15
-            timeoutSeconds: 5
-            failureThreshold: 3
+            initialDelaySeconds: {{ .Values.reconciler.probes.liveness.initialDelaySeconds | default 120 }}
+            periodSeconds: {{ .Values.reconciler.probes.liveness.periodSeconds | default 30 }}
+            timeoutSeconds: {{ .Values.reconciler.probes.liveness.timeoutSeconds | default 5 }}
+            failureThreshold: {{ .Values.reconciler.probes.liveness.failureThreshold | default 3 }}
           readinessProbe:
             httpGet:
-              path: /healthz
+              path: {{ .Values.reconciler.probes.readiness.path | default "/healthz" }}
               port: health
-            initialDelaySeconds: 5
-            periodSeconds: 10
-            timeoutSeconds: 3
+            initialDelaySeconds: {{ .Values.reconciler.probes.readiness.initialDelaySeconds | default 5 }}
+            periodSeconds: {{ .Values.reconciler.probes.readiness.periodSeconds | default 10 }}
+            timeoutSeconds: {{ .Values.reconciler.probes.readiness.timeoutSeconds | default 3 }}
 {{- end }}

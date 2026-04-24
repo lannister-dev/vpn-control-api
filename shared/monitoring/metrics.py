@@ -1,5 +1,23 @@
 from prometheus_client import Counter, Histogram, Gauge
 
+# ── Reconciler watchdog ────────────────────────────────────────
+RECONCILER_SILENCE_SECONDS = Gauge(
+    "reconciler_silence_seconds",
+    "Seconds since last tick heartbeat of a reconciler loop",
+    ["name"],
+)
+RECONCILER_MAX_SILENCE_SECONDS = Gauge(
+    "reconciler_max_silence_seconds",
+    "Watchdog threshold after which a reconciler is considered stale",
+    ["name"],
+)
+RECONCILER_ALIVE = Gauge(
+    "reconciler_alive",
+    "1 if reconciler ticked within max_silence_sec, else 0",
+    ["name"],
+)
+
+
 # ── Subscriptions ──────────────────────────────────────────────
 SUBSCRIPTION_REQUEST_TOTAL = Counter(
     "subscription_request_total",

@@ -30,6 +30,7 @@ from services.vpn.keys.schemas import (
     VpnTransport,
 )
 from shared.database.session import AsyncDatabase
+from shared.reconciler.watchdog import watchdog
 from shared.redis.lock import RedisTickLock
 from shared.utils.logger import StructuredLogger
 
@@ -131,6 +132,7 @@ class ProbeSyntheticCredentialReconciler:
             except Exception:
                 logger.exception("probe_synthetic_reconcile_tick_failed")
 
+            watchdog.heartbeat(self.__class__.__name__, max_silence_sec=sleep_sec * 2 + 60)
             try:
                 await asyncio.wait_for(self._stop_event.wait(), timeout=sleep_sec)
             except TimeoutError:

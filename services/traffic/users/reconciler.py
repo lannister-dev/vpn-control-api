@@ -6,6 +6,7 @@ import logging
 from services.config import TrafficConfig, get_settings
 from services.traffic.users.service import UserTrafficService
 from shared.database.session import AsyncDatabase
+from shared.reconciler.watchdog import watchdog
 from shared.redis.lock import RedisTickLock
 from shared.utils.logger import StructuredLogger
 
@@ -66,6 +67,7 @@ class TrafficHistoryCleanupReconciler:
             except Exception:
                 logger.exception("traffic_cleanup_tick_failed")
 
+            watchdog.heartbeat(self.__class__.__name__, max_silence_sec=self._interval_sec * 2 + 60)
             try:
                 await asyncio.wait_for(self._stop_event.wait(), timeout=self._interval_sec)
             except TimeoutError:

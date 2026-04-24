@@ -13,6 +13,7 @@ from services.nodes.policy.repository import NodePolicyRepository
 from services.placements.repository import UserPlacementRepository
 from services.placements.transport import NodeAgentPlacementTransport
 from shared.database.session import AsyncDatabase
+from shared.reconciler.watchdog import watchdog
 from shared.monitoring.metrics import (
     PLACEMENT_REBALANCE_MISSING_GAUGE,
     PLACEMENT_REBALANCE_TOTAL,
@@ -82,6 +83,7 @@ class PlacementRebalanceReconciler:
             except Exception:
                 logger.exception("placement_rebalance_tick_failed")
 
+            watchdog.heartbeat(self.__class__.__name__, max_silence_sec=sleep_sec * 2 + 60)
             try:
                 await asyncio.wait_for(self._stop_event.wait(), timeout=sleep_sec)
             except TimeoutError:
