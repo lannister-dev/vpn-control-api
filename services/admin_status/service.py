@@ -13,6 +13,7 @@ from services.admin_status.schemas import (
 )
 from services.artifacts.repository import ProfileArtifactRepository
 from services.nodes.repository import VpnNodeRepository
+from services.nodes.schemas import NodeHeartbeatMeta
 from services.placements.repository import UserPlacementRepository
 from services.routes.repository import RouteRepository
 from shared.database.session import AsyncDatabase
@@ -55,7 +56,7 @@ class AdminStatusService:
                 nodes_enabled += 1
             if node.is_draining:
                 nodes_draining += 1
-            if healthy:
+            if healthy and node.is_enabled and not node.is_draining:
                 nodes_healthy += 1
 
             reality_ip_raw = getattr(node, "reality_ip", None)
@@ -63,6 +64,8 @@ class AdminStatusService:
 
             upstream_raw = getattr(node, "upstream_node_id", None)
             upstream_node_id = upstream_raw if upstream_raw is not None else None
+
+            drain_reason, drained_at = self._extract_drain_meta(agent_state)
 
             nodes.append(
                 AdminNodeStatusOut(
@@ -75,6 +78,8 @@ class AdminStatusService:
                     upstream_node_id=upstream_node_id,
                     is_enabled=node.is_enabled,
                     is_draining=node.is_draining,
+                    drain_reason=drain_reason if node.is_draining else None,
+                    drained_at=drained_at if node.is_draining else None,
                     capacity=node.capacity,
                     is_healthy=healthy,
                     routing_eligible=routing_eligible,
@@ -194,6 +199,22 @@ class AdminStatusService:
         if last_seen_at < self._node_seen_after(now=now):
             return "heartbeat_stale"
         return None
+
+    @staticmethod
+    def _extract_drain_meta(agent_state) -> tuple[str | None, datetime | None]:
+        if agent_state is None:
+            return None, None
+        details = getattr(agent_state, "details", None)
+        if not isinstance(details, dict):
+            return None, None
+        heartbeat_raw = details.get("heartbeat")
+        if not isinstance(heartbeat_raw, dict):
+            return None, None
+        try:
+            heartbeat = NodeHeartbeatMeta.model_validate(heartbeat_raw)
+        except ValueError:
+            return None, None
+        return heartbeat.drain_reason or None, heartbeat.drained_at
 
     @staticmethod
     def _to_utc_or_none(value: datetime | None) -> datetime | None:

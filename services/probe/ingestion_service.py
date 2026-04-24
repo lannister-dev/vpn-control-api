@@ -152,7 +152,7 @@ class ProbeIngestionService:
     async def list_targets(
             self,
             *,
-            include_draining: bool = False,
+            include_draining: bool = True,
             include_disabled: bool = False,
             role: ProbeTargetRole | None = None,
     ) -> list[ProbeTargetOut]:
@@ -592,7 +592,9 @@ class ProbeIngestionService:
                 continue
             if getattr(transport_profile, "network", None) != "tcp":
                 continue
-            if not backend.is_active or not backend.is_enabled or backend.is_draining:
+            if not backend.is_active or not backend.is_enabled:
+                continue
+            if not include_draining and backend.is_draining:
                 continue
             probe_client_id = probe_client_ids_by_target.get((backend.id, "reality"))
             if not probe_client_id:

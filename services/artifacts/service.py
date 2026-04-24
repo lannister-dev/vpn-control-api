@@ -16,6 +16,7 @@ from services.artifacts.schemas import (
     ProfileArtifactPublishIn,
 )
 from services.artifacts.repository import ProfileArtifactRepository
+from services.nodes.naming.registry import registry as naming_registry
 from services.nodes.repository import VpnNodeRepository
 from services.routes.repository import RouteRepository, TransportProfileRepository
 from services.routes.schemas import (
@@ -431,10 +432,11 @@ class ProfileArtifactService:
             entry_name: str | None,
             transport_name: str,
     ) -> str:
-        if entry_name:
-            base = f"auto-{backend_name}-via-{entry_name}-{transport_name}"
-        else:
-            base = f"auto-{backend_name}-{transport_name}"
+        base = naming_registry.canonical_route_name(
+            entry_name=entry_name,
+            backend_name=backend_name,
+            transport_profile_name=transport_name,
+        )
         return ArtifactProfileMapper.normalize_name(key=base, max_len=100)
 
     @staticmethod
