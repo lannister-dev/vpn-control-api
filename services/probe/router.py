@@ -42,7 +42,7 @@ async def report_probe(
     summary="List probe targets",
 )
 async def list_probe_targets(
-        include_draining: bool = Query(default=False),
+        include_draining: bool = Query(default=True),
         include_disabled: bool = Query(default=False),
         role: ProbeTargetRole | None = Query(default=None),
         service: ProbeIngestionService = Depends(get_probe_ingestion_service),
