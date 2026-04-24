@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from services.admin_transport.policy.repository import TransportPolicyRepository
 from services.admin_transport.repository import AdminTransportRepository
 from shared.database.session import AsyncDatabase
+from shared.reconciler.watchdog import watchdog
 from shared.redis.lock import RedisTickLock
 from shared.utils.logger import StructuredLogger
 
@@ -74,6 +75,7 @@ class AdminTransportCleanupReconciler:
             except Exception:
                 logger.exception("transport_cleanup_tick_failed")
 
+            watchdog.heartbeat(self.__class__.__name__, max_silence_sec=sleep_sec * 2 + 60)
             try:
                 await asyncio.wait_for(self._stop_event.wait(), timeout=sleep_sec)
             except TimeoutError:
