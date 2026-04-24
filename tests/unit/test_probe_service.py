@@ -422,7 +422,7 @@ async def test_list_targets_skips_entry_synthetic_without_configured_client(asyn
 
 
 @pytest.mark.asyncio
-async def test_list_targets_deduplicates_backend_direct_probes(async_session):
+async def test_list_targets_returns_all_active_routes_independently(async_session):
     svc = _ingestion_service()
     svc.route_repository = AsyncMock()
 
@@ -447,8 +447,8 @@ async def test_list_targets_deduplicates_backend_direct_probes(async_session):
 
     out = await svc.list_targets(role="backend")
     direct_probes = [t for t in out if t.node_id == backend.id]
-    assert len(direct_probes) == 1
-    assert direct_probes[0].route_name == "direct"
+    names = {t.route_name for t in direct_probes}
+    assert names == {"direct", "wl-suck-rkn", "via-pool"}
 
 
 @pytest.mark.asyncio
