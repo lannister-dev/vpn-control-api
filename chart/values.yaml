@@ -71,6 +71,22 @@ reconciler:
     requests:
       cpu: 100m
       memory: 128Mi
+  probes:
+    # /healthz/live returns 503 if any reconciler loop has not ticked within its
+    # max_silence_sec (= tick_sec * 2 + 60). 3 consecutive failures (~90s) kill
+    # the pod so kube restarts it. initialDelaySeconds covers redis+profiles
+    # bootstrap + first tick.
+    liveness:
+      path: /healthz/live
+      initialDelaySeconds: 120
+      periodSeconds: 30
+      timeoutSeconds: 5
+      failureThreshold: 3
+    readiness:
+      path: /healthz
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 3
 
 admin:
   enabled: false

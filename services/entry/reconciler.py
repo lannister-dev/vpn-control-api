@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from services.entry.drain_service import EntryAutoDrainResult, EntryAutoDrainService
 from services.nodes.policy.repository import NodePolicyRepository
 from shared.database.session import AsyncDatabase
+from shared.reconciler.watchdog import watchdog
 from shared.redis.lock import RedisTickLock
 from shared.utils.logger import StructuredLogger
 
@@ -75,6 +76,7 @@ class EntryAutoDrainReconciler:
                 raise
             except Exception:
                 logger.exception("entry_auto_drain_tick_failed")
+            watchdog.heartbeat(self.__class__.__name__, max_silence_sec=sleep_sec * 2 + 60)
             try:
                 await asyncio.wait_for(self._stop_event.wait(), timeout=sleep_sec)
             except TimeoutError:

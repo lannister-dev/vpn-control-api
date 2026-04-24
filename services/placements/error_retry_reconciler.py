@@ -10,6 +10,7 @@ from services.nodes.policy.repository import NodePolicyRepository
 from services.placements.model import UserPlacement
 from services.placements.transport import NodeAgentPlacementTransport
 from shared.database.session import AsyncDatabase
+from shared.reconciler.watchdog import watchdog
 from shared.redis.lock import RedisTickLock
 from shared.utils.logger import StructuredLogger
 
@@ -75,6 +76,7 @@ class PlacementErrorRetryReconciler:
             except Exception:
                 logger.exception("placement_error_retry_tick_failed")
 
+            watchdog.heartbeat(self.__class__.__name__, max_silence_sec=sleep_sec * 2 + 60)
             try:
                 await asyncio.wait_for(self._stop_event.wait(), timeout=sleep_sec)
             except TimeoutError:

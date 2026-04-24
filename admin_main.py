@@ -1,24 +1,18 @@
 import logging
-from contextlib import asynccontextmanager
 
 import uvicorn
-from fastapi import FastAPI, APIRouter
+from fastapi import APIRouter, FastAPI
 from prometheus_fastapi_instrumentator import Instrumentator
 from starlette.staticfiles import StaticFiles
 
-from shared.database.session import AsyncDatabase
-from shared.nats.client import NatsClient
-from shared.profiles.init import bootstrap_profiles_registry
-from shared.redis.client import redis_client
+from shared.app.bootstrap import configure_root_logging
+from shared.app.healthz import add_healthz
+from shared.app.lifespan import build_lifespan
 from shared.utils.logger import StructuredLogger
 from services.config import get_settings
 
-# Admin UI (panel + static)
-# legacy Jinja+vanilla-JS panel — disabled, replaced by React SPA at /
-# from services.admin_ui.router import router as admin_ui_router, STATIC_DIR
 from services.admin_ui.router_v2 import router as admin_ui_v2_router, STATIC_V2_DIR
 
-# Admin API routers used by the panel frontend
 from services.auth.admin.router import router as admin_auth_router
 from services.admin_ops.router import router as admin_ops_router
 from services.admin_status.router import router as admin_status_router
@@ -43,52 +37,23 @@ from services.zones.router import router as zones_router
 from services.users.router import router as users_router
 from services.vpn.subscriptions.router import router as subscriptions_router
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s %(message)s",
-)
-log = StructuredLogger(logging.getLogger("admin-panel"))
 
+configure_root_logging()
+logger = StructuredLogger(logging.getLogger("admin-panel"))
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    await redis_client.connect()
-    log.info("redis_connected")
-
-    session_maker = AsyncDatabase.get_session_maker()
-    async with session_maker() as session:
-        await bootstrap_profiles_registry(session)
-
-    settings = get_settings()
-    nats_client: NatsClient | None = None
-    if settings.nats.enabled:
-        nats_client = NatsClient(settings.nats)
-        try:
-            await nats_client.connect()
-            app.state.nats_client = nats_client
-            app.state.nats_config = settings.nats
-            log.info("admin_nats_connected")
-        except Exception as exc:
-            log.exception("admin_nats_connect_failed", error=str(exc))
-            nats_client = None
-
-    log.info("admin_panel_ready")
-    try:
-        yield
-    finally:
-        if nats_client is not None:
-            try:
-                await nats_client.close()
-            except Exception:
-                log.exception("admin_nats_close_failed")
-        log.info("admin_panel_shutdown")
-
+settings = get_settings()
 
 app = FastAPI(
     title="VPN Control Admin Panel",
     docs_url=None,
     openapi_url=None,
-    lifespan=lifespan,
+    lifespan=build_lifespan(
+        logger=logger,
+        with_nats=settings.nats.enabled,
+        nats_settings=settings.nats,
+        ready_event="admin_panel_ready",
+        shutdown_event="admin_panel_shutdown",
+    ),
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -118,14 +83,8 @@ app.include_router(api_router)
 
 Instrumentator().instrument(app).expose(app, endpoint="/api/monitoring")
 
+add_healthz(app)
 
-@app.get("/healthz")
-async def healthz():
-    return {"status": "ok"}
-
-
-# React SPA at root. Legacy Jinja panel disabled.
-# app.include_router(admin_ui_router)
 if STATIC_V2_DIR.exists():
     app.mount("/static/v2", StaticFiles(directory=str(STATIC_V2_DIR)), name="admin-static-v2")
 # SPA catchall — must be registered LAST so specific routes match first.

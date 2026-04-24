@@ -11,6 +11,7 @@ from services.placements.transport import NodeAgentPlacementTransport
 from services.vpn.keys.repository import VpnKeyRepository
 from shared.database.session import AsyncDatabase
 from shared.monitoring.metrics import VPN_KEY_OPERATION_TOTAL
+from shared.reconciler.watchdog import watchdog
 from shared.redis.lock import RedisTickLock
 from shared.utils.logger import StructuredLogger
 
@@ -70,6 +71,7 @@ class VpnKeyExpirationReconciler:
             except Exception:
                 logger.exception("vpn_key_expiration_tick_failed")
 
+            watchdog.heartbeat(self.__class__.__name__, max_silence_sec=self._interval_sec * 2 + 60)
             try:
                 await asyncio.wait_for(self._stop_event.wait(), timeout=self._interval_sec)
             except TimeoutError:
