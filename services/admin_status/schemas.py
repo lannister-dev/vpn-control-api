@@ -14,6 +14,8 @@ class AdminNodeStatusOut(BaseModel):
     upstream_node_id: UUID | None = None
     is_enabled: bool
     is_draining: bool
+    drain_reason: str | None = None
+    drained_at: datetime | None = None
     capacity: int
     is_healthy: bool
     routing_eligible: bool = False

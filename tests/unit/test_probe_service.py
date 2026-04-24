@@ -181,14 +181,19 @@ async def test_list_targets_filters_nodes(async_session):
 
     out = await svc.list_targets()
 
-    assert len(out) == 1
-    assert out[0].node_id == backend_ok.id
-    assert out[0].route_id == route_ok.id
-    assert out[0].transport_kind == "reality"
-    assert out[0].target_host == backend_ok.reality_ip
-    assert out[0].target_port == 443
-    assert out[0].probe_client_id is None
+    node_ids = {t.node_id for t in out}
+    assert node_ids == {backend_ok.id, backend_draining.id}
+    by_node = {t.node_id: t for t in out}
+    ok_target = by_node[backend_ok.id]
+    assert ok_target.route_id == route_ok.id
+    assert ok_target.transport_kind == "reality"
+    assert ok_target.target_host == backend_ok.reality_ip
+    assert ok_target.target_port == 443
+    assert ok_target.probe_client_id is None
     svc.route_repository.list_active_detailed.assert_awaited_once_with(limit=5000)
+
+    out_no_drain = await svc.list_targets(include_draining=False)
+    assert {t.node_id for t in out_no_drain} == {backend_ok.id}
 
 
 @pytest.mark.asyncio
@@ -452,12 +457,14 @@ async def test_list_targets_returns_all_active_routes_independently(async_sessio
 
 
 @pytest.mark.asyncio
-async def test_list_targets_skips_entry_synthetic_when_backend_unhealthy(async_session):
+async def test_list_targets_includes_entry_synthetic_for_draining_backend(async_session):
     svc, _, backend, _ = _entry_setup(role="entry")
     backend.is_draining = True
     out = await svc.list_targets(role="all")
     synth = [t for t in out if t.probe_kind == "synthetic_vpn"]
-    assert synth == []
+    assert len(synth) >= 1
+    synth_skip = await svc.list_targets(role="all", include_draining=False)
+    assert [t for t in synth_skip if t.probe_kind == "synthetic_vpn"] == []
 
 
 @pytest.mark.asyncio

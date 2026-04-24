@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import re
 
+from services.nodes.naming.registry import registry as naming_registry
+
 UNKNOWN_FLAG = "🌐"
 
 # Region aliases used in infrastructure naming -> ISO 3166-1 alpha-2.
@@ -182,6 +184,11 @@ def flag_emoji_from_country_code(country_code: str | None) -> str:
 
 def format_node_display_name(*, node_name: str, region: str | None) -> str:
     safe_name = node_name.strip() if isinstance(node_name, str) else ""
+
+    canonical = naming_registry.happ_display_for_name(safe_name)
+    if canonical is not None:
+        return canonical
+
     country_code = country_code_from_region(region)
     if not country_code and safe_name:
         country_code = country_code_from_region(safe_name)
