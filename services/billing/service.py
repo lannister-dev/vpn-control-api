@@ -13,11 +13,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.billing.exceptions import (
     DeviceSlotLimitExceeded,
+    FulfillmentFailed,
     InsufficientBalance,
     OrderExpired,
     OrderNotFound,
     PlanNotPurchasable,
     ProviderError,
+    RefundNotAllowed,
     TrialAlreadyUsed,
     TrialUnavailable,
     WebhookVerificationFailed,
@@ -56,6 +58,9 @@ from shared.utils.logger import StructuredLogger
 
 log = StructuredLogger(logging.getLogger("billing"))
 TELEGRAM_PENDING_MESSAGE_META_KEY = "_telegram_pending_message"
+
+ORDER_FINAL_STATUSES = ("paid", "completed", "refunded", "failed")
+ORDER_REFUNDABLE_STATUSES = ("paid", "completed")
 
 
 class BillingService:
@@ -545,7 +550,7 @@ class BillingService:
         except Exception as exc:
             raise WebhookVerificationFailed(f"Verification error: {exc}") from exc
 
-        order = await self.order_repo.get_by_external_id(webhook.external_id)
+        order = await self.order_repo.get_by_external_id_for_update(webhook.external_id)
         if not order:
             log.warning("webhook_order_not_found", external_id=webhook.external_id)
             raise OrderNotFound(f"Order not found for external_id={webhook.external_id}")
@@ -574,7 +579,7 @@ class BillingService:
             )
             return
 
-        await self._fulfill_order(order, provider_name, provider_meta=webhook.provider_meta)
+        await self._fulfill_order_locked(order, provider_name, provider_meta=webhook.provider_meta)
 
     # ── Stars confirmation (called by bot after successful_payment) ──
 
@@ -585,7 +590,7 @@ class BillingService:
         telegram_payment_charge_id: str,
         total_amount: int,
     ) -> None:
-        order = await self.order_repo.get_by_id(order_id)
+        order = await self.order_repo.get_by_id_for_update(order_id)
         if not order:
             raise OrderNotFound(f"Order {order_id} not found")
         if order.provider != "stars":
@@ -595,23 +600,49 @@ class BillingService:
             "telegram_payment_charge_id": telegram_payment_charge_id,
             "total_amount_stars": total_amount,
         })
-        await self._fulfill_order(order, "stars", provider_meta=meta)
+        await self._fulfill_order_locked(order, "stars", provider_meta=meta)
 
     # ── Order fulfillment (shared by webhook + stars confirm) ──────
 
-    async def _fulfill_order(
+    async def _fulfill_order_locked(
         self,
         order: PaymentOrder,
         provider_name: str,
         *,
         provider_meta: str | None = None,
     ) -> None:
-        if order.status in ("paid", "completed"):
-            log.info("fulfill_idempotent_skip", order_id=str(order.id))
+        if order.status in ORDER_FINAL_STATUSES:
+            log.info(
+                "fulfill_idempotent_skip",
+                order_id=str(order.id),
+                status=order.status,
+            )
             return
 
         if order.status == "expired":
             raise OrderExpired(f"Order {order.id} has expired")
+
+        user = await self._lock_user(order.user_id)
+        if not user:
+            log.error(
+                "fulfill_user_not_found",
+                user_id=str(order.user_id),
+                order_id=str(order.id),
+            )
+            await self.order_repo.update_by_id(
+                order.id,
+                OrderInternalUpdate(
+                    status="failed",
+                    provider_meta=self._merge_meta_strings(
+                        order.provider_meta,
+                        json.dumps({"_fulfill_failure": "user_not_found"}),
+                    ),
+                ).model_dump(exclude_none=True),
+            )
+            BILLING_ORDER_TOTAL.labels(provider=provider_name, status="failed").inc()
+            raise FulfillmentFailed(
+                f"User {order.user_id} not found for order {order.id}"
+            )
 
         now = datetime.now(timezone.utc)
 
@@ -628,11 +659,6 @@ class BillingService:
         BILLING_PAYMENT_AMOUNT_RUB_TOTAL.labels(provider=provider_name).inc(
             float(order.amount_rub)
         )
-
-        user = await self._lock_user(order.user_id)
-        if not user:
-            log.error("fulfill_user_not_found", user_id=str(order.user_id))
-            return
 
         new_balance = user.balance + order.amount_rub
         await self._update_user_balance(user.id, new_balance)
@@ -659,7 +685,6 @@ class BillingService:
         )
         BILLING_ORDER_TOTAL.labels(provider=provider_name, status="completed").inc()
 
-        # Referral reward: trigger after first paid order (plan_purchase or renewal)
         order_type = getattr(order, "order_type", "plan_purchase")
         if order_type in ("plan_purchase", "subscription_renewal") and provider_name != "free":
             try:
@@ -683,6 +708,73 @@ class BillingService:
                 )
             )
         log.info("fulfill_completed", order_id=str(order.id))
+
+    # ── Refund ────────────────────────────────────────────────
+
+    async def refund_order(
+        self,
+        order_id: UUID,
+        *,
+        reason: str,
+        deactivate_subscription: bool = True,
+    ) -> None:
+        order = await self.order_repo.get_by_id_for_update(order_id)
+        if not order:
+            raise OrderNotFound(f"Order {order_id} not found")
+
+        if order.status not in ORDER_REFUNDABLE_STATUSES:
+            raise RefundNotAllowed(
+                f"Order {order.id} cannot be refunded in status '{order.status}'"
+            )
+
+        user = await self._lock_user(order.user_id)
+        if not user:
+            raise FulfillmentFailed(
+                f"User {order.user_id} not found for refund of order {order.id}"
+            )
+
+        new_balance = user.balance - order.amount_rub
+        await self._update_user_balance(user.id, new_balance)
+        await self._record_transaction(
+            user_id=user.id,
+            amount=-order.amount_rub,
+            balance_after=new_balance,
+            tx_type="refund",
+            order_id=order.id,
+            description=f"Refund: {reason}"[:256],
+        )
+        BILLING_BALANCE_OPERATION_TOTAL.labels(type="refund").inc()
+
+        await self.order_repo.update_by_id(
+            order.id,
+            OrderInternalUpdate(
+                status="refunded",
+                provider_meta=self._merge_meta_strings(
+                    order.provider_meta,
+                    json.dumps({"_refund_reason": reason, "_refunded_at": datetime.now(timezone.utc).isoformat()}),
+                ),
+            ).model_dump(exclude_none=True),
+        )
+        BILLING_ORDER_TOTAL.labels(provider=order.provider, status="refunded").inc()
+
+        if deactivate_subscription and order.subscription_id:
+            await self.sub_repo.update_by_id(
+                order.subscription_id,
+                SubscriptionInternalUpdate(is_active=False).model_dump(exclude_none=True),
+            )
+            log.info(
+                "refund_subscription_deactivated",
+                subscription_id=str(order.subscription_id),
+                order_id=str(order.id),
+            )
+
+        log.info(
+            "order_refunded",
+            order_id=str(order.id),
+            user_id=str(user.id),
+            amount=str(order.amount_rub),
+            reason=reason,
+        )
 
     # ── Balance operations ────────────────────────────────────
 
@@ -723,7 +815,6 @@ class BillingService:
     # ── Internal helpers ──────────────────────────────────────
 
     async def _lock_user(self, user_id: UUID) -> User | None:
-        """SELECT ... FOR UPDATE to prevent concurrent balance modifications."""
         result = await self.session.execute(
             select(User).where(User.id == user_id).with_for_update()
         )

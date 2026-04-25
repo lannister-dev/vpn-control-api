@@ -110,8 +110,30 @@ class CryptoProvider(BaseApiClient, PaymentProvider):
             else (str(invoice_id) if str(invoice_id).startswith("INV-") else f"INV-{invoice_id}")
         )
 
+        amount_raw = (
+            invoice_info.get("amount_in_fiat")
+            or invoice_info.get("amount")
+            or body.get("amount_in_fiat")
+            or body.get("amount")
+            or 0
+        )
+        try:
+            amount_rub = float(amount_raw)
+        except (TypeError, ValueError):
+            amount_rub = 0.0
+
+        status_raw = str(
+            invoice_info.get("status")
+            or body.get("status")
+            or body.get("invoice_status")
+            or ""
+        ).strip().upper()
+        should_fulfill = status_raw in ("", "PAID", "OVERPAID", "SUCCESS")
+
         return WebhookResult(
             external_id=external_id,
-            amount_rub=0,
+            amount_rub=amount_rub,
             provider_meta=json.dumps(body, default=str),
+            should_fulfill=should_fulfill,
+            provider_status=status_raw or None,
         )

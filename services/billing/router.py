@@ -6,11 +6,13 @@ from fastapi.responses import PlainTextResponse, RedirectResponse
 from services.auth.dependencies import admin_auth
 from services.billing.dependencies import _required_redirect
 from services.billing.exceptions import (
+    FulfillmentFailed,
     InsufficientBalance,
     OrderExpired,
     OrderNotFound,
     PlanNotPurchasable,
     ProviderError,
+    RefundNotAllowed,
     WebhookVerificationFailed,
 )
 from services.billing.schemas import (
@@ -19,6 +21,7 @@ from services.billing.schemas import (
     OrderCreateIn,
     OrderListOut,
     OrderOut,
+    OrderRefundIn,
     TransactionListOut,
 )
 from services.billing.service import BillingService, get_billing_service
@@ -104,6 +107,8 @@ async def webhook_crypto(
         raise HTTPException(status_code=404, detail=str(e))
     except OrderExpired as e:
         raise HTTPException(status_code=410, detail=str(e))
+    except FulfillmentFailed as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post(
@@ -124,6 +129,8 @@ async def webhook_platega(
         raise HTTPException(status_code=404, detail=str(e))
     except OrderExpired as e:
         raise HTTPException(status_code=410, detail=str(e))
+    except FulfillmentFailed as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get(
@@ -171,6 +178,8 @@ async def webhook_freekassa(
         raise HTTPException(status_code=404, detail=str(e))
     except OrderExpired as e:
         raise HTTPException(status_code=410, detail=str(e))
+    except FulfillmentFailed as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get(
@@ -232,6 +241,32 @@ async def credit_balance(
         return await service.credit_balance(user_id, data)
     except OrderNotFound:
         raise HTTPException(status_code=404, detail="User not found")
+
+
+@router.post(
+    "/orders/{order_id}/refund",
+    status_code=status.HTTP_200_OK,
+    summary="Refund a completed/paid order",
+    dependencies=[Depends(admin_auth)],
+)
+async def refund_order(
+    order_id: UUID,
+    data: OrderRefundIn,
+    service: BillingService = Depends(get_billing_service),
+):
+    try:
+        await service.refund_order(
+            order_id,
+            reason=data.reason,
+            deactivate_subscription=data.deactivate_subscription,
+        )
+        return {"status": "refunded", "order_id": str(order_id)}
+    except OrderNotFound as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except RefundNotAllowed as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except FulfillmentFailed as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get(

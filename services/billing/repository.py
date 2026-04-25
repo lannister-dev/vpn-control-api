@@ -19,6 +19,24 @@ class OrderRepository(BaseRepository[PaymentOrder]):
         )
         return result.scalar_one_or_none()
 
+    async def get_by_external_id_for_update(
+        self, external_id: str
+    ) -> PaymentOrder | None:
+        result = await self.session.execute(
+            select(PaymentOrder)
+            .where(PaymentOrder.external_id == external_id)
+            .with_for_update()
+        )
+        return result.scalar_one_or_none()
+
+    async def get_by_id_for_update(self, order_id: UUID) -> PaymentOrder | None:
+        result = await self.session.execute(
+            select(PaymentOrder)
+            .where(PaymentOrder.id == order_id)
+            .with_for_update()
+        )
+        return result.scalar_one_or_none()
+
     async def list_by_user(
         self, user_id: UUID, *, limit: int = 50, offset: int = 0
     ) -> tuple[list[PaymentOrder], int]:
@@ -63,6 +81,30 @@ class OrderRepository(BaseRepository[PaymentOrder]):
             select(PaymentOrder).where(PaymentOrder.status == status)
         )
         return list(result.scalars().all())
+
+    async def bulk_expire_pending(self, *, now, limit: int = 500) -> int:
+        from sqlalchemy import update as sa_update
+
+        expired_ids_stmt = (
+            select(PaymentOrder.id)
+            .where(
+                PaymentOrder.status == "pending",
+                PaymentOrder.expires_at.isnot(None),
+                PaymentOrder.expires_at < now,
+            )
+            .order_by(PaymentOrder.expires_at.asc())
+            .limit(limit)
+        )
+        rows = await self.session.execute(expired_ids_stmt)
+        ids = list(rows.scalars().all())
+        if not ids:
+            return 0
+        await self.session.execute(
+            sa_update(PaymentOrder)
+            .where(PaymentOrder.id.in_(ids))
+            .values(status="expired", updated_at=now)
+        )
+        return len(ids)
 
 
 class TransactionRepository(BaseRepository[BalanceTransaction]):

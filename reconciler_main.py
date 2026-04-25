@@ -33,9 +33,11 @@ from services.traffic.users.reconciler import TrafficHistoryCleanupReconciler
 from services.traffic.users.reset_reconciler import TrafficResetReconciler
 from services.traffic.nodes.consumer import NodeTrafficNatsConsumer
 from services.admin_transport.cleanup_reconciler import AdminTransportCleanupReconciler
+from services.billing.reconciler import BillingOrderExpirationReconciler
 from services.placements.error_retry_reconciler import PlacementErrorRetryReconciler
 from services.placements.reconciler import PlacementRebalanceReconciler
 from services.vpn.keys.reconciler import VpnKeyExpirationReconciler
+from services.vpn.subscriptions.expiration_reconciler import SubscriptionExpirationReconciler
 
 # Register all SQLAlchemy models (no routers to pull them in)
 from services.users.models import User  # noqa: F401
@@ -78,6 +80,8 @@ def _build_reconcilers() -> list:
         PlacementErrorRetryReconciler(),
         PlacementRebalanceReconciler(),
         VpnKeyExpirationReconciler(),
+        SubscriptionExpirationReconciler(),
+        BillingOrderExpirationReconciler(),
         EntryAutoDrainReconciler(),
     ]
 
