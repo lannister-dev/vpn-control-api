@@ -60,6 +60,7 @@ from shared.monitoring.metrics import (
     PAYMENTS_FAILED_TOTAL,
     PAYMENTS_SUCCEEDED_TOTAL,
 )
+from shared.redis.client import RedisClient, get_redis_client
 from shared.utils.logger import StructuredLogger
 
 log = StructuredLogger(logging.getLogger("billing"))
@@ -67,7 +68,7 @@ TELEGRAM_PENDING_MESSAGE_META_KEY = "_telegram_pending_message"
 
 
 class BillingService:
-    def __init__(self, session: AsyncSession):
+    def __init__(self, session: AsyncSession, redis: RedisClient | None = None):
         self.session = session
         self.order_repo = OrderRepository(session)
         self.tx_repo = TransactionRepository(session)
@@ -76,6 +77,10 @@ class BillingService:
         self.sub_repo = SubscriptionRepository(session)
         self.settings = get_settings().billing
         self.notify_service = TelegramBotNotifyService()
+        from services.vpn.subscriptions.cache import SubscriptionCacheInvalidator
+        self._cache_invalidator = (
+            SubscriptionCacheInvalidator(session, redis) if redis is not None else None
+        )
 
     @staticmethod
     def _meta_dict(raw: str | None) -> dict[str, object]:
@@ -772,6 +777,10 @@ class BillingService:
                 order.subscription_id,
                 SubscriptionInternalUpdate(is_active=False).model_dump(exclude_none=True),
             )
+            if self._cache_invalidator is not None:
+                await self._cache_invalidator.invalidate_by_subscription_ids(
+                    [order.subscription_id]
+                )
             log.info(
                 "refund_subscription_deactivated",
                 subscription_id=str(order.subscription_id),
@@ -1080,5 +1089,6 @@ class BillingService:
 
 def get_billing_service(
     session: AsyncSession = Depends(AsyncDatabase.get_session),
+    redis: RedisClient = Depends(get_redis_client),
 ) -> BillingService:
-    return BillingService(session)
+    return BillingService(session, redis)

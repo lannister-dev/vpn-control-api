@@ -83,6 +83,32 @@ def _stub_node_policy():
         yield
 
 
+@pytest.fixture(autouse=True)
+def _stub_subscription_cache_invalidator():
+    invalidator_stub = SimpleNamespace(
+        invalidate_by_token_hashes=AsyncMock(return_value=0),
+        invalidate_by_subscription_ids=AsyncMock(return_value=0),
+        invalidate_by_key_ids=AsyncMock(return_value=0),
+    )
+    with patch(
+        "services.vpn.subscriptions.cache.SubscriptionCacheInvalidator",
+        return_value=invalidator_stub,
+    ), patch(
+        "services.vpn.keys.reconcilers.expiration.SubscriptionCacheInvalidator",
+        return_value=invalidator_stub,
+    ), patch(
+        "services.vpn.subscriptions.reconcilers.expiration.SubscriptionCacheInvalidator",
+        return_value=invalidator_stub,
+    ), patch(
+        "services.vpn.keys.service.SubscriptionCacheInvalidator",
+        return_value=invalidator_stub,
+    ), patch(
+        "services.traffic.users.service.SubscriptionCacheInvalidator",
+        return_value=invalidator_stub,
+    ):
+        yield
+
+
 @pytest.fixture()
 def async_session():
     return AsyncMock()
