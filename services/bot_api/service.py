@@ -452,6 +452,15 @@ class BotApiService:
         await ReferralService(self.session).apply_referral(user, referral_code)
         return {"ok": True}
 
+    async def get_subscription_summary(
+        self,
+        *,
+        telegram_id: int,
+    ) -> "BotSubscriptionSummaryOut | None":
+        user = await self._require_user_by_telegram_id(telegram_id)
+        orders = await self._list_orders(user.id)
+        return await self._build_subscription_summary(user.id, orders=orders)
+
     async def mark_traffic_warning(
         self,
         *,

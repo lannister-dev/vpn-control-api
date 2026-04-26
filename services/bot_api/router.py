@@ -22,6 +22,7 @@ from .schemas import (
     BotSessionSyncIn,
     BotStarsConfirmIn,
     BotSubscriptionLinkOut,
+    BotSubscriptionSummaryOut,
     BotTopUpCreateIn,
     BotTrafficWarningMarkIn,
 )
@@ -268,6 +269,18 @@ async def bot_apply_referral(
         raise HTTPException(status_code=409, detail="Cannot refer yourself")
     except AlreadyReferred:
         raise HTTPException(status_code=409, detail="Already referred")
+
+
+@router.get(
+    "/users/{telegram_id}/subscription",
+    response_model=BotSubscriptionSummaryOut | None,
+    summary="Read-only current subscription snapshot for Telegram bot user (no DB writes)",
+)
+async def bot_get_subscription_summary(
+    telegram_id: int,
+    service: BotApiService = Depends(get_bot_api_service),
+):
+    return await service.get_subscription_summary(telegram_id=telegram_id)
 
 
 @router.post(

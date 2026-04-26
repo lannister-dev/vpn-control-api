@@ -11,6 +11,10 @@ from fastapi import Depends, Request
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.billing.constants import (
+    ORDER_FINAL_STATUSES,
+    ORDER_REFUNDABLE_STATUSES,
+)
 from services.billing.exceptions import (
     DeviceSlotLimitExceeded,
     FulfillmentFailed,
@@ -60,9 +64,6 @@ from shared.utils.logger import StructuredLogger
 
 log = StructuredLogger(logging.getLogger("billing"))
 TELEGRAM_PENDING_MESSAGE_META_KEY = "_telegram_pending_message"
-
-ORDER_FINAL_STATUSES = ("paid", "completed", "refunded", "failed")
-ORDER_REFUNDABLE_STATUSES = ("paid", "completed")
 
 
 class BillingService:
