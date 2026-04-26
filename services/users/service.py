@@ -15,6 +15,7 @@ from services.users.schemas import (
     UserUpdateIn,
 )
 from shared.database.session import AsyncDatabase
+from shared.monitoring.metrics import USERS_REGISTERED_TOTAL
 
 
 class UserService:
@@ -49,7 +50,7 @@ class UserService:
         data = UserOut.model_validate(user).model_dump()
         return UserDetailOut(**data, subscription_count=sub_count, key_count=key_count)
 
-    async def create_user(self, data: UserCreateIn) -> UserOut:
+    async def create_user(self, data: UserCreateIn, *, source: str = "admin") -> UserOut:
         existing = await self.repo.get_by_telegram_id(data.telegram_id)
         if existing:
             raise UserAlreadyExists(
@@ -64,6 +65,7 @@ class UserService:
                 description=data.description,
             ).model_dump()
         )
+        USERS_REGISTERED_TOTAL.labels(source=source).inc()
         return UserOut.model_validate(user)
 
     async def update_user(self, user_id: UUID, data: UserUpdateIn) -> UserOut:

@@ -12,7 +12,10 @@ from services.placements.transport import NodeAgentPlacementTransport
 from services.vpn.keys.repository import VpnKeyRepository
 from services.vpn.subscriptions.repository import SubscriptionRepository
 from shared.database.session import AsyncDatabase
-from shared.monitoring.metrics import VPN_KEY_OPERATION_TOTAL
+from shared.monitoring.metrics import (
+    EXPIRED_SUBSCRIPTIONS_TOTAL,
+    VPN_KEY_OPERATION_TOTAL,
+)
 from shared.reconciler.watchdog import watchdog
 from shared.redis.lock import RedisTickLock
 from shared.utils.logger import StructuredLogger
@@ -130,6 +133,7 @@ class SubscriptionExpirationReconciler:
             await session.commit()
 
             VPN_KEY_OPERATION_TOTAL.labels(operation="subscription_expired").inc(len(revoked_key_ids))
+            EXPIRED_SUBSCRIPTIONS_TOTAL.inc(len(sub_ids))
             logger.info(
                 "subscriptions_expired",
                 subscriptions=len(sub_ids),

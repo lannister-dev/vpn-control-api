@@ -8,6 +8,7 @@ from starlette.staticfiles import StaticFiles
 from shared.app.bootstrap import configure_root_logging
 from shared.app.healthz import add_healthz
 from shared.app.lifespan import build_lifespan
+from shared.app.middleware import add_request_id_middleware
 from shared.utils.logger import StructuredLogger
 from services.config import get_settings
 
@@ -80,6 +81,8 @@ api_router.include_router(users_router)
 api_router.include_router(subscriptions_router)
 
 app.include_router(api_router)
+
+add_request_id_middleware(app)
 
 Instrumentator().instrument(app).expose(app, endpoint="/api/monitoring")
 

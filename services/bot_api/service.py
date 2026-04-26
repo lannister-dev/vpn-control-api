@@ -485,7 +485,8 @@ class BotApiService:
                     username=payload.username,
                     tag=desired_tag,
                     description=desired_description,
-                )
+                ),
+                source="bot",
             )
             return created, True
 

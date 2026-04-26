@@ -53,6 +53,8 @@ from shared.monitoring.metrics import (
     BILLING_BALANCE_OPERATION_TOTAL,
     BILLING_ORDER_TOTAL,
     BILLING_PAYMENT_AMOUNT_RUB_TOTAL,
+    PAYMENTS_FAILED_TOTAL,
+    PAYMENTS_SUCCEEDED_TOTAL,
 )
 from shared.utils.logger import StructuredLogger
 
@@ -640,6 +642,9 @@ class BillingService:
                 ).model_dump(exclude_none=True),
             )
             BILLING_ORDER_TOTAL.labels(provider=provider_name, status="failed").inc()
+            PAYMENTS_FAILED_TOTAL.labels(
+                provider=provider_name, reason="user_not_found"
+            ).inc()
             raise FulfillmentFailed(
                 f"User {order.user_id} not found for order {order.id}"
             )
@@ -686,6 +691,9 @@ class BillingService:
         BILLING_ORDER_TOTAL.labels(provider=provider_name, status="completed").inc()
 
         order_type = getattr(order, "order_type", "plan_purchase")
+        PAYMENTS_SUCCEEDED_TOTAL.labels(
+            provider=provider_name, order_type=order_type
+        ).inc()
         if order_type in ("plan_purchase", "subscription_renewal") and provider_name != "free":
             try:
                 from services.referral.service import ReferralService
@@ -756,6 +764,7 @@ class BillingService:
             ).model_dump(exclude_none=True),
         )
         BILLING_ORDER_TOTAL.labels(provider=order.provider, status="refunded").inc()
+        PAYMENTS_FAILED_TOTAL.labels(provider=order.provider, reason="refund").inc()
 
         if deactivate_subscription and order.subscription_id:
             await self.sub_repo.update_by_id(
