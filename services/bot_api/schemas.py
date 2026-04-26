@@ -189,10 +189,22 @@ class BotSubscriptionSummaryOut(BaseModel):
     used_traffic_bytes: int = 0
     lifetime_used_traffic_bytes: int = 0
     traffic_limit_bytes: int | None = None
+    traffic_warning_threshold_pct: int = 0
     last_traffic_reset_at: datetime | None = None
     last_payment_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class BotTrafficWarningMarkIn(BaseModel):
+    """Bot reports it has notified the user about reaching a traffic threshold.
+
+    Stored on the subscription as a high-water mark so the same threshold is
+    not re-notified on subsequent polls. Reset to 0 by the traffic-reset
+    reconciler when the plan window rolls over.
+    """
+
+    threshold_pct: int = Field(ge=1, le=100)
 
 
 class BotSessionOut(BaseModel):

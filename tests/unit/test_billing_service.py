@@ -10,10 +10,12 @@ import pytest
 
 from services.billing.exceptions import (
     DeviceSlotLimitExceeded,
+    FulfillmentFailed,
     OrderExpired,
     OrderNotFound,
     PlanNotPurchasable,
     ProviderError,
+    RefundNotAllowed,
     WebhookVerificationFailed,
 )
 from services.billing.schemas import BalanceCreditIn, OrderCreateIn, OrderTypeEnum, PaymentProviderEnum
@@ -214,11 +216,11 @@ class TestProcessWebhook:
             amount_rub=Decimal("299.00"),
         )
 
-        service.order_repo.get_by_external_id.return_value = order
+        service.order_repo.get_by_external_id_for_update.return_value = order
         service.order_repo.update_by_id.return_value = order
+        service.order_repo.get_by_id.return_value = order
         service.plan_repo.get_by_id.return_value = plan
 
-        # _lock_user: first call returns user with 0, second after credit returns 299
         user_after_credit = _make_user(balance=Decimal("299.00"))
         user_after_credit.id = user.id
 
@@ -246,7 +248,7 @@ class TestProcessWebhook:
 
     async def test_webhook_idempotency_skip(self, service):
         order = _make_order(status="completed")
-        service.order_repo.get_by_external_id.return_value = order
+        service.order_repo.get_by_external_id_for_update.return_value = order
 
         mock_provider = AsyncMock()
         mock_provider.verify_webhook.return_value = SimpleNamespace(
@@ -259,12 +261,28 @@ class TestProcessWebhook:
         with patch.object(BillingService, "_get_provider", return_value=mock_provider):
             await service.process_webhook("crypto", request)
 
-        # Should not update anything
+        service.order_repo.update_by_id.assert_not_awaited()
+
+    async def test_webhook_idempotency_skip_failed_status(self, service):
+        order = _make_order(status="failed")
+        service.order_repo.get_by_external_id_for_update.return_value = order
+
+        mock_provider = AsyncMock()
+        mock_provider.verify_webhook.return_value = SimpleNamespace(
+            external_id=order.external_id,
+            amount_rub=299.0,
+            provider_meta=None,
+        )
+
+        request = MagicMock()
+        with patch.object(BillingService, "_get_provider", return_value=mock_provider):
+            await service.process_webhook("crypto", request)
+
         service.order_repo.update_by_id.assert_not_awaited()
 
     async def test_webhook_expired_order(self, service):
         order = _make_order(status="expired")
-        service.order_repo.get_by_external_id.return_value = order
+        service.order_repo.get_by_external_id_for_update.return_value = order
 
         mock_provider = AsyncMock()
         mock_provider.verify_webhook.return_value = SimpleNamespace(
@@ -279,7 +297,7 @@ class TestProcessWebhook:
                 await service.process_webhook("crypto", request)
 
     async def test_webhook_order_not_found(self, service):
-        service.order_repo.get_by_external_id.return_value = None
+        service.order_repo.get_by_external_id_for_update.return_value = None
 
         mock_provider = AsyncMock()
         mock_provider.verify_webhook.return_value = SimpleNamespace(
@@ -295,7 +313,7 @@ class TestProcessWebhook:
 
     async def test_webhook_amount_mismatch(self, service):
         order = _make_order(amount_rub=Decimal("299.00"))
-        service.order_repo.get_by_external_id.return_value = order
+        service.order_repo.get_by_external_id_for_update.return_value = order
 
         mock_provider = AsyncMock()
         mock_provider.verify_webhook.return_value = SimpleNamespace(
@@ -309,10 +327,32 @@ class TestProcessWebhook:
             with pytest.raises(WebhookVerificationFailed):
                 await service.process_webhook("freekassa", request)
 
+    async def test_webhook_user_not_found_marks_failed(self, service):
+        order = _make_order(status="pending", amount_rub=Decimal("299.00"))
+        service.order_repo.get_by_external_id_for_update.return_value = order
+        service.order_repo.update_by_id.return_value = order
+        service._lock_user = AsyncMock(return_value=None)
+
+        mock_provider = AsyncMock()
+        mock_provider.verify_webhook.return_value = SimpleNamespace(
+            external_id=order.external_id,
+            amount_rub=299.0,
+            provider_meta=None,
+        )
+
+        request = MagicMock()
+        with patch.object(BillingService, "_get_provider", return_value=mock_provider):
+            with pytest.raises(FulfillmentFailed):
+                await service.process_webhook("crypto", request)
+
+        service.order_repo.update_by_id.assert_awaited_once()
+        update_kwargs = service.order_repo.update_by_id.await_args.args[1]
+        assert update_kwargs.get("status") == "failed"
+
     async def test_webhook_canceled_event_does_not_fulfill_order(self, service):
         order = _make_order(status="pending", provider="platega", external_id="txn-123")
-        service.order_repo.get_by_external_id.return_value = order
-        service._fulfill_order = AsyncMock()
+        service.order_repo.get_by_external_id_for_update.return_value = order
+        service._fulfill_order_locked = AsyncMock()
 
         mock_provider = AsyncMock()
         mock_provider.verify_webhook.return_value = SimpleNamespace(
@@ -327,12 +367,78 @@ class TestProcessWebhook:
         with patch.object(BillingService, "_get_provider", return_value=mock_provider):
             await service.process_webhook("platega", request)
 
-        service._fulfill_order.assert_not_awaited()
+        service._fulfill_order_locked.assert_not_awaited()
         service.order_repo.update_by_id.assert_awaited_once()
         _, kwargs = service.order_repo.update_by_id.await_args
         assert kwargs == {}
         assert service.order_repo.update_by_id.await_args.args[0] == order.id
         assert service.order_repo.update_by_id.await_args.args[1]["status"] == "expired"
+
+
+# ── refund ────────────────────────────────────────────────────
+
+
+class TestRefundOrder:
+    async def test_refund_completed_order_debits_balance(self, service):
+        user = _make_user(balance=Decimal("500.00"))
+        order = _make_order(
+            user_id=user.id,
+            status="completed",
+            amount_rub=Decimal("299.00"),
+            subscription_id=None,
+        )
+        service.order_repo.get_by_id_for_update.return_value = order
+        service.order_repo.update_by_id.return_value = order
+        service._lock_user = AsyncMock(return_value=user)
+        service._update_user_balance = AsyncMock()
+        service._record_transaction = AsyncMock()
+
+        await service.refund_order(order.id, reason="customer request")
+
+        service._update_user_balance.assert_awaited_once()
+        new_balance_arg = service._update_user_balance.await_args.args[1]
+        assert new_balance_arg == Decimal("201.00")
+        service._record_transaction.assert_awaited_once()
+        tx_kwargs = service._record_transaction.await_args.kwargs
+        assert tx_kwargs["amount"] == Decimal("-299.00")
+        assert tx_kwargs["tx_type"] == "refund"
+        update_kwargs = service.order_repo.update_by_id.await_args.args[1]
+        assert update_kwargs["status"] == "refunded"
+
+    async def test_refund_pending_order_rejected(self, service):
+        order = _make_order(status="pending")
+        service.order_repo.get_by_id_for_update.return_value = order
+
+        with pytest.raises(RefundNotAllowed):
+            await service.refund_order(order.id, reason="should fail")
+
+    async def test_refund_order_not_found(self, service):
+        service.order_repo.get_by_id_for_update.return_value = None
+        with pytest.raises(OrderNotFound):
+            await service.refund_order(uuid4(), reason="x")
+
+    async def test_refund_deactivates_subscription_when_requested(self, service):
+        user = _make_user(balance=Decimal("500.00"))
+        sub = _make_subscription(user_id=user.id)
+        order = _make_order(
+            user_id=user.id,
+            status="completed",
+            amount_rub=Decimal("299.00"),
+            subscription_id=sub.id,
+        )
+        service.order_repo.get_by_id_for_update.return_value = order
+        service.order_repo.update_by_id.return_value = order
+        service._lock_user = AsyncMock(return_value=user)
+        service._update_user_balance = AsyncMock()
+        service._record_transaction = AsyncMock()
+        service.sub_repo.update_by_id.return_value = sub
+
+        await service.refund_order(order.id, reason="abuse", deactivate_subscription=True)
+
+        service.sub_repo.update_by_id.assert_awaited_once()
+        sub_args = service.sub_repo.update_by_id.await_args.args
+        assert sub_args[0] == sub.id
+        assert sub_args[1]["is_active"] is False
 
 
 # ── balance operations ────────────────────────────────────────

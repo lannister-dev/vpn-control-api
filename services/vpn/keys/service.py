@@ -14,7 +14,7 @@ from services.vpn.keys.schemas import (
 )
 from shared.database.session import AsyncDatabase
 from services.placements.transport import NodeAgentPlacementTransport
-from shared.monitoring.metrics import VPN_KEY_OPERATION_TOTAL
+from shared.monitoring.metrics import KEYS_CREATED_TOTAL, VPN_KEY_OPERATION_TOTAL
 
 
 class VpnKeyService:
@@ -38,6 +38,7 @@ class VpnKeyService:
 
         result = await self.key_repository.create(internal.model_dump())
         VPN_KEY_OPERATION_TOTAL.labels(operation="created").inc()
+        KEYS_CREATED_TOTAL.labels(transport=getattr(payload, "transport", "unknown") or "unknown").inc()
         return result
 
     async def assign_key(self, _key_id: UUID) -> None:

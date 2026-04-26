@@ -98,6 +98,7 @@ class TrafficResetReconciler:
                     unrevoked_key_ids = await key_repo.bulk_reset_traffic_by_subscription(sub.id)
                     sub.used_traffic_bytes = 0
                     sub.last_traffic_reset_at = now
+                    sub.traffic_warning_threshold_pct = 0
                     sub.updated_at = now
 
                     for key_id in unrevoked_key_ids:

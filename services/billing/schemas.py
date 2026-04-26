@@ -129,6 +129,11 @@ class OrderListOut(BaseModel):
     total: int
 
 
+class OrderRefundIn(BaseModel):
+    reason: str = Field(min_length=1, max_length=512)
+    deactivate_subscription: bool = True
+
+
 # ── Balance I/O ───────────────────────────────────────────────
 
 class BalanceCreditIn(BaseModel):

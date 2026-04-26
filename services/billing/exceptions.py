@@ -44,3 +44,11 @@ class ActiveSubscriptionExists(Exception):
 
 class TrialUnavailable(Exception):
     """Free trial is unavailable for this user."""
+
+
+class FulfillmentFailed(Exception):
+    """Order fulfillment failed for a non-recoverable reason; requires manual review."""
+
+
+class RefundNotAllowed(Exception):
+    """Refund is not allowed for the order in its current state."""

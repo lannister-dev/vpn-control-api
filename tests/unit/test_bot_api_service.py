@@ -72,6 +72,54 @@ async def test_issue_subscription_link_returns_stable_url(service):
 
 
 @pytest.mark.asyncio
+async def test_mark_traffic_warning_bumps_threshold(service):
+    user_id = uuid4()
+    sub_id = uuid4()
+    service._require_user_by_telegram_id = AsyncMock(return_value=SimpleNamespace(id=user_id))
+    sub = SimpleNamespace(id=sub_id, user_id=user_id, traffic_warning_threshold_pct=50)
+    service.subscription_repository = AsyncMock()
+    service.subscription_repository.get_by_id = AsyncMock(return_value=sub)
+    service.subscription_repository.update_by_id = AsyncMock()
+
+    await service.mark_traffic_warning(telegram_id=42, subscription_id=sub_id, threshold_pct=75)
+
+    service.subscription_repository.update_by_id.assert_awaited_once_with(
+        sub_id, {"traffic_warning_threshold_pct": 75}
+    )
+
+
+@pytest.mark.asyncio
+async def test_mark_traffic_warning_noop_when_not_higher(service):
+    user_id = uuid4()
+    sub_id = uuid4()
+    service._require_user_by_telegram_id = AsyncMock(return_value=SimpleNamespace(id=user_id))
+    sub = SimpleNamespace(id=sub_id, user_id=user_id, traffic_warning_threshold_pct=75)
+    service.subscription_repository = AsyncMock()
+    service.subscription_repository.get_by_id = AsyncMock(return_value=sub)
+    service.subscription_repository.update_by_id = AsyncMock()
+
+    await service.mark_traffic_warning(telegram_id=42, subscription_id=sub_id, threshold_pct=50)
+    await service.mark_traffic_warning(telegram_id=42, subscription_id=sub_id, threshold_pct=75)
+
+    service.subscription_repository.update_by_id.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_mark_traffic_warning_rejects_foreign_subscription(service):
+    from fastapi import HTTPException
+
+    sub_id = uuid4()
+    service._require_user_by_telegram_id = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
+    sub = SimpleNamespace(id=sub_id, user_id=uuid4(), traffic_warning_threshold_pct=0)
+    service.subscription_repository = AsyncMock()
+    service.subscription_repository.get_by_id = AsyncMock(return_value=sub)
+
+    with pytest.raises(HTTPException) as exc:
+        await service.mark_traffic_warning(telegram_id=42, subscription_id=sub_id, threshold_pct=50)
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_create_top_up_order_returns_amount_stars_for_stars_provider(service):
     user_id = uuid4()
     order = OrderOut(

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client.js";
 import { useQuery } from "../hooks/useQuery.js";
 import { Drawer } from "./Drawer.jsx";
@@ -6,6 +6,7 @@ import { Modal } from "./Modal.jsx";
 import { Field } from "./Field.jsx";
 import { Icon } from "./Icon.jsx";
 import { Spark } from "./Spark.jsx";
+import { RouteForm } from "./RouteForm.jsx";
 import { toast } from "./Toast.jsx";
 import { nodeGeo } from "../lib/geo.js";
 
@@ -55,12 +56,24 @@ function drainReasonLabel(reason) {
   return DRAIN_REASON_LABELS[reason] || reason;
 }
 
-export function NodeDrawer({ node, onClose, onGoto }) {
-  const [tab, setTab] = useState("overview");
-  const [sshOpen, setSshOpen] = useState(false);
+export function NodeDrawer({ node, onClose, onGoto, onOpenNode, initialTab, focusRouteId }) {
   const entryRole = isEntryRole(node);
+  const fallbackTab = initialTab || "overview";
+  const [tab, setTab] = useState(fallbackTab);
+  const [sshOpen, setSshOpen] = useState(false);
+
+  useEffect(() => {
+    if (!initialTab) return;
+    if (initialTab === "pool" && !entryRole) {
+      setTab("overview");
+      return;
+    }
+    setTab(initialTab);
+  }, [initialTab, node?.id, entryRole]);
+
   const routes = useQuery(() => api.get("/routes?limit=500"), { interval: 15000 });
   const transport = useQuery(() => api.get("/admin/transport/nodes"), { interval: 30000 });
+  const status = useQuery(() => api.get("/admin/status"), { interval: 30000 });
   const routesCount = (routes.data || []).filter((r) => r.node_id === node.id || r.entry_node_id === node.id).length;
 
   const tabs = [
@@ -108,10 +121,18 @@ export function NodeDrawer({ node, onClose, onGoto }) {
           onMigrateClick={() => { onGoto?.("ops"); onClose(); }}
         />
       )}
-      {tab === "routes" && <NodeRoutes node={node} routes={routes.data || []} onRefresh={routes.refetch} />}
+      {tab === "routes" && (
+        <NodeRoutes
+          node={node}
+          routes={routes.data || []}
+          allNodes={status.data?.nodes || []}
+          focusRouteId={focusRouteId}
+          onRefresh={routes.refetch}
+        />
+      )}
       {tab === "probes" && <NodeProbes node={node} />}
       {tab === "transport" && <NodeTransport node={node} />}
-      {tab === "pool" && entryRole && <NodePool node={node} />}
+      {tab === "pool" && entryRole && <NodePool node={node} onOpenNode={onOpenNode} />}
       {sshOpen && <SshHintModal node={node} onClose={() => setSshOpen(false)} />}
     </Drawer>
   );
@@ -290,9 +311,21 @@ function QuickActions({ node, onSshClick, onMigrateClick }) {
   );
 }
 
-function NodeRoutes({ node, routes, onRefresh }) {
-  const list = routes.filter((r) => r.node_id === node.id || r.entry_node_id === node.id);
-  if (!list.length) return <div className="muted" style={{ padding: 14 }}>Маршрутов нет.</div>;
+function NodeRoutes({ node, routes, allNodes, focusRouteId, onRefresh }) {
+  const list = useMemo(
+    () => routes.filter((r) => r.node_id === node.id || r.entry_node_id === node.id),
+    [routes, node.id],
+  );
+  const isBackend = String(node.role).toLowerCase() === "backend";
+  const focusedRowRef = useRef(null);
+  const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState(null);
+
+  useEffect(() => {
+    if (focusRouteId && focusedRowRef.current) {
+      focusedRowRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [focusRouteId, list.length]);
 
   const apply = async (route, action, opts = {}) => {
     const label = opts.label || action;
@@ -314,38 +347,105 @@ function NodeRoutes({ node, routes, onRefresh }) {
     } catch (e) { toast.bad(e.message || "Ошибка"); }
   };
 
+  const closeForm = (saved) => {
+    setCreating(false);
+    setEditing(null);
+    if (saved) onRefresh?.();
+  };
+
+  const head = (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 8 }}>
+      <div className="muted small">
+        {list.length
+          ? `${list.length} маршрутов через эту ноду`
+          : "Маршрутов через эту ноду пока нет"}
+      </div>
+      {isBackend && allNodes.length > 0 && (
+        <button className="btn btn-primary" onClick={() => setCreating(true)} title="Создать маршрут с этой backend-ноды">
+          <Icon name="plus" size={12} /> Создать с этой ноды
+        </button>
+      )}
+    </div>
+  );
+
+  if (!list.length) {
+    return (
+      <>
+        {head}
+        <div className="muted" style={{ padding: 14 }}>Маршрутов нет.</div>
+        {creating && (
+          <RouteForm
+            nodes={allNodes}
+            defaults={isBackend ? { node_id: node.id } : { entry_node_id: node.id }}
+            onClose={closeForm}
+          />
+        )}
+      </>
+    );
+  }
+
   return (
-    <table className="tbl">
-      <thead>
-        <tr>
-          <th>Маршрут</th>
-          <th>Направление</th>
-          <th>Status</th>
-          <th style={{ textAlign: "right" }}>Weight</th>
-          <th style={{ width: 40 }}></th>
-        </tr>
-      </thead>
-      <tbody>
-        {list.map((r) => (
-          <tr key={r.id} style={{ opacity: r.is_active ? 1 : 0.55 }}>
-            <td>
-              {r.name}
-              {!r.is_active && <span className="pill muted" style={{ marginLeft: 6 }}>off</span>}
-            </td>
-            <td className="small muted">{r.node_id === node.id ? "backend" : "entry"}</td>
-            <td>
-              {r.is_active
-                ? <span className={"pill " + toneOf(r.health_status)}>{r.health_status}</span>
-                : <span className="pill muted">не активен</span>}
-            </td>
-            <td className="tbl-num mono">{r.effective_weight}</td>
-            <td className="row-actions" onClick={(e) => e.stopPropagation()}>
-              <RouteRowMenu route={r} apply={apply} />
-            </td>
+    <>
+      {head}
+      <table className="tbl">
+        <thead>
+          <tr>
+            <th>Маршрут</th>
+            <th>Направление</th>
+            <th>Status</th>
+            <th style={{ textAlign: "right" }}>Weight</th>
+            <th style={{ width: 80 }}></th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {list.map((r) => {
+            const focused = focusRouteId && r.id === focusRouteId;
+            return (
+              <tr
+                key={r.id}
+                ref={focused ? focusedRowRef : null}
+                style={{
+                  opacity: r.is_active ? 1 : 0.55,
+                  background: focused ? "var(--surface-hover)" : undefined,
+                  outline: focused ? "1px solid var(--accent)" : undefined,
+                  outlineOffset: focused ? "-1px" : undefined,
+                }}
+              >
+                <td>
+                  <span style={{ fontWeight: focused ? 600 : 400 }}>{r.name}</span>
+                  {!r.is_active && <span className="pill muted" style={{ marginLeft: 6 }}>off</span>}
+                </td>
+                <td className="small muted">{r.node_id === node.id ? "backend" : "entry"}</td>
+                <td>
+                  {r.is_active
+                    ? <span className={"pill " + toneOf(r.health_status)}>{r.health_status}</span>
+                    : <span className="pill muted">не активен</span>}
+                </td>
+                <td className="tbl-num mono">{r.effective_weight}</td>
+                <td className="row-actions" onClick={(e) => e.stopPropagation()}>
+                  <button className="row-btn" onClick={() => setEditing(r)} title="Редактировать маршрут">Edit</button>
+                  <RouteRowMenu route={r} apply={apply} />
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {creating && (
+        <RouteForm
+          nodes={allNodes}
+          defaults={isBackend ? { node_id: node.id } : { entry_node_id: node.id }}
+          onClose={closeForm}
+        />
+      )}
+      {editing && (
+        <RouteForm
+          route={editing}
+          nodes={allNodes}
+          onClose={closeForm}
+        />
+      )}
+    </>
   );
 }
 
@@ -435,7 +535,7 @@ function NodeTransport({ node }) {
   );
 }
 
-function NodePool({ node }) {
+function NodePool({ node, onOpenNode }) {
   const { data, loading, refetch } = useQuery(
     () => api.get(`/entry/${node.id}/assignments`),
     { interval: 20000, deps: [node.id] },
@@ -450,20 +550,56 @@ function NodePool({ node }) {
 
   const items = Array.isArray(data) ? data : (data?.items || []);
 
+  const summary = useMemo(() => {
+    const total = items.length;
+    const enabled = items.filter((a) => a.enabled).length;
+    const totalWeight = items.reduce((s, a) => s + (a.enabled ? Number(a.weight || 0) : 0), 0);
+    const ranks = new Set(items.filter((a) => a.enabled).map((a) => Number(a.rank || 0)));
+    return { total, enabled, totalWeight, ranks: ranks.size };
+  }, [items]);
+
   const remove = async (backendId) => {
     if (!confirm("Убрать backend из пула этого entry?")) return;
     try { await api.del(`/entry/${node.id}/assignments/${backendId}`); toast.ok("Backend удалён из пула"); refetch(); }
     catch (e) { toast.bad(e.message); }
   };
 
+  const toggleEnabled = async (assignment) => {
+    try {
+      await api.patch(
+        `/entry/${node.id}/assignments/${assignment.backend_node_id}`,
+        { enabled: !assignment.enabled },
+      );
+      toast.ok(assignment.enabled ? "Backend выключен в пуле" : "Backend включён в пул");
+      refetch();
+    } catch (e) { toast.bad(e.message); }
+  };
+
+  const renderSummary = () => (
+    <div
+      className="card"
+      style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, padding: 12, marginBottom: 12 }}
+    >
+      <PoolStat label="В пуле" value={summary.total} />
+      <PoolStat label="Активных" value={summary.enabled} tone={summary.enabled === 0 && summary.total > 0 ? "bad" : "ok"} />
+      <PoolStat label="Сумма весов" value={summary.totalWeight || "—"} />
+      <PoolStat label="Rank-групп" value={summary.ranks || "—"} />
+    </div>
+  );
+
   return (
     <>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 8 }}>
         <div className="muted small">Backends, закреплённые за этой entry (HAProxy pool)</div>
         <button className="btn btn-primary" onClick={() => setAdding(true)}><Icon name="plus" size={12} /> Добавить</button>
       </div>
+      {(items.length > 0 || (!loading && summary.total === 0)) && renderSummary()}
       {loading && !items.length && <div className="muted">Загрузка…</div>}
-      {!loading && !items.length && <div className="muted">Пул пуст.</div>}
+      {!loading && !items.length && (
+        <div className="muted" style={{ padding: 14 }}>
+          Пул пуст. Добавьте хотя бы один backend, чтобы entry начала проксировать трафик.
+        </div>
+      )}
       {items.length > 0 && (
         <table className="tbl">
           <thead>
@@ -472,22 +608,36 @@ function NodePool({ node }) {
           <tbody>
             {items.map((a) => {
               const n = nodesById[a.backend_node_id];
+              const openBackend = () => n && onOpenNode && onOpenNode(n);
               return (
-                <tr key={a.backend_node_id}>
+                <tr key={a.backend_node_id} style={{ opacity: a.enabled ? 1 : 0.6 }}>
                   <td>
                     {n ? (
-                      <>
+                      <span
+                        style={{ cursor: onOpenNode ? "pointer" : "default" }}
+                        onClick={openBackend}
+                        title={onOpenNode ? "Открыть backend-ноду" : ""}
+                      >
                         <span style={{ marginRight: 6 }}>{nodeGeo(n.region).flag}</span>
                         <span style={{ fontWeight: 500 }}>{n.name}</span>
                         <div className="mono muted" style={{ fontSize: 11 }}>{n.region}</div>
-                      </>
+                      </span>
                     ) : (
                       <span className="mono small">{String(a.backend_node_id).slice(0, 12)}…</span>
                     )}
                   </td>
                   <td className="tbl-num mono">{a.weight}</td>
                   <td className="tbl-num mono">{a.rank}</td>
-                  <td>{a.enabled ? <span className="pill ok">enabled</span> : <span className="pill">off</span>}</td>
+                  <td>
+                    <button
+                      className={"pill " + (a.enabled ? "ok" : "")}
+                      onClick={() => toggleEnabled(a)}
+                      style={{ border: 0, background: "transparent", cursor: "pointer", padding: 0 }}
+                      title={a.enabled ? "Выключить в пуле" : "Включить в пул"}
+                    >
+                      <span className={"pill " + (a.enabled ? "ok" : "")}>{a.enabled ? "enabled" : "off"}</span>
+                    </button>
+                  </td>
                   <td className="row-actions">
                     <button className="row-btn" onClick={() => setEditing(a)}>Edit</button>
                     <button className="row-btn" onClick={() => remove(a.backend_node_id)}>Remove</button>
@@ -501,6 +651,15 @@ function NodePool({ node }) {
       {adding && <AssignmentForm entryId={node.id} existing={items} allNodes={status.data?.nodes || []} onClose={() => { setAdding(false); refetch(); }} />}
       {editing && <AssignmentForm entryId={node.id} assignment={editing} onClose={() => { setEditing(null); refetch(); }} />}
     </>
+  );
+}
+
+function PoolStat({ label, value, tone }) {
+  return (
+    <div>
+      <div className="kpi-label">{label}</div>
+      <div className="kpi-value" style={{ fontSize: 18, color: tone ? `var(--${tone})` : undefined }}>{value}</div>
+    </div>
   );
 }
 

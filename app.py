@@ -9,6 +9,8 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from shared.app.bootstrap import configure_root_logging
 from shared.app.healthz import add_healthz
 from shared.app.lifespan import build_lifespan
+from shared.app.middleware import add_request_id_middleware
+from shared.app.rate_limit import add_default_rate_limit
 from shared.utils.logger import StructuredLogger
 
 from services.admin_transport.router import router as admin_transport_router
@@ -103,6 +105,8 @@ app.mount(
 )
 
 app.add_middleware(DocsBasicAuthMiddleware)
+add_request_id_middleware(app)
+add_default_rate_limit(app)
 
 Instrumentator().instrument(app).expose(app, endpoint="/api/monitoring")
 

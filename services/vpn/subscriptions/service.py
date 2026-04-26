@@ -1912,7 +1912,10 @@ class SubscriptionService:
             is_revoked=False,
             subscription_id=subscription.id,
         )
-        return await self.vpn_key_repository.create(key_internal.model_dump())
+        result = await self.vpn_key_repository.create(key_internal.model_dump())
+        from shared.monitoring.metrics import KEYS_CREATED_TOTAL
+        KEYS_CREATED_TOTAL.labels(transport=transport or "unknown").inc()
+        return result
 
     async def _load_device_bundles(
             self,

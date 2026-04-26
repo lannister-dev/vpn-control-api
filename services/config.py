@@ -66,6 +66,7 @@ class AdminConfig:
     bootstrap_token_hash: str
     probe_token_hash: str
     relay_token: str
+    relay_token_hash: str
 
 
 @dataclass
@@ -99,6 +100,13 @@ class SubscriptionsConfig:
     happ_autoconnect: bool = True
     happ_autoconnect_type: str = "lowestdelay"
     happ_ping_onopen: bool = True
+
+
+@dataclass
+class SubscriptionsExpirationConfig:
+    enabled: bool = True
+    tick_sec: int = 60
+    batch_size: int = 200
 
 
 @dataclass
@@ -204,6 +212,9 @@ class BillingConfig:
     platega_success_redirect_url: str = ""
     platega_fail_redirect_url: str = ""
     order_ttl_minutes: int = 30
+    expiration_reconciler_enabled: bool = True
+    expiration_tick_sec: int = 60
+    expiration_batch_size: int = 500
 
 
 @dataclass
@@ -262,6 +273,7 @@ class Settings:
     referral: ReferralConfig
     k3s: K3sConfig
     entry_relay: EntryRelayConfig
+    subscriptions_expiration: SubscriptionsExpirationConfig
 
 
 @lru_cache
@@ -319,6 +331,7 @@ def get_settings() -> Settings:
         bootstrap_token_hash=env.str("BOOTSTRAP_TOKEN_HASH"),
         probe_token_hash= env.str("PROBE_TOKEN_HASH"),
         relay_token=env.str("RELAY_TOKEN", default=""),
+        relay_token_hash=env.str("RELAY_TOKEN_HASH", default=""),
     )
 
     bot_api = BotApiConfig(api_key_hash=env.str("BOT_API_KEY_HASH", default=""))
@@ -440,6 +453,9 @@ def get_settings() -> Settings:
         platega_success_redirect_url=env.str("BILLING_PLATEGA_SUCCESS_REDIRECT_URL", default=""),
         platega_fail_redirect_url=env.str("BILLING_PLATEGA_FAIL_REDIRECT_URL", default=""),
         order_ttl_minutes=max(1, env.int("BILLING_ORDER_TTL_MINUTES", default=30)),
+        expiration_reconciler_enabled=env.bool("BILLING_ORDER_EXPIRATION_ENABLED", default=True),
+        expiration_tick_sec=max(30, env.int("BILLING_ORDER_EXPIRATION_TICK_SEC", default=60)),
+        expiration_batch_size=max(1, env.int("BILLING_ORDER_EXPIRATION_BATCH_SIZE", default=500)),
     )
 
     migration = MigrationConfig(
@@ -467,6 +483,12 @@ def get_settings() -> Settings:
         listen_port=env.int("ENTRY_RELAY_LISTEN_PORT", default=443),
         api_poll_sec=env.int("ENTRY_RELAY_API_POLL_SEC", default=300),
         user_entry_bucket_seconds=max(0, env.int("ENTRY_RELAY_USER_BUCKET_SECONDS", default=0)),
+    )
+
+    subscriptions_expiration = SubscriptionsExpirationConfig(
+        enabled=env.bool("SUBSCRIPTIONS_EXPIRATION_ENABLED", default=True),
+        tick_sec=max(30, env.int("SUBSCRIPTIONS_EXPIRATION_TICK_SEC", default=60)),
+        batch_size=max(1, env.int("SUBSCRIPTIONS_EXPIRATION_BATCH_SIZE", default=200)),
     )
 
     _tg_allowed_raw = env.str("ADMIN_TELEGRAM_ALLOWED_IDS", default="")
@@ -513,4 +535,5 @@ def get_settings() -> Settings:
         referral=referral,
         k3s=k3s,
         entry_relay=entry_relay,
+        subscriptions_expiration=subscriptions_expiration,
     )

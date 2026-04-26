@@ -36,6 +36,10 @@ class Subscription(Base):
         DateTime(timezone=True), nullable=True,
     )
 
+    traffic_warning_threshold_pct: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0"),
+    )
+
     user: Mapped["User"] = relationship(back_populates="subscriptions")
     plan: Mapped["Plan"] = relationship(lazy="joined")
     devices: Mapped[list["SubscriptionDevice"]] = relationship(

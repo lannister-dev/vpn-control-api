@@ -100,7 +100,6 @@ class UserTrafficService:
                 if sub.used_traffic_bytes >= sub.plan.traffic_limit_bytes:
                     exceeded_sub_ids.add(sub.id)
 
-            # Revoke all keys for exceeded subscriptions
             for sub_id in exceeded_sub_ids:
                 revoked += await self._revoke_subscription_keys(sub_id, now)
 
