@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, update as sa_update
 
 from services.nodes.policy.repository import NodePolicyRepository
+from services.placements.constants import ERROR_RETRY_IDLE_WHEN_DISABLED_SEC
 from services.placements.model import UserPlacement
 from services.placements.transport import NodeAgentPlacementTransport
 from shared.database.session import AsyncDatabase
@@ -18,13 +19,6 @@ logger = StructuredLogger(logging.getLogger("placement-error-retry-reconciler"))
 
 
 class PlacementErrorRetryReconciler:
-    """Re-queues placements stuck in 'error' or stale 'pending' state.
-
-    Reads placement_error_retry_* from NodePolicy on every tick.
-    """
-
-    _IDLE_WHEN_DISABLED_SEC = 120
-
     def __init__(self, *, tick_lock: RedisTickLock | None = None):
         self._session_maker = AsyncDatabase.get_session_maker()
         self._tick_lock = tick_lock or RedisTickLock(
@@ -61,7 +55,7 @@ class PlacementErrorRetryReconciler:
 
     async def _run(self) -> None:
         while not self._stop_event.is_set():
-            sleep_sec = self._IDLE_WHEN_DISABLED_SEC
+            sleep_sec = ERROR_RETRY_IDLE_WHEN_DISABLED_SEC
             try:
                 async with self._session_maker() as session:
                     policy = await NodePolicyRepository(session).get_current()

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.nodes.models import NodeAgentState, VpnNode
 from services.nodes.policy.repository import NodePolicyRepository
+from services.placements.constants import REBALANCE_IDLE_WHEN_DISABLED_SEC
 from services.placements.repository import UserPlacementRepository
 from services.placements.transport import NodeAgentPlacementTransport
 from shared.database.session import AsyncDatabase
@@ -25,13 +26,6 @@ logger = StructuredLogger(logging.getLogger("placement-rebalance-reconciler"))
 
 
 class PlacementRebalanceReconciler:
-    """Ensures every active VPN key has placements on ALL healthy backend nodes.
-
-    Reads placement_rebalance_* / stale_after_sec from NodePolicy on every tick.
-    """
-
-    _IDLE_WHEN_DISABLED_SEC = 120
-
     def __init__(self, *, tick_lock: RedisTickLock | None = None):
         self._session_maker = AsyncDatabase.get_session_maker()
         self._tick_lock = tick_lock or RedisTickLock(
@@ -68,7 +62,7 @@ class PlacementRebalanceReconciler:
 
     async def _run(self) -> None:
         while not self._stop_event.is_set():
-            sleep_sec = self._IDLE_WHEN_DISABLED_SEC
+            sleep_sec = REBALANCE_IDLE_WHEN_DISABLED_SEC
             try:
                 async with self._session_maker() as session:
                     policy = await NodePolicyRepository(session).get_current()

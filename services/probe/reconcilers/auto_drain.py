@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from services.nodes.repository import NodeAgentStateRepository, VpnNodeRepository
 from services.placements.service import UserPlacementService
+from services.probe.constants import AUTO_DRAIN_IDLE_WHEN_DISABLED_SEC
 from services.probe.drain_service import ProbeDrainService
 from services.probe.policy.repository import ProbePolicyRepository
 from services.probe.repository import ProbeSignalRepository
@@ -22,14 +23,6 @@ logger = StructuredLogger(logging.getLogger("probe-auto-drain-reconciler"))
 
 
 class ProbeAutoDrainReconciler:
-    """Periodically evaluates ProbePolicy from DB and auto-drains failing backends.
-
-    Everything tunable lives in `probe_policy` table: enabled/tick/thresholds/source
-    /target/flags. Re-read on every tick so admin edits via UI are picked up.
-    """
-
-    _IDLE_WHEN_DISABLED_SEC = 60
-
     def __init__(
             self,
             *,
@@ -70,7 +63,7 @@ class ProbeAutoDrainReconciler:
 
     async def _run(self) -> None:
         while not self._stop_event.is_set():
-            sleep_sec = self._IDLE_WHEN_DISABLED_SEC
+            sleep_sec = AUTO_DRAIN_IDLE_WHEN_DISABLED_SEC
             try:
                 async with self._session_maker() as session:
                     policy = await ProbePolicyRepository(session).get_current()

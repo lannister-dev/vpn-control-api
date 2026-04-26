@@ -6,6 +6,7 @@ from typing import Callable
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from services.entry.constants import AUTO_DRAIN_IDLE_WHEN_DISABLED_SEC
 from services.entry.drain_service import EntryAutoDrainResult, EntryAutoDrainService
 from services.nodes.policy.repository import NodePolicyRepository
 from shared.database.session import AsyncDatabase
@@ -17,13 +18,6 @@ logger = StructuredLogger(logging.getLogger("entry-auto-drain-reconciler"))
 
 
 class EntryAutoDrainReconciler:
-    """Drains entry-pool nodes on consecutive probe failures / un-drains on
-    recovery. Reads entry_auto_drain_* / entry_auto_undrain_* from NodePolicy
-    on every tick.
-    """
-
-    _IDLE_WHEN_DISABLED_SEC = 60
-
     def __init__(
         self,
         *,
@@ -64,7 +58,7 @@ class EntryAutoDrainReconciler:
 
     async def _run(self) -> None:
         while not self._stop_event.is_set():
-            sleep_sec = self._IDLE_WHEN_DISABLED_SEC
+            sleep_sec = AUTO_DRAIN_IDLE_WHEN_DISABLED_SEC
             try:
                 async with self._session_maker() as session:
                     policy = await NodePolicyRepository(session).get_current()

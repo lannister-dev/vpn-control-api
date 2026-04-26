@@ -12,6 +12,7 @@ from services.config import ProbeConfig, get_settings
 from services.placements.repository import UserPlacementRepository
 from services.placements.schemas import PlacementDesiredState
 from services.placements.transport import NodeAgentPlacementTransport
+from services.probe.constants import SYNTHETIC_IDLE_WHEN_DISABLED_SEC
 from services.probe.policy.repository import ProbePolicyRepository
 from services.probe.schemas import (
     ProbeSyntheticClientIds,
@@ -38,13 +39,6 @@ logger = StructuredLogger(logging.getLogger("probe-synthetic-reconciler"))
 
 
 class ProbeSyntheticCredentialReconciler:
-    """Reconciles synthetic probe credentials. Identity (client_ids, telegram_id,
-    username) stays in env. Operational tunables (enabled, tick, key lifetime,
-    traffic limit) come from `probe_policy` table on every tick.
-    """
-
-    _IDLE_WHEN_DISABLED_SEC = 300
-
     def __init__(
         self,
         *,
@@ -117,7 +111,7 @@ class ProbeSyntheticCredentialReconciler:
 
     async def _run(self) -> None:
         while not self._stop_event.is_set():
-            sleep_sec = self._IDLE_WHEN_DISABLED_SEC
+            sleep_sec = SYNTHETIC_IDLE_WHEN_DISABLED_SEC
             try:
                 async with self._session_maker() as session:
                     policy = await ProbePolicyRepository(session).get_current()

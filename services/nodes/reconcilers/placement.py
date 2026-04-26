@@ -7,6 +7,7 @@ from typing import Callable
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from services.nodes.auto_heal_service import NodeAutoHealTickOut, NodePlacementAutoHealService
+from services.nodes.constants import PLACEMENT_RECONCILER_IDLE_WHEN_DISABLED_SEC
 from services.nodes.policy.repository import NodePolicyRepository
 from shared.database.session import AsyncDatabase
 from shared.reconciler.watchdog import watchdog
@@ -17,12 +18,6 @@ logger = StructuredLogger(logging.getLogger("node-auto-heal-reconciler"))
 
 
 class NodePlacementReconciler:
-    """Node auto-heal loop. Reads enabled / tick / thresholds from NodePolicy
-    on every tick so runtime edits picked up live.
-    """
-
-    _IDLE_WHEN_DISABLED_SEC = 60
-
     def __init__(
         self,
         *,
@@ -68,7 +63,7 @@ class NodePlacementReconciler:
     async def _run(self) -> None:
         logger.info("node_auto_heal_loop_started")
         while not self._stop_event.is_set():
-            sleep_sec = self._IDLE_WHEN_DISABLED_SEC
+            sleep_sec = PLACEMENT_RECONCILER_IDLE_WHEN_DISABLED_SEC
             try:
                 async with self._session_maker() as session:
                     policy = await NodePolicyRepository(session).get_current()

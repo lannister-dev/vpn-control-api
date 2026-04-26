@@ -4,6 +4,10 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
+from services.admin_transport.constants import (
+    CLEANUP_IDLE_WHEN_DISABLED_SEC,
+    NATS_DEDUP_RETENTION_HOURS,
+)
 from services.admin_transport.policy.repository import TransportPolicyRepository
 from services.admin_transport.repository import AdminTransportRepository
 from shared.database.session import AsyncDatabase
@@ -16,14 +20,6 @@ logger = StructuredLogger(logging.getLogger("transport-cleanup-reconciler"))
 
 
 class AdminTransportCleanupReconciler:
-    """Background cleanup of transport event_log / published outbox rows.
-
-    Reads cleanup_enabled / cleanup_tick_sec / retention_days from
-    `transport_policy` table on every tick — admin UI edits picked up live.
-    """
-
-    _IDLE_WHEN_DISABLED_SEC = 300
-
     def __init__(self, *, tick_lock: RedisTickLock | None = None):
         self._session_maker = AsyncDatabase.get_session_maker()
         self._tick_lock = tick_lock or RedisTickLock(
@@ -60,12 +56,12 @@ class AdminTransportCleanupReconciler:
 
     async def _run(self) -> None:
         while not self._stop_event.is_set():
-            sleep_sec = self._IDLE_WHEN_DISABLED_SEC
+            sleep_sec = CLEANUP_IDLE_WHEN_DISABLED_SEC
             try:
                 async with self._session_maker() as session:
                     policy = await TransportPolicyRepository(session).get_current()
                     await session.commit()
-                sleep_sec = max(300, int(policy.cleanup_tick_sec))
+                sleep_sec = max(CLEANUP_IDLE_WHEN_DISABLED_SEC, int(policy.cleanup_tick_sec))
                 if policy.cleanup_enabled:
                     async with self._tick_lock.hold() as acquired:
                         if acquired:
@@ -81,15 +77,13 @@ class AdminTransportCleanupReconciler:
             except TimeoutError:
                 continue
 
-    _NATS_DEDUP_RETENTION_HOURS = 2
-
     async def _execute_tick(self, retention_days: int) -> tuple[int, int, int]:
         retention = max(1, int(retention_days))
         async with self._session_maker() as session:
             repo = AdminTransportRepository(session)
             now = datetime.now(timezone.utc)
             cutoff = now - timedelta(days=retention)
-            dedup_cutoff = now - timedelta(hours=self._NATS_DEDUP_RETENTION_HOURS)
+            dedup_cutoff = now - timedelta(hours=NATS_DEDUP_RETENTION_HOURS)
             deleted_outbox = await repo.delete_published_outbox_older_than(cutoff=cutoff)
             deleted_events = await repo.delete_events_older_than(cutoff=cutoff)
             deleted_dedup = await repo.delete_nats_dedup_older_than(cutoff=dedup_cutoff)

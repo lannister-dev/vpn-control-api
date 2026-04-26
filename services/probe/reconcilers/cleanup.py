@@ -4,6 +4,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
+from services.probe.constants import CLEANUP_IDLE_WHEN_DISABLED_SEC
 from services.probe.policy.repository import ProbePolicyRepository
 from services.probe.repository import ProbeSignalRepository
 from shared.database.session import AsyncDatabase
@@ -16,12 +17,6 @@ logger = StructuredLogger(logging.getLogger("probe-cleanup-reconciler"))
 
 
 class ProbeSignalCleanupReconciler:
-    """Removes stale probe_signal rows. Reads cleanup_enabled / cleanup_tick_sec
-    / retention_days from `probe_policy` on every tick.
-    """
-
-    _IDLE_WHEN_DISABLED_SEC = 300
-
     def __init__(self, *, tick_lock: RedisTickLock | None = None):
         self._session_maker = AsyncDatabase.get_session_maker()
         self._tick_lock = tick_lock or RedisTickLock(
@@ -58,7 +53,7 @@ class ProbeSignalCleanupReconciler:
 
     async def _run(self) -> None:
         while not self._stop_event.is_set():
-            sleep_sec = self._IDLE_WHEN_DISABLED_SEC
+            sleep_sec = CLEANUP_IDLE_WHEN_DISABLED_SEC
             try:
                 async with self._session_maker() as session:
                     policy = await ProbePolicyRepository(session).get_current()
