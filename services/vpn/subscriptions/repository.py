@@ -136,6 +136,30 @@ class SubscriptionRepository(BaseRepository[Subscription]):
         )
         return result.scalar_one_or_none()
 
+    async def list_expired_active(self, *, now, limit: int = 200) -> list[Subscription]:
+        stmt = (
+            select(self.model)
+            .where(
+                self.model.is_active.is_(True),
+                self.model.expires_at.isnot(None),
+                self.model.expires_at < now,
+            )
+            .order_by(self.model.expires_at.asc())
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def bulk_deactivate(self, subscription_ids: list[UUID]) -> int:
+        if not subscription_ids:
+            return 0
+        await self.session.execute(
+            update(self.model)
+            .where(self.model.id.in_(subscription_ids))
+            .values(is_active=False)
+        )
+        return len(subscription_ids)
+
 
 class SubscriptionDeviceRepository(BaseRepository[SubscriptionDevice]):
     def __init__(self, session: AsyncSession):

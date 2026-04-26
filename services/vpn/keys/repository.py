@@ -127,6 +127,35 @@ class VpnKeyRepository(BaseRepository[VpnKey]):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
+    async def bulk_revoke_by_subscription_ids(
+        self, *, subscription_ids: list[UUID]
+    ) -> list[UUID]:
+        from sqlalchemy import update as sa_update
+
+        if not subscription_ids:
+            return []
+
+        now = datetime.now(timezone.utc)
+        stmt = (
+            select(self.model.id)
+            .where(
+                self.model.subscription_id.in_(subscription_ids),
+                self.model.is_active.is_(True),
+                self.model.is_revoked.is_(False),
+            )
+        )
+        result = await self.session.execute(stmt)
+        key_ids = list(result.scalars().all())
+        if not key_ids:
+            return []
+
+        await self.session.execute(
+            sa_update(self.model)
+            .where(self.model.id.in_(key_ids))
+            .values(is_revoked=True, updated_at=now)
+        )
+        return key_ids
+
     async def bulk_revoke_expired(self, *, limit: int = 500) -> list[UUID]:
         from sqlalchemy import update as sa_update
 
@@ -157,7 +186,6 @@ class VpnKeyRepository(BaseRepository[VpnKey]):
         """Reset used_traffic_bytes and un-revoke keys for a subscription. Returns key IDs that were un-revoked."""
         from sqlalchemy import update as sa_update
 
-        # Find keys that were revoked due to traffic limit
         revoked_stmt = (
             select(self.model.id)
             .where(
@@ -169,7 +197,6 @@ class VpnKeyRepository(BaseRepository[VpnKey]):
         revoked_result = await self.session.execute(revoked_stmt)
         unrevoked_ids = list(revoked_result.scalars().all())
 
-        # Reset traffic counters and un-revoke
         now = datetime.now(timezone.utc)
         await self.session.execute(
             sa_update(self.model)
@@ -182,6 +209,8 @@ class VpnKeyRepository(BaseRepository[VpnKey]):
         )
 
         return unrevoked_ids
+
+
 
 
 async def get_vpn_key_repository(

@@ -153,6 +153,8 @@ class ReferralService:
         reward_amount = Decimal(str(self.settings.reward_rub))
         referred_reward = Decimal(str(self.settings.referred_reward_rub))
 
+        from shared.monitoring.metrics import REFERRAL_REWARD_TOTAL
+
         # Credit referrer
         if reward_amount > 0:
             await self._credit_user(
@@ -161,6 +163,7 @@ class ReferralService:
                 tx_type="referral_reward",
                 description=f"Referral reward for inviting user",
             )
+            REFERRAL_REWARD_TOTAL.labels(side="referrer").inc()
             log.info(
                 "referral_reward_credited",
                 referrer_id=str(referral.referrer_user_id),
@@ -191,6 +194,7 @@ class ReferralService:
                 tx_type="referral_bonus",
                 description="Bonus for joining via referral link",
             )
+            REFERRAL_REWARD_TOTAL.labels(side="referred").inc()
 
         # Mark referral as rewarded
         await self.referral_repo.update_by_id(

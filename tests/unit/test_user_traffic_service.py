@@ -36,13 +36,16 @@ def _make_plan(*, traffic_limit_bytes: int = 0, reset_strategy: str = "NO_RESET"
     )
 
 
-def _make_subscription(*, sub_id=None, plan=None, used_traffic_bytes: int = 0,
-                        lifetime_used_traffic_bytes: int = 0):
+def _make_subscription(*, sub_id=None, user_id=None, plan=None, used_traffic_bytes: int = 0,
+                        lifetime_used_traffic_bytes: int = 0,
+                        traffic_warning_threshold_pct: int = 0):
     return SimpleNamespace(
         id=sub_id or uuid4(),
+        user_id=user_id or uuid4(),
         plan=plan,
         used_traffic_bytes=used_traffic_bytes,
         lifetime_used_traffic_bytes=lifetime_used_traffic_bytes,
+        traffic_warning_threshold_pct=traffic_warning_threshold_pct,
         updated_at=None,
     )
 

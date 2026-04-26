@@ -168,3 +168,51 @@ BILLING_BALANCE_OPERATION_TOTAL = Counter(
     "Balance operations by type",
     ["type"],
 )
+
+# ── Business KPIs (sales / activation / churn) ─────────────────
+PAYMENTS_SUCCEEDED_TOTAL = Counter(
+    "payments_succeeded_total",
+    "Successfully fulfilled payments by provider and order_type",
+    ["provider", "order_type"],
+)
+
+PAYMENTS_FAILED_TOTAL = Counter(
+    "payments_failed_total",
+    "Failed/refunded payments by provider and reason",
+    ["provider", "reason"],
+)
+
+ACTIVE_SUBSCRIPTIONS_GAUGE = Gauge(
+    "active_subscriptions",
+    "Currently active subscriptions (sampled by reconciler)",
+    ["plan"],
+)
+
+EXPIRED_SUBSCRIPTIONS_TOTAL = Counter(
+    "expired_subscriptions_total",
+    "Subscriptions deactivated due to expires_at passing",
+)
+
+USERS_REGISTERED_TOTAL = Counter(
+    "users_registered_total",
+    "New users created via bot or admin",
+    ["source"],
+)
+
+KEYS_CREATED_TOTAL = Counter(
+    "keys_created_total",
+    "VPN keys provisioned (any transport)",
+    ["transport"],
+)
+
+NOTIFICATION_SENT_TOTAL = Counter(
+    "notification_sent_total",
+    "User-facing telegram notifications sent",
+    ["kind", "result"],
+)
+
+REFERRAL_REWARD_TOTAL = Counter(
+    "referral_reward_total",
+    "Referral rewards granted",
+    ["side"],
+)
