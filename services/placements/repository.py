@@ -2,8 +2,10 @@ from datetime import datetime
 from uuid import UUID
 
 from fastapi import Depends
-from sqlalchemy import and_, cast, func, or_, select, update as sa_update
-from sqlalchemy.dialects.postgresql import ARRAY, UUID as PG_UUID, insert
+from sqlalchemy import and_, cast, func, or_, select
+from sqlalchemy import update as sa_update
+from sqlalchemy.dialects.postgresql import ARRAY, insert
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.placements.model import UserPlacement

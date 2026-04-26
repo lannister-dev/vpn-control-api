@@ -5,7 +5,6 @@ from services.auth.dependencies import admin_auth, current_admin_actor
 from services.nodes.policy.schemas import NodePolicyOut, NodePolicyUpdateIn
 from services.nodes.policy.service import NodePolicyService, get_node_policy_service
 
-
 router = APIRouter(
     prefix="/admin/nodes/policy",
     tags=["Admin Nodes Policy"],

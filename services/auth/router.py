@@ -1,9 +1,11 @@
 from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException
 from starlette import status
+
 from services.auth.utils import AuthUtils
 from services.nodes.auth_utils import identity_accepts_token
-from services.nodes.service import get_vpn_node_service, VpnNodeService
+from services.nodes.service import VpnNodeService, get_vpn_node_service
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 

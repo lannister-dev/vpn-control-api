@@ -13,24 +13,23 @@ from services.nodes.repository import VpnNodeRepository
 from services.placements.repository import UserPlacementRepository
 from services.placements.transport import NodeAgentPlacementTransport
 from services.probe.policy.repository import ProbePolicyRepository
-from services.routes.repository import RouteRepository
-from services.routes.schemas import RouteHealthStatus, RouteStateResolution, RouteStateUpdate
-from services.routes.state_machine import resolve_probe_block, resolve_probe_recover
 from services.probe.repository import ProbeSignalRepository
 from services.probe.schemas import (
-    ProbeTargetRole,
     ProbeReportIn,
     ProbeReportOut,
     ProbeSignalInternalCreate,
     ProbeSyntheticClientIds,
     ProbeTargetOut,
+    ProbeTargetRole,
 )
+from services.routes.repository import RouteRepository
+from services.routes.schemas import RouteHealthStatus, RouteStateResolution, RouteStateUpdate
+from services.routes.state_machine import resolve_probe_block, resolve_probe_recover
 from services.vpn.keys.repository import VpnKeyRepository
-from shared.profiles.constants import WS_TLS_DEFAULT_PATH
 from shared.database.session import AsyncDatabase
 from shared.monitoring.metrics import PROBE_REPORT_TOTAL
+from shared.profiles.constants import WS_TLS_DEFAULT_PATH
 from shared.utils.logger import StructuredLogger
-
 
 logger_probe = StructuredLogger(logging.getLogger("probe-ingestion-service"))
 
@@ -661,7 +660,7 @@ class ProbeIngestionService:
             return {}
 
         backend_ids_by_transport: dict[str, set[UUID]] = {}
-        for route, node, transport_profile, _agent_state in rows:
+        for _route, node, transport_profile, _agent_state in rows:
             transport_kind = self._transport_kind_for_profile(transport_profile)
             if transport_kind is None or transport_kind not in configured_by_transport:
                 continue

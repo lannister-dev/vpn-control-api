@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime
-from uuid import UUID
-
 from typing import cast
+from uuid import UUID
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.engine import CursorResult

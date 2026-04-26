@@ -1,7 +1,7 @@
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, Boolean, Numeric, String, Integer, text
-from sqlalchemy.orm import mapped_column, Mapped
+from sqlalchemy import BigInteger, Boolean, Integer, Numeric, String, text
+from sqlalchemy.orm import Mapped, mapped_column
 
 from shared.database.base_model import Base
 

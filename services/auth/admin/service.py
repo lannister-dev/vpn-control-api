@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import logging
 import base64
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 from uuid import UUID
 
 import httpx
-
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -520,7 +519,7 @@ class AdminAuthService:
         proxy: str | None = None,
     ) -> tuple[dict | None, str | None]:
         basic_auth = base64.b64encode(
-            f"{client_id}:{client_secret}".encode("utf-8"),
+            f"{client_id}:{client_secret}".encode(),
         ).decode("ascii")
         try:
             async with httpx.AsyncClient(proxy=proxy, timeout=15) as client:

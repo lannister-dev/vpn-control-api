@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Callable
-from uuid import UUID
+from collections.abc import Callable
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 

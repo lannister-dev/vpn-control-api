@@ -5,39 +5,39 @@ from fastapi import APIRouter, FastAPI
 from prometheus_fastapi_instrumentator import Instrumentator
 from starlette.staticfiles import StaticFiles
 
+from services.admin_audit.router import router as admin_audit_router
+from services.admin_nodes.router import (
+    admin_router as nodes_admin_router,
+)
+from services.admin_nodes.router import (
+    installer_router as nodes_installer_router,
+)
+from services.admin_ops.router import router as admin_ops_router
+from services.admin_status.router import router as admin_status_router
+from services.admin_transport.policy.router import router as admin_transport_policy_router
+from services.admin_transport.router import router as admin_transport_router
+from services.admin_ui.router_v2 import STATIC_V2_DIR
+from services.admin_ui.router_v2 import router as admin_ui_v2_router
+from services.auth.admin.router import router as admin_auth_router
+from services.config import get_settings
+from services.entry.router import router as entry_router
+from services.nodes.policy.router import router as node_policy_router
+from services.nodes.router import router as node_router
+from services.placements.router import router as placements_router
+from services.plans.router import router as plans_router
+from services.probe.policy.router import router as probe_policy_router
+from services.probe.router import router as probe_router
+from services.routes.router import router as routes_router
+from services.traffic.nodes.router import router as nodes_traffic_admin_router
+from services.traffic.users.router import router as traffic_admin_router
+from services.users.router import router as users_router
+from services.vpn.subscriptions.router import router as subscriptions_router
+from services.zones.router import router as zones_router
 from shared.app.bootstrap import configure_root_logging
 from shared.app.healthz import add_healthz
 from shared.app.lifespan import build_lifespan
 from shared.middlewares.request_id import add_request_id_middleware
 from shared.utils.logger import StructuredLogger
-from services.config import get_settings
-
-from services.admin_ui.router_v2 import router as admin_ui_v2_router, STATIC_V2_DIR
-
-from services.auth.admin.router import router as admin_auth_router
-from services.admin_ops.router import router as admin_ops_router
-from services.admin_status.router import router as admin_status_router
-from services.admin_transport.router import router as admin_transport_router
-from services.admin_transport.policy.router import router as admin_transport_policy_router
-from services.admin_nodes.router import (
-    admin_router as nodes_admin_router,
-    installer_router as nodes_installer_router,
-)
-from services.entry.router import router as entry_router
-from services.nodes.router import router as node_router
-from services.placements.router import router as placements_router
-from services.admin_audit.router import router as admin_audit_router
-from services.probe.router import router as probe_router
-from services.probe.policy.router import router as probe_policy_router
-from services.nodes.policy.router import router as node_policy_router
-from services.routes.router import router as routes_router
-from services.traffic.users.router import router as traffic_admin_router
-from services.traffic.nodes.router import router as nodes_traffic_admin_router
-from services.plans.router import router as plans_router
-from services.zones.router import router as zones_router
-from services.users.router import router as users_router
-from services.vpn.subscriptions.router import router as subscriptions_router
-
 
 configure_root_logging()
 logger = StructuredLogger(logging.getLogger("admin-panel"))

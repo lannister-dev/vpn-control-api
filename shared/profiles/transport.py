@@ -1,6 +1,6 @@
 import base64
 from dataclasses import dataclass
-from urllib.parse import urlencode, quote
+from urllib.parse import quote, urlencode
 
 
 @dataclass(frozen=True)

@@ -6,15 +6,14 @@ from shared.profiles.builder import VlessUriBuilder
 from shared.profiles.exceptions import ProfileRegionMismatchError
 from shared.profiles.schemas import (
     NodePublic,
-    WsTlsProfile,
-    WsTlsClientConfig,
-    RealityTcpProfile,
-    RealityTcpClientConfig,
     ProfileMetadata,
     ProfileType,
+    RealityTcpClientConfig,
+    RealityTcpProfile,
+    WsTlsClientConfig,
+    WsTlsProfile,
 )
 from shared.profiles.transport import VlessUri
-
 
 # ── fixtures ──
 

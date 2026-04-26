@@ -12,7 +12,6 @@ from shared.reconciler.watchdog import watchdog
 from shared.redis.lock import RedisTickLock
 from shared.utils.logger import StructuredLogger
 
-
 logger = StructuredLogger(logging.getLogger("probe-cleanup-reconciler"))
 
 

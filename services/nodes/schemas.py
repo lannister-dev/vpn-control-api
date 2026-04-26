@@ -1,9 +1,8 @@
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class VpnNodeCreate(BaseModel):
@@ -80,7 +79,7 @@ class HeartbeatStats(BaseModel):
 
 class HeartbeatRuntime(BaseModel):
     ready: bool
-    last_error: Optional[str] = None
+    last_error: str | None = None
 
 
 class HeartbeatPool(BaseModel):

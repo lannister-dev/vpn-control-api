@@ -9,12 +9,9 @@ based on the entry node's role and the plan's flags:
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
-import pytest
-
-from services.nodes.constants import ROLE_BACKEND, ROLE_ENTRY, ROLE_WHITELIST_ENTRY
+from services.nodes.constants import ROLE_ENTRY, ROLE_WHITELIST_ENTRY
 
 
 def _make_plan(*, whitelist_enabled: bool = False, entry_relay_enabled: bool = False):

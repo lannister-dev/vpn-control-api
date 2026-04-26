@@ -18,6 +18,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  lint:
+    uses: ./.github/workflows/lint.yml
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
   tests:
     uses: ./.github/workflows/tests.yml
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false

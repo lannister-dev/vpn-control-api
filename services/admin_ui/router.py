@@ -2,7 +2,6 @@ from pathlib import Path
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from starlette.staticfiles import StaticFiles
 
 from services.auth.admin.constants import SESSION_COOKIE_NAME
 from services.auth.admin.crypto import hash_session_id

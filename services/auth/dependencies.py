@@ -2,17 +2,16 @@ import secrets
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import Header, Depends, HTTPException, Query, Request, Security
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import Depends, Header, HTTPException, Query, Request, Security
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from starlette import status
 
 from services.auth.utils import AuthUtils
 from services.config import get_settings
-from services.nodes.models import VpnNode
 from services.nodes.auth_utils import identity_accepts_token
+from services.nodes.models import VpnNode
 from services.nodes.service import VpnNodeService, get_vpn_node_service
 from shared.monitoring.metrics import AUTH_ATTEMPT_TOTAL
-
 
 node_bearer = HTTPBearer(auto_error=False)
 

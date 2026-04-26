@@ -6,7 +6,7 @@ from uuid import UUID
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.nodes.models import VpnNode, NodeAgentState
+from services.nodes.models import NodeAgentState, VpnNode
 from services.routing.repository import RoutingRepository
 from shared.database.session import AsyncDatabase
 

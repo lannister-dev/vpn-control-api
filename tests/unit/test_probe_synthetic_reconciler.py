@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from services.config import ProbeConfig
-from services.probe.schemas import ProbeSyntheticReconcileResult
 from services.probe.reconcilers.synthetic import ProbeSyntheticCredentialReconciler
+from services.probe.schemas import ProbeSyntheticReconcileResult
 
 
 class _SessionContext:

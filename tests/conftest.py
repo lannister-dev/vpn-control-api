@@ -26,11 +26,13 @@ for key, value in _DUMMY_ENV.items():
     os.environ.setdefault(key, value)
 
 from services.config import get_settings
+
 get_settings.cache_clear()
 
-import pytest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from shared.profiles.registry import ProfileRegistry
 

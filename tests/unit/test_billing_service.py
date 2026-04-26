@@ -14,7 +14,6 @@ from services.billing.exceptions import (
     OrderExpired,
     OrderNotFound,
     PlanNotPurchasable,
-    ProviderError,
     RefundNotAllowed,
     WebhookVerificationFailed,
 )

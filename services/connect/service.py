@@ -22,6 +22,7 @@ from services.nodes.repository import VpnNodeRepository
 from services.placements.model import UserPlacement
 from services.placements.repository import UserPlacementRepository
 from services.placements.schemas import PlacementDesiredState
+from services.placements.transport import NodeAgentPlacementTransport
 from services.routes.repository import RouteRepository
 from services.routing.selector import RouteSelector
 from services.routing.service import RoutingService
@@ -29,7 +30,6 @@ from services.users.repository import UserRepository
 from services.vpn.keys.repository import VpnKeyRepository
 from services.vpn.keys.schemas import VpnKeyInternalCreate, VpnProtocol, VpnTransport
 from shared.database.session import AsyncDatabase
-from services.placements.transport import NodeAgentPlacementTransport
 from shared.profiles.builder import VlessUriBuilder
 from shared.profiles.constants import WS_TLS_DEFAULT_PATH
 from shared.profiles.schemas import (
@@ -42,9 +42,8 @@ from shared.profiles.schemas import (
 )
 from shared.profiles.transport import VlessUri
 from shared.redis.client import RedisClient, get_redis_client
-from shared.utils.node_display import format_node_display_name
 from shared.utils.logger import StructuredLogger
-
+from shared.utils.node_display import format_node_display_name
 
 logger_connect = StructuredLogger(logging.getLogger("connect-service"))
 

@@ -3,11 +3,11 @@ from __future__ import annotations
 from uuid import UUID
 
 from sqlalchemy import func, select
+from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.billing.models import BalanceTransaction, PaymentOrder
 from shared.database.base_repository import BaseRepository
-from sqlalchemy import update as sa_update
 
 
 class OrderRepository(BaseRepository[PaymentOrder]):

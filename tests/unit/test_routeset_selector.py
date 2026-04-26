@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from uuid import uuid4, UUID
+from uuid import UUID, uuid4
 
 from services.routing.selector import RouteSelector
 

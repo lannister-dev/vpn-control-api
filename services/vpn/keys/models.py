@@ -1,9 +1,10 @@
 from __future__ import annotations
+
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import BigInteger, ForeignKey, String, UniqueConstraint, Boolean, text, Index, Integer, DateTime
-from sqlalchemy.orm import mapped_column, Mapped, relationship
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.database.base_model import Base
 
@@ -26,11 +27,11 @@ class VpnKey(Base):
     is_revoked: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"), nullable=False)
     subscription_id: Mapped[UUID | None] = mapped_column(ForeignKey("subscription.id"), nullable=True)
 
-    user: Mapped["User"] = relationship(back_populates="keys")
-    subscription: Mapped["Subscription"] = relationship(
+    user: Mapped[User] = relationship(back_populates="keys")
+    subscription: Mapped[Subscription] = relationship(
         foreign_keys=[subscription_id], lazy="select",
     )
-    assignments: Mapped[list["KeyAssignment"]] = relationship(
+    assignments: Mapped[list[KeyAssignment]] = relationship(
         back_populates="key",
         cascade="all, delete-orphan"
     )
@@ -60,8 +61,8 @@ class KeyAssignment(Base):
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     next_retry_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    key: Mapped["VpnKey"] = relationship(back_populates="assignments")
-    node: Mapped["VpnNode"] = relationship(back_populates="assignments")
+    key: Mapped[VpnKey] = relationship(back_populates="assignments")
+    node: Mapped[VpnNode] = relationship(back_populates="assignments")
 
     __table_args__ = (
         UniqueConstraint("key_id", "node_id", name="uq_key_node"),

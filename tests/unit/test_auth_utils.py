@@ -45,5 +45,5 @@ class TestSubscriptionUtils:
         assert h1 == h2
 
     def test_hash_sha256(self):
-        expected = hashlib.sha256("tok".encode("utf-8")).hexdigest()
+        expected = hashlib.sha256(b"tok").hexdigest()
         assert SubscriptionUtils.hash("tok") == expected

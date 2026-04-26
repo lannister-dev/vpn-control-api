@@ -1,6 +1,8 @@
 from uuid import UUID
+
 from fastapi import APIRouter, Depends
 from starlette import status
+
 from services.vpn.keys.schemas import VpnKeyCreate, VpnKeyOut
 from services.vpn.keys.service import VpnKeyService, get_vpn_key_service
 

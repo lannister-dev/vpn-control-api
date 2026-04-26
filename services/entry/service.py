@@ -6,7 +6,7 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.config import get_settings
-from services.entry.constants import ENTRY_ROLES, RELAY_POOL_TTL_SEC, ROLE_BACKEND, POOL_CHANGED_EVENT_TYPE
+from services.entry.constants import ENTRY_ROLES, POOL_CHANGED_EVENT_TYPE, RELAY_POOL_TTL_SEC, ROLE_BACKEND
 from services.entry.exceptions import (
     BackendNotFoundError,
     EntryNotFoundError,
@@ -15,9 +15,6 @@ from services.entry.exceptions import (
 )
 from services.entry.models import EntryBackendAssignment
 from services.entry.repository import EntryBackendAssignmentRepository
-from services.nodes.naming.registry import registry as naming_registry
-from services.routes.model import Route
-from services.routes.repository import RouteRepository, TransportProfileRepository
 from services.entry.schemas import (
     EntryBackendAssignIn,
     EntryBackendAssignmentCreate,
@@ -30,7 +27,9 @@ from services.entry.schemas import (
 from services.nodes.agent.repository import NodeTransportOutboxRepository
 from services.nodes.agent.schemas import AgentSubjects, OutboxEnqueueItem
 from services.nodes.models import VpnNode
+from services.nodes.naming.registry import registry as naming_registry
 from services.nodes.repository import VpnNodeRepository
+from services.routes.repository import RouteRepository, TransportProfileRepository
 from shared.database.session import AsyncDatabase
 from shared.utils.logger import StructuredLogger
 from shared.utils.node_display import effective_zone

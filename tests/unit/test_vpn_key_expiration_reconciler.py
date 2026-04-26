@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-from services.vpn.keys.reconcilers.expiration import VpnKeyExpirationReconciler
+import pytest
+
 from services.config import VpnKeyConfig
+from services.vpn.keys.reconcilers.expiration import VpnKeyExpirationReconciler
 
 
 def _make_reconciler():

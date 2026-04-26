@@ -1,14 +1,14 @@
 from datetime import datetime
-from typing import Dict, Any
+from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, ValidationError, field_validator, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from shared.profiles.schemas import WsTlsProfileIn, RealityTcpProfileIn
+from shared.profiles.schemas import RealityTcpProfileIn, WsTlsProfileIn
 
 
 class ProfileArtifactPublishIn(BaseModel):
-    artifact: Dict[str, dict] = Field(
+    artifact: dict[str, dict] = Field(
         ...,
         min_length=1,
         description=(
@@ -43,7 +43,7 @@ class ProfileArtifactPublishIn(BaseModel):
 
     @field_validator("artifact")
     @classmethod
-    def validate_artifact(cls, artifact: Dict[str, dict]) -> Dict[str, dict]:
+    def validate_artifact(cls, artifact: dict[str, dict]) -> dict[str, dict]:
         if not artifact:
             raise ValueError("artifact must not be empty")
 
@@ -73,7 +73,7 @@ class ProfileArtifactPublishIn(BaseModel):
 
 class ProfileArtifactCreate(BaseModel):
     version: int
-    artifact: Dict[str, Any]
+    artifact: dict[str, Any]
     checksum: str
 
 
@@ -85,7 +85,7 @@ class ProfileArtifactOut(BaseModel):
     id: UUID
     version: int
     checksum: str
-    artifact: Dict[str, Any]
+    artifact: dict[str, Any]
     is_active: bool
     created_at: datetime
 
@@ -111,7 +111,7 @@ class ArtifactRoutesBootstrapIn(BaseModel):
     include_ws_tls: bool = False
     default_reality_port: int = Field(default=443, ge=1, le=65535)
     default_ws_port: int = Field(default=443, ge=1, le=65535)
-    profile_port_overrides: Dict[str, int] = Field(default_factory=dict)
+    profile_port_overrides: dict[str, int] = Field(default_factory=dict)
     route_base_weight: int = Field(default=50, ge=0, le=100)
     recover_unhealthy_routes: bool = True
     expected_backends_selected: int | None = Field(
@@ -133,8 +133,8 @@ class ArtifactRoutesBootstrapIn(BaseModel):
 
     @field_validator("profile_port_overrides")
     @classmethod
-    def validate_profile_port_overrides(cls, value: Dict[str, int]) -> Dict[str, int]:
-        normalized: Dict[str, int] = {}
+    def validate_profile_port_overrides(cls, value: dict[str, int]) -> dict[str, int]:
+        normalized: dict[str, int] = {}
         for raw_key, raw_port in value.items():
             key = str(raw_key).strip()
             if not key:

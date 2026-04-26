@@ -11,8 +11,8 @@ from services.entry.events import enqueue_pool_snapshots_for_backend
 from services.nodes.models import VpnNode
 from services.nodes.repository import NodeAgentStateRepository, VpnNodeRepository
 from services.nodes.schemas import NodeHeartbeatMeta, VpnNodeUpdate
-from services.placements.service import UserPlacementService, get_user_placement_service
 from services.placements.schemas import PlacementMigrateBackendIn
+from services.placements.service import UserPlacementService, get_user_placement_service
 from services.probe.repository import ProbeSignalRepository
 from services.probe.schemas import (
     ProbeAutoDrainMigrateIn,
@@ -24,7 +24,6 @@ from services.probe.schemas import (
 from shared.database.session import AsyncDatabase
 from shared.monitoring.metrics import PROBE_ACTION_TOTAL
 from shared.utils.logger import StructuredLogger
-
 
 logger_probe = StructuredLogger(logging.getLogger("probe-drain-service"))
 

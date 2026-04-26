@@ -18,15 +18,14 @@ from services.connect.schemas import (
 )
 from services.placements.repository import UserPlacementRepository
 from services.placements.schemas import PlacementDesiredState
-from services.vpn.keys.repository import VpnKeyRepository
+from services.routes.repository import RouteRepository
 from services.routes.schemas import RouteHealthAction, RouteHealthStatus, RouteHealthUpdateIn
 from services.routes.service import RouteService
-from services.routes.repository import RouteRepository
+from services.vpn.keys.repository import VpnKeyRepository
 from shared.database.session import AsyncDatabase
 from shared.monitoring.metrics import CONNECT_TELEMETRY_TOTAL
 from shared.redis.client import RedisClient, get_redis_client
 from shared.utils.logger import StructuredLogger
-
 
 logger_connect_telemetry = StructuredLogger(logging.getLogger("connect-telemetry-service"))
 

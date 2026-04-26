@@ -14,11 +14,11 @@ from services.placements.constants import REBALANCE_IDLE_WHEN_DISABLED_SEC
 from services.placements.repository import UserPlacementRepository
 from services.placements.transport import NodeAgentPlacementTransport
 from shared.database.session import AsyncDatabase
-from shared.reconciler.watchdog import watchdog
 from shared.monitoring.metrics import (
     PLACEMENT_REBALANCE_MISSING_GAUGE,
     PLACEMENT_REBALANCE_TOTAL,
 )
+from shared.reconciler.watchdog import watchdog
 from shared.redis.lock import RedisTickLock
 from shared.utils.logger import StructuredLogger
 

@@ -5,7 +5,6 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 
 from services.auth.dependencies import bot_auth
-
 from services.referral.schemas import BotReferralApplyIn, BotReferralInfoOut
 
 from .schemas import (
@@ -249,13 +248,14 @@ async def bot_apply_referral(
     payload: BotReferralApplyIn,
     service: BotApiService = Depends(get_bot_api_service),
 ):
+    from fastapi import HTTPException
+
     from services.referral.exceptions import (
         AlreadyReferred,
         ReferralCodeNotFound,
         ReferralNotEnabled,
         SelfReferralNotAllowed,
     )
-    from fastapi import HTTPException
 
     try:
         return await service.apply_referral(

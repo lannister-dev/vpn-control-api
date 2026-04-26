@@ -3,11 +3,11 @@ from __future__ import annotations
 import json
 import logging
 
+from services.admin_transport.repository import NatsMessageDedupRepository
 from services.config import NatsConfig
 from services.traffic.nodes.schemas import NodeTrafficIn
 from services.traffic.nodes.service import NodeTrafficService
 from shared.database.session import AsyncDatabase
-from services.admin_transport.repository import NatsMessageDedupRepository
 from shared.nats.client import NatsClient
 from shared.utils.logger import StructuredLogger
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+
 from services.config import get_settings
 from services.routes.service import RouteService
 from shared.database.session import AsyncDatabase

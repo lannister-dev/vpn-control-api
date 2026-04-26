@@ -1,27 +1,31 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import json
+import logging
 import time
 import urllib.parse
+from collections.abc import Iterable
 from datetime import datetime, timedelta, timezone
-from typing import Iterable
 from uuid import UUID, uuid4
 
 from fastapi import Depends, HTTPException
-from sqlalchemy import select
 from sqlalchemy import inspect as sa_inspect
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.config import get_settings
 from services.entry.repository import EntryBackendAssignmentRepository
+from services.nodes.constants import ROLE_ENTRY, ROLE_WHITELIST_ENTRY
 from services.nodes.models import VpnNode
 from services.nodes.repository import VpnNodeRepository
 from services.placements.model import UserPlacement
 from services.placements.repository import UserPlacementRepository
 from services.placements.schemas import PlacementDesiredState
+from services.placements.transport import NodeAgentPlacementTransport
 from services.routes.repository import RouteRepository
 from services.routing.selector import RouteSelector
 from services.routing.service import RoutingService
@@ -32,6 +36,7 @@ from services.vpn.keys.schemas import (
     VpnProtocol,
     VpnTransport,
 )
+from services.vpn.subscriptions import redis_key
 from services.vpn.subscriptions.constants import (
     DEFAULT_SUBSCRIPTION_TRANSPORT_BUNDLE,
     PAYLOAD_BUILD_LOCK_TTL_SEC,
@@ -54,7 +59,6 @@ from services.vpn.subscriptions.exceptions import (
     SubscriptionTokenExpired,
 )
 from services.vpn.subscriptions.model import Subscription, SubscriptionDevice
-from services.vpn.subscriptions import redis_key
 from services.vpn.subscriptions.repository import (
     SubscriptionDeviceKeyRepository,
     SubscriptionDeviceRepository,
@@ -63,17 +67,17 @@ from services.vpn.subscriptions.repository import (
 from services.vpn.subscriptions.schemas import (
     ResolvedDeviceBundle,
     ResolvedDeviceKey,
-    SubscriptionCreateIn,
+    ResolvedSubscriptionRoute,
     SubscriptionCreatedOut,
+    SubscriptionCreateIn,
     SubscriptionDeviceCreate,
+    SubscriptionDeviceInternalUpdate,
     SubscriptionDeviceKeyCreate,
     SubscriptionDeviceKeyOut,
-    SubscriptionDeviceInternalUpdate,
     SubscriptionDeviceOut,
     SubscriptionInternalCreate,
     SubscriptionInternalRotate,
     SubscriptionInternalUpdate,
-    ResolvedSubscriptionRoute,
     SubscriptionOut,
     SubscriptionRotateOut,
     SubscriptionUserInfo,
@@ -81,7 +85,6 @@ from services.vpn.subscriptions.schemas import (
 )
 from services.vpn.subscriptions.utils import SubscriptionUtils
 from shared.database.session import AsyncDatabase
-from services.placements.transport import NodeAgentPlacementTransport
 from shared.monitoring.metrics import (
     SUBSCRIPTION_BUILD_DURATION,
     SUBSCRIPTION_CACHE_TOTAL,
@@ -90,7 +93,6 @@ from shared.monitoring.metrics import (
 )
 from shared.profiles.builder import VlessUriBuilder
 from shared.profiles.constants import WS_TLS_DEFAULT_PATH
-from services.nodes.constants import ROLE_ENTRY, ROLE_WHITELIST_ENTRY
 from shared.profiles.exceptions import ProfileRegistryError
 from shared.profiles.registry import ProfileRegistry
 from shared.profiles.schemas import (
@@ -104,15 +106,13 @@ from shared.profiles.schemas import (
 from shared.profiles.transport import VlessUri
 from shared.profiles.types import ProfileType
 from shared.redis.client import RedisClient, get_redis_client
+from shared.utils.logger import StructuredLogger
 from shared.utils.node_display import (
     COUNTRY_CODE_TO_NAME,
     country_code_from_region,
     effective_zone,
     format_node_display_name,
 )
-from shared.utils.logger import StructuredLogger
-
-import logging
 
 logger_sub = StructuredLogger(logging.getLogger("subscription-build"))
 
@@ -149,7 +149,7 @@ class SubscriptionService:
         raw_token = SubscriptionUtils.generate()
         token_hash = SubscriptionUtils.hash(raw_token)
 
-        client_uuid = uuid4()
+        uuid4()
 
         if data.profile_key:
             try:
@@ -614,9 +614,7 @@ class SubscriptionService:
     def _is_subscription_closed(self, subscription) -> bool:
         if not subscription.is_active:
             return True
-        if subscription.expires_at and subscription.expires_at <= datetime.now(timezone.utc):
-            return True
-        return False
+        return bool(subscription.expires_at and subscription.expires_at <= datetime.now(timezone.utc))
 
     def _validate_subscription(self, subscription, token_hash: str) -> None:
         now = datetime.now(timezone.utc)
@@ -627,9 +625,12 @@ class SubscriptionService:
         if subscription.expires_at and subscription.expires_at <= now:
             raise SubscriptionExpired()
 
-        if subscription.prev_token_hash == token_hash:
-            if subscription.prev_token_expires_at and subscription.prev_token_expires_at <= now:
-                raise SubscriptionTokenExpired()
+        if (
+            subscription.prev_token_hash == token_hash
+            and subscription.prev_token_expires_at
+            and subscription.prev_token_expires_at <= now
+        ):
+            raise SubscriptionTokenExpired()
 
     def _calc_etag(
             self,
@@ -1866,7 +1867,7 @@ class SubscriptionService:
                 transport=transport,
                 valid_until=valid_until,
             )
-            try:
+            with contextlib.suppress(IntegrityError):
                 await self.device_key_repository.create(
                     SubscriptionDeviceKeyCreate(
                         subscription_device_id=device.id,
@@ -1875,8 +1876,6 @@ class SubscriptionService:
                         is_primary=idx == 0 and not bundle.keys,
                     ).model_dump()
                 )
-            except IntegrityError:
-                pass
 
         return await self._load_device_bundle(device)
 

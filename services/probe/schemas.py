@@ -1,10 +1,9 @@
-from datetime import datetime
 import json
+from datetime import datetime
 from typing import Literal, TypeAlias
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-
 
 ProbeDetailsValue: TypeAlias = str | int | float | bool | None
 ProbeDetails: TypeAlias = dict[str, ProbeDetailsValue]

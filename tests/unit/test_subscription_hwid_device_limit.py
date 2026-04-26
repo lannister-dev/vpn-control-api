@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import pytest
 
-from services.vpn.subscriptions.exceptions import SubscriptionHwidRequired, SubscriptionDeviceLimitReached
+from services.vpn.subscriptions.exceptions import SubscriptionDeviceLimitReached, SubscriptionHwidRequired
 from services.vpn.subscriptions.schemas import ResolvedDeviceBundle, ResolvedDeviceKey
 from services.vpn.subscriptions.service import SubscriptionService
 

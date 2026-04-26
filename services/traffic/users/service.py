@@ -9,8 +9,10 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.placements.repository import UserPlacementRepository
-from services.traffic.users.repository import TrafficUsageRepository
 from services.placements.schemas import PlacementDesiredState
+from services.placements.transport import NodeAgentPlacementTransport
+from services.traffic.users.constants import _MIB, _MIGRATION_REASON
+from services.traffic.users.repository import TrafficUsageRepository
 from services.traffic.users.schemas import (
     TrafficHistoryItemOut,
     TrafficHistoryListOut,
@@ -24,9 +26,7 @@ from services.traffic.users.schemas import (
 from services.vpn.keys.repository import VpnKeyRepository
 from services.vpn.subscriptions.repository import SubscriptionRepository
 from shared.database.session import AsyncDatabase
-from services.placements.transport import NodeAgentPlacementTransport
 from shared.monitoring.metrics import VPN_KEY_OPERATION_TOTAL
-from services.traffic.users.constants import _MIGRATION_REASON, _MIB
 from shared.utils.logger import StructuredLogger
 
 logger_traffic = StructuredLogger(logging.getLogger("traffic-service"))

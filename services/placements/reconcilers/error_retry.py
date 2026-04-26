@@ -4,7 +4,8 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select, update as sa_update
+from sqlalchemy import select
+from sqlalchemy import update as sa_update
 
 from services.nodes.policy.repository import NodePolicyRepository
 from services.placements.constants import ERROR_RETRY_IDLE_WHEN_DISABLED_SEC

@@ -1,14 +1,17 @@
 from __future__ import annotations
+
 from ipaddress import ip_address
+
 from shared.profiles.exceptions import ProfileBuildError, ProfileRegionMismatchError
-from shared.profiles.schemas import WsTlsQuery, RealityTcpQuery
-from shared.profiles.transport import VlessUri
 from shared.profiles.schemas import (
     NodePublic,
     ProfileType,
     RealityTcpProfile,
+    RealityTcpQuery,
     WsTlsProfile,
+    WsTlsQuery,
 )
+from shared.profiles.transport import VlessUri
 
 
 class VlessUriBuilder:
@@ -19,12 +22,15 @@ class VlessUriBuilder:
         node: NodePublic,
         profile: WsTlsProfile | RealityTcpProfile,
     ) -> str:
-        if profile.metadata.region_support and node.region:
-            if node.region not in profile.metadata.region_support:
-                raise ProfileRegionMismatchError(
-                    f"Profile {profile.metadata.display_name} "
-                    f"not supported in region {node.region}"
-                )
+        if (
+            profile.metadata.region_support
+            and node.region
+            and node.region not in profile.metadata.region_support
+        ):
+            raise ProfileRegionMismatchError(
+                f"Profile {profile.metadata.display_name} "
+                f"not supported in region {node.region}"
+            )
 
         if profile.type == ProfileType.ws_tls:
             return VlessUriBuilder._build_ws_tls(

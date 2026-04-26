@@ -32,7 +32,6 @@ from services.billing.models import BalanceTransaction, PaymentOrder
 from services.billing.providers.base import PaymentProvider
 from services.billing.providers.registry import PROVIDERS
 from services.billing.repository import OrderRepository, TransactionRepository
-from services.bot_notifications.service import TelegramBotNotifyService
 from services.billing.schemas import (
     BalanceCreditIn,
     BalanceOut,
@@ -45,6 +44,7 @@ from services.billing.schemas import (
     TransactionListOut,
     TransactionOut,
 )
+from services.bot_notifications.service import TelegramBotNotifyService
 from services.config import get_settings
 from services.plans.repository import PlanRepository
 from services.users.models import User
@@ -889,10 +889,7 @@ class BillingService:
     async def _has_live_subscription(self, user_id: UUID) -> bool:
         now = datetime.now(timezone.utc)
         subscriptions = await self.sub_repo.list_by_user_id(user_id, active_only=True)
-        for sub in subscriptions:
-            if sub.expires_at is None or sub.expires_at > now:
-                return True
-        return False
+        return any(sub.expires_at is None or sub.expires_at > now for sub in subscriptions)
 
     async def _auto_purchase_free(self, user: User, plan, order: PaymentOrder, now: datetime) -> None:
         """Create subscription for a free plan without any balance operations."""

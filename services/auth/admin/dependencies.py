@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-from uuid import UUID
-
-from fastapi import Cookie, Depends, Header, HTTPException, Request
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import Depends, HTTPException, Request
 from starlette import status
 
 from services.auth.admin.constants import (

@@ -1,6 +1,6 @@
+import base64
 import hashlib
 import secrets
-import base64
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request

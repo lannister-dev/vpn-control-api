@@ -13,11 +13,10 @@ from starlette import status
 log = logging.getLogger("admin-auth.router")
 
 from services.auth.admin.constants import (
-    CSRF_COOKIE_NAME,
+    SESSION_COOKIE_NAME,
     TG_OIDC_NONCE_COOKIE_NAME,
     TG_OIDC_STATE_COOKIE_NAME,
     TG_OIDC_VERIFIER_COOKIE_NAME,
-    SESSION_COOKIE_NAME,
     AdminRole,
 )
 from services.auth.admin.crypto import (

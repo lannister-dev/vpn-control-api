@@ -1,19 +1,22 @@
 from __future__ import annotations
+
 from datetime import datetime, timezone
-from uuid import uuid4, UUID
-from fastapi import HTTPException, Depends
+from uuid import UUID, uuid4
+
+from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette import status
 
 from services.placements.repository import UserPlacementRepository
 from services.placements.schemas import PlacementDesiredState
+from services.placements.transport import NodeAgentPlacementTransport
 from services.users.repository import UserRepository
 from services.vpn.keys.repository import VpnKeyRepository
 from services.vpn.keys.schemas import (
-    VpnKeyCreate, VpnKeyInternalCreate,
+    VpnKeyCreate,
+    VpnKeyInternalCreate,
 )
 from shared.database.session import AsyncDatabase
-from services.placements.transport import NodeAgentPlacementTransport
 from shared.monitoring.metrics import KEYS_CREATED_TOTAL, VPN_KEY_OPERATION_TOTAL
 
 

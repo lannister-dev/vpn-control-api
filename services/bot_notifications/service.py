@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 from urllib import request
@@ -202,10 +203,8 @@ class TelegramBotNotifyService:
                 return True
         except HTTPError as e:
             error_body = ""
-            try:
+            with contextlib.suppress(Exception):
                 error_body = e.read().decode("utf-8")
-            except Exception:
-                pass
             log.warning(
                 "bot_notify_http_error",
                 method=method,

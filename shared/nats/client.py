@@ -1,21 +1,25 @@
 from __future__ import annotations
+
 import asyncio
+import contextlib
+import json
 import logging
 import time
 from collections.abc import Awaitable, Callable
-import json
+
 import nats
 from nats.errors import (
     ConnectionClosedError,
     NoServersError,
     OutboundBufferLimitError,
+)
+from nats.errors import (
     TimeoutError as NatsTimeoutError,
 )
 from nats.js.api import AckPolicy, ConsumerConfig, DeliverPolicy, StreamConfig
 
 from services.config import NatsConfig
 from shared.utils.logger import StructuredLogger
-
 
 logger_nats = StructuredLogger(logging.getLogger("nats-client"))
 
@@ -64,14 +68,10 @@ class NatsClient:
 
     async def close(self) -> None:
         if self._nc and not self._nc.is_closed:
-            try:
+            with contextlib.suppress(Exception):
                 await self._nc.drain()
-            except Exception:
-                pass
-            try:
+            with contextlib.suppress(Exception):
                 await self._nc.close()
-            except Exception:
-                pass
         self._nc = None
         self._js = None
         self._connected = False
@@ -191,12 +191,12 @@ class NatsClient:
         max_age: float = 3600,
         duplicate_window: float | None = None,
     ):
-        config_kwargs = dict(
-            name=name,
-            subjects=subjects,
-            max_msgs_per_subject=max_msgs_per_subject,
-            max_age=max_age,
-        )
+        config_kwargs = {
+            "name": name,
+            "subjects": subjects,
+            "max_msgs_per_subject": max_msgs_per_subject,
+            "max_age": max_age,
+        }
         if duplicate_window and duplicate_window > 0:
             config_kwargs["duplicate_window"] = duplicate_window
         config = StreamConfig(**config_kwargs)
@@ -228,7 +228,7 @@ class NatsClient:
         subject: str,
         durable: str,
         queue: str | None,
-        handler: Callable[[bytes, "object"], Awaitable[None]],
+        handler: Callable[[bytes, object], Awaitable[None]],
         ack_wait_s: float,
         max_deliver: int,
     ) -> None:
@@ -244,10 +244,8 @@ class NatsClient:
                     subject=subject,
                     durable=durable,
                 )
-                try:
+                with contextlib.suppress(Exception):
                     await msg.nak()
-                except Exception:
-                    pass
 
         config = ConsumerConfig(
             durable_name=durable,

@@ -3,14 +3,13 @@ from __future__ import annotations
 import json
 import logging
 
+from services.admin_transport.repository import NatsMessageDedupRepository
 from services.config import NatsConfig
 from services.traffic.users.schemas import UserTrafficIn
 from services.traffic.users.service import UserTrafficService
 from shared.database.session import AsyncDatabase
-from services.admin_transport.repository import NatsMessageDedupRepository
 from shared.nats.client import NatsClient
 from shared.utils.logger import StructuredLogger
-
 
 logger_traffic_consumer = StructuredLogger(logging.getLogger("traffic-nats-consumer"))
 

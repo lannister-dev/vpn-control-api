@@ -5,8 +5,8 @@ from pydantic import ValidationError
 
 from shared.profiles.schemas import (
     ProfileMetadata,
-    WsTlsClientConfig,
     RealityTcpClientConfig,
+    WsTlsClientConfig,
 )
 
 

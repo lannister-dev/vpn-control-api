@@ -42,14 +42,13 @@ def test_middleware_preserves_inbound_request_id(app):
 
 def test_structured_logger_includes_request_id(caplog, app):
     log = StructuredLogger(logging.getLogger("test-rid"))
-    with TestClient(app) as client:
-        with caplog.at_level(logging.INFO, logger="test-rid"):
-            from shared.utils.request_context import set_request_id
-            set_request_id("rid-abc")
-            try:
-                log.info("test_event", foo="bar")
-            finally:
-                set_request_id(None)
+    with TestClient(app) as client, caplog.at_level(logging.INFO, logger="test-rid"):
+        from shared.utils.request_context import set_request_id
+        set_request_id("rid-abc")
+        try:
+            log.info("test_event", foo="bar")
+        finally:
+            set_request_id(None)
     msg = caplog.records[-1].getMessage()
     assert '"request_id": "rid-abc"' in msg
     assert '"foo": "bar"' in msg

@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from functools import lru_cache
+
 from environs import Env
+
 from services.vpn.subscriptions.constants import DEFAULT_HAPP_COLOR_PROFILE
 
 

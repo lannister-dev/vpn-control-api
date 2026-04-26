@@ -1,5 +1,7 @@
-from typing import TypeVar, Type, Generic, Any, Sequence
-from sqlalchemy import select, update, delete
+from collections.abc import Sequence
+from typing import Any, Generic, TypeVar
+
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.database.base_model import Base
@@ -8,7 +10,7 @@ ModelType = TypeVar('ModelType', bound=Base)
 
 
 class BaseRepository(Generic[ModelType]):
-    def __init__(self, model: Type[ModelType], session: AsyncSession):
+    def __init__(self, model: type[ModelType], session: AsyncSession):
         self.model = model
         self.session = session
 

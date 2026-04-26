@@ -5,9 +5,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.artifacts.exceptions import ArtifactStoreError
 from services.artifacts.service import ProfileArtifactService
-from services.config import  get_settings
+from services.config import get_settings
 from shared.profiles.exceptions import ProfileRegistryError, ProfilesBootstrapError
-from shared.profiles.registry import profile_registry_lock, ProfileRegistry
+from shared.profiles.registry import ProfileRegistry, profile_registry_lock
 from shared.utils.logger import StructuredLogger
 
 logger = StructuredLogger(logging.getLogger("bootstrap_profiles_registry"))

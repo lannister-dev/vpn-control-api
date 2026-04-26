@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
-from typing import Callable
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -44,7 +44,7 @@ class ProbeSyntheticCredentialReconciler:
         *,
         probe_settings: ProbeConfig | None = None,
         session_maker: async_sessionmaker[AsyncSession] | None = None,
-        service_factory: Callable[[AsyncSession], "_ProbeSyntheticCredentialService"] | None = None,
+        service_factory: Callable[[AsyncSession], _ProbeSyntheticCredentialService] | None = None,
         tick_lock: RedisTickLock | None = None,
     ):
         settings = probe_settings or get_settings().probe
