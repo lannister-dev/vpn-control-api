@@ -51,7 +51,7 @@ class PlacementRebalanceReconciler:
 
     async def run_once(self) -> int | None:
         async with self._session_maker() as session:
-            policy = await NodePolicyRepository(session).get_current()
+            policy = (await NodePolicyRepository(session).list(limit=1))[0]
             await session.commit()
         if not policy.placement_rebalance_enabled:
             return None
@@ -65,7 +65,7 @@ class PlacementRebalanceReconciler:
             sleep_sec = REBALANCE_IDLE_WHEN_DISABLED_SEC
             try:
                 async with self._session_maker() as session:
-                    policy = await NodePolicyRepository(session).get_current()
+                    policy = (await NodePolicyRepository(session).list(limit=1))[0]
                     await session.commit()
                 sleep_sec = max(30, int(policy.placement_rebalance_tick_sec))
                 if policy.placement_rebalance_enabled:

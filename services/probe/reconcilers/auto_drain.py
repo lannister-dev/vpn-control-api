@@ -55,7 +55,7 @@ class ProbeAutoDrainReconciler:
 
     async def run_once(self) -> ProbeAutoDrainMigrateOut | None:
         async with self._session_maker() as session:
-            policy = await ProbePolicyRepository(session).get_current()
+            policy = (await ProbePolicyRepository(session).list(limit=1))[0]
             await session.commit()
             if not policy.auto_drain_enabled:
                 return None
@@ -66,7 +66,7 @@ class ProbeAutoDrainReconciler:
             sleep_sec = AUTO_DRAIN_IDLE_WHEN_DISABLED_SEC
             try:
                 async with self._session_maker() as session:
-                    policy = await ProbePolicyRepository(session).get_current()
+                    policy = (await ProbePolicyRepository(session).list(limit=1))[0]
                     await session.commit()
                 sleep_sec = max(30, int(policy.auto_drain_tick_sec))
                 if policy.auto_drain_enabled:

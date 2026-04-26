@@ -73,7 +73,7 @@ _NODE_POLICY_DEFAULTS = dict(
 @pytest.fixture(autouse=True)
 def _stub_node_policy():
     policy = SimpleNamespace(**_NODE_POLICY_DEFAULTS)
-    repo_stub = SimpleNamespace(get_current=AsyncMock(return_value=policy))
+    repo_stub = SimpleNamespace(list=AsyncMock(return_value=[policy]))
     with patch(
         "services.nodes.policy.repository.NodePolicyRepository",
         return_value=repo_stub,

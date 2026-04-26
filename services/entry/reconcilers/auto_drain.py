@@ -50,7 +50,7 @@ class EntryAutoDrainReconciler:
 
     async def run_once(self) -> EntryAutoDrainResult | None:
         async with self._session_maker() as session:
-            policy = await NodePolicyRepository(session).get_current()
+            policy = (await NodePolicyRepository(session).list(limit=1))[0]
             await session.commit()
         if not policy.entry_auto_drain_enabled:
             return None
@@ -61,7 +61,7 @@ class EntryAutoDrainReconciler:
             sleep_sec = AUTO_DRAIN_IDLE_WHEN_DISABLED_SEC
             try:
                 async with self._session_maker() as session:
-                    policy = await NodePolicyRepository(session).get_current()
+                    policy = (await NodePolicyRepository(session).list(limit=1))[0]
                     await session.commit()
                 sleep_sec = max(15, int(policy.entry_auto_drain_tick_sec))
                 if policy.entry_auto_drain_enabled:

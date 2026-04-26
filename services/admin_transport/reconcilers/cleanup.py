@@ -45,7 +45,7 @@ class AdminTransportCleanupReconciler:
 
     async def run_once(self) -> tuple[int, int, int] | None:
         async with self._session_maker() as session:
-            policy = await TransportPolicyRepository(session).get_current()
+            policy = (await TransportPolicyRepository(session).list(limit=1))[0]
             await session.commit()
         if not policy.cleanup_enabled:
             return None
@@ -59,7 +59,7 @@ class AdminTransportCleanupReconciler:
             sleep_sec = CLEANUP_IDLE_WHEN_DISABLED_SEC
             try:
                 async with self._session_maker() as session:
-                    policy = await TransportPolicyRepository(session).get_current()
+                    policy = (await TransportPolicyRepository(session).list(limit=1))[0]
                     await session.commit()
                 sleep_sec = max(CLEANUP_IDLE_WHEN_DISABLED_SEC, int(policy.cleanup_tick_sec))
                 if policy.cleanup_enabled:

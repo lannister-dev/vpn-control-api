@@ -77,7 +77,8 @@ class VpnNodeService:
         if self._policy_cache is None:
             from services.nodes.policy.repository import NodePolicyRepository
             repo = NodePolicyRepository(self.vpn_node_repository.session)
-            self._policy_cache = await repo.get_current()
+            rows = await repo.list(limit=1)
+            self._policy_cache = rows[0]
         return self._policy_cache
 
     async def initial(

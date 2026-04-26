@@ -63,7 +63,7 @@ def _policy(**overrides):
 def _policy_repo_patch(policy):
     return patch(
         "services.nodes.reconcilers.placement.NodePolicyRepository",
-        return_value=SimpleNamespace(get_current=AsyncMock(return_value=policy)),
+        return_value=SimpleNamespace(list=AsyncMock(return_value=[policy])),
     )
 
 

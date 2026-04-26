@@ -55,7 +55,7 @@ def _policy(**overrides):
 def _policy_repo_patch(policy):
     return patch(
         "services.admin_transport.reconcilers.cleanup.TransportPolicyRepository",
-        return_value=SimpleNamespace(get_current=AsyncMock(return_value=policy)),
+        return_value=SimpleNamespace(list=AsyncMock(return_value=[policy])),
     )
 
 

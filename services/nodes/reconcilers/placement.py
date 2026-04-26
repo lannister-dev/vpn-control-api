@@ -50,7 +50,7 @@ class NodePlacementReconciler:
 
     async def run_once(self) -> NodeAutoHealTickOut | None:
         async with self._session_maker() as session:
-            policy = await NodePolicyRepository(session).get_current()
+            policy = (await NodePolicyRepository(session).list(limit=1))[0]
             await session.commit()
         if not policy.auto_heal_enabled:
             return None
@@ -66,7 +66,7 @@ class NodePlacementReconciler:
             sleep_sec = PLACEMENT_RECONCILER_IDLE_WHEN_DISABLED_SEC
             try:
                 async with self._session_maker() as session:
-                    policy = await NodePolicyRepository(session).get_current()
+                    policy = (await NodePolicyRepository(session).list(limit=1))[0]
                     await session.commit()
                 sleep_sec = max(30, int(policy.auto_heal_tick_sec))
                 if policy.auto_heal_enabled:

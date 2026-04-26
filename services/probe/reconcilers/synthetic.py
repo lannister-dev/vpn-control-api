@@ -100,7 +100,7 @@ class ProbeSyntheticCredentialReconciler:
         if not self._is_configured():
             return None
         async with self._session_maker() as session:
-            policy = await ProbePolicyRepository(session).get_current()
+            policy = (await ProbePolicyRepository(session).list(limit=1))[0]
             await session.commit()
         if not policy.synthetic_reconcile_enabled:
             return None
@@ -114,7 +114,7 @@ class ProbeSyntheticCredentialReconciler:
             sleep_sec = SYNTHETIC_IDLE_WHEN_DISABLED_SEC
             try:
                 async with self._session_maker() as session:
-                    policy = await ProbePolicyRepository(session).get_current()
+                    policy = (await ProbePolicyRepository(session).list(limit=1))[0]
                     await session.commit()
                 sleep_sec = max(30, int(policy.synthetic_reconcile_tick_sec))
                 if policy.synthetic_reconcile_enabled:

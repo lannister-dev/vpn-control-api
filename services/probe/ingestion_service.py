@@ -69,7 +69,7 @@ class ProbeIngestionService:
 
     async def _policy(self):
         if self._policy_cache is None:
-            self._policy_cache = await self.policy_repository.get_current()
+            self._policy_cache = (await self.policy_repository.list(limit=1))[0]
         return self._policy_cache
 
     async def report(self, payload: ProbeReportIn) -> ProbeReportOut:

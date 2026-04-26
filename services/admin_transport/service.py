@@ -206,7 +206,7 @@ class AdminTransportService:
 
     async def cleanup_old_data(self) -> TransportCleanupOut:
         from services.admin_transport.policy.repository import TransportPolicyRepository
-        policy = await TransportPolicyRepository(self.session).get_current()
+        policy = (await TransportPolicyRepository(self.session).list(limit=1))[0]
         retention = max(1, int(policy.retention_days))
         cutoff = datetime.now(timezone.utc) - timedelta(days=retention)
         deleted_outbox = await self.repo.delete_published_outbox_older_than(cutoff=cutoff)

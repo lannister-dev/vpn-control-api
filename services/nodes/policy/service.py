@@ -12,14 +12,15 @@ class NodePolicyService:
         self.repo = NodePolicyRepository(session)
 
     async def get(self) -> NodePolicyOut:
-        policy = await self.repo.get_current()
-        await self.session.commit()
-        return NodePolicyOut.model_validate(policy)
+        rows = await self.repo.list(limit=1)
+        return NodePolicyOut.model_validate(rows[0])
 
     async def update(self, data: NodePolicyUpdateIn) -> NodePolicyOut:
-        payload = data.model_dump(exclude_unset=True)
-        policy = await self.repo.update(data=payload)
-        await self.session.commit()
+        rows = await self.repo.list(limit=1)
+        policy = rows[0]
+        payload = data.model_dump(exclude_unset=True, exclude_none=True)
+        if payload:
+            policy = await self.repo.update_by_id(policy.id, payload)
         return NodePolicyOut.model_validate(policy)
 
 

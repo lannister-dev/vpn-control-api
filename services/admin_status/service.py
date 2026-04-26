@@ -34,7 +34,7 @@ class AdminStatusService:
     async def _stale_after_sec(self) -> int:
         if self._policy_cache is None:
             from services.nodes.policy.repository import NodePolicyRepository
-            self._policy_cache = await NodePolicyRepository(self.session).get_current()
+            self._policy_cache = (await NodePolicyRepository(self.session).list(limit=1))[0]
         return max(30, int(self._policy_cache.stale_after_sec))
 
     async def get_status(self) -> AdminStatusOut:
