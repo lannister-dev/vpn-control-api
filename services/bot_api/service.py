@@ -452,6 +452,26 @@ class BotApiService:
         await ReferralService(self.session).apply_referral(user, referral_code)
         return {"ok": True}
 
+    async def mark_traffic_warning(
+        self,
+        *,
+        telegram_id: int,
+        subscription_id: UUID,
+        threshold_pct: int,
+    ) -> None:
+        user = await self._require_user_by_telegram_id(telegram_id)
+        subscription = await self.subscription_repository.get_by_id(subscription_id)
+        if subscription is None or subscription.user_id != user.id:
+            raise HTTPException(status_code=404, detail="Subscription not found")
+
+        current = int(getattr(subscription, "traffic_warning_threshold_pct", 0) or 0)
+        if threshold_pct <= current:
+            return
+        await self.subscription_repository.update_by_id(
+            subscription_id,
+            {"traffic_warning_threshold_pct": threshold_pct},
+        )
+
     async def issue_subscription_link(self, *, telegram_id: int) -> BotSubscriptionLinkOut:
         user = await self._require_user_by_telegram_id(telegram_id)
         subscription = await self._current_subscription(user.id)
@@ -603,6 +623,7 @@ class BotApiService:
             used_traffic_bytes=subscription.used_traffic_bytes,
             lifetime_used_traffic_bytes=subscription.lifetime_used_traffic_bytes,
             traffic_limit_bytes=(plan.traffic_limit_bytes if plan is not None else None),
+            traffic_warning_threshold_pct=getattr(subscription, "traffic_warning_threshold_pct", 0) or 0,
             last_traffic_reset_at=subscription.last_traffic_reset_at,
             last_payment_at=self._latest_paid_at(orders),
             created_at=subscription.created_at,

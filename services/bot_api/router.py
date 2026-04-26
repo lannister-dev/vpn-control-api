@@ -23,6 +23,7 @@ from .schemas import (
     BotStarsConfirmIn,
     BotSubscriptionLinkOut,
     BotTopUpCreateIn,
+    BotTrafficWarningMarkIn,
 )
 from .service import BotApiService, get_bot_api_service
 
@@ -267,6 +268,24 @@ async def bot_apply_referral(
         raise HTTPException(status_code=409, detail="Cannot refer yourself")
     except AlreadyReferred:
         raise HTTPException(status_code=409, detail="Already referred")
+
+
+@router.post(
+    "/users/{telegram_id}/subscriptions/{subscription_id}/mark-traffic-warning",
+    summary="Bookmark that bot has sent a traffic-threshold warning to user",
+)
+async def bot_mark_traffic_warning(
+    telegram_id: int,
+    subscription_id: UUID,
+    payload: BotTrafficWarningMarkIn,
+    service: BotApiService = Depends(get_bot_api_service),
+):
+    await service.mark_traffic_warning(
+        telegram_id=telegram_id,
+        subscription_id=subscription_id,
+        threshold_pct=payload.threshold_pct,
+    )
+    return {"ok": True}
 
 
 @router.post(

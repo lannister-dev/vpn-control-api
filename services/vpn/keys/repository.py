@@ -186,7 +186,6 @@ class VpnKeyRepository(BaseRepository[VpnKey]):
         """Reset used_traffic_bytes and un-revoke keys for a subscription. Returns key IDs that were un-revoked."""
         from sqlalchemy import update as sa_update
 
-        # Find keys that were revoked due to traffic limit
         revoked_stmt = (
             select(self.model.id)
             .where(
@@ -198,7 +197,6 @@ class VpnKeyRepository(BaseRepository[VpnKey]):
         revoked_result = await self.session.execute(revoked_stmt)
         unrevoked_ids = list(revoked_result.scalars().all())
 
-        # Reset traffic counters and un-revoke
         now = datetime.now(timezone.utc)
         await self.session.execute(
             sa_update(self.model)
@@ -211,6 +209,8 @@ class VpnKeyRepository(BaseRepository[VpnKey]):
         )
 
         return unrevoked_ids
+
+
 
 
 async def get_vpn_key_repository(
