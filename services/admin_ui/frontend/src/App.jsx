@@ -117,6 +117,12 @@ function AuthedApp({ theme, setTheme, me, onLogout }) {
   const [pendingAction, setPendingAction] = useState(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [drawerNode, setDrawerNode] = useState(null);
+  const [drawerOpts, setDrawerOpts] = useState(null);
+
+  const openNode = (node, opts) => {
+    setDrawerNode(node || null);
+    setDrawerOpts(node ? (opts || null) : null);
+  };
 
   const goto = (nextTab, opts) => {
     setTab(nextTab);
@@ -192,7 +198,7 @@ function AuthedApp({ theme, setTheme, me, onLogout }) {
         <div className="app-content">
           <Page
             onGoto={goto}
-            onOpenNode={setDrawerNode}
+            onOpenNode={openNode}
             initialAction={pendingAction}
             onActionConsumed={() => setPendingAction(null)}
           />
@@ -203,7 +209,16 @@ function AuthedApp({ theme, setTheme, me, onLogout }) {
         onClose={() => setPaletteOpen(false)}
         onSelect={(item) => { setTab(item.id); setPaletteOpen(false); }}
       />
-      {drawerNode && <NodeDrawer node={drawerNode} onClose={() => setDrawerNode(null)} onGoto={goto} />}
+      {drawerNode && (
+        <NodeDrawer
+          node={drawerNode}
+          initialTab={drawerOpts?.initialTab}
+          focusRouteId={drawerOpts?.focusRouteId}
+          onClose={() => { setDrawerNode(null); setDrawerOpts(null); }}
+          onGoto={goto}
+          onOpenNode={openNode}
+        />
+      )}
     </div>
   );
 }
