@@ -6,7 +6,7 @@ import pytest
 from fastapi import FastAPI
 from starlette.testclient import TestClient
 
-from shared.app.middleware import add_request_id_middleware
+from shared.middlewares.request_id import add_request_id_middleware
 from shared.utils.logger import StructuredLogger
 from shared.utils.request_context import REQUEST_ID_HEADER, get_request_id
 

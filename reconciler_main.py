@@ -53,6 +53,7 @@ from services.traffic.users.model import TrafficUsage  # noqa: F401
 from services.traffic.nodes.model import NodeTrafficUsage  # noqa: F401
 from services.auth.admin.models import AdminUser, AdminSession, AdminAuditEvent  # noqa: F401
 from services.billing.models import PaymentOrder, BalanceTransaction  # noqa: F401
+from services.nats_dedup.models import NatsProcessedMsgLog  # noqa: F401
 from services.nodes.agent.model import (  # noqa: F401
     NodeTransportEventLog,
     NodeTransportOutbox,

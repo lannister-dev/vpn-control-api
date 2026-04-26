@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.billing.models import BalanceTransaction, PaymentOrder
 from shared.database.base_repository import BaseRepository
+from sqlalchemy import update as sa_update
 
 
 class OrderRepository(BaseRepository[PaymentOrder]):
@@ -83,8 +84,6 @@ class OrderRepository(BaseRepository[PaymentOrder]):
         return list(result.scalars().all())
 
     async def bulk_expire_pending(self, *, now, limit: int = 500) -> int:
-        from sqlalchemy import update as sa_update
-
         expired_ids_stmt = (
             select(PaymentOrder.id)
             .where(

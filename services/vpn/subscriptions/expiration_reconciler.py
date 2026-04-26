@@ -31,14 +31,6 @@ class TickResult:
 
 
 class SubscriptionExpirationReconciler:
-    """Deactivates expired subscriptions and revokes their VPN keys.
-
-    Runs in tandem with `VpnKeyExpirationReconciler`: that one handles
-    per-key expiration, this one handles subscription-level expiration
-    (key.valid_until may outlive subscription.expires_at when subscription
-    was paid for less time than key was provisioned).
-    """
-
     def __init__(
         self,
         *,

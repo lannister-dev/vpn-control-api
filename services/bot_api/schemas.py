@@ -197,13 +197,6 @@ class BotSubscriptionSummaryOut(BaseModel):
 
 
 class BotTrafficWarningMarkIn(BaseModel):
-    """Bot reports it has notified the user about reaching a traffic threshold.
-
-    Stored on the subscription as a high-water mark so the same threshold is
-    not re-notified on subsequent polls. Reset to 0 by the traffic-reset
-    reconciler when the plan window rolls over.
-    """
-
     threshold_pct: int = Field(ge=1, le=100)
 
 

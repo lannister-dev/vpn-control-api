@@ -13,13 +13,6 @@ from shared.utils.request_context import (
 
 
 class RequestIdMiddleware(BaseHTTPMiddleware):
-    """Inject X-Request-ID into a contextvar so structured logs carry it.
-
-    If the inbound request supplies X-Request-ID, reuse it; otherwise mint a
-    fresh hex UUID. The header is echoed back on the response for client-side
-    correlation.
-    """
-
     async def dispatch(self, request: Request, call_next) -> Response:
         rid = (request.headers.get(REQUEST_ID_HEADER) or "").strip() or new_request_id()
         token = set_request_id(rid)
