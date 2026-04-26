@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from uuid import uuid4
 
-from services.vpn.keys.reconciler import VpnKeyExpirationReconciler
+from services.vpn.keys.reconcilers.expiration import VpnKeyExpirationReconciler
 from services.config import VpnKeyConfig
 
 
@@ -23,9 +23,9 @@ async def test_no_expired_keys_returns_zero(async_session):
     mock_key_repo = AsyncMock()
     mock_key_repo.bulk_revoke_expired.return_value = []
 
-    with patch("services.vpn.keys.reconciler.VpnKeyRepository", return_value=mock_key_repo), \
-         patch("services.vpn.keys.reconciler.UserPlacementRepository"), \
-         patch("services.vpn.keys.reconciler.NodeAgentPlacementTransport"):
+    with patch("services.vpn.keys.reconcilers.expiration.VpnKeyRepository", return_value=mock_key_repo), \
+         patch("services.vpn.keys.reconcilers.expiration.UserPlacementRepository"), \
+         patch("services.vpn.keys.reconcilers.expiration.NodeAgentPlacementTransport"):
         result = await reconciler._execute_tick()
 
     assert result == 0
@@ -47,9 +47,9 @@ async def test_expired_keys_bulk_revoked(async_session):
 
     mock_transport = AsyncMock()
 
-    with patch("services.vpn.keys.reconciler.VpnKeyRepository", return_value=mock_key_repo), \
-         patch("services.vpn.keys.reconciler.UserPlacementRepository", return_value=mock_placement_repo), \
-         patch("services.vpn.keys.reconciler.NodeAgentPlacementTransport", return_value=mock_transport):
+    with patch("services.vpn.keys.reconcilers.expiration.VpnKeyRepository", return_value=mock_key_repo), \
+         patch("services.vpn.keys.reconcilers.expiration.UserPlacementRepository", return_value=mock_placement_repo), \
+         patch("services.vpn.keys.reconcilers.expiration.NodeAgentPlacementTransport", return_value=mock_transport):
         result = await reconciler._execute_tick()
 
     assert result == 3
@@ -79,9 +79,9 @@ async def test_expired_keys_no_placements(async_session):
 
     mock_transport = AsyncMock()
 
-    with patch("services.vpn.keys.reconciler.VpnKeyRepository", return_value=mock_key_repo), \
-         patch("services.vpn.keys.reconciler.UserPlacementRepository", return_value=mock_placement_repo), \
-         patch("services.vpn.keys.reconciler.NodeAgentPlacementTransport", return_value=mock_transport):
+    with patch("services.vpn.keys.reconcilers.expiration.VpnKeyRepository", return_value=mock_key_repo), \
+         patch("services.vpn.keys.reconcilers.expiration.UserPlacementRepository", return_value=mock_placement_repo), \
+         patch("services.vpn.keys.reconcilers.expiration.NodeAgentPlacementTransport", return_value=mock_transport):
         result = await reconciler._execute_tick()
 
     assert result == 1

@@ -7,8 +7,10 @@ from typing import cast
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.engine import CursorResult
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.admin_transport.models import NatsProcessedMsgLog
 from services.admin_transport.read_models import (
     EventLogSummaryRow,
     OutboxSummaryRow,
@@ -344,6 +346,30 @@ class AdminTransportRepository:
         if callable(rowcount):
             rowcount = rowcount()
         return int(rowcount) if rowcount and rowcount > 0 else 0
+
+    async def delete_nats_dedup_older_than(self, *, cutoff: datetime) -> int:
+        stmt = delete(NatsProcessedMsgLog).where(NatsProcessedMsgLog.created_at < cutoff)
+        result = cast(CursorResult, await self.session.execute(stmt))
+        rowcount = result.rowcount
+        if callable(rowcount):
+            rowcount = rowcount()
+        return int(rowcount) if rowcount and rowcount > 0 else 0
+
+
+class NatsMessageDedupRepository:
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def claim(self, *, subject: str, msg_id: str) -> bool:
+        if not msg_id:
+            return True
+        try:
+            self.session.add(NatsProcessedMsgLog(subject=subject, msg_id=msg_id))
+            await self.session.flush()
+            return True
+        except IntegrityError:
+            await self.session.rollback()
+            return False
 
     # ── Helpers ───────────────────────────────────────────────
 

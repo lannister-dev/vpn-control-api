@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import pytest
 
-from services.probe.reconciler import ProbeAutoDrainReconciler
+from services.probe.reconcilers.auto_drain import ProbeAutoDrainReconciler
 from services.probe.schemas import ProbeAutoDrainMigrateOut
 
 
@@ -67,7 +67,7 @@ def _policy(**overrides):
 
 def _policy_repo_patch(policy):
     return patch(
-        "services.probe.reconciler.ProbePolicyRepository",
+        "services.probe.reconcilers.auto_drain.ProbePolicyRepository",
         return_value=SimpleNamespace(get_current=AsyncMock(return_value=policy)),
     )
 

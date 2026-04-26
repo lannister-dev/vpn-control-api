@@ -47,7 +47,7 @@ class AdminTransportCleanupReconciler:
         await self._task
         self._task = None
 
-    async def run_once(self) -> tuple[int, int] | None:
+    async def run_once(self) -> tuple[int, int, int] | None:
         async with self._session_maker() as session:
             policy = await TransportPolicyRepository(session).get_current()
             await session.commit()
@@ -81,19 +81,25 @@ class AdminTransportCleanupReconciler:
             except TimeoutError:
                 continue
 
-    async def _execute_tick(self, retention_days: int) -> tuple[int, int]:
+    _NATS_DEDUP_RETENTION_HOURS = 2
+
+    async def _execute_tick(self, retention_days: int) -> tuple[int, int, int]:
         retention = max(1, int(retention_days))
         async with self._session_maker() as session:
             repo = AdminTransportRepository(session)
-            cutoff = datetime.now(timezone.utc) - timedelta(days=retention)
+            now = datetime.now(timezone.utc)
+            cutoff = now - timedelta(days=retention)
+            dedup_cutoff = now - timedelta(hours=self._NATS_DEDUP_RETENTION_HOURS)
             deleted_outbox = await repo.delete_published_outbox_older_than(cutoff=cutoff)
             deleted_events = await repo.delete_events_older_than(cutoff=cutoff)
+            deleted_dedup = await repo.delete_nats_dedup_older_than(cutoff=dedup_cutoff)
             await session.commit()
-            if deleted_outbox > 0 or deleted_events > 0:
+            if deleted_outbox > 0 or deleted_events > 0 or deleted_dedup > 0:
                 logger.info(
                     "transport_cleanup_tick",
                     deleted_outbox=deleted_outbox,
                     deleted_events=deleted_events,
+                    deleted_dedup=deleted_dedup,
                     retention_days=retention,
                 )
-            return deleted_outbox, deleted_events
+            return deleted_outbox, deleted_events, deleted_dedup

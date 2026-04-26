@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from services.nodes.auto_heal_service import NodeAutoHealTickOut
-from services.nodes.reconciler import NodePlacementReconciler
+from services.nodes.reconcilers.placement import NodePlacementReconciler
 
 
 class _SessionContext:
@@ -62,7 +62,7 @@ def _policy(**overrides):
 
 def _policy_repo_patch(policy):
     return patch(
-        "services.nodes.reconciler.NodePolicyRepository",
+        "services.nodes.reconcilers.placement.NodePolicyRepository",
         return_value=SimpleNamespace(get_current=AsyncMock(return_value=policy)),
     )
 

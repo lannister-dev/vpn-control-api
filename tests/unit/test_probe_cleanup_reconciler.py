@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from services.probe.cleanup_reconciler import ProbeSignalCleanupReconciler
+from services.probe.reconcilers.cleanup import ProbeSignalCleanupReconciler
 
 
 class _SessionContext:
@@ -54,7 +54,7 @@ def _policy(**overrides):
 
 def _policy_repo_patch(policy):
     return patch(
-        "services.probe.cleanup_reconciler.ProbePolicyRepository",
+        "services.probe.reconcilers.cleanup.ProbePolicyRepository",
         return_value=SimpleNamespace(get_current=AsyncMock(return_value=policy)),
     )
 
@@ -72,7 +72,7 @@ async def test_run_once_cleans_and_commits(monkeypatch):
             return await delete_older_than(cutoff=cutoff)
 
     monkeypatch.setattr(
-        "services.probe.cleanup_reconciler.ProbeSignalRepository",
+        "services.probe.reconcilers.cleanup.ProbeSignalRepository",
         _Repo,
     )
 

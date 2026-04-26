@@ -7,7 +7,7 @@ from services.config import NatsConfig
 from services.traffic.nodes.schemas import NodeTrafficIn
 from services.traffic.nodes.service import NodeTrafficService
 from shared.database.session import AsyncDatabase
-from services.nats_dedup.repository import NatsMessageDedupRepository
+from services.admin_transport.repository import NatsMessageDedupRepository
 from shared.nats.client import NatsClient
 from shared.utils.logger import StructuredLogger
 

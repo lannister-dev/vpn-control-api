@@ -7,7 +7,7 @@ from uuid import uuid4
 import pytest
 
 from services.config import SubscriptionsExpirationConfig
-from services.vpn.subscriptions.expiration_reconciler import (
+from services.vpn.subscriptions.reconcilers.expiration import (
     SubscriptionExpirationReconciler,
     TickResult,
 )
@@ -40,13 +40,13 @@ async def test_execute_tick_no_expired_returns_zero(cfg):
     rec._session_maker = MagicMock(return_value=fake_session)
 
     with patch(
-        "services.vpn.subscriptions.expiration_reconciler.SubscriptionRepository"
+        "services.vpn.subscriptions.reconcilers.expiration.SubscriptionRepository"
     ) as SubRepoCls, patch(
-        "services.vpn.subscriptions.expiration_reconciler.VpnKeyRepository"
+        "services.vpn.subscriptions.reconcilers.expiration.VpnKeyRepository"
     ), patch(
-        "services.vpn.subscriptions.expiration_reconciler.UserPlacementRepository"
+        "services.vpn.subscriptions.reconcilers.expiration.UserPlacementRepository"
     ), patch(
-        "services.vpn.subscriptions.expiration_reconciler.NodeAgentPlacementTransport"
+        "services.vpn.subscriptions.reconcilers.expiration.NodeAgentPlacementTransport"
     ):
         sub_repo = SubRepoCls.return_value
         sub_repo.list_expired_active = AsyncMock(return_value=[])
@@ -71,13 +71,13 @@ async def test_execute_tick_full_path_revokes_keys_and_deactivates(cfg):
     placement_ids = [uuid4(), uuid4()]
 
     with patch(
-        "services.vpn.subscriptions.expiration_reconciler.SubscriptionRepository"
+        "services.vpn.subscriptions.reconcilers.expiration.SubscriptionRepository"
     ) as SubRepoCls, patch(
-        "services.vpn.subscriptions.expiration_reconciler.VpnKeyRepository"
+        "services.vpn.subscriptions.reconcilers.expiration.VpnKeyRepository"
     ) as KeyRepoCls, patch(
-        "services.vpn.subscriptions.expiration_reconciler.UserPlacementRepository"
+        "services.vpn.subscriptions.reconcilers.expiration.UserPlacementRepository"
     ) as PlcRepoCls, patch(
-        "services.vpn.subscriptions.expiration_reconciler.NodeAgentPlacementTransport"
+        "services.vpn.subscriptions.reconcilers.expiration.NodeAgentPlacementTransport"
     ) as TransportCls:
         sub_repo = SubRepoCls.return_value
         sub_repo.list_expired_active = AsyncMock(return_value=[sub1, sub2])
@@ -116,13 +116,13 @@ async def test_execute_tick_subs_without_keys_still_deactivates(cfg):
     sub1 = SimpleNamespace(id=uuid4())
 
     with patch(
-        "services.vpn.subscriptions.expiration_reconciler.SubscriptionRepository"
+        "services.vpn.subscriptions.reconcilers.expiration.SubscriptionRepository"
     ) as SubRepoCls, patch(
-        "services.vpn.subscriptions.expiration_reconciler.VpnKeyRepository"
+        "services.vpn.subscriptions.reconcilers.expiration.VpnKeyRepository"
     ) as KeyRepoCls, patch(
-        "services.vpn.subscriptions.expiration_reconciler.UserPlacementRepository"
+        "services.vpn.subscriptions.reconcilers.expiration.UserPlacementRepository"
     ) as PlcRepoCls, patch(
-        "services.vpn.subscriptions.expiration_reconciler.NodeAgentPlacementTransport"
+        "services.vpn.subscriptions.reconcilers.expiration.NodeAgentPlacementTransport"
     ) as TransportCls:
         sub_repo = SubRepoCls.return_value
         sub_repo.list_expired_active = AsyncMock(return_value=[sub1])

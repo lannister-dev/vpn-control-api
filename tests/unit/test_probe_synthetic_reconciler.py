@@ -7,7 +7,7 @@ import pytest
 
 from services.config import ProbeConfig
 from services.probe.schemas import ProbeSyntheticReconcileResult
-from services.probe.synthetic_reconciler import ProbeSyntheticCredentialReconciler
+from services.probe.reconcilers.synthetic import ProbeSyntheticCredentialReconciler
 
 
 class _SessionContext:
@@ -73,7 +73,7 @@ def _policy(**overrides):
 
 def _policy_repo_patch(policy):
     return patch(
-        "services.probe.synthetic_reconciler.ProbePolicyRepository",
+        "services.probe.reconcilers.synthetic.ProbePolicyRepository",
         return_value=SimpleNamespace(get_current=AsyncMock(return_value=policy)),
     )
 
