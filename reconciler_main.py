@@ -34,6 +34,7 @@ from services.traffic.users.reset_reconciler import TrafficResetReconciler
 from services.traffic.nodes.consumer import NodeTrafficNatsConsumer
 from services.admin_transport.cleanup_reconciler import AdminTransportCleanupReconciler
 from services.billing.reconciler import BillingOrderExpirationReconciler
+from services.nats_dedup.reconcilers.cleanup import NatsDedupCleanupReconciler
 from services.placements.error_retry_reconciler import PlacementErrorRetryReconciler
 from services.placements.reconciler import PlacementRebalanceReconciler
 from services.vpn.keys.reconciler import VpnKeyExpirationReconciler
@@ -83,6 +84,7 @@ def _build_reconcilers() -> list:
         VpnKeyExpirationReconciler(),
         SubscriptionExpirationReconciler(),
         BillingOrderExpirationReconciler(),
+        NatsDedupCleanupReconciler(),
         EntryAutoDrainReconciler(),
     ]
 

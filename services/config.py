@@ -111,6 +111,13 @@ class SubscriptionsConfig:
 
 
 @dataclass
+class NatsDedupConfig:
+    cleanup_enabled: bool = True
+    cleanup_tick_sec: int = 600
+    retention_sec: int = 7200
+
+
+@dataclass
 class SubscriptionsExpirationConfig:
     enabled: bool = True
     tick_sec: int = 60
@@ -282,6 +289,7 @@ class Settings:
     k3s: K3sConfig
     entry_relay: EntryRelayConfig
     subscriptions_expiration: SubscriptionsExpirationConfig
+    nats_dedup: NatsDedupConfig
 
 
 @lru_cache
@@ -507,6 +515,12 @@ def get_settings() -> Settings:
         batch_size=max(1, env.int("SUBSCRIPTIONS_EXPIRATION_BATCH_SIZE", default=200)),
     )
 
+    nats_dedup = NatsDedupConfig(
+        cleanup_enabled=env.bool("NATS_DEDUP_CLEANUP_ENABLED", default=True),
+        cleanup_tick_sec=max(60, env.int("NATS_DEDUP_CLEANUP_TICK_SEC", default=600)),
+        retention_sec=max(60, env.int("NATS_DEDUP_RETENTION_SEC", default=7200)),
+    )
+
     _tg_allowed_raw = env.str("ADMIN_TELEGRAM_ALLOWED_IDS", default="")
     _tg_allowed = tuple(
         int(x.strip()) for x in _tg_allowed_raw.split(",") if x.strip().isdigit()
@@ -552,4 +566,5 @@ def get_settings() -> Settings:
         k3s=k3s,
         entry_relay=entry_relay,
         subscriptions_expiration=subscriptions_expiration,
+        nats_dedup=nats_dedup,
     )
