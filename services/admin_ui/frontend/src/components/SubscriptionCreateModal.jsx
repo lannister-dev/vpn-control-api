@@ -23,6 +23,7 @@ export function SubscriptionCreateModal({ userId, userLabel, plans, onClose, onC
   const [profileKey, setProfileKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [created, setCreated] = useState(null);
 
   const planOptions = useMemo(() => plans?.items || plans || [], [plans]);
 
@@ -50,9 +51,9 @@ export function SubscriptionCreateModal({ userId, userLabel, plans, onClose, onC
 
     setBusy(true);
     try {
-      const created = await api.post("/subscriptions", payload);
+      const result = await api.post("/subscriptions", payload);
       toast.ok("Подписка создана");
-      onCreated?.(created);
+      setCreated(result);
     } catch (e) {
       const msg = e.status === 404
         ? "Пользователь не найден"
@@ -62,6 +63,17 @@ export function SubscriptionCreateModal({ userId, userLabel, plans, onClose, onC
       setBusy(false);
     }
   };
+
+  const finish = () => {
+    onCreated?.(created);
+    onClose();
+  };
+
+  if (created) {
+    return (
+      <SubscriptionCreatedView created={created} onClose={finish} />
+    );
+  }
 
   return (
     <Modal
@@ -122,6 +134,85 @@ export function SubscriptionCreateModal({ userId, userLabel, plans, onClose, onC
 
         <button type="submit" hidden />
       </form>
+    </Modal>
+  );
+}
+
+function SubscriptionCreatedView({ created, onClose }) {
+  const copy = (text, label) => {
+    if (!text) return;
+    navigator.clipboard?.writeText(text).then(
+      () => toast.ok(`${label} скопирован`),
+      () => toast.bad("Не удалось скопировать"),
+    );
+  };
+
+  const expires = created.expires_at
+    ? new Date(created.expires_at).toLocaleString("ru-RU")
+    : "бессрочно";
+
+  return (
+    <Modal
+      title="Подписка создана"
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn" onClick={() => copy(created.subscription_url, "Ссылка")}>
+            <Icon name="copy" size={13} /> Копировать ссылку
+          </button>
+          <button className="btn btn-primary" onClick={onClose}>Готово</button>
+        </>
+      }
+    >
+      <div className="muted small" style={{ marginBottom: 12 }}>
+        Передайте пользователю ссылку — она открывается в его VPN-приложении и подключает подписку.
+        Истекает: <span className="mono">{expires}</span>.
+      </div>
+
+      <Field label="Ссылка для подключения">
+        <div style={{ display: "flex", gap: 6 }}>
+          <input
+            type="text"
+            readOnly
+            value={created.subscription_url}
+            onFocus={(e) => e.target.select()}
+            style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
+          />
+          <button className="btn" onClick={() => copy(created.subscription_url, "Ссылка")}>
+            <Icon name="copy" size={13} />
+          </button>
+        </div>
+      </Field>
+
+      <Field label="Token" hint="нужен только для отладки">
+        <div style={{ display: "flex", gap: 6 }}>
+          <input
+            type="text"
+            readOnly
+            value={created.token}
+            onFocus={(e) => e.target.select()}
+            style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
+          />
+          <button className="btn" onClick={() => copy(created.token, "Token")}>
+            <Icon name="copy" size={13} />
+          </button>
+        </div>
+      </Field>
+
+      <Field label="ID подписки">
+        <div style={{ display: "flex", gap: 6 }}>
+          <input
+            type="text"
+            readOnly
+            value={created.id}
+            onFocus={(e) => e.target.select()}
+            style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
+          />
+          <button className="btn" onClick={() => copy(created.id, "ID")}>
+            <Icon name="copy" size={13} />
+          </button>
+        </div>
+      </Field>
     </Modal>
   );
 }
