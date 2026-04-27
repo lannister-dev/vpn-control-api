@@ -2,6 +2,9 @@ import { useState } from "react";
 import { api } from "../api/client.js";
 import { useQuery } from "../hooks/useQuery.js";
 import { Icon } from "../components/Icon.jsx";
+import { Modal } from "../components/Modal.jsx";
+import { Field } from "../components/Field.jsx";
+import { toast } from "../components/Toast.jsx";
 import { UserDrawer } from "../components/UserDrawer.jsx";
 
 function fmtDate(s) {
@@ -13,6 +16,7 @@ export function UsersPage() {
   const [search, setSearch] = useState("");
   const [activeFilter, setActiveFilter] = useState("");
   const [selected, setSelected] = useState(null);
+  const [creating, setCreating] = useState(false);
 
   const qs = new URLSearchParams({ limit: "100" });
   if (search) qs.set("search", search);
@@ -35,6 +39,9 @@ export function UsersPage() {
         </div>
         <div className="page-head-actions">
           <button className="btn btn-ghost" onClick={refetch}><Icon name="refresh" size={13} /> Обновить</button>
+          <button className="btn btn-primary" onClick={() => setCreating(true)}>
+            <Icon name="plus" size={13} /> Создать
+          </button>
         </div>
       </div>
 
@@ -96,6 +103,91 @@ export function UsersPage() {
       </div>
 
       {selected && <UserDrawer user={selected} onClose={() => setSelected(null)} />}
+      {creating && (
+        <UserCreateModal
+          onClose={() => setCreating(false)}
+          onCreated={(u) => { setCreating(false); refetch(); setSelected(u); }}
+        />
+      )}
     </div>
+  );
+}
+
+function UserCreateModal({ onClose, onCreated }) {
+  const [f, setF] = useState({ telegram_id: "", username: "", tag: "", description: "" });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const set = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.value }));
+
+  const submit = async (e) => {
+    e?.preventDefault?.();
+    if (busy) return;
+    setErr("");
+    const tgRaw = String(f.telegram_id).trim();
+    if (!tgRaw) { setErr("Telegram ID обязателен"); return; }
+    const tg = Number(tgRaw);
+    if (!Number.isInteger(tg) || tg <= 0) { setErr("Telegram ID должен быть положительным целым числом"); return; }
+    const payload = { telegram_id: tg };
+    const username = f.username.trim().replace(/^@/, "");
+    if (username) payload.username = username;
+    const tag = f.tag.trim();
+    if (tag) payload.tag = tag;
+    const description = f.description.trim();
+    if (description) payload.description = description;
+    setBusy(true);
+    try {
+      const created = await api.post("/users", payload);
+      toast.ok("Пользователь создан");
+      onCreated(created);
+    } catch (e) {
+      const msg = e.status === 409
+        ? "Пользователь с таким Telegram ID уже существует"
+        : (e.message || String(e));
+      setErr(msg);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      title="Новый пользователь"
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn btn-ghost" onClick={onClose} disabled={busy}>Отмена</button>
+          <button className="btn btn-primary" onClick={submit} disabled={busy}>
+            {busy ? "Создание…" : "Создать"}
+          </button>
+        </>
+      }
+    >
+      <form onSubmit={submit}>
+        {err && <div className="form-error">{err}</div>}
+        <Field label="Telegram ID" hint="обязательно">
+          <input
+            type="number"
+            inputMode="numeric"
+            min="1"
+            step="1"
+            autoFocus
+            value={f.telegram_id}
+            onChange={set("telegram_id")}
+            placeholder="например, 123456789"
+          />
+        </Field>
+        <Field label="Username" hint="без @, опционально">
+          <input type="text" value={f.username} onChange={set("username")} placeholder="username" />
+        </Field>
+        <Field label="Тег" hint="опционально">
+          <input type="text" value={f.tag} onChange={set("tag")} placeholder="vip / partner / …" />
+        </Field>
+        <Field label="Описание" hint="опционально">
+          <textarea rows={3} value={f.description} onChange={set("description")} />
+        </Field>
+        <button type="submit" hidden />
+      </form>
+    </Modal>
   );
 }
