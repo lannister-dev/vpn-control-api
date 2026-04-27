@@ -354,24 +354,6 @@ class AdminTransportRepository:
             rowcount = rowcount()
         return int(rowcount) if rowcount and rowcount > 0 else 0
 
-
-class NatsMessageDedupRepository:
-    def __init__(self, session: AsyncSession):
-        self.session = session
-
-    async def claim(self, *, subject: str, msg_id: str) -> bool:
-        if not msg_id:
-            return True
-        try:
-            self.session.add(NatsProcessedMsgLog(subject=subject, msg_id=msg_id))
-            await self.session.flush()
-            return True
-        except IntegrityError:
-            await self.session.rollback()
-            return False
-
-    # ── Helpers ───────────────────────────────────────────────
-
     @staticmethod
     def _build_transport_node_row(row) -> TransportNodeRow:
         return TransportNodeRow(
@@ -433,3 +415,19 @@ class NatsMessageDedupRepository:
         if node_id is not None:
             stmt = stmt.where(VpnNode.id == node_id)
         return stmt.order_by(VpnNode.name)
+
+
+class NatsMessageDedupRepository:
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def claim(self, *, subject: str, msg_id: str) -> bool:
+        if not msg_id:
+            return True
+        try:
+            self.session.add(NatsProcessedMsgLog(subject=subject, msg_id=msg_id))
+            await self.session.flush()
+            return True
+        except IntegrityError:
+            await self.session.rollback()
+            return False
