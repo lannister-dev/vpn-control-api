@@ -4,6 +4,7 @@ import { useQuery } from "../hooks/useQuery.js";
 import { Drawer } from "./Drawer.jsx";
 import { Icon } from "./Icon.jsx";
 import { SubscriptionDrawer } from "./SubscriptionDrawer.jsx";
+import { SubscriptionCreateModal } from "./SubscriptionCreateModal.jsx";
 
 function fmtBytes(b) {
   if (!b) return "0";
@@ -26,6 +27,7 @@ function fmtDateTime(s) {
 export function UserDrawer({ user, onClose }) {
   const [tab, setTab] = useState("overview");
   const [openSub, setOpenSub] = useState(null);
+  const [creatingSub, setCreatingSub] = useState(false);
 
   const detail = useQuery(() => api.get(`/users/${user.id}`), { interval: 0, deps: [user.id] });
   const subs = useQuery(() => api.get(`/subscriptions/by-user/${user.id}`), { interval: 30000, deps: [user.id] });
@@ -34,6 +36,7 @@ export function UserDrawer({ user, onClose }) {
 
   const subsList = Array.isArray(subs.data) ? subs.data : (subs.data?.items || []);
   const d = detail.data || user;
+  const userLabel = d.username ? `@${d.username}` : `tg:${d.telegram_id}`;
 
   const tabs = [
     { id: "overview", label: "Обзор" },
@@ -62,10 +65,27 @@ export function UserDrawer({ user, onClose }) {
     <>
       <Drawer head={head} onClose={onClose} tabs={tabs} activeTab={tab} onTab={setTab}>
         {tab === "overview" && <UserOverview user={d} subs={subsList} />}
-        {tab === "subs" && <UserSubsTab subs={subsList} plansById={plansById} loading={subs.loading} onOpen={setOpenSub} />}
+        {tab === "subs" && (
+          <UserSubsTab
+            subs={subsList}
+            plansById={plansById}
+            loading={subs.loading}
+            onOpen={setOpenSub}
+            onCreate={() => setCreatingSub(true)}
+          />
+        )}
         {tab === "devices" && <UserDevicesTab subs={subsList} />}
       </Drawer>
       {openSub && <SubscriptionDrawer subscription={openSub} onClose={() => setOpenSub(null)} onChanged={subs.refetch} />}
+      {creatingSub && (
+        <SubscriptionCreateModal
+          userId={d.id}
+          userLabel={userLabel}
+          plans={plans.data}
+          onClose={() => setCreatingSub(false)}
+          onCreated={() => { setCreatingSub(false); subs.refetch(); detail.refetch(); }}
+        />
+      )}
     </>
   );
 }
@@ -116,32 +136,41 @@ function UserOverview({ user, subs }) {
   );
 }
 
-function UserSubsTab({ subs, plansById, loading, onOpen }) {
-  if (loading && !subs.length) return <div className="muted" style={{ padding: 14 }}>Загрузка…</div>;
-  if (!subs.length) return <div className="muted" style={{ padding: 14 }}>У пользователя нет подписок.</div>;
+function UserSubsTab({ subs, plansById, loading, onOpen, onCreate }) {
   return (
-    <table className="tbl">
-      <thead>
-        <tr>
-          <th>Тариф</th>
-          <th>Регион</th>
-          <th style={{ textAlign: "right" }}>Устройств</th>
-          <th>Истекает</th>
-          <th>Статус</th>
-        </tr>
-      </thead>
-      <tbody>
-        {subs.map((s) => (
-          <tr key={s.id} style={{ cursor: "pointer" }} onClick={() => onOpen(s)}>
-            <td style={{ fontWeight: 500 }}>{s.plan_id ? (plansById[s.plan_id]?.name || String(s.plan_id).slice(0, 8) + "…") : <span className="muted">—</span>}</td>
-            <td className="mono">{s.preferred_region || "—"}</td>
-            <td className="tbl-num mono">{s.max_devices ?? "—"}</td>
-            <td className="small muted">{fmtDate(s.expires_at)}</td>
-            <td>{s.is_active ? <span className="pill ok">active</span> : <span className="pill">inactive</span>}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <div>
+      <div style={{ display: "flex", justifyContent: "flex-end", padding: "0 14px 10px" }}>
+        <button className="btn btn-primary" onClick={onCreate}>
+          <Icon name="plus" size={13} /> Создать подписку
+        </button>
+      </div>
+      {loading && !subs.length && <div className="muted" style={{ padding: 14 }}>Загрузка…</div>}
+      {!loading && !subs.length && <div className="muted" style={{ padding: 14 }}>У пользователя нет подписок.</div>}
+      {subs.length > 0 && (
+        <table className="tbl">
+          <thead>
+            <tr>
+              <th>Тариф</th>
+              <th>Регион</th>
+              <th style={{ textAlign: "right" }}>Устройств</th>
+              <th>Истекает</th>
+              <th>Статус</th>
+            </tr>
+          </thead>
+          <tbody>
+            {subs.map((s) => (
+              <tr key={s.id} style={{ cursor: "pointer" }} onClick={() => onOpen(s)}>
+                <td style={{ fontWeight: 500 }}>{s.plan_id ? (plansById[s.plan_id]?.name || String(s.plan_id).slice(0, 8) + "…") : <span className="muted">—</span>}</td>
+                <td className="mono">{s.preferred_region || "—"}</td>
+                <td className="tbl-num mono">{s.max_devices ?? "—"}</td>
+                <td className="small muted">{fmtDate(s.expires_at)}</td>
+                <td>{s.is_active ? <span className="pill ok">active</span> : <span className="pill">inactive</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
   );
 }
 
