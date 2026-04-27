@@ -3,7 +3,8 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
-from shared.reconciler.watchdog import ReconcilerWatchdog, watchdog as default_watchdog
+from shared.reconciler.watchdog import ReconcilerWatchdog
+from shared.reconciler.watchdog import watchdog as default_watchdog
 
 
 def add_healthz(app: FastAPI) -> None:

@@ -118,3 +118,5 @@ services/admin_ui/frontend/node_modules/
 # design handoff bundle (local reference, not part of product)
 /assets/
 
+.claude/
+load-tests/

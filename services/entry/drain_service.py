@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from datetime import datetime, timezone
 
 from services.entry.constants import ENTRY_ROLES
 from services.entry.events import enqueue_pool_snapshots_for_backend

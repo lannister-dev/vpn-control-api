@@ -1,4 +1,4 @@
-from sqlalchemy import select, func, or_, String
+from sqlalchemy import String, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.users.models import User

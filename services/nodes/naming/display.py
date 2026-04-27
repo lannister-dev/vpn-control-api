@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-
 UNKNOWN_FLAG = "🌐"
 _FLAG_OFFSET = 0x1F1E6
 _A = ord("A")

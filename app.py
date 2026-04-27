@@ -6,41 +6,41 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from prometheus_fastapi_instrumentator import Instrumentator
 
+from services.admin_nodes.router import (
+    admin_router as nodes_admin_router,
+)
+from services.admin_nodes.router import (
+    installer_router as nodes_installer_router,
+)
+from services.admin_ops.router import router as admin_ops_router
+from services.admin_status.router import router as admin_status_router
+from services.admin_status.runtime_service import RuntimeReadinessService
+from services.admin_status.schemas import RuntimeReadinessOut
+from services.admin_transport.router import router as admin_transport_router
+from services.artifacts.router import router as artifacts_router
+from services.auth.admin.router import router as admin_auth_router
+from services.auth.docs import DocsBasicAuthMiddleware
+from services.auth.router import router as auth_router
+from services.billing.router import router as billing_router
+from services.bot_api.router import router as bot_api_router
+from services.connect.router import router as connect_router
+from services.entry.router import router as entry_router
+from services.nodes.router import router as node_router
+from services.placements.router import router as placements_router
+from services.plans.router import router as plans_router
+from services.probe.router import router as probe_router
+from services.routes.router import router as routes_router
+from services.traffic.nodes.router import router as nodes_traffic_admin_router
+from services.traffic.users.router import router as traffic_admin_router
+from services.users.router import router as users_router
+from services.vpn.keys.router import router as vpn_router
+from services.vpn.subscriptions.router import router as subscriptions_router
 from shared.app.bootstrap import configure_root_logging
 from shared.app.healthz import add_healthz
 from shared.app.lifespan import build_lifespan
-from shared.app.middleware import add_request_id_middleware
-from shared.app.rate_limit import add_default_rate_limit
+from shared.middlewares.rate_limit import add_default_rate_limit
+from shared.middlewares.request_id import add_request_id_middleware
 from shared.utils.logger import StructuredLogger
-
-from services.admin_transport.router import router as admin_transport_router
-from services.auth.docs import DocsBasicAuthMiddleware
-from services.auth.router import router as auth_router
-from services.admin_ops.router import router as admin_ops_router
-from services.admin_status.runtime_service import RuntimeReadinessService
-from services.admin_status.schemas import RuntimeReadinessOut
-from services.admin_status.router import router as admin_status_router
-from services.artifacts.router import router as artifacts_router
-from services.connect.router import router as connect_router
-from services.entry.router import router as entry_router
-from services.admin_nodes.router import (
-    admin_router as nodes_admin_router,
-    installer_router as nodes_installer_router,
-)
-from services.nodes.router import router as node_router
-from services.placements.router import router as placements_router
-from services.probe.router import router as probe_router
-from services.routes.router import router as routes_router
-from services.auth.admin.router import router as admin_auth_router
-from services.traffic.users.router import router as traffic_admin_router
-from services.traffic.nodes.router import router as nodes_traffic_admin_router
-from services.vpn.keys.router import router as vpn_router
-from services.plans.router import router as plans_router
-from services.users.router import router as users_router
-from services.vpn.subscriptions.router import router as subscriptions_router
-from services.billing.router import router as billing_router
-from services.bot_api.router import router as bot_api_router
-
 
 configure_root_logging()
 logger = StructuredLogger(logging.getLogger("vpn-control-api"))

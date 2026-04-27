@@ -28,7 +28,6 @@ from services.bot_api.schemas import (
     BotPlanListOut,
     BotPlanOut,
     BotServiceHealth,
-    BotServiceStatusOut,
     BotSessionOut,
     BotSessionSyncIn,
     BotSubscriptionLinkOut,

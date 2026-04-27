@@ -8,19 +8,19 @@ from services.nodes.models import VpnNode
 from services.nodes.repository import VpnNodeRepository
 from services.placements.repository import UserPlacementRepository
 from services.placements.schemas import (
+    PlacementAppliedState,
     PlacementApplyResultIn,
     PlacementApplyStatus,
+    PlacementDesiredState,
     PlacementMigrateBackendIn,
     PlacementMigrateBackendOut,
-    PlacementAppliedState,
-    PlacementDesiredState,
     UserPlacementOut,
     UserPlacementUpsertIn,
 )
-from services.vpn.keys.repository import VpnKeyRepository
-from services.routing.service import RoutingService
-from shared.database.session import AsyncDatabase
 from services.placements.transport import NodeAgentPlacementTransport
+from services.routing.service import RoutingService
+from services.vpn.keys.repository import VpnKeyRepository
+from shared.database.session import AsyncDatabase
 from shared.monitoring.metrics import NODE_PLACEMENT_REPORT_TOTAL
 
 

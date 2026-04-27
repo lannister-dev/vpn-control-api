@@ -6,8 +6,8 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 
-from services.artifacts.service import ProfileArtifactService
 from services.artifacts.schemas import ArtifactRoutesBootstrapIn
+from services.artifacts.service import ProfileArtifactService
 
 
 def _backend_node(*, name: str):

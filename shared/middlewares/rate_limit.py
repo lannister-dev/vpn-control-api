@@ -12,13 +12,6 @@ from starlette.responses import JSONResponse, Response
 
 @dataclass(frozen=True)
 class RateLimitRule:
-    """Rate limit for a path prefix.
-
-    Match is performed by `path.startswith(prefix)`. The first matching rule
-    wins; specify more specific prefixes earlier in the list. Key is composed
-    of `(client_ip, prefix)` so different rules are tracked independently.
-    """
-
     prefix: str
     max_requests: int
     window_sec: int
@@ -42,14 +35,6 @@ class InMemorySlidingWindowLimiter:
 
 
 class PathPrefixRateLimitMiddleware(BaseHTTPMiddleware):
-    """Apply per-IP sliding window rate limits to selected path prefixes.
-
-    Storage is in-process: in a multi-replica deployment each pod enforces its
-    own quota. That is acceptable for abuse mitigation (an attacker hitting one
-    pod still gets blocked there); for strict global enforcement use Redis-
-    backed limiter behind an ingress.
-    """
-
     def __init__(self, app, rules: list[RateLimitRule], limiter: InMemorySlidingWindowLimiter | None = None):
         super().__init__(app)
         self._rules = rules

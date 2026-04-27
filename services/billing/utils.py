@@ -42,9 +42,7 @@ def is_payment_provider_available(provider: str | Enum, billing: object) -> bool
         )
     if provider_value == "stars":
         return bool(getattr(billing, "stars_bot_token", ""))
-    if provider_value == "balance":
-        return True
-    return False
+    return provider_value == "balance"
 
 
 def map_provider_error_to_http_status(error: ProviderError) -> int:

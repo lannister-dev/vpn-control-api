@@ -3,7 +3,6 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-
 router = APIRouter(tags=["Admin UI"])
 
 STATIC_V2_DIR = Path(__file__).parent / "static" / "v2"

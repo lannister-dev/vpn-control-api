@@ -10,6 +10,7 @@ from services.placements.repository import UserPlacementRepository
 from services.placements.schemas import PlacementDesiredState
 from services.placements.transport import NodeAgentPlacementTransport
 from services.vpn.keys.repository import VpnKeyRepository
+from services.vpn.subscriptions.cache import SubscriptionCacheInvalidator
 from services.vpn.subscriptions.repository import SubscriptionRepository
 from shared.database.session import AsyncDatabase
 from shared.monitoring.metrics import (
@@ -17,6 +18,7 @@ from shared.monitoring.metrics import (
     VPN_KEY_OPERATION_TOTAL,
 )
 from shared.reconciler.watchdog import watchdog
+from shared.redis.client import redis_client
 from shared.redis.lock import RedisTickLock
 from shared.utils.logger import StructuredLogger
 
@@ -31,14 +33,6 @@ class TickResult:
 
 
 class SubscriptionExpirationReconciler:
-    """Deactivates expired subscriptions and revokes their VPN keys.
-
-    Runs in tandem with `VpnKeyExpirationReconciler`: that one handles
-    per-key expiration, this one handles subscription-level expiration
-    (key.valid_until may outlive subscription.expires_at when subscription
-    was paid for less time than key was provisioned).
-    """
-
     def __init__(
         self,
         *,
@@ -129,6 +123,9 @@ class SubscriptionExpirationReconciler:
                     await transport.enqueue_for_placement_ids(affected_placement_ids)
 
             await sub_repo.bulk_deactivate(sub_ids)
+
+            cache_invalidator = SubscriptionCacheInvalidator(session, redis_client)
+            await cache_invalidator.invalidate_by_subscription_ids(sub_ids)
 
             await session.commit()
 

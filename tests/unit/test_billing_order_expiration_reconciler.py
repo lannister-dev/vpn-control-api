@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from services.billing.reconciler import BillingOrderExpirationReconciler
+from services.billing.reconcilers.expiration import BillingOrderExpirationReconciler
 from services.config import BillingConfig
 
 
@@ -55,7 +54,7 @@ async def test_execute_tick_expires_pending_orders(cfg):
     rec._session_maker = MagicMock(return_value=fake_session)
 
     with patch(
-        "services.billing.reconciler.OrderRepository"
+        "services.billing.reconcilers.expiration.OrderRepository"
     ) as RepoCls:
         repo = RepoCls.return_value
         repo.bulk_expire_pending = AsyncMock(return_value=3)
@@ -76,7 +75,7 @@ async def test_execute_tick_no_orders_no_commit(cfg):
     rec._session_maker = MagicMock(return_value=fake_session)
 
     with patch(
-        "services.billing.reconciler.OrderRepository"
+        "services.billing.reconcilers.expiration.OrderRepository"
     ) as RepoCls:
         repo = RepoCls.return_value
         repo.bulk_expire_pending = AsyncMock(return_value=0)

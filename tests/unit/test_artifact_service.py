@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import json
-
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from services.artifacts.service import ProfileArtifactService
+import pytest
+
 from services.artifacts.exceptions import ArtifactStoreError
 from services.artifacts.schemas import ProfileArtifactPublishIn
-
+from services.artifacts.service import ProfileArtifactService
 
 VALID_ARTIFACT = {
     "ws_tls_v1": {

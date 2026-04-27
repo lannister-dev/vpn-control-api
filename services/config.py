@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from functools import lru_cache
+
 from environs import Env
+
 from services.vpn.subscriptions.constants import DEFAULT_HAPP_COLOR_PROFILE
 
 
@@ -51,6 +53,12 @@ class NatsConfig:
     js_outbox_batch_size: int = 200
     js_outbox_poll_interval_s: float = 1.0
     force_reconnect_after_s: float = 30.0
+    js_traffic_stream: str = "vpn_control_api_traffic"
+    js_traffic_max_msgs_per_subject: int = 100_000
+    js_traffic_max_age_s: int = 3600
+    js_traffic_duplicate_window_s: int = 120
+    js_traffic_ack_wait_s: float = 30.0
+    js_traffic_max_deliver: int = 10
 
 
 @dataclass
@@ -323,6 +331,12 @@ def get_settings() -> Settings:
         js_fetch_timeout_s=env.float("NATS_JS_FETCH_TIMEOUT_S", default=1.0),
         js_outbox_batch_size=max(1, env.int("NATS_JS_OUTBOX_BATCH_SIZE", default=200)),
         js_outbox_poll_interval_s=max(0.1, env.float("NATS_JS_OUTBOX_POLL_INTERVAL_S", default=1.0)),
+        js_traffic_stream=env.str("NATS_JS_TRAFFIC_STREAM", default="vpn_control_api_traffic"),
+        js_traffic_max_msgs_per_subject=max(1, env.int("NATS_JS_TRAFFIC_MAX_MSGS_PER_SUBJECT", default=100_000)),
+        js_traffic_max_age_s=max(60, env.int("NATS_JS_TRAFFIC_MAX_AGE_S", default=3600)),
+        js_traffic_duplicate_window_s=max(0, env.int("NATS_JS_TRAFFIC_DUPLICATE_WINDOW_S", default=120)),
+        js_traffic_ack_wait_s=max(1.0, env.float("NATS_JS_TRAFFIC_ACK_WAIT_S", default=30.0)),
+        js_traffic_max_deliver=max(1, env.int("NATS_JS_TRAFFIC_MAX_DELIVER", default=10)),
     )
 
     admin = AdminConfig(

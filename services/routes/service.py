@@ -13,6 +13,7 @@ from services.routes.exceptions import RouteCooldownActiveError
 from services.routes.policy import DEFAULT_WARMUP_STAGES
 from services.routes.repository import RouteRepository, TransportProfileRepository
 from services.routes.schemas import (
+    ProfileReactivationUpdate,
     RouteCreateData,
     RouteCreateIn,
     RouteFieldsUpdate,
@@ -23,9 +24,8 @@ from services.routes.schemas import (
     RouteStateUpdate,
     RouteUpdateIn,
     RouteWarmupStage,
-    RouteWarmupTickResult,
     RouteWarmupTickOut,
-    ProfileReactivationUpdate,
+    RouteWarmupTickResult,
     TransportNetwork,
     TransportProfileCreateIn,
     TransportProfileOut,
@@ -510,7 +510,7 @@ class RouteService:
     async def _stale_after_sec(self) -> int:
         if self._policy_cache is None:
             from services.nodes.policy.repository import NodePolicyRepository
-            self._policy_cache = await NodePolicyRepository(self.session).get_current()
+            self._policy_cache = (await NodePolicyRepository(self.session).list(limit=1))[0]
         return max(30, int(self._policy_cache.stale_after_sec))
 
 

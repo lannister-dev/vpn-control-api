@@ -32,7 +32,6 @@ from services.billing.models import BalanceTransaction, PaymentOrder
 from services.billing.providers.base import PaymentProvider
 from services.billing.providers.registry import PROVIDERS
 from services.billing.repository import OrderRepository, TransactionRepository
-from services.bot_notifications.service import TelegramBotNotifyService
 from services.billing.schemas import (
     BalanceCreditIn,
     BalanceOut,
@@ -45,6 +44,7 @@ from services.billing.schemas import (
     TransactionListOut,
     TransactionOut,
 )
+from services.bot_notifications.service import TelegramBotNotifyService
 from services.config import get_settings
 from services.plans.repository import PlanRepository
 from services.users.models import User
@@ -60,6 +60,7 @@ from shared.monitoring.metrics import (
     PAYMENTS_FAILED_TOTAL,
     PAYMENTS_SUCCEEDED_TOTAL,
 )
+from shared.redis.client import RedisClient, get_redis_client
 from shared.utils.logger import StructuredLogger
 
 log = StructuredLogger(logging.getLogger("billing"))
@@ -67,7 +68,7 @@ TELEGRAM_PENDING_MESSAGE_META_KEY = "_telegram_pending_message"
 
 
 class BillingService:
-    def __init__(self, session: AsyncSession):
+    def __init__(self, session: AsyncSession, redis: RedisClient | None = None):
         self.session = session
         self.order_repo = OrderRepository(session)
         self.tx_repo = TransactionRepository(session)
@@ -76,6 +77,10 @@ class BillingService:
         self.sub_repo = SubscriptionRepository(session)
         self.settings = get_settings().billing
         self.notify_service = TelegramBotNotifyService()
+        from services.vpn.subscriptions.cache import SubscriptionCacheInvalidator
+        self._cache_invalidator = (
+            SubscriptionCacheInvalidator(session, redis) if redis is not None else None
+        )
 
     @staticmethod
     def _meta_dict(raw: str | None) -> dict[str, object]:
@@ -772,6 +777,10 @@ class BillingService:
                 order.subscription_id,
                 SubscriptionInternalUpdate(is_active=False).model_dump(exclude_none=True),
             )
+            if self._cache_invalidator is not None:
+                await self._cache_invalidator.invalidate_by_subscription_ids(
+                    [order.subscription_id]
+                )
             log.info(
                 "refund_subscription_deactivated",
                 subscription_id=str(order.subscription_id),
@@ -889,10 +898,7 @@ class BillingService:
     async def _has_live_subscription(self, user_id: UUID) -> bool:
         now = datetime.now(timezone.utc)
         subscriptions = await self.sub_repo.list_by_user_id(user_id, active_only=True)
-        for sub in subscriptions:
-            if sub.expires_at is None or sub.expires_at > now:
-                return True
-        return False
+        return any(sub.expires_at is None or sub.expires_at > now for sub in subscriptions)
 
     async def _auto_purchase_free(self, user: User, plan, order: PaymentOrder, now: datetime) -> None:
         """Create subscription for a free plan without any balance operations."""
@@ -1083,5 +1089,6 @@ class BillingService:
 
 def get_billing_service(
     session: AsyncSession = Depends(AsyncDatabase.get_session),
+    redis: RedisClient = Depends(get_redis_client),
 ) -> BillingService:
-    return BillingService(session)
+    return BillingService(session, redis)

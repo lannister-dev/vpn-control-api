@@ -4,8 +4,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import Depends
-from sqlalchemy import or_, String
-from sqlalchemy import select
+from sqlalchemy import String, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.vpn.keys.models import VpnKey

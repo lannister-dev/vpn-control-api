@@ -52,7 +52,7 @@ class BotOrderCreateIn(BaseModel):
     payment_method: PlategaPaymentMethodEnum | None = None
 
     @model_validator(mode="after")
-    def validate_provider_requirements(self) -> "BotOrderCreateIn":
+    def validate_provider_requirements(self) -> BotOrderCreateIn:
         validate_provider_payment_method(
             self.provider,
             payment_method=self.payment_method,
@@ -70,7 +70,7 @@ class BotRenewOrderIn(BaseModel):
     payment_method: PlategaPaymentMethodEnum | None = None
 
     @model_validator(mode="after")
-    def validate_provider_requirements(self) -> "BotRenewOrderIn":
+    def validate_provider_requirements(self) -> BotRenewOrderIn:
         validate_provider_payment_method(
             self.provider,
             payment_method=self.payment_method,
@@ -84,7 +84,7 @@ class BotTopUpCreateIn(BaseModel):
     payment_method: PlategaPaymentMethodEnum | None = None
 
     @model_validator(mode="after")
-    def validate_provider_requirements(self) -> "BotTopUpCreateIn":
+    def validate_provider_requirements(self) -> BotTopUpCreateIn:
         validate_provider_payment_method(
             self.provider,
             payment_method=self.payment_method,
@@ -197,13 +197,6 @@ class BotSubscriptionSummaryOut(BaseModel):
 
 
 class BotTrafficWarningMarkIn(BaseModel):
-    """Bot reports it has notified the user about reaching a traffic threshold.
-
-    Stored on the subscription as a high-water mark so the same threshold is
-    not re-notified on subsequent polls. Reset to 0 by the traffic-reset
-    reconciler when the plan window rolls over.
-    """
-
     threshold_pct: int = Field(ge=1, le=100)
 
 
@@ -265,7 +258,7 @@ class BotDeviceSlotPurchaseIn(BaseModel):
     payment_method: PlategaPaymentMethodEnum | None = None
 
     @model_validator(mode="after")
-    def validate_provider_requirements(self) -> "BotDeviceSlotPurchaseIn":
+    def validate_provider_requirements(self) -> BotDeviceSlotPurchaseIn:
         validate_provider_payment_method(
             self.provider,
             payment_method=self.payment_method,

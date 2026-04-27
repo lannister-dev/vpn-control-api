@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
-from typing import AsyncIterator, Callable
 
 from fastapi import FastAPI
 
@@ -13,7 +13,6 @@ from shared.app.bootstrap import (
     disconnect_nats,
 )
 from shared.utils.logger import StructuredLogger
-
 
 LifespanHook = Callable[[FastAPI], "AsyncIterator[None] | None"]
 

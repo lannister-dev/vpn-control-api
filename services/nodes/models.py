@@ -1,20 +1,20 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import (
-    String,
-    Integer,
-    ForeignKey,
-    DateTime,
     JSON,
     Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
     UniqueConstraint,
     text,
 )
-from sqlalchemy.orm import mapped_column, Mapped, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from shared.database.base_model import Base
 from services.zones.models import Zone
+from shared.database.base_model import Base
 
 
 class VpnNode(Base):

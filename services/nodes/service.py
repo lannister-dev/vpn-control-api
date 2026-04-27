@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.config import get_settings
 from services.entry.events import enqueue_pool_snapshots_for_backend
 from services.nodes.constants import (
     ALLOWED_NODE_ROLES,
@@ -27,17 +28,16 @@ from services.nodes.repository import (
     NodeAgentStateRepository,
     VpnNodeRepository,
 )
-from services.config import get_settings
 from services.nodes.schemas import (
     AdminNodeCreateIn,
     AdminNodeCreateOut,
     AdminNodeRotateBootstrapOut,
     NodeAgentDetails,
-    NodeHeartbeatMeta,
+    NodeAgentInitialOut,
     NodeAgentStateCreate,
     NodeAgentStateUpdate,
     NodeHeartbeatIn,
-    NodeAgentInitialOut,
+    NodeHeartbeatMeta,
     NodeSyncDetails,
     NodeSyncReportIn,
     VpnNodeCreate,
@@ -77,7 +77,8 @@ class VpnNodeService:
         if self._policy_cache is None:
             from services.nodes.policy.repository import NodePolicyRepository
             repo = NodePolicyRepository(self.vpn_node_repository.session)
-            self._policy_cache = await repo.get_current()
+            rows = await repo.list(limit=1)
+            self._policy_cache = rows[0]
         return self._policy_cache
 
     async def initial(
@@ -373,9 +374,7 @@ class VpnNodeService:
         existing_full_resync_completed = (
             existing_sync.full_resync_completed if existing_sync else None
         )
-        if existing_full_resync_completed != payload.full_resync_completed:
-            return False
-        return True
+        return existing_full_resync_completed == payload.full_resync_completed
 
     async def _effective_heartbeat_health(self, payload: NodeHeartbeatIn) -> bool:
         if not bool(payload.is_healthy and payload.details.runtime.ready):
@@ -388,13 +387,7 @@ class VpnNodeService:
         if pool is not None and pool.consecutive_apply_failures >= threshold:
             return False
         upstream = payload.details.upstream
-        if (
-            upstream is not None
-            and upstream.configured
-            and upstream.consecutive_apply_failures >= threshold
-        ):
-            return False
-        return True
+        return not (upstream is not None and upstream.configured and upstream.consecutive_apply_failures >= threshold)
 
     @classmethod
     def _next_heartbeat_meta(

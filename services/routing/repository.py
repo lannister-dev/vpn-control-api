@@ -3,10 +3,10 @@ from __future__ import annotations
 import inspect
 from uuid import UUID
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.nodes.models import VpnNode, NodeAgentState
+from services.nodes.models import NodeAgentState, VpnNode
 from services.placements.model import UserPlacement
 
 

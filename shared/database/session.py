@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 import sqlalchemy.engine.url as SQURL
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.sql.dml import Delete, Insert, Update
 from sqlalchemy.sql.elements import TextClause
-from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession, create_async_engine
 
 from services.config import get_settings
 
@@ -63,15 +63,15 @@ class AsyncDatabaseSessions:
             database=db.name
         )
 
-        engine_kwargs = dict(
-            pool_size=db.poolSize,
-            max_overflow=db.poolOverflowSize,
-            pool_pre_ping=True,
-            pool_recycle=300,
-            pool_timeout=db.poolTimeoutSec,
+        engine_kwargs = {
+            "pool_size": db.poolSize,
+            "max_overflow": db.poolOverflowSize,
+            "pool_pre_ping": True,
+            "pool_recycle": 300,
+            "pool_timeout": db.poolTimeoutSec,
             # echo_pool="debug",
-            connect_args={"server_settings": {"application_name": "prod_backend"}},
-        )
+            "connect_args": {"server_settings": {"application_name": "prod_backend"}},
+        }
         self.engine = create_async_engine(self.URL, **engine_kwargs)
         self.factory = async_sessionmaker(
             self.engine,

@@ -1,0 +1,60 @@
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+extend-exclude = [
+    ".venv",
+    "alembic/versions",
+    "load-tests",
+    "services/admin_ui/frontend",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes (unused imports, undefined names)
+    "I",    # isort (import sorting)
+    "B",    # flake8-bugbear (likely bugs)
+    "UP",   # pyupgrade (modernize syntax)
+    "SIM",  # flake8-simplify
+    "C4",   # flake8-comprehensions
+]
+ignore = [
+    "E501",   # line too long (we handle case-by-case)
+    "B008",   # function calls in argument defaults (FastAPI Depends pattern)
+    "B904",   # raise from inside except (fine to skip when re-raising)
+    "SIM108", # ternary if/else (sometimes if-else is more readable)
+    "UP007",  # `X | None` requires py310+ — keep Optional explicit in some cases
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B011", "F841", "B017", "B007", "E402", "C408", "SIM117", "SIM105", "SIM103"]
+"alembic/env.py" = ["E402", "F401"]
+"**/models.py" = ["F821"]
+"**/model.py" = ["F821"]
+"shared/**" = ["E402"]
+"services/**/service.py" = ["E402"]
+"services/**/router.py" = ["E402"]
+"services/**/runtime.py" = ["E402"]
+"services/**/reconcilers/*.py" = ["E402"]
+"**/__init__.py" = ["F401"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+follow_imports = "silent"
+no_implicit_optional = false
+warn_unused_ignores = false
+warn_redundant_casts = true
+check_untyped_defs = false
+disallow_untyped_defs = false
+exclude = [
+    "alembic/versions",
+    "tests",
+    "load-tests",
+    "services/admin_ui/frontend",
+    ".venv",
+]
+
+[[tool.mypy.overrides]]
+module = "services.*"
+ignore_errors = false

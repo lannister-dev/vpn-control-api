@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from services.routes.reconciler import RouteWarmupReconciler
+from services.routes.reconcilers.warmup import RouteWarmupReconciler
 
 
 class _LockContext:

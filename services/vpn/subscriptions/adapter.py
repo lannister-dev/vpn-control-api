@@ -20,6 +20,7 @@ from services.vpn.subscriptions.schemas import (
     SubscriptionUserInfo,
 )
 
+
 class SubscriptionPublicAdapter:
     def __init__(
             self,

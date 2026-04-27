@@ -5,7 +5,6 @@ import pytest
 from shared.profiles.exceptions import ProfileRegistryError
 from shared.profiles.registry import ProfileRegistry
 
-
 WS_TLS_RAW = {
     "type": "ws_tls",
     "client": {"path": "/ws", "host": "cdn.example.com", "sni": "cdn.example.com"},

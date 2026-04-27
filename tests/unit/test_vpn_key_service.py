@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-import pytest
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
+import pytest
 from fastapi import HTTPException
 
 from services.vpn.keys.schemas import VpnKeyCreate, VpnProtocol, VpnTransport
 from services.vpn.keys.service import VpnKeyService
-from datetime import datetime, timezone
 
 
 @pytest.fixture()

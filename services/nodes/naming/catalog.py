@@ -3,11 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from services.nodes.naming.geo import (
-    GeoZone,
     HIGH_LEVEL_ZONE_AMERICAS,
     HIGH_LEVEL_ZONE_ASIA,
     HIGH_LEVEL_ZONE_EUROPE,
     HIGH_LEVEL_ZONE_OCEANIA,
+    GeoZone,
 )
 
 

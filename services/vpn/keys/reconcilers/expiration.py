@@ -9,9 +9,11 @@ from services.placements.repository import UserPlacementRepository
 from services.placements.schemas import PlacementDesiredState
 from services.placements.transport import NodeAgentPlacementTransport
 from services.vpn.keys.repository import VpnKeyRepository
+from services.vpn.subscriptions.cache import SubscriptionCacheInvalidator
 from shared.database.session import AsyncDatabase
 from shared.monitoring.metrics import VPN_KEY_OPERATION_TOTAL
 from shared.reconciler.watchdog import watchdog
+from shared.redis.client import redis_client
 from shared.redis.lock import RedisTickLock
 from shared.utils.logger import StructuredLogger
 
@@ -100,6 +102,9 @@ class VpnKeyExpirationReconciler:
             # 3) Bulk: INSERT outbox entries for affected placements
             if affected_placement_ids:
                 await transport.enqueue_for_placement_ids(affected_placement_ids)
+
+            cache_invalidator = SubscriptionCacheInvalidator(session, redis_client)
+            await cache_invalidator.invalidate_by_key_ids(revoked_key_ids)
 
             await session.commit()
 

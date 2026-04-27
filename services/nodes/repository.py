@@ -1,16 +1,14 @@
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import Depends
-from sqlalchemy import select, func, update, or_
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from services.nodes.constants import ROLE_ENTRY, ROLE_WHITELIST_ENTRY
-from services.nodes.models import VpnNode, NodeAgentState, NodeAgentIdentity
+from services.nodes.models import NodeAgentIdentity, NodeAgentState, VpnNode
 from shared.database.base_repository import BaseRepository
-from shared.database.session import AsyncDatabase
 
 
 class VpnNodeRepository(BaseRepository[VpnNode]):
