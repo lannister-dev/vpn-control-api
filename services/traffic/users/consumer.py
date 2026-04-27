@@ -35,7 +35,7 @@ class UserTrafficNatsConsumer:
         )
         await self._nats.jetstream_subscribe_durable(
             subject=self._config.users_traffic_subject,
-            durable=self._config.js_traffic_users_durable,
+            durable=self._config.users_traffic_queue,
             queue=self._config.users_traffic_queue,
             handler=self._handle_message,
             ack_wait_s=self._config.js_traffic_ack_wait_s,
@@ -45,7 +45,7 @@ class UserTrafficNatsConsumer:
         logger_traffic_consumer.info(
             "users_traffic_consumer_started",
             subject=self._config.users_traffic_subject,
-            durable=self._config.js_traffic_users_durable,
+            durable=self._config.users_traffic_queue,
             queue=self._config.users_traffic_queue,
         )
 

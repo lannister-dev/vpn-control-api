@@ -235,6 +235,9 @@ class NatsClient:
         if not self._js or not self._connected:
             raise RuntimeError("NATS JetStream is not connected")
 
+        if queue is not None and durable != queue:
+            durable = queue
+
         async def _wrapper(msg):
             try:
                 await handler(msg.data, msg)
