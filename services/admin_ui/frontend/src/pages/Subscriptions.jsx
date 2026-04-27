@@ -3,6 +3,7 @@ import { api } from "../api/client.js";
 import { useQuery } from "../hooks/useQuery.js";
 import { Icon } from "../components/Icon.jsx";
 import { SubscriptionDrawer } from "../components/SubscriptionDrawer.jsx";
+import { SubscriptionCreateModal } from "../components/SubscriptionCreateModal.jsx";
 
 function fmtBytes(b) {
   if (!b) return "0";
@@ -32,6 +33,7 @@ export function SubscriptionsPage() {
   const [activeOnly, setActiveOnly] = useState(false);
   const [planFilter, setPlanFilter] = useState("");
   const [selected, setSelected] = useState(null);
+  const [creating, setCreating] = useState(false);
 
   const qs = new URLSearchParams({ limit: "100" });
   if (activeOnly) qs.set("active_only", "true");
@@ -61,6 +63,9 @@ export function SubscriptionsPage() {
         </div>
         <div className="page-head-actions">
           <button className="btn btn-ghost" onClick={q.refetch}><Icon name="refresh" size={13} /> Обновить</button>
+          <button className="btn btn-primary" onClick={() => setCreating(true)}>
+            <Icon name="plus" size={13} /> Создать
+          </button>
         </div>
       </div>
 
@@ -145,6 +150,13 @@ export function SubscriptionsPage() {
       </div>
 
       {selected && <SubscriptionDrawer subscription={selected} onClose={() => setSelected(null)} onChanged={q.refetch} />}
+      {creating && (
+        <SubscriptionCreateModal
+          plans={plans.data}
+          onClose={() => setCreating(false)}
+          onCreated={() => { setCreating(false); q.refetch(); stats.refetch(); }}
+        />
+      )}
     </div>
   );
 }
