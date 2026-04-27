@@ -253,6 +253,7 @@ class NatsClient:
             ack_wait=ack_wait_s,
             max_deliver=max_deliver,
             deliver_policy=DeliverPolicy.ALL,
+            deliver_group=queue,
         )
         await self._js.subscribe(
             subject=subject,
