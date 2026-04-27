@@ -64,7 +64,7 @@ jobs:
             -f chart/values/prod.yaml \
             --set image.tag="${IMAGE_TAG}" \
             --set "imagePullSecrets[0].name=harbor-registry" \
-            --wait --timeout 120s
+            --wait --timeout 600s
       - name: Deployment summary
         if: always()
         run: |

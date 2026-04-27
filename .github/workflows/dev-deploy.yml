@@ -78,7 +78,7 @@ jobs:
             -f chart/values/dev.yaml \
             --set image.tag="${IMAGE_TAG}" \
             --set "imagePullSecrets[0].name=harbor-registry" \
-            --wait --timeout 120s
+            --wait --timeout 600s
       - name: Smoke checks
         id: smoke
         env:
