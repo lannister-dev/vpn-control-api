@@ -59,8 +59,6 @@ class NatsConfig:
     js_traffic_duplicate_window_s: int = 120
     js_traffic_ack_wait_s: float = 30.0
     js_traffic_max_deliver: int = 10
-    js_traffic_users_durable: str = "vpn-control-api-users-traffic"
-    js_traffic_nodes_durable: str = "vpn-control-api-nodes-traffic"
 
 
 @dataclass
@@ -339,8 +337,6 @@ def get_settings() -> Settings:
         js_traffic_duplicate_window_s=max(0, env.int("NATS_JS_TRAFFIC_DUPLICATE_WINDOW_S", default=120)),
         js_traffic_ack_wait_s=max(1.0, env.float("NATS_JS_TRAFFIC_ACK_WAIT_S", default=30.0)),
         js_traffic_max_deliver=max(1, env.int("NATS_JS_TRAFFIC_MAX_DELIVER", default=10)),
-        js_traffic_users_durable=env.str("NATS_JS_TRAFFIC_USERS_DURABLE", default="vpn-control-api-users-traffic"),
-        js_traffic_nodes_durable=env.str("NATS_JS_TRAFFIC_NODES_DURABLE", default="vpn-control-api-nodes-traffic"),
     )
 
     admin = AdminConfig(
