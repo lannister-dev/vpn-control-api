@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
+
 import redis.asyncio as redis
 
 from services.config import get_settings
@@ -13,7 +13,7 @@ logger = logger.StructuredLogger(logging.getLogger("redis.client"))
 class RedisClient:
     def __init__(self, url: str):
         self._url = url
-        self._client: Optional[redis.Redis] = None
+        self._client: redis.Redis | None = None
 
     async def connect(self) -> None:
         if self._client is not None:

@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from services.admin_transport.cleanup_reconciler import AdminTransportCleanupReconciler
+from services.admin_transport.reconcilers.cleanup import AdminTransportCleanupReconciler
 
 
 class _SessionContext:
@@ -54,8 +54,8 @@ def _policy(**overrides):
 
 def _policy_repo_patch(policy):
     return patch(
-        "services.admin_transport.cleanup_reconciler.TransportPolicyRepository",
-        return_value=SimpleNamespace(get_current=AsyncMock(return_value=policy)),
+        "services.admin_transport.reconcilers.cleanup.TransportPolicyRepository",
+        return_value=SimpleNamespace(list=AsyncMock(return_value=[policy])),
     )
 
 
@@ -64,6 +64,7 @@ async def test_run_once_cleans_and_commits(monkeypatch):
     session = AsyncMock()
     delete_outbox = AsyncMock(return_value=11)
     delete_events = AsyncMock(return_value=17)
+    delete_dedup = AsyncMock(return_value=5)
 
     class _Repo:
         def __init__(self, _session):
@@ -75,8 +76,11 @@ async def test_run_once_cleans_and_commits(monkeypatch):
         async def delete_events_older_than(self, *, cutoff):
             return await delete_events(cutoff=cutoff)
 
+        async def delete_nats_dedup_older_than(self, *, cutoff):
+            return await delete_dedup(cutoff=cutoff)
+
     monkeypatch.setattr(
-        "services.admin_transport.cleanup_reconciler.AdminTransportRepository",
+        "services.admin_transport.reconcilers.cleanup.AdminTransportRepository",
         _Repo,
     )
 
@@ -85,9 +89,10 @@ async def test_run_once_cleans_and_commits(monkeypatch):
         reconciler._session_maker = _SessionMaker(session)
         out = await reconciler.run_once()
 
-    assert out == (11, 17)
+    assert out == (11, 17, 5)
     delete_outbox.assert_awaited_once()
     delete_events.assert_awaited_once()
+    delete_dedup.assert_awaited_once()
     session.commit.assert_awaited()
 
 

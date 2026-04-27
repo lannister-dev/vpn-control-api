@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-
 TRANSPORT_SHORT: dict[str, str] = {
     "reality_tcp_v1": "reality",
     "ws_tls_v1": "wstls",

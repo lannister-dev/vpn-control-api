@@ -14,8 +14,8 @@ from services.entry.service import (
     BackendNotFoundError,
     EntryNotFoundError,
     EntryRoleError,
-    EntryZoneMismatchError,
     EntryService,
+    EntryZoneMismatchError,
     get_entry_service,
 )
 

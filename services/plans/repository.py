@@ -1,4 +1,4 @@
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.plans.models import Plan
@@ -20,8 +20,8 @@ class PlanRepository(BaseRepository[Plan]):
         count_stmt = select(func.count(Plan.id))
 
         if active_only:
-            stmt = stmt.where(Plan.is_active == True)
-            count_stmt = count_stmt.where(Plan.is_active == True)
+            stmt = stmt.where(Plan.is_active)
+            count_stmt = count_stmt.where(Plan.is_active)
 
         total = (await self.session.execute(count_stmt)).scalar() or 0
         stmt = stmt.order_by(Plan.sort_order.asc(), Plan.name.asc())

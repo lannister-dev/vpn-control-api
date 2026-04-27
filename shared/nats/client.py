@@ -1,21 +1,25 @@
 from __future__ import annotations
+
 import asyncio
+import contextlib
+import json
 import logging
 import time
 from collections.abc import Awaitable, Callable
-import json
+
 import nats
 from nats.errors import (
     ConnectionClosedError,
     NoServersError,
     OutboundBufferLimitError,
+)
+from nats.errors import (
     TimeoutError as NatsTimeoutError,
 )
 from nats.js.api import AckPolicy, ConsumerConfig, DeliverPolicy, StreamConfig
 
 from services.config import NatsConfig
 from shared.utils.logger import StructuredLogger
-
 
 logger_nats = StructuredLogger(logging.getLogger("nats-client"))
 
@@ -64,14 +68,10 @@ class NatsClient:
 
     async def close(self) -> None:
         if self._nc and not self._nc.is_closed:
-            try:
+            with contextlib.suppress(Exception):
                 await self._nc.drain()
-            except Exception:
-                pass
-            try:
+            with contextlib.suppress(Exception):
                 await self._nc.close()
-            except Exception:
-                pass
         self._nc = None
         self._js = None
         self._connected = False
@@ -189,13 +189,17 @@ class NatsClient:
         subjects: list[str],
         max_msgs_per_subject: int = 1000,
         max_age: float = 3600,
+        duplicate_window: float | None = None,
     ):
-        config = StreamConfig(
-            name=name,
-            subjects=subjects,
-            max_msgs_per_subject=max_msgs_per_subject,
-            max_age=max_age,
-        )
+        config_kwargs = {
+            "name": name,
+            "subjects": subjects,
+            "max_msgs_per_subject": max_msgs_per_subject,
+            "max_age": max_age,
+        }
+        if duplicate_window and duplicate_window > 0:
+            config_kwargs["duplicate_window"] = duplicate_window
+        config = StreamConfig(**config_kwargs)
         try:
             info = await self.jetstream().stream_info(name)
         except Exception:
@@ -207,12 +211,63 @@ class NatsClient:
             needs_update = True
         if info.config.max_age != max_age:
             needs_update = True
+        if duplicate_window and info.config.duplicate_window != duplicate_window:
+            needs_update = True
         if not needs_update:
             return info
         info.config.subjects = sorted(desired_subjects)
         info.config.max_msgs_per_subject = max_msgs_per_subject
         info.config.max_age = max_age
+        if duplicate_window and duplicate_window > 0:
+            info.config.duplicate_window = duplicate_window
         return await self.jetstream().update_stream(config=info.config)
+
+    async def jetstream_subscribe_durable(
+        self,
+        *,
+        subject: str,
+        durable: str,
+        queue: str | None,
+        handler: Callable[[bytes, object], Awaitable[None]],
+        ack_wait_s: float,
+        max_deliver: int,
+    ) -> None:
+        if not self._js or not self._connected:
+            raise RuntimeError("NATS JetStream is not connected")
+
+        async def _wrapper(msg):
+            try:
+                await handler(msg.data, msg)
+            except Exception:
+                logger_nats.exception(
+                    "nats_jetstream_handler_failed",
+                    subject=subject,
+                    durable=durable,
+                )
+                with contextlib.suppress(Exception):
+                    await msg.nak()
+
+        config = ConsumerConfig(
+            durable_name=durable,
+            ack_policy=AckPolicy.EXPLICIT,
+            ack_wait=ack_wait_s,
+            max_deliver=max_deliver,
+            deliver_policy=DeliverPolicy.ALL,
+        )
+        await self._js.subscribe(
+            subject=subject,
+            queue=queue,
+            cb=_wrapper,
+            durable=durable,
+            manual_ack=True,
+            config=config,
+        )
+        logger_nats.info(
+            "nats_jetstream_subscribed",
+            subject=subject,
+            durable=durable,
+            queue=queue,
+        )
 
     async def pull_subscribe(
         self,

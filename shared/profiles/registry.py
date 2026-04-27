@@ -1,14 +1,21 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Mapping
 
-from pydantic import ValidationError, TypeAdapter
+from pydantic import TypeAdapter, ValidationError
 
 from shared.profiles.exceptions import ProfileRegistryError
-from shared.profiles.schemas import WsTlsProfile, RealityTcpProfile, ProfileType, ProfileIn, WsTlsProfileIn, \
-    RealityTcpProfileIn, ProfileMetadata
+from shared.profiles.schemas import (
+    ProfileIn,
+    ProfileMetadata,
+    ProfileType,
+    RealityTcpProfile,
+    RealityTcpProfileIn,
+    WsTlsProfile,
+    WsTlsProfileIn,
+)
 
 ProfileInAdapter = TypeAdapter(ProfileIn)
 

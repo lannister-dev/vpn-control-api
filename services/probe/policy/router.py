@@ -5,7 +5,6 @@ from services.auth.dependencies import admin_auth, current_admin_actor
 from services.probe.policy.schemas import ProbePolicyOut, ProbePolicyUpdateIn
 from services.probe.policy.service import ProbePolicyService, get_probe_policy_service
 
-
 router = APIRouter(
     prefix="/admin/probe/policy",
     tags=["Admin Probe Policy"],

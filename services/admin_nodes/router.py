@@ -25,7 +25,6 @@ from services.nodes.schemas import (
 )
 from services.nodes.service import VpnNodeService, get_vpn_node_service
 
-
 admin_router = APIRouter(prefix="/admin/nodes", tags=["Admin Nodes"])
 installer_router = APIRouter(prefix="/agent", tags=["Node Installer"])
 

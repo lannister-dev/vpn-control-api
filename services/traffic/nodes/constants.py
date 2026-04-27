@@ -2,7 +2,6 @@ from datetime import timedelta
 
 from services.traffic.nodes.schemas import TrafficPeriod
 
-
 PERIOD_WINDOW: dict[TrafficPeriod, tuple[timedelta, int]] = {
     TrafficPeriod.HOUR: (timedelta(hours=1), 60),
     TrafficPeriod.DAY: (timedelta(days=1), 300),

@@ -3,7 +3,6 @@ from datetime import datetime, timedelta, timezone
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.config import get_settings
 from services.admin_status.schemas import (
     AdminNodeStatusOut,
     AdminReadinessCheckOut,
@@ -12,6 +11,7 @@ from services.admin_status.schemas import (
     AdminStatusTotalsOut,
 )
 from services.artifacts.repository import ProfileArtifactRepository
+from services.config import get_settings
 from services.nodes.repository import VpnNodeRepository
 from services.nodes.schemas import NodeHeartbeatMeta
 from services.placements.repository import UserPlacementRepository
@@ -34,7 +34,7 @@ class AdminStatusService:
     async def _stale_after_sec(self) -> int:
         if self._policy_cache is None:
             from services.nodes.policy.repository import NodePolicyRepository
-            self._policy_cache = await NodePolicyRepository(self.session).get_current()
+            self._policy_cache = (await NodePolicyRepository(self.session).list(limit=1))[0]
         return max(30, int(self._policy_cache.stale_after_sec))
 
     async def get_status(self) -> AdminStatusOut:
@@ -127,7 +127,7 @@ class AdminStatusService:
                 healthy_nodes += 1
                 healthy_regions.add(str(node.region))
 
-        route_regions = {str(region) for region in resolved_routes_by_region.keys()}
+        route_regions = {str(region) for region in resolved_routes_by_region}
         missing_regions = sorted(healthy_regions - route_regions)
         region_coverage_ok = bool(healthy_regions) and not missing_regions
         if region_coverage_ok:

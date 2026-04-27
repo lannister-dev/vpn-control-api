@@ -19,7 +19,7 @@ def _policy(retention_days: int = 30):
 def _policy_repo_patch(policy):
     return patch(
         "services.admin_transport.policy.repository.TransportPolicyRepository",
-        return_value=SimpleNamespace(get_current=AsyncMock(return_value=policy)),
+        return_value=SimpleNamespace(list=AsyncMock(return_value=[policy])),
     )
 
 

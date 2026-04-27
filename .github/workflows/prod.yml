@@ -10,11 +10,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  lint:
+    uses: ./.github/workflows/lint.yml
   tests:
     uses: ./.github/workflows/tests.yml
 
   deploy:
-    needs: tests
+    needs: [lint, tests]
     runs-on: [self-hosted, dev]
     environment:
       name: production

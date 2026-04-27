@@ -13,8 +13,8 @@ from services.probe.schemas import (
     ProbeDrainMigrateOut,
     ProbeReportIn,
     ProbeReportOut,
-    ProbeTargetRole,
     ProbeTargetOut,
+    ProbeTargetRole,
 )
 
 router = APIRouter(prefix="/probe", tags=["Probe"])

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import hashlib
 import json
 from datetime import datetime, timezone
@@ -9,21 +10,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.artifacts.exceptions import ArtifactStoreError
 from services.artifacts.models import ProfileArtifact
+from services.artifacts.repository import ProfileArtifactRepository
 from services.artifacts.schemas import (
     ArtifactRoutesBootstrapIn,
     ArtifactRoutesBootstrapOut,
     ProfileArtifactCreate,
     ProfileArtifactPublishIn,
 )
-from services.artifacts.repository import ProfileArtifactRepository
 from services.nodes.naming.registry import registry as naming_registry
 from services.nodes.repository import VpnNodeRepository
 from services.routes.repository import RouteRepository, TransportProfileRepository
 from services.routes.schemas import (
+    ProfileReactivationUpdate,
     RouteCreateData,
     RouteHealthStatus,
     RouteReactivationUpdate,
-    ProfileReactivationUpdate,
 )
 from services.routes.state_machine import resolve_bootstrap_recovery
 from services.routes.types import RouteNodeRole

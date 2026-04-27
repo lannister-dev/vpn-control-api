@@ -6,6 +6,46 @@ import uvicorn
 from fastapi import FastAPI
 from prometheus_fastapi_instrumentator import Instrumentator
 
+from services.admin_transport.models import NatsProcessedMsgLog  # noqa: F401
+from services.admin_transport.reconcilers.cleanup import AdminTransportCleanupReconciler
+from services.artifacts.models import ProfileArtifact  # noqa: F401
+from services.auth.admin.models import AdminAuditEvent, AdminSession, AdminUser  # noqa: F401
+from services.billing.models import BalanceTransaction, PaymentOrder  # noqa: F401
+from services.billing.reconcilers.expiration import BillingOrderExpirationReconciler
+from services.config import get_settings
+from services.entry.models import EntryBackendAssignment  # noqa: F401
+from services.entry.reconcilers.auto_drain import EntryAutoDrainReconciler
+from services.nodes.agent.model import (  # noqa: F401
+    NodeTransportEventLog,
+    NodeTransportOutbox,
+    NodeTransportState,
+)
+from services.nodes.agent.runtime import NodeAgentRuntime
+from services.nodes.models import NodeAgentIdentity, NodeAgentState, VpnNode  # noqa: F401
+from services.nodes.reconcilers.placement import NodePlacementReconciler
+from services.placements.model import UserPlacement  # noqa: F401
+from services.placements.reconcilers.error_retry import PlacementErrorRetryReconciler
+from services.placements.reconcilers.rebalance import PlacementRebalanceReconciler
+from services.plans.models import Plan  # noqa: F401
+from services.probe.model import ProbeSignal  # noqa: F401
+from services.probe.reconcilers.auto_drain import ProbeAutoDrainReconciler
+from services.probe.reconcilers.cleanup import ProbeSignalCleanupReconciler
+from services.probe.reconcilers.synthetic import ProbeSyntheticCredentialReconciler
+from services.routes.model import Route, TransportProfile  # noqa: F401
+from services.routes.reconcilers.warmup import RouteWarmupReconciler
+from services.traffic.nodes.consumer import NodeTrafficNatsConsumer
+from services.traffic.nodes.model import NodeTrafficUsage  # noqa: F401
+from services.traffic.users.consumer import UserTrafficNatsConsumer
+from services.traffic.users.model import TrafficUsage  # noqa: F401
+from services.traffic.users.reconcilers.cleanup import TrafficHistoryCleanupReconciler
+from services.traffic.users.reconcilers.reset import TrafficResetReconciler
+
+# Register all SQLAlchemy models (no routers to pull them in)
+from services.users.models import User  # noqa: F401
+from services.vpn.keys.models import KeyAssignment, VpnKey  # noqa: F401
+from services.vpn.keys.reconcilers.expiration import VpnKeyExpirationReconciler
+from services.vpn.subscriptions.model import Subscription, SubscriptionDevice, SubscriptionDeviceKey  # noqa: F401
+from services.vpn.subscriptions.reconcilers.expiration import SubscriptionExpirationReconciler
 from shared.app.bootstrap import (
     bootstrap_profiles,
     configure_root_logging,
@@ -19,47 +59,6 @@ from shared.monitoring.metrics import (
 )
 from shared.reconciler.watchdog import watchdog
 from shared.utils.logger import StructuredLogger
-from services.config import get_settings
-
-from services.nodes.reconciler import NodePlacementReconciler
-from services.nodes.agent.runtime import NodeAgentRuntime
-from services.entry.reconciler import EntryAutoDrainReconciler
-from services.probe.cleanup_reconciler import ProbeSignalCleanupReconciler
-from services.probe.reconciler import ProbeAutoDrainReconciler
-from services.probe.synthetic_reconciler import ProbeSyntheticCredentialReconciler
-from services.routes.reconciler import RouteWarmupReconciler
-from services.traffic.users.consumer import UserTrafficNatsConsumer
-from services.traffic.users.reconciler import TrafficHistoryCleanupReconciler
-from services.traffic.users.reset_reconciler import TrafficResetReconciler
-from services.traffic.nodes.consumer import NodeTrafficNatsConsumer
-from services.admin_transport.cleanup_reconciler import AdminTransportCleanupReconciler
-from services.billing.reconciler import BillingOrderExpirationReconciler
-from services.placements.error_retry_reconciler import PlacementErrorRetryReconciler
-from services.placements.reconciler import PlacementRebalanceReconciler
-from services.vpn.keys.reconciler import VpnKeyExpirationReconciler
-from services.vpn.subscriptions.expiration_reconciler import SubscriptionExpirationReconciler
-
-# Register all SQLAlchemy models (no routers to pull them in)
-from services.users.models import User  # noqa: F401
-from services.vpn.keys.models import VpnKey, KeyAssignment  # noqa: F401
-from services.nodes.models import VpnNode, NodeAgentIdentity, NodeAgentState  # noqa: F401
-from services.entry.models import EntryBackendAssignment  # noqa: F401
-from services.placements.model import UserPlacement  # noqa: F401
-from services.probe.model import ProbeSignal  # noqa: F401
-from services.artifacts.models import ProfileArtifact  # noqa: F401
-from services.vpn.subscriptions.model import Subscription, SubscriptionDevice, SubscriptionDeviceKey  # noqa: F401
-from services.routes.model import Route, TransportProfile  # noqa: F401
-from services.traffic.users.model import TrafficUsage  # noqa: F401
-from services.traffic.nodes.model import NodeTrafficUsage  # noqa: F401
-from services.auth.admin.models import AdminUser, AdminSession, AdminAuditEvent  # noqa: F401
-from services.billing.models import PaymentOrder, BalanceTransaction  # noqa: F401
-from services.nodes.agent.model import (  # noqa: F401
-    NodeTransportEventLog,
-    NodeTransportOutbox,
-    NodeTransportState,
-)
-from services.plans.models import Plan  # noqa: F401
-
 
 configure_root_logging()
 logger = StructuredLogger(logging.getLogger("reconciler-worker"))

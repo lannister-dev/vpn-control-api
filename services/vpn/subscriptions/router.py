@@ -9,31 +9,31 @@ from fastapi import (
     status,
 )
 from fastapi.responses import PlainTextResponse
-from services.auth.dependencies import admin_auth
 
+from services.auth.dependencies import admin_auth
 from services.vpn.subscriptions.adapter import SubscriptionPublicAdapter
 from services.vpn.subscriptions.dependencies import get_subscription_public_adapter
+from services.vpn.subscriptions.exceptions import (
+    SubscriptionBuild,
+    SubscriptionDeviceLimitReached,
+    SubscriptionExpired,
+    SubscriptionHwidRequired,
+    SubscriptionInactive,
+    SubscriptionNotFound,
+    SubscriptionRateLimited,
+    SubscriptionTokenExpired,
+)
 from services.vpn.subscriptions.schemas import (
-    SubscriptionCreateIn,
-    SubscriptionCreatedOut,
-    SubscriptionDeviceOut,
     SubscriptionCountersOut,
+    SubscriptionCreatedOut,
+    SubscriptionCreateIn,
+    SubscriptionDeviceOut,
     SubscriptionListOut,
     SubscriptionOut,
     SubscriptionRotateOut,
     SubscriptionSetMaxDevicesIn,
 )
-from services.vpn.subscriptions.exceptions import (
-    SubscriptionNotFound,
-    SubscriptionInactive,
-    SubscriptionExpired,
-    SubscriptionTokenExpired,
-    SubscriptionRateLimited,
-    SubscriptionBuild,
-    SubscriptionHwidRequired,
-    SubscriptionDeviceLimitReached,
-)
-from services.vpn.subscriptions.service import get_subscription_service, SubscriptionService
+from services.vpn.subscriptions.service import SubscriptionService, get_subscription_service
 from shared.monitoring.metrics import SUBSCRIPTION_REQUEST_TOTAL
 
 router = APIRouter(prefix="/subscriptions", tags=["Subscriptions"])

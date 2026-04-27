@@ -1,29 +1,37 @@
 from __future__ import annotations
+
 from datetime import datetime, timezone
-from uuid import uuid4, UUID
-from fastapi import HTTPException, Depends
+from uuid import UUID, uuid4
+
+from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette import status
 
 from services.placements.repository import UserPlacementRepository
 from services.placements.schemas import PlacementDesiredState
+from services.placements.transport import NodeAgentPlacementTransport
 from services.users.repository import UserRepository
 from services.vpn.keys.repository import VpnKeyRepository
 from services.vpn.keys.schemas import (
-    VpnKeyCreate, VpnKeyInternalCreate,
+    VpnKeyCreate,
+    VpnKeyInternalCreate,
 )
+from services.vpn.subscriptions.cache import SubscriptionCacheInvalidator
 from shared.database.session import AsyncDatabase
-from services.placements.transport import NodeAgentPlacementTransport
 from shared.monitoring.metrics import KEYS_CREATED_TOTAL, VPN_KEY_OPERATION_TOTAL
+from shared.redis.client import RedisClient, get_redis_client
 
 
 class VpnKeyService:
-    def __init__(self, session: AsyncSession):
+    def __init__(self, session: AsyncSession, redis: RedisClient | None = None):
         self.session = session
         self.key_repository = VpnKeyRepository(session)
         self.placement_repository = UserPlacementRepository(session)
         self.user_repository = UserRepository(session)
         self.node_agent_transport = NodeAgentPlacementTransport(session)
+        self._cache_invalidator = (
+            SubscriptionCacheInvalidator(session, redis) if redis is not None else None
+        )
 
     async def create_key(self, payload: VpnKeyCreate):
         user = await self.user_repository.get_by_id(payload.user_id)
@@ -62,6 +70,8 @@ class VpnKeyService:
         key.is_revoked = True
 
         await self._set_placement_inactive(key_id=key_id)
+        if self._cache_invalidator is not None:
+            await self._cache_invalidator.invalidate_by_key_ids([key_id])
         VPN_KEY_OPERATION_TOTAL.labels(operation="revoked").inc()
 
     async def _set_placement_inactive(self, *, key_id: UUID) -> None:
@@ -79,5 +89,6 @@ class VpnKeyService:
 
 def get_vpn_key_service(
     session: AsyncSession = Depends(AsyncDatabase.get_session),
+    redis: RedisClient = Depends(get_redis_client),
 ) -> VpnKeyService:
-    return VpnKeyService(session)
+    return VpnKeyService(session, redis)

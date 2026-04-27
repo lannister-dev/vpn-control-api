@@ -1,7 +1,6 @@
-from uuid import UUID
-
 from datetime import datetime
 from typing import cast
+from uuid import UUID
 
 from fastapi import Depends
 from sqlalchemy import delete, or_, select

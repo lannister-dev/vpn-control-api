@@ -63,9 +63,8 @@ def test_render_install_script_raises_without_k3s_config():
     with patch(
         "services.nodes.installer.get_settings",
         return_value=_settings_with_k3s(server_url="", node_token=""),
-    ):
-        with pytest.raises(RuntimeError):
-            render_install_script(node=node, raw_bootstrap_token="tok")
+    ), pytest.raises(RuntimeError):
+        render_install_script(node=node, raw_bootstrap_token="tok")
 
 
 def test_render_install_script_raises_without_public_base_url():
@@ -73,9 +72,8 @@ def test_render_install_script_raises_without_public_base_url():
     with patch(
         "services.nodes.installer.get_settings",
         return_value=_settings_with_k3s(public_base_url=""),
-    ):
-        with pytest.raises(RuntimeError):
-            render_install_script(node=node, raw_bootstrap_token="tok")
+    ), pytest.raises(RuntimeError):
+        render_install_script(node=node, raw_bootstrap_token="tok")
 
 
 def test_render_install_script_rejects_dangerous_node_name():
@@ -83,9 +81,8 @@ def test_render_install_script_rejects_dangerous_node_name():
     with patch(
         "services.nodes.installer.get_settings",
         return_value=_settings_with_k3s(),
-    ):
-        with pytest.raises(ValueError):
-            render_install_script(node=node, raw_bootstrap_token="tok")
+    ), pytest.raises(ValueError):
+        render_install_script(node=node, raw_bootstrap_token="tok")
 
 
 def test_render_install_script_rejects_backtick_in_token():
@@ -93,9 +90,8 @@ def test_render_install_script_rejects_backtick_in_token():
     with patch(
         "services.nodes.installer.get_settings",
         return_value=_settings_with_k3s(),
-    ):
-        with pytest.raises(ValueError):
-            render_install_script(node=node, raw_bootstrap_token="tok`whoami`")
+    ), pytest.raises(ValueError):
+        render_install_script(node=node, raw_bootstrap_token="tok`whoami`")
 
 
 def test_render_install_script_fills_unknown_region_when_empty():
@@ -113,9 +109,8 @@ def test_render_install_script_raises_when_channel_missing():
     with patch(
         "services.nodes.installer.get_settings",
         return_value=_settings_with_k3s(channel=""),
-    ):
-        with pytest.raises(RuntimeError):
-            render_install_script(node=node, raw_bootstrap_token="tok")
+    ), pytest.raises(RuntimeError):
+        render_install_script(node=node, raw_bootstrap_token="tok")
 
 
 def test_render_install_script_raises_on_invalid_channel():
@@ -123,6 +118,5 @@ def test_render_install_script_raises_on_invalid_channel():
     with patch(
         "services.nodes.installer.get_settings",
         return_value=_settings_with_k3s(channel="staging"),
-    ):
-        with pytest.raises(RuntimeError):
-            render_install_script(node=node, raw_bootstrap_token="tok")
+    ), pytest.raises(RuntimeError):
+        render_install_script(node=node, raw_bootstrap_token="tok")

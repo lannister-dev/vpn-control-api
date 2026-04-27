@@ -5,17 +5,18 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.config import get_settings
-from services.placements.model import UserPlacement
-from services.placements.repository import UserPlacementRepository
-from services.vpn.keys.models import VpnKey
 from services.nodes.agent.repository import NodeTransportOutboxRepository
 from services.nodes.agent.schemas import (
     AgentSubjects,
+    OutboxEnqueueItem,
     PlacementCommandPayload,
     TransportDesiredState,
     TransportProtocol,
-    TransportVpnTransport, OutboxEnqueueItem,
+    TransportVpnTransport,
 )
+from services.placements.model import UserPlacement
+from services.placements.repository import UserPlacementRepository
+from services.vpn.keys.models import VpnKey
 
 
 class NodeAgentPlacementTransport:

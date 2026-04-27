@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import secrets
+from datetime import datetime, timezone
 
 
 def identity_accepts_token(identity, token_hash: str, *, now: datetime | None = None) -> bool:

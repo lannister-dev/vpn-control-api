@@ -8,16 +8,16 @@ from uuid import uuid4
 
 import pytest
 
+from services.billing.schemas import OrderOut, OrderTypeEnum, PaymentProviderEnum
 from services.bot_api.schemas import (
     BotAction,
+    BotDashboardState,
     BotOrderOut,
     BotServiceHealth,
     BotServiceStatusOut,
     BotSessionOut,
     BotUserOut,
 )
-from services.bot_api.schemas import BotDashboardState
-from services.billing.schemas import OrderOut, OrderTypeEnum, PaymentProviderEnum
 from services.bot_api.service import BotApiService
 
 

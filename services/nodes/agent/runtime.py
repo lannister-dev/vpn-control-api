@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
@@ -47,12 +48,11 @@ from services.nodes.schemas import (
     NodeSyncReportIn,
 )
 from services.nodes.service import VpnNodeService
-from services.placements.transport import NodeAgentPlacementTransport
 from services.placements.schemas import PlacementAppliedState
+from services.placements.transport import NodeAgentPlacementTransport
 from shared.database.session import AsyncDatabase, WriteAwareAsyncSession
 from shared.nats.client import NatsClient
 from shared.utils.logger import StructuredLogger
-
 
 logger_transport = StructuredLogger(logging.getLogger("node-agent-transport"))
 
@@ -96,10 +96,8 @@ class NodeAgentRuntime:
         self._running = False
         if self._leader_task is not None:
             self._leader_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._leader_task
-            except asyncio.CancelledError:
-                pass
             self._leader_task = None
         await self._deactivate_runtime()
         await self._release_leader_lock()
@@ -178,10 +176,8 @@ class NodeAgentRuntime:
         for task in self._tasks:
             task.cancel()
         for task in self._tasks:
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await task
-            except asyncio.CancelledError:
-                pass
         self._tasks.clear()
         await self._nats.close()
         self._active = False
@@ -465,7 +461,7 @@ class NodeAgentRuntime:
             if batch_handler:
                 try:
                     ack_flags = await batch_handler(messages)
-                    for msg, should_ack in zip(messages, ack_flags):
+                    for msg, should_ack in zip(messages, ack_flags, strict=False):
                         if should_ack:
                             await msg.ack()
                 except asyncio.CancelledError:
@@ -583,7 +579,7 @@ class NodeAgentRuntime:
                     [item.model_dump(mode="python") for item in bulk_items]
                 )
 
-                for i, msg, event, node_id in new_items:
+                for i, _msg, event, _node_id in new_items:
                     pid = UUID(event.placement_id)
                     if pid in updated_placement_ids:
                         state = PlacementAppliedState(event.applied_state.value)

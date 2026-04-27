@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import base64
-import json
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -10,17 +9,12 @@ from uuid import uuid4
 
 import pytest
 
-from services.vpn.keys.models import VpnKey, KeyAssignment  # noqa: F401
-from services.nodes.models import VpnNode  # noqa: F401
-from services.users.models import User  # noqa: F401
-from services.plans.models import Plan  # noqa: F401
 from services.auth.admin.constants import (
-    AdminRole,
     ROLE_HIERARCHY,
-    SESSION_COOKIE_NAME,
     TG_OIDC_NONCE_COOKIE_NAME,
     TG_OIDC_STATE_COOKIE_NAME,
     TG_OIDC_VERIFIER_COOKIE_NAME,
+    AdminRole,
 )
 from services.auth.admin.crypto import (
     generate_csrf_token,
@@ -45,7 +39,10 @@ from services.auth.admin.schemas import (
     SessionCheckOut,
 )
 from services.auth.admin.service import AdminAuthService
-
+from services.nodes.models import VpnNode  # noqa: F401
+from services.plans.models import Plan  # noqa: F401
+from services.users.models import User  # noqa: F401
+from services.vpn.keys.models import KeyAssignment, VpnKey  # noqa: F401
 
 # ---------------------------------------------------------------------------
 # Crypto tests

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
-from typing import Callable
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -12,6 +12,7 @@ from services.config import ProbeConfig, get_settings
 from services.placements.repository import UserPlacementRepository
 from services.placements.schemas import PlacementDesiredState
 from services.placements.transport import NodeAgentPlacementTransport
+from services.probe.constants import SYNTHETIC_IDLE_WHEN_DISABLED_SEC
 from services.probe.policy.repository import ProbePolicyRepository
 from services.probe.schemas import (
     ProbeSyntheticClientIds,
@@ -38,19 +39,12 @@ logger = StructuredLogger(logging.getLogger("probe-synthetic-reconciler"))
 
 
 class ProbeSyntheticCredentialReconciler:
-    """Reconciles synthetic probe credentials. Identity (client_ids, telegram_id,
-    username) stays in env. Operational tunables (enabled, tick, key lifetime,
-    traffic limit) come from `probe_policy` table on every tick.
-    """
-
-    _IDLE_WHEN_DISABLED_SEC = 300
-
     def __init__(
         self,
         *,
         probe_settings: ProbeConfig | None = None,
         session_maker: async_sessionmaker[AsyncSession] | None = None,
-        service_factory: Callable[[AsyncSession], "_ProbeSyntheticCredentialService"] | None = None,
+        service_factory: Callable[[AsyncSession], _ProbeSyntheticCredentialService] | None = None,
         tick_lock: RedisTickLock | None = None,
     ):
         settings = probe_settings or get_settings().probe
@@ -106,7 +100,7 @@ class ProbeSyntheticCredentialReconciler:
         if not self._is_configured():
             return None
         async with self._session_maker() as session:
-            policy = await ProbePolicyRepository(session).get_current()
+            policy = (await ProbePolicyRepository(session).list(limit=1))[0]
             await session.commit()
         if not policy.synthetic_reconcile_enabled:
             return None
@@ -117,10 +111,10 @@ class ProbeSyntheticCredentialReconciler:
 
     async def _run(self) -> None:
         while not self._stop_event.is_set():
-            sleep_sec = self._IDLE_WHEN_DISABLED_SEC
+            sleep_sec = SYNTHETIC_IDLE_WHEN_DISABLED_SEC
             try:
                 async with self._session_maker() as session:
-                    policy = await ProbePolicyRepository(session).get_current()
+                    policy = (await ProbePolicyRepository(session).list(limit=1))[0]
                     await session.commit()
                 sleep_sec = max(30, int(policy.synthetic_reconcile_tick_sec))
                 if policy.synthetic_reconcile_enabled:

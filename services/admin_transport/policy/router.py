@@ -5,7 +5,6 @@ from services.admin_transport.policy.schemas import TransportPolicyOut, Transpor
 from services.admin_transport.policy.service import TransportPolicyService, get_transport_policy_service
 from services.auth.dependencies import admin_auth, current_admin_actor
 
-
 router = APIRouter(
     prefix="/admin/transport/policy",
     tags=["Admin Transport Policy"],

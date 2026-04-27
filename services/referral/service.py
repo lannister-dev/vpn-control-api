@@ -10,7 +10,7 @@ from uuid import UUID
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.billing.models import BalanceTransaction, PaymentOrder
+from services.billing.models import PaymentOrder
 from services.billing.repository import OrderRepository, TransactionRepository
 from services.billing.schemas import TransactionInternalCreate
 from services.bot_notifications.service import TelegramBotNotifyService
@@ -21,7 +21,6 @@ from services.referral.exceptions import (
     ReferralNotEnabled,
     SelfReferralNotAllowed,
 )
-from services.referral.models import Referral
 from services.referral.repository import ReferralRepository
 from services.referral.schemas import BotReferralInfoOut
 from services.users.models import User
@@ -161,7 +160,7 @@ class ReferralService:
                 referral.referrer_user_id,
                 reward_amount,
                 tx_type="referral_reward",
-                description=f"Referral reward for inviting user",
+                description="Referral reward for inviting user",
             )
             REFERRAL_REWARD_TOTAL.labels(side="referrer").inc()
             log.info(

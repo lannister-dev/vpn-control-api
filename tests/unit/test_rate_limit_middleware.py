@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from starlette.testclient import TestClient
 
-from shared.app.rate_limit import (
+from shared.middlewares.rate_limit import (
     InMemorySlidingWindowLimiter,
     PathPrefixRateLimitMiddleware,
     RateLimitRule,

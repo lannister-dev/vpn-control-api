@@ -3,6 +3,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from sqlalchemy import func, select
+from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.billing.models import BalanceTransaction, PaymentOrder
@@ -83,8 +84,6 @@ class OrderRepository(BaseRepository[PaymentOrder]):
         return list(result.scalars().all())
 
     async def bulk_expire_pending(self, *, now, limit: int = 500) -> int:
-        from sqlalchemy import update as sa_update
-
         expired_ids_stmt = (
             select(PaymentOrder.id)
             .where(

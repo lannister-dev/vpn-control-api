@@ -10,8 +10,8 @@ from fastapi import HTTPException
 from services.routes.schemas import (
     RouteCreateIn,
     RouteHealthAction,
-    RouteHealthUpdateIn,
     RouteHealthStatus,
+    RouteHealthUpdateIn,
     RouteUpdateIn,
     TransportProfileCreateIn,
 )

@@ -8,7 +8,6 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.config import get_settings
 from services.entry.events import enqueue_pool_snapshots_for_backend
 from services.nodes.constants import ROLE_BACKEND
 from services.nodes.models import NodeAgentState, VpnNode
@@ -16,10 +15,10 @@ from services.nodes.repository import NodeAgentStateRepository, VpnNodeRepositor
 from services.nodes.schemas import NodeHeartbeatMeta
 from services.placements.repository import UserPlacementRepository
 from services.placements.schemas import PlacementDesiredState
+from services.placements.transport import NodeAgentPlacementTransport
 from services.probe.policy.repository import ProbePolicyRepository
 from services.probe.repository import ProbeSignalRepository
 from services.routing.service import RoutingService
-from services.placements.transport import NodeAgentPlacementTransport
 from shared.monitoring.metrics import (
     NODE_STATE_FRESHNESS_SECONDS,
     PLACEMENT_ACTIVE_BY_BACKEND,
@@ -311,7 +310,8 @@ class NodePlacementAutoHealService:
                 await self.node_agent_transport.enqueue_for_placement_ids(target_ids)
             total_migrated += migrated
 
-        target_name = lambda tid: next((c.name for c in candidates if c.id == tid), str(tid))
+        def target_name(tid):
+            return next((c.name for c in candidates if c.id == tid), str(tid))
         logger.info(
             "smart_migrate_result",
             source_node_id=str(source_node_id),
@@ -382,7 +382,7 @@ class NodePlacementAutoHealService:
 
     async def _policy(self):
         if self._policy_cache is None:
-            self._policy_cache = await self.policy_repository.get_current()
+            self._policy_cache = (await self.policy_repository.list(limit=1))[0]
         return self._policy_cache
 
     async def _has_recent_probe_recovery(

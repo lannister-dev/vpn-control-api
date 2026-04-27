@@ -26,11 +26,13 @@ for key, value in _DUMMY_ENV.items():
     os.environ.setdefault(key, value)
 
 from services.config import get_settings
+
 get_settings.cache_clear()
 
-import pytest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from shared.profiles.registry import ProfileRegistry
 
@@ -73,10 +75,36 @@ _NODE_POLICY_DEFAULTS = dict(
 @pytest.fixture(autouse=True)
 def _stub_node_policy():
     policy = SimpleNamespace(**_NODE_POLICY_DEFAULTS)
-    repo_stub = SimpleNamespace(get_current=AsyncMock(return_value=policy))
+    repo_stub = SimpleNamespace(list=AsyncMock(return_value=[policy]))
     with patch(
         "services.nodes.policy.repository.NodePolicyRepository",
         return_value=repo_stub,
+    ):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def _stub_subscription_cache_invalidator():
+    invalidator_stub = SimpleNamespace(
+        invalidate_by_token_hashes=AsyncMock(return_value=0),
+        invalidate_by_subscription_ids=AsyncMock(return_value=0),
+        invalidate_by_key_ids=AsyncMock(return_value=0),
+    )
+    with patch(
+        "services.vpn.subscriptions.cache.SubscriptionCacheInvalidator",
+        return_value=invalidator_stub,
+    ), patch(
+        "services.vpn.keys.reconcilers.expiration.SubscriptionCacheInvalidator",
+        return_value=invalidator_stub,
+    ), patch(
+        "services.vpn.subscriptions.reconcilers.expiration.SubscriptionCacheInvalidator",
+        return_value=invalidator_stub,
+    ), patch(
+        "services.vpn.keys.service.SubscriptionCacheInvalidator",
+        return_value=invalidator_stub,
+    ), patch(
+        "services.traffic.users.service.SubscriptionCacheInvalidator",
+        return_value=invalidator_stub,
     ):
         yield
 

@@ -394,7 +394,7 @@ function NodeRoutes({ node, routes, allNodes, focusRouteId, onRefresh }) {
             <th>Направление</th>
             <th>Status</th>
             <th style={{ textAlign: "right" }}>Weight</th>
-            <th style={{ width: 80 }}></th>
+            <th style={{ width: 40 }}></th>
           </tr>
         </thead>
         <tbody>
@@ -423,8 +423,7 @@ function NodeRoutes({ node, routes, allNodes, focusRouteId, onRefresh }) {
                 </td>
                 <td className="tbl-num mono">{r.effective_weight}</td>
                 <td className="row-actions" onClick={(e) => e.stopPropagation()}>
-                  <button className="row-btn" onClick={() => setEditing(r)} title="Редактировать маршрут">Edit</button>
-                  <RouteRowMenu route={r} apply={apply} />
+                  <RouteRowMenu route={r} apply={apply} onEdit={() => setEditing(r)} />
                 </td>
               </tr>
             );
@@ -449,9 +448,10 @@ function NodeRoutes({ node, routes, allNodes, focusRouteId, onRefresh }) {
   );
 }
 
-function RouteRowMenu({ route, apply }) {
+function RouteRowMenu({ route, apply, onEdit }) {
   const [open, setOpen] = useState(false);
   const items = [];
+  if (onEdit) items.push({ icon: "edit", label: "Редактировать", action: "edit" });
   if (route.health_status !== "healthy") items.push({ icon: "check", label: "Set healthy", action: "set_healthy" });
   if (route.health_status !== "blocked") items.push({ icon: "alert-circle", label: "Block", action: "block", danger: true });
   if (route.health_status === "blocked") items.push({ icon: "refresh", label: "Recover", action: "recover" });
@@ -473,7 +473,11 @@ function RouteRowMenu({ route, apply }) {
           }}>
             {items.map((it, i) => (
               <button key={i}
-                onClick={() => { setOpen(false); apply(route, it.action, { label: it.label }); }}
+                onClick={() => {
+                  setOpen(false);
+                  if (it.action === "edit") { onEdit?.(); return; }
+                  apply(route, it.action, { label: it.label });
+                }}
                 style={{
                   display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "7px 10px",
                   border: 0, background: "transparent", cursor: "pointer", borderRadius: 5,

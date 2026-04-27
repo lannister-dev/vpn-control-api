@@ -17,7 +17,6 @@ from services.admin_transport.schemas import (
     TransportOutboxItemOut,
 )
 
-
 _SENSITIVE_KEYS = frozenset({"token", "hash", "secret", "password", "auth"})
 
 

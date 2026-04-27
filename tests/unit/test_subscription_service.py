@@ -1,31 +1,32 @@
 from __future__ import annotations
 
 import json
-import pytest
-from unittest.mock import ANY, AsyncMock, MagicMock, patch
-from uuid import uuid4
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
+import pytest
 from fastapi import HTTPException
 
 from services.vpn.subscriptions import redis_key
+from services.vpn.subscriptions.constants import RATE_LIMIT_REQUESTS, RATE_LIMIT_WINDOW_SEC
+from services.vpn.subscriptions.exceptions import (
+    SubscriptionBuild,
+    SubscriptionExpired,
+    SubscriptionInactive,
+    SubscriptionNotFound,
+    SubscriptionRateLimited,
+    SubscriptionTokenExpired,
+)
 from services.vpn.subscriptions.schemas import (
     ResolvedDeviceBundle,
     ResolvedDeviceKey,
+    ResolvedSubscriptionRoute,
+    SubscriptionCreateIn,
     TransportBuildResult,
 )
 from services.vpn.subscriptions.service import SubscriptionService
-from services.vpn.subscriptions.exceptions import (
-    SubscriptionInactive,
-    SubscriptionExpired,
-    SubscriptionTokenExpired,
-    SubscriptionBuild,
-    SubscriptionNotFound,
-    SubscriptionRateLimited,
-)
-from services.vpn.subscriptions.constants import RATE_LIMIT_REQUESTS, RATE_LIMIT_WINDOW_SEC
-from services.vpn.subscriptions.schemas import ResolvedSubscriptionRoute, SubscriptionCreateIn
 from shared.profiles.types import ProfileType
 
 
@@ -1057,20 +1058,19 @@ async def test_create_subscription_invalid_profile_lists_available_keys(service)
     user_id = uuid4()
     service.user_repository.get_by_id = AsyncMock(return_value=MagicMock())
 
-    with patch("services.vpn.subscriptions.service.ProfileRegistry.get") as get_profile:
-        with patch(
-            "services.vpn.subscriptions.service.ProfileRegistry.all_keys",
-            return_value=["reality_tcp_dev_v1", "ws_tls_dev_v1"],
-        ):
-            get_profile.side_effect = ProfileRegistryError("Profile not found: ws_tls_v1")
+    with patch("services.vpn.subscriptions.service.ProfileRegistry.get") as get_profile, patch(
+        "services.vpn.subscriptions.service.ProfileRegistry.all_keys",
+        return_value=["reality_tcp_dev_v1", "ws_tls_dev_v1"],
+    ):
+        get_profile.side_effect = ProfileRegistryError("Profile not found: ws_tls_v1")
 
-            with pytest.raises(HTTPException) as exc_info:
-                await service.create(
-                    SubscriptionCreateIn(
-                        user_id=user_id,
-                        profile_key="ws_tls_v1",
-                    )
+        with pytest.raises(HTTPException) as exc_info:
+            await service.create(
+                SubscriptionCreateIn(
+                    user_id=user_id,
+                    profile_key="ws_tls_v1",
                 )
+            )
 
     assert exc_info.value.status_code == 422
     assert exc_info.value.detail == (

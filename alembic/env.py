@@ -2,13 +2,11 @@ import os
 import sys
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
+from sqlalchemy import engine_from_config, pool
 
 from alembic import context
-
-from shared.database.base_model import Base
 from services.config import get_settings
+from shared.database.base_model import Base
 
 db = get_settings().database
 sys.path.append(os.path.join(sys.path[0], 'src'))
@@ -32,24 +30,24 @@ if config.config_file_name is not None:
 # add your model's MetaData object here
 # for 'autogenerate' support
 
-from services.users.models import User
-from services.vpn.keys.models import VpnKey, KeyAssignment
-from services.nodes.models import VpnNode, NodeAgentIdentity, NodeAgentState
-from services.zones.models import Zone
-from services.placements.model import UserPlacement
-from services.probe.model import ProbeSignal
 from services.artifacts.models import ProfileArtifact
-from services.vpn.subscriptions.model import Subscription
-from services.routes.model import Route, TransportProfile
-from services.traffic.users.model import TrafficUsage
-from services.traffic.nodes.model import  NodeTrafficUsage
-from services.auth.admin.models import AdminUser, AdminSession, AdminAuditEvent
-from services.billing.models import PaymentOrder, BalanceTransaction
+from services.auth.admin.models import AdminAuditEvent, AdminSession, AdminUser
+from services.billing.models import BalanceTransaction, PaymentOrder
 from services.nodes.agent.model import (
     NodeTransportEventLog,
     NodeTransportOutbox,
     NodeTransportState,
 )
+from services.nodes.models import NodeAgentIdentity, NodeAgentState, VpnNode
+from services.placements.model import UserPlacement
+from services.probe.model import ProbeSignal
+from services.routes.model import Route, TransportProfile
+from services.traffic.nodes.model import NodeTrafficUsage
+from services.traffic.users.model import TrafficUsage
+from services.users.models import User
+from services.vpn.keys.models import KeyAssignment, VpnKey
+from services.vpn.subscriptions.model import Subscription
+from services.zones.models import Zone
 
 target_metadata = Base.metadata
 

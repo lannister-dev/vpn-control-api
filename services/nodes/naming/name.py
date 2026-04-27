@@ -5,7 +5,6 @@ from dataclasses import dataclass
 
 from services.nodes.naming.catalog import CityInfo
 
-
 NAME_RE = re.compile(r"^([a-z]{3})-([a-z]{1,10})-(\d{2,3})$")
 MAX_ROUTE_NAME_LEN = 100
 

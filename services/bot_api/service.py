@@ -1,20 +1,19 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
-from typing import Iterable
 from uuid import UUID
 
 from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.admin_status.service import AdminStatusService
-from services.config import get_settings
 from services.billing.repository import OrderRepository
 from services.billing.schemas import OrderCreateIn, OrderOut, OrderTypeEnum, PaymentProviderEnum
 from services.billing.service import BillingService
 from services.billing.utils import map_provider_error_to_http_status
+from services.config import get_settings
 from services.plans.repository import PlanRepository
 from services.plans.schemas import PlanOut
 from services.referral.schemas import BotReferralInfoOut
@@ -27,25 +26,25 @@ from services.vpn.subscriptions.schemas import SubscriptionDeviceOut, Subscripti
 from services.vpn.subscriptions.service import SubscriptionService
 from shared.database.session import AsyncDatabase
 from shared.redis.client import RedisClient, get_redis_client
+
+from ..billing.exceptions import InsufficientBalance, ProviderError
 from .constants import TOP_UP_STARS_RUB_RATE
 from .schemas import (
     BotAction,
     BotDashboardState,
     BotDeviceOut,
-    BotDevicesOut,
     BotDeviceSlotPurchaseIn,
+    BotDevicesOut,
     BotOrderActionOut,
     BotOrderCreateIn,
     BotOrderHistoryItemOut,
     BotOrderHistoryOut,
-    BotOrderUpdateIn,
     BotOrderOut,
+    BotOrderUpdateIn,
     BotPlanListOut,
+    BotPlanOut,
     BotRenewOfferOut,
     BotRenewOrderIn,
-    BotTopUpCreateIn,
-    BotUserOut,
-    BotPlanOut,
     BotServiceHealth,
     BotServiceStatusOut,
     BotSessionOut,
@@ -53,6 +52,8 @@ from .schemas import (
     BotStarsConfirmIn,
     BotSubscriptionLinkOut,
     BotSubscriptionSummaryOut,
+    BotTopUpCreateIn,
+    BotUserOut,
 )
 from .utils import (
     build_available_payment_providers,
@@ -60,7 +61,6 @@ from .utils import (
     get_device_display_name,
     top_up_amount_stars,
 )
-from ..billing.exceptions import InsufficientBalance, ProviderError
 
 log = logging.getLogger(__name__)
 
@@ -147,7 +147,14 @@ class BotApiService:
         )
 
     async def create_order(self, *, telegram_id: int, payload: BotOrderCreateIn) -> BotOrderActionOut:
-        from services.billing.exceptions import ActiveSubscriptionExists, InsufficientBalance, PlanNotPurchasable, ProviderError, TrialAlreadyUsed, TrialUnavailable
+        from services.billing.exceptions import (
+            ActiveSubscriptionExists,
+            InsufficientBalance,
+            PlanNotPurchasable,
+            ProviderError,
+            TrialAlreadyUsed,
+            TrialUnavailable,
+        )
         user = await self._require_user_by_telegram_id(telegram_id)
         extra = getattr(payload, "extra_devices", 0) or 0
         try:
@@ -456,7 +463,7 @@ class BotApiService:
         self,
         *,
         telegram_id: int,
-    ) -> "BotSubscriptionSummaryOut | None":
+    ) -> BotSubscriptionSummaryOut | None:
         user = await self._require_user_by_telegram_id(telegram_id)
         orders = await self._list_orders(user.id)
         return await self._build_subscription_summary(user.id, orders=orders)
