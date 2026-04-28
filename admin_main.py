@@ -6,6 +6,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from starlette.staticfiles import StaticFiles
 
 from services.admin_audit.router import router as admin_audit_router
+from services.alerts.admin_router import router as admin_alerts_router
 from services.admin_nodes.router import (
     admin_router as nodes_admin_router,
 )
@@ -72,6 +73,7 @@ api_router.include_router(probe_router)
 api_router.include_router(probe_policy_router)
 api_router.include_router(node_policy_router)
 api_router.include_router(admin_audit_router)
+api_router.include_router(admin_alerts_router)
 api_router.include_router(routes_router)
 api_router.include_router(traffic_admin_router)
 api_router.include_router(nodes_traffic_admin_router)

@@ -5,6 +5,7 @@ import { Sidebar } from "./components/Sidebar.jsx";
 import { Topbar } from "./components/Topbar.jsx";
 import { Palette } from "./components/Palette.jsx";
 import { NodeDrawer } from "./components/NodeDrawer.jsx";
+import { AlertsDrawer } from "./components/AlertsDrawer.jsx";
 import { LoginPage } from "./pages/Login.jsx";
 import { OverviewPage } from "./pages/Overview.jsx";
 import { NodesPage } from "./pages/Nodes.jsx";
@@ -118,6 +119,7 @@ function AuthedApp({ theme, setTheme, me, onLogout }) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [drawerNode, setDrawerNode] = useState(null);
   const [drawerOpts, setDrawerOpts] = useState(null);
+  const [alertsOpen, setAlertsOpen] = useState(false);
 
   const openNode = (node, opts) => {
     setDrawerNode(node || null);
@@ -154,6 +156,7 @@ function AuthedApp({ theme, setTheme, me, onLogout }) {
   const routesData = useQuery(() => api.get("/routes?limit=500"), { interval: 30000 });
   const usersData = useQuery(() => api.get("/users?limit=1").catch(() => null), { interval: 60000 });
   const subsStats = useQuery(() => api.get("/subscriptions/stats").catch(() => null), { interval: 60000 });
+  const alertsCount = useQuery(() => api.get("/admin/alerts/unread-count").catch(() => null), { interval: 15000 });
 
   const counts = useMemo(() => {
     const out = {};
@@ -191,9 +194,10 @@ function AuthedApp({ theme, setTheme, me, onLogout }) {
           theme={theme}
           onToggleTheme={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
           onOpenPalette={() => setPaletteOpen(true)}
-          onRefresh={() => { status.refetch(); routesData.refetch(); }}
+          onRefresh={() => { status.refetch(); routesData.refetch(); alertsCount.refetch(); }}
           lastSync={lastSync}
-          notifCount={0}
+          notifCount={alertsCount.data?.unread || 0}
+          onOpenAlerts={() => setAlertsOpen(true)}
         />
         <div className="app-content">
           <Page
@@ -217,6 +221,12 @@ function AuthedApp({ theme, setTheme, me, onLogout }) {
           onClose={() => { setDrawerNode(null); setDrawerOpts(null); }}
           onGoto={goto}
           onOpenNode={openNode}
+        />
+      )}
+      {alertsOpen && (
+        <AlertsDrawer
+          onClose={() => setAlertsOpen(false)}
+          onChanged={() => alertsCount.refetch()}
         />
       )}
     </div>
