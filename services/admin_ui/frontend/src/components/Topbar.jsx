@@ -8,6 +8,7 @@ export function Topbar({
   onRefresh,
   lastSync,
   notifCount = 0,
+  onOpenAlerts,
 }) {
   return (
     <header className="topbar">
@@ -30,10 +31,35 @@ export function Topbar({
         <button className="btn btn-ghost btn-icon" onClick={onRefresh} title="Обновить">
           <Icon name="refresh" size={15} />
         </button>
-        <button className="btn btn-ghost btn-icon" title="Уведомления" style={{ position: "relative" }}>
+        <button
+          className="btn btn-ghost btn-icon"
+          title={notifCount > 0 ? `Уведомления (${notifCount} непрочитано)` : "Уведомления"}
+          onClick={onOpenAlerts}
+          style={{ position: "relative" }}
+        >
           <Icon name="bell" size={15} />
           {notifCount > 0 && (
-            <span style={{ position: "absolute", top: 4, right: 4, width: 6, height: 6, borderRadius: "50%", background: "var(--bad)" }} />
+            <span
+              style={{
+                position: "absolute",
+                top: -2,
+                right: -2,
+                minWidth: 16,
+                height: 16,
+                padding: "0 4px",
+                borderRadius: 8,
+                background: "var(--bad)",
+                color: "#fff",
+                fontSize: 10,
+                fontWeight: 600,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                lineHeight: 1,
+              }}
+            >
+              {notifCount > 99 ? "99+" : notifCount}
+            </span>
           )}
         </button>
         <button className="btn btn-ghost btn-icon" onClick={onToggleTheme} title="Переключить тему">

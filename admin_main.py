@@ -18,6 +18,7 @@ from services.admin_transport.policy.router import router as admin_transport_pol
 from services.admin_transport.router import router as admin_transport_router
 from services.admin_ui.router_v2 import STATIC_V2_DIR
 from services.admin_ui.router_v2 import router as admin_ui_v2_router
+from services.alerts.admin_router import router as admin_alerts_router
 from services.auth.admin.router import router as admin_auth_router
 from services.config import get_settings
 from services.entry.router import router as entry_router
@@ -72,6 +73,7 @@ api_router.include_router(probe_router)
 api_router.include_router(probe_policy_router)
 api_router.include_router(node_policy_router)
 api_router.include_router(admin_audit_router)
+api_router.include_router(admin_alerts_router)
 api_router.include_router(routes_router)
 api_router.include_router(traffic_admin_router)
 api_router.include_router(nodes_traffic_admin_router)
