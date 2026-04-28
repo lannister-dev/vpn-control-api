@@ -7,14 +7,29 @@ from datetime import datetime
 from urllib import request
 from uuid import UUID
 
-from services.alerts.schemas import AlertLevel, AlertMessage, TelegramSendMessageIn
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from services.alerts.constants import DEDUP_WINDOW_SEC, AlertSource
+from services.alerts.repository import AlertEventRepository
+from services.alerts.schemas import (
+    AlertEventOut,
+    AlertLevel,
+    AlertListOut,
+    AlertMarkAllReadOut,
+    AlertMessage,
+    TelegramSendMessageIn,
+)
 from services.alerts.text import AlertTexts
 from services.config import AlertsConfig, get_settings
+from shared.database.session import AsyncDatabase
 from shared.utils.logger import StructuredLogger
 
 
 class AlertService:
-    def __init__(self, alerts_config: AlertsConfig | None = None):
+    def __init__(self, session: AsyncSession, alerts_config: AlertsConfig | None = None):
+        self.session = session
+        self.repo = AlertEventRepository(session)
         self.alerts_config = alerts_config or get_settings().alerts
         self.logger = StructuredLogger(logging.getLogger("alert-service"))
 
@@ -35,6 +50,45 @@ class AlertService:
             ),
         )
         return await asyncio.to_thread(self._post_telegram, telegram_message)
+
+    async def record(
+        self,
+        *,
+        level: AlertLevel,
+        title: str,
+        body: str,
+        source: str = AlertSource.GENERIC,
+        dedup_key: str | None = None,
+        entity_id: str | None = None,
+        send_telegram: bool = True,
+    ) -> bool:
+        telegram_ok = False
+        if send_telegram:
+            telegram_ok = await self.send(AlertMessage(level=level, title=title, body=body))
+
+        existing = None
+        if dedup_key:
+            existing = await self.repo.find_active_by_dedup(
+                source=source,
+                dedup_key=dedup_key,
+                within_seconds=DEDUP_WINDOW_SEC,
+            )
+        if existing is not None:
+            await self.repo.bump_existing(existing, telegram_sent=telegram_ok)
+        else:
+            await self.repo.insert(
+                level=level.value,
+                source=source,
+                title=title,
+                body=body,
+                dedup_key=dedup_key,
+                entity_id=entity_id,
+                telegram_sent=telegram_ok,
+            )
+        return telegram_ok
+
+    async def resolve(self, *, source: str, dedup_key: str) -> int:
+        return await self.repo.resolve_active(source=source, dedup_key=dedup_key)
 
     async def send_probe_status_change(
             self,
@@ -73,13 +127,69 @@ class AlertService:
             error_phase=error_phase or "-",
             error=error_text,
         )
-        return await self.send(
-            AlertMessage(
-                level=level,
-                title=AlertTexts.PROBE_STATUS_TITLE,
-                body=body,
+        dedup_key = f"probe:{source}:node:{node_id}"
+        if route_id is not None:
+            dedup_key += f":route:{route_id}"
+        if is_reachable:
+            await self.resolve(source=AlertSource.PROBE, dedup_key=dedup_key)
+            return await self.send(
+                AlertMessage(
+                    level=level,
+                    title=AlertTexts.PROBE_STATUS_TITLE,
+                    body=body,
+                )
             )
+        return await self.record(
+            level=level,
+            title=AlertTexts.PROBE_STATUS_TITLE,
+            body=body,
+            source=AlertSource.PROBE,
+            dedup_key=dedup_key,
+            entity_id=str(node_id),
         )
+
+    async def list_for_admin(
+        self,
+        *,
+        unread_only: bool,
+        active_only: bool,
+        level: AlertLevel | None,
+        source: str | None,
+        limit: int,
+        offset: int,
+    ) -> AlertListOut:
+        rows, total = await self.repo.list_paginated(
+            unread_only=unread_only,
+            active_only=active_only,
+            level=level.value if level else None,
+            source=source,
+            limit=limit,
+            offset=offset,
+        )
+        unread = await self.repo.count_unread()
+        return AlertListOut(
+            items=[AlertEventOut.model_validate(r) for r in rows],
+            total=total,
+            unread=unread,
+            limit=limit,
+            offset=offset,
+        )
+
+    async def count_unread(self) -> int:
+        return await self.repo.count_unread()
+
+    async def mark_read(self, alert_id: UUID) -> AlertEventOut | None:
+        await self.repo.mark_read(alert_id)
+        row = await self.repo.get_by_id(alert_id)
+        return AlertEventOut.model_validate(row) if row else None
+
+    async def mark_all_read(self) -> AlertMarkAllReadOut:
+        return AlertMarkAllReadOut(marked=await self.repo.mark_all_read())
+
+    async def dismiss(self, alert_id: UUID) -> AlertEventOut | None:
+        await self.repo.dismiss(alert_id)
+        row = await self.repo.get_by_id(alert_id)
+        return AlertEventOut.model_validate(row) if row else None
 
     def _post_telegram(self, payload: TelegramSendMessageIn) -> bool:
         url = f"https://api.telegram.org/bot{self.alerts_config.telegram_bot_token}/sendMessage"
@@ -118,5 +228,7 @@ class AlertService:
         return "INFO"
 
 
-def get_alert_service() -> AlertService:
-    return AlertService()
+def get_alert_service(
+    session: AsyncSession = Depends(AsyncDatabase.get_session),
+) -> AlertService:
+    return AlertService(session)
