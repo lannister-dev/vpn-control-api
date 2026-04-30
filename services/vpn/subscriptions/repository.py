@@ -4,6 +4,7 @@ from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from services.plans.models import Plan
 from services.vpn.subscriptions.exceptions import SubscriptionNotFound
 from services.vpn.subscriptions.model import (
     Subscription,
@@ -30,7 +31,6 @@ class SubscriptionRepository(BaseRepository[Subscription]):
 
     async def list_needing_traffic_reset(self, *, strategy: str, reset_before) -> list[Subscription]:
         """Find active subscriptions with given reset strategy whose last reset is before cutoff."""
-        from services.plans.models import Plan
         stmt = (
             select(self.model)
             .join(Plan, self.model.plan_id == Plan.id)
