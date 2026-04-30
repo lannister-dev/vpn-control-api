@@ -4,13 +4,13 @@ from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from services.plans.models import Plan
 from services.vpn.subscriptions.exceptions import SubscriptionNotFound
 from services.vpn.subscriptions.model import (
     Subscription,
     SubscriptionDevice,
     SubscriptionDeviceKey,
 )
-from services.plans.models import Plan
 from shared.database.base_repository import BaseRepository
 
 
