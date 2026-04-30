@@ -3,22 +3,22 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from services.traffic.nodes.service import NodeTrafficService
 from services.traffic.policy.constants import CLEANUP_IDLE_WHEN_DISABLED_SEC
 from services.traffic.policy.repository import TrafficPolicyRepository
-from services.traffic.users.service import UserTrafficService
 from shared.database.session import AsyncDatabase
 from shared.reconciler.watchdog import watchdog
 from shared.redis.lock import RedisTickLock
 from shared.utils.logger import StructuredLogger
 
-logger = StructuredLogger(logging.getLogger("traffic-cleanup-reconciler"))
+logger = StructuredLogger(logging.getLogger("node-traffic-cleanup-reconciler"))
 
 
-class TrafficHistoryCleanupReconciler:
+class NodeTrafficHistoryCleanupReconciler:
     def __init__(self, *, tick_lock: RedisTickLock | None = None):
         self._session_maker = AsyncDatabase.get_session_maker()
         self._tick_lock = tick_lock or RedisTickLock(
-            key="reconciler:traffic_cleanup",
+            key="reconciler:node_traffic_cleanup",
             ttl_sec=7200,
             fail_open_if_client_unavailable=True,
         )
@@ -42,12 +42,12 @@ class TrafficHistoryCleanupReconciler:
         async with self._session_maker() as session:
             policy = (await TrafficPolicyRepository(session).list(limit=1))[0]
             await session.commit()
-        if not policy.user_cleanup_enabled:
+        if not policy.node_cleanup_enabled:
             return None
         async with self._tick_lock.hold() as acquired:
             if not acquired:
                 return None
-            return await self._execute_tick(policy.user_retention_days)
+            return await self._execute_tick(policy.node_retention_days)
 
     async def _run(self) -> None:
         while not self._stop_event.is_set():
@@ -56,15 +56,15 @@ class TrafficHistoryCleanupReconciler:
                 async with self._session_maker() as session:
                     policy = (await TrafficPolicyRepository(session).list(limit=1))[0]
                     await session.commit()
-                sleep_sec = max(CLEANUP_IDLE_WHEN_DISABLED_SEC, int(policy.user_cleanup_tick_sec))
-                if policy.user_cleanup_enabled:
+                sleep_sec = max(CLEANUP_IDLE_WHEN_DISABLED_SEC, int(policy.node_cleanup_tick_sec))
+                if policy.node_cleanup_enabled:
                     async with self._tick_lock.hold() as acquired:
                         if acquired:
-                            await self._execute_tick(policy.user_retention_days)
+                            await self._execute_tick(policy.node_retention_days)
             except asyncio.CancelledError:
                 raise
             except Exception:
-                logger.exception("traffic_cleanup_tick_failed")
+                logger.exception("node_traffic_cleanup_tick_failed")
 
             watchdog.heartbeat(self.__class__.__name__, max_silence_sec=sleep_sec * 2 + 60)
             try:
@@ -74,13 +74,13 @@ class TrafficHistoryCleanupReconciler:
 
     async def _execute_tick(self, retention_days: int) -> int:
         async with self._session_maker() as session:
-            deleted = await UserTrafficService(session).cleanup_history(
+            deleted = await NodeTrafficService(session).cleanup_history(
                 retention_days=retention_days,
             )
             await session.commit()
             if deleted > 0:
                 logger.info(
-                    "traffic_cleanup_tick",
+                    "node_traffic_cleanup_tick",
                     deleted=deleted,
                     retention_days=int(retention_days),
                 )

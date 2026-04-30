@@ -9,6 +9,7 @@ const SECTIONS = [
   { id: "probe", label: "Probe-политика", icon: "shield-check", hint: "пороги маршрутов + автодрейн" },
   { id: "nodes", label: "Ноды и placements", icon: "server", hint: "heartbeat / auto-heal / rebalance / entry" },
   { id: "transport", label: "Транспорт (NATS)", icon: "activity", hint: "хранение событий и outbox" },
+  { id: "traffic", label: "Трафик · cleanup", icon: "clock", hint: "retention для traffic_usage и node_traffic_usage" },
 ];
 
 export function SettingsPage() {
@@ -43,6 +44,7 @@ export function SettingsPage() {
           {section === "probe" && <ProbePolicySection />}
           {section === "nodes" && <NodePolicySection />}
           {section === "transport" && <TransportPolicySection />}
+          {section === "traffic" && <TrafficPolicySection />}
         </div>
       </div>
     </div>
@@ -115,6 +117,122 @@ function TransportPolicySection() {
           </div>
           <div className="muted small">
             Cleanup удаляет события типа heartbeat / sync_report и выполненные outbox-записи старше Retention дней. Не трогает failed outbox (их нужно разбирать явно).
+          </div>
+        </div>
+      </div>
+
+      {dirty && (
+        <div style={{
+          position: "sticky", bottom: 12, marginTop: 16, zIndex: 10,
+          display: "flex", alignItems: "center", gap: 12, padding: "10px 14px",
+          background: "var(--surface)", border: "1px solid var(--accent-border)",
+          borderRadius: 10, boxShadow: "var(--shadow-lg)",
+        }}>
+          <Icon name="alert-triangle" size={14} style={{ color: "var(--warn)" }} />
+          <span style={{ fontSize: 13, fontWeight: 500 }}>
+            Несохранённых изменений: {dirtyFields.length}
+          </span>
+          <span className="muted small" style={{ flex: 1 }}>{dirtyFields.join(", ")}</span>
+          <button className="btn btn-ghost" onClick={cancel} disabled={busy}>Отменить</button>
+          <button className="btn btn-primary" onClick={save} disabled={busy}>Сохранить</button>
+        </div>
+      )}
+    </>
+  );
+}
+
+function TrafficPolicySection() {
+  const q = useQuery(() => api.get("/admin/traffic/policy"), { interval: 0 });
+  const [f, setF] = useState(null);
+  const [initial, setInitial] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (q.data) { setF(q.data); setInitial(q.data); }
+  }, [q.data]);
+
+  const set = (k) => (e) => {
+    const val = e.target.type === "checkbox" ? e.target.checked
+      : (e.target.type === "number" ? Number(e.target.value) : e.target.value);
+    setF((s) => ({ ...s, [k]: val }));
+  };
+
+  const dirtyFields = useMemo(() => {
+    if (!f || !initial) return [];
+    return Object.keys(f).filter((k) => {
+      if (k === "id" || k === "created_at" || k === "updated_at") return false;
+      return JSON.stringify(f[k]) !== JSON.stringify(initial[k]);
+    });
+  }, [f, initial]);
+  const dirty = dirtyFields.length > 0;
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      const payload = {};
+      for (const k of dirtyFields) payload[k] = f[k] === "" ? null : f[k];
+      const updated = await api.patch("/admin/traffic/policy", payload);
+      setF(updated);
+      setInitial(updated);
+      toast.ok(`Сохранено · ${dirtyFields.length} изменений`);
+    } catch (e) { toast.bad(e.message || "Ошибка"); }
+    finally { setBusy(false); }
+  };
+
+  const cancel = () => setF(initial);
+
+  if (!f) return <div className="card"><div className="card-body muted">Загрузка…</div></div>;
+
+  return (
+    <>
+      <div className="card">
+        <div className="card-head">
+          <Icon name="clock" size={14} />
+          <div className="sec-title">User traffic · cleanup</div>
+          <div className="sec-sub">удаление per-key записей traffic_usage</div>
+          <div className="sec-spacer" />
+          <label className="form-check" style={{ margin: 0 }}>
+            <input type="checkbox" checked={!!f.user_cleanup_enabled} onChange={set("user_cleanup_enabled")} />
+            <span>Включено</span>
+          </label>
+        </div>
+        <div className="card-body" style={{ opacity: f.user_cleanup_enabled ? 1 : 0.55 }}>
+          <div className="form-row">
+            <Field label="Retention, дней" hint="хранение per-key delta-записей">
+              <input type="number" min={1} max={365} value={f.user_retention_days} onChange={set("user_retention_days")} />
+            </Field>
+            <Field label="Cleanup tick, сек" hint="интервал фонового джоба">
+              <input type="number" min={60} max={86400} value={f.user_cleanup_tick_sec} onChange={set("user_cleanup_tick_sec")} />
+            </Field>
+          </div>
+          <div className="muted small">
+            Удаляет строки traffic_usage старше Retention дней. Используется для биллинга и спорных кейсов — слишком короткое окно усложнит разбор претензий.
+          </div>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="card-head">
+          <Icon name="server" size={14} />
+          <div className="sec-title">Node traffic · cleanup</div>
+          <div className="sec-sub">удаление сырых записей node_traffic_usage</div>
+          <div className="sec-spacer" />
+          <label className="form-check" style={{ margin: 0 }}>
+            <input type="checkbox" checked={!!f.node_cleanup_enabled} onChange={set("node_cleanup_enabled")} />
+            <span>Включено</span>
+          </label>
+        </div>
+        <div className="card-body" style={{ opacity: f.node_cleanup_enabled ? 1 : 0.55 }}>
+          <div className="form-row">
+            <Field label="Retention, дней" hint="хранение сырых per-tick агрегатов">
+              <input type="number" min={1} max={365} value={f.node_retention_days} onChange={set("node_retention_days")} />
+            </Field>
+            <Field label="Cleanup tick, сек" hint="интервал фонового джоба">
+              <input type="number" min={60} max={86400} value={f.node_cleanup_tick_sec} onChange={set("node_cleanup_tick_sec")} />
+            </Field>
+          </div>
+          <div className="muted small">
+            Используется для месячной аналитики по нодам. Без cleanup таблица растёт неограниченно — сейчас никем не чистится.
           </div>
         </div>
       </div>

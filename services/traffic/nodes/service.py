@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import Depends
@@ -169,6 +169,10 @@ class NodeTrafficService:
             regions=regions,
             points=points,
         )
+
+    async def cleanup_history(self, *, retention_days: int) -> int:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=max(1, int(retention_days)))
+        return await self.usage_repo.delete_older_than(cutoff=cutoff)
 
     async def pair_matrix(self, *, period: TrafficPeriod) -> NodePairListOut:
         from_ts, to_ts = _window(period)
