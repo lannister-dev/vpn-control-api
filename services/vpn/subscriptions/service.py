@@ -781,6 +781,11 @@ class SubscriptionService:
 
             country_code, country_name = self._country_info_for_region(node.region)
             is_entry = entry_node is not None
+            backend_zone = effective_zone(
+                explicit_zone=node.zone,
+                region=node.region,
+            )
+            is_whitelist_entry = is_entry and entry_node.role == ROLE_WHITELIST_ENTRY
             logical_key = self._route_country_transport_key(
                 country_code=country_code,
                 region=node.region,
@@ -788,6 +793,8 @@ class SubscriptionService:
                 is_entry_route=is_entry,
                 backend_node_id=backend_node_id,
                 entry_node_id=entry_node_id,
+                zone=backend_zone,
+                is_whitelist=is_whitelist_entry,
             )
             if logical_key in seen_logical_keys:
                 continue
@@ -897,11 +904,16 @@ class SubscriptionService:
             for route in result.routes:
                 logical_key = self._route_country_transport_key(
                     country_code=route.country_code,
-                    region=getattr(route.node, "region", None),
+                    region=route.node.region,
                     transport=route.vpn_transport,
                     is_entry_route=route.is_entry_route,
                     backend_node_id=route.backend_node_id,
                     entry_node_id=route.entry_node_id,
+                    zone=effective_zone(
+                        explicit_zone=route.node.zone,
+                        region=route.node.region,
+                    ),
+                    is_whitelist=route.is_whitelist_route,
                 )
                 if route.uri in seen_uris or logical_key in seen_logical_keys:
                     continue
@@ -989,11 +1001,16 @@ class SubscriptionService:
         seen_logical_keys = {
             self._route_country_transport_key(
                 country_code=r.country_code,
-                region=getattr(r.node, "region", None),
+                region=r.node.region,
                 transport=r.vpn_transport,
                 is_entry_route=r.is_entry_route,
                 backend_node_id=r.backend_node_id,
                 entry_node_id=r.entry_node_id,
+                zone=effective_zone(
+                    explicit_zone=r.node.zone,
+                    region=r.node.region,
+                ),
+                is_whitelist=r.is_whitelist_route,
             )
             for r in resolved_routes
         }
@@ -1061,6 +1078,7 @@ class SubscriptionService:
                     continue
 
                 country_code, country_name = self._country_info_for_region(node.region)
+                is_whitelist_entry = entry_node.role == ROLE_WHITELIST_ENTRY
                 logical_key = self._route_country_transport_key(
                     country_code=country_code,
                     region=node.region,
@@ -1068,6 +1086,8 @@ class SubscriptionService:
                     is_entry_route=True,
                     backend_node_id=backend_id,
                     entry_node_id=entry_node_id,
+                    zone=backend_zone,
+                    is_whitelist=is_whitelist_entry,
                 )
                 if logical_key in seen_logical_keys:
                     continue
@@ -1167,12 +1187,15 @@ class SubscriptionService:
             is_entry_route: bool = False,
             backend_node_id: UUID | None = None,
             entry_node_id: UUID | None = None,
+            zone: str | None = None,
+            is_whitelist: bool = False,
     ) -> tuple:
         location_key = country_code or ((region or "").strip().lower() or None)
         norm_transport = self._normalize_transport_value(transport)
         if is_entry_route:
-            entry_key = str(entry_node_id) if entry_node_id else "_noentry"
-            return (norm_transport, True, "entry", entry_key)
+            zone_key = (zone or "unknown").strip().lower() or "unknown"
+            kind = "wl_entry" if is_whitelist else "entry"
+            return (zone_key, norm_transport, kind)
         return (location_key, norm_transport, False, str(backend_node_id) if backend_node_id else "")
 
     def _number_routes_display(

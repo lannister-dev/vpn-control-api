@@ -469,6 +469,64 @@ class TestCalcEtag:
         assert e1 != e2
 
 
+class TestRouteCountryTransportKey:
+    def test_entry_routes_in_same_zone_collapse(self, service):
+        eu_a = service._route_country_transport_key(
+            country_code="FI", region="fi", transport="reality",
+            is_entry_route=True, backend_node_id=uuid4(), entry_node_id=uuid4(),
+            zone="europe", is_whitelist=False,
+        )
+        eu_b = service._route_country_transport_key(
+            country_code="FR", region="fr", transport="reality",
+            is_entry_route=True, backend_node_id=uuid4(), entry_node_id=uuid4(),
+            zone="europe", is_whitelist=False,
+        )
+        assert eu_a == eu_b
+
+    def test_entry_routes_in_different_zones_keep_separate(self, service):
+        eu = service._route_country_transport_key(
+            country_code="FI", region="fi", transport="reality",
+            is_entry_route=True, backend_node_id=uuid4(), entry_node_id=uuid4(),
+            zone="europe", is_whitelist=False,
+        )
+        asia = service._route_country_transport_key(
+            country_code="SG", region="sg", transport="reality",
+            is_entry_route=True, backend_node_id=uuid4(), entry_node_id=uuid4(),
+            zone="asia", is_whitelist=False,
+        )
+        assert eu != asia
+
+    def test_whitelist_entry_keeps_separate_from_regular_entry_in_same_zone(self, service):
+        regular = service._route_country_transport_key(
+            country_code="FR", region="fr", transport="reality",
+            is_entry_route=True, backend_node_id=uuid4(), entry_node_id=uuid4(),
+            zone="europe", is_whitelist=False,
+        )
+        whitelist = service._route_country_transport_key(
+            country_code="LV", region="lv", transport="reality",
+            is_entry_route=True, backend_node_id=uuid4(), entry_node_id=uuid4(),
+            zone="europe", is_whitelist=True,
+        )
+        assert regular != whitelist
+
+    def test_direct_routes_keyed_by_country_and_backend(self, service):
+        backend_id = uuid4()
+        a = service._route_country_transport_key(
+            country_code="FI", region="fi", transport="reality",
+            is_entry_route=False, backend_node_id=backend_id,
+        )
+        b = service._route_country_transport_key(
+            country_code="FI", region="fi", transport="reality",
+            is_entry_route=False, backend_node_id=backend_id,
+        )
+        c = service._route_country_transport_key(
+            country_code="FI", region="fi", transport="reality",
+            is_entry_route=False, backend_node_id=uuid4(),
+        )
+        assert a == b
+        assert a != c
+
+
 def test_transport_label_normalizes_enum_like_string(service):
     assert service._transport_label("VpnTransport.reality") == "Reality"
     assert service._transport_label("TransportVpnTransport.ws") == "WS"
