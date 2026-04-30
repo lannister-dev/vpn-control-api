@@ -59,6 +59,7 @@ def _route(
         *,
         node_id=None,
         transport_profile_id=None,
+        entry_node_id=None,
         name: str = "route-fi-1",
         health_status: str = "healthy",
         base_weight: int = 50,
@@ -69,6 +70,7 @@ def _route(
     r.name = name
     r.node_id = node_id or uuid4()
     r.transport_profile_id = transport_profile_id or uuid4()
+    r.entry_node_id = entry_node_id
     r.is_active = True
     r.health_status = health_status
     r.base_weight = base_weight
@@ -686,6 +688,65 @@ async def test_report_recovers_blocked_route_after_cooldown(async_session):
     assert kwargs["data"]["health_status"] == "warming_up"
     assert kwargs["data"]["effective_weight"] == 10
     assert kwargs["data"]["warmup_stage"] == 0
+
+
+@pytest.mark.asyncio
+async def test_report_does_not_recover_blocked_route_when_entry_is_draining(async_session):
+    svc = _ingestion_service()
+    svc.node_repository = AsyncMock()
+    svc.probe_repository = AsyncMock()
+    svc.route_repository = AsyncMock()
+    svc.alert_service = AsyncMock()
+
+    backend = _node()
+    entry = _node(role="entry", name="fra-entry-01")
+    entry.is_draining = True
+    transport_profile = _transport_profile()
+    route = _route(
+        node_id=backend.id,
+        transport_profile_id=transport_profile.id,
+        entry_node_id=entry.id,
+    )
+    checked_at = datetime.now(timezone.utc)
+    created = _probe(is_reachable=True, checked_at=checked_at, route_id=route.id)
+    created.node_id = backend.id
+    created.transport_profile_id = transport_profile.id
+    created.transport_kind = "reality"
+    created.probe_kind = "synthetic_vpn"
+    created.target_host = backend.reality_ip
+    created.target_port = 443
+    created.error_phase = None
+    created.source = "ru-probe-1"
+    created.latency_ms = 40
+    created.error = None
+    created.details = {}
+    created.created_at = datetime.now(timezone.utc)
+    route.health_status = "blocked"
+    route.base_weight = 50
+    route.cooldown_until = checked_at - timedelta(seconds=1)
+
+    svc.node_repository.get_by_id.side_effect = lambda node_id: backend if node_id == backend.id else entry
+    svc.route_repository.get_active_detailed_by_id.return_value = (route, backend, transport_profile, None)
+    svc.probe_repository.get_latest_for_route.side_effect = [
+        _probe(is_reachable=False, checked_at=checked_at, route_id=route.id),
+        created,
+    ]
+    svc.probe_repository.create.return_value = created
+    svc.route_repository.get_by_id.return_value = route
+    svc.route_repository.update_by_id = AsyncMock(return_value=route)
+
+    await svc.report(
+        ProbeReportIn(
+            node_id=backend.id,
+            route_id=route.id,
+            source="ru-probe-1",
+            probe_kind="synthetic_vpn",
+            is_reachable=True,
+            latency_ms=40,
+        )
+    )
+
+    svc.route_repository.update_by_id.assert_not_awaited()
 
 
 @pytest.mark.asyncio

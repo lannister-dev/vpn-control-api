@@ -211,8 +211,8 @@ function ProbePolicySection() {
               <Field label="Blocked после" hint="3–50">
                 <input type="number" min={3} max={50} value={f.route_block_after_failures} onChange={set("route_block_after_failures")} />
               </Field>
-              <Field label="Cooldown блокировки, часов" hint="1–168">
-                <input type="number" min={1} max={168} value={f.route_block_cooldown_hours} onChange={set("route_block_cooldown_hours")} />
+              <Field label="Cooldown блокировки, часов" hint="0–168 (0 — без задержки, маршрут восстанавливается с первой успешной пробы)">
+                <input type="number" min={0} max={168} value={f.route_block_cooldown_hours} onChange={set("route_block_cooldown_hours")} />
               </Field>
             </div>
           </Section>

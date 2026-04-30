@@ -121,3 +121,35 @@ def test_resolve_probe_block_sets_zero_weight_and_cooldown():
     assert out.health_status == RouteHealthStatus.blocked
     assert out.effective_weight == 0
     assert out.cooldown_until == checked_at + timedelta(hours=6)
+
+
+def test_resolve_route_health_action_block_with_zero_cooldown_clears_cooldown_until():
+    now = datetime.now(timezone.utc)
+    route = _route()
+
+    out = resolve_route_health_action(
+        route=route,
+        action=RouteHealthAction.block,
+        now=now,
+        cooldown_hours=0,
+    )
+
+    assert out.health_status == RouteHealthStatus.blocked
+    assert out.effective_weight == 0
+    assert out.cooldown_until is None
+
+
+def test_resolve_probe_recover_returns_warmup_when_cooldown_disabled():
+    checked_at = datetime.now(timezone.utc)
+    route = _route(
+        status="blocked",
+        base_weight=50,
+        effective_weight=0,
+        cooldown_until=None,
+    )
+
+    out = resolve_probe_recover(route=route, checked_at=checked_at)
+
+    assert out is not None
+    assert out.health_status == RouteHealthStatus.warming_up
+    assert out.warmup_stage == 0
