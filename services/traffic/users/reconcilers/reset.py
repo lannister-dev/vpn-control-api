@@ -67,7 +67,7 @@ class TrafficResetReconciler:
             watchdog.heartbeat(self.__class__.__name__, max_silence_sec=self._interval_sec * 2 + 60)
             try:
                 await asyncio.wait_for(self._stop_event.wait(), timeout=self._interval_sec)
-            except TimeoutError:
+            except asyncio.TimeoutError:
                 continue
 
     async def _tick(self) -> None:

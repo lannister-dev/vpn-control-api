@@ -74,7 +74,7 @@ class BillingOrderExpirationReconciler:
             )
             try:
                 await asyncio.wait_for(self._stop_event.wait(), timeout=self._interval_sec)
-            except TimeoutError:
+            except asyncio.TimeoutError:
                 continue
 
     async def _execute_tick(self) -> int:
