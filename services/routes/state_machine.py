@@ -50,7 +50,7 @@ def resolve_route_health_action(
     if action == RouteHealthAction.block:
         status = RouteHealthStatus.blocked.value
         effective_weight = 0
-        cooldown_until = now + timedelta(hours=cooldown_hours)
+        cooldown_until = now + timedelta(hours=cooldown_hours) if cooldown_hours > 0 else None
         warmup_stage = None
         warmup_started_at = None
     elif action == RouteHealthAction.recover:

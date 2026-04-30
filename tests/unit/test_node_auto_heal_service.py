@@ -361,3 +361,73 @@ async def test_auto_undrains_probe_drained_node_after_successful_probes(async_se
         {"is_draining": False},
     )
     service.node_agent_state_repository.update_by_node_id.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_observe_freshness_flips_is_healthy_false_when_stale(async_session):
+    node = _node(name="stale-node")
+    stale_state = _state(
+        node_id=node.id,
+        is_healthy=True,
+        last_seen_at=datetime.now(timezone.utc) - timedelta(seconds=600),
+    )
+
+    service = _make_service(async_session, stale_after_sec=90)
+    service.node_repository.list_active_with_agent_state = AsyncMock(
+        return_value=[(node, stale_state)]
+    )
+    service.placement_repository.count_desired_active_by_backend_node = AsyncMock(
+        return_value={}
+    )
+
+    await service.run_once()
+
+    service.node_agent_state_repository.update_by_node_id.assert_awaited_once_with(
+        node_id=node.id,
+        data={"is_healthy": False},
+    )
+    assert stale_state.is_healthy is False
+
+
+@pytest.mark.asyncio
+async def test_observe_freshness_does_not_flip_when_fresh(async_session):
+    node = _node(name="fresh-node")
+    fresh_state = _state(
+        node_id=node.id,
+        is_healthy=True,
+        last_seen_at=datetime.now(timezone.utc) - timedelta(seconds=10),
+    )
+
+    service = _make_service(async_session, stale_after_sec=90)
+    service.node_repository.list_active_with_agent_state = AsyncMock(
+        return_value=[(node, fresh_state)]
+    )
+    service.placement_repository.count_desired_active_by_backend_node = AsyncMock(
+        return_value={}
+    )
+
+    await service.run_once()
+
+    service.node_agent_state_repository.update_by_node_id.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_observe_freshness_does_not_flip_when_already_unhealthy(async_session):
+    node = _node(name="already-unhealthy")
+    stale_state = _state(
+        node_id=node.id,
+        is_healthy=False,
+        last_seen_at=datetime.now(timezone.utc) - timedelta(seconds=600),
+    )
+
+    service = _make_service(async_session, stale_after_sec=90)
+    service.node_repository.list_active_with_agent_state = AsyncMock(
+        return_value=[(node, stale_state)]
+    )
+    service.placement_repository.count_desired_active_by_backend_node = AsyncMock(
+        return_value={}
+    )
+
+    await service.run_once()
+
+    service.node_agent_state_repository.update_by_node_id.assert_not_awaited()

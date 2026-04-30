@@ -131,7 +131,7 @@ class RouteOut(BaseModel):
 
 class RouteHealthUpdateIn(BaseModel):
     action: RouteHealthAction
-    cooldown_hours: int = Field(default=6, ge=1, le=72)
+    cooldown_hours: int = Field(default=6, ge=0, le=72)
 
 
 class RouteWarmupTickOut(BaseModel):

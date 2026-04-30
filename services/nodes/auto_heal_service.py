@@ -176,6 +176,24 @@ class NodePlacementAutoHealService:
             NODE_STATE_FRESHNESS_SECONDS.labels(node_id=str(node.id)).set(
                 freshness if freshness is not None else -1.0
             )
+            if (
+                state is not None
+                and state.is_healthy
+                and freshness is not None
+                and freshness > self.stale_after_sec
+            ):
+                await self.node_agent_state_repository.update_by_node_id(
+                    node_id=node.id,
+                    data={"is_healthy": False},
+                )
+                state.is_healthy = False
+                logger.warning(
+                    "node_state_marked_unhealthy_stale_heartbeat",
+                    node_id=str(node.id),
+                    node_name=node.name,
+                    freshness_sec=round(freshness, 1),
+                    stale_threshold=self.stale_after_sec,
+                )
 
     async def _recover_draining_nodes(
         self,

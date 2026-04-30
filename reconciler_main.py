@@ -35,6 +35,8 @@ from services.routes.model import Route, TransportProfile  # noqa: F401
 from services.routes.reconcilers.warmup import RouteWarmupReconciler
 from services.traffic.nodes.consumer import NodeTrafficNatsConsumer
 from services.traffic.nodes.model import NodeTrafficUsage  # noqa: F401
+from services.traffic.nodes.reconcilers.cleanup import NodeTrafficHistoryCleanupReconciler
+from services.traffic.policy.model import TrafficPolicy  # noqa: F401
 from services.traffic.users.consumer import UserTrafficNatsConsumer
 from services.traffic.users.model import TrafficUsage  # noqa: F401
 from services.traffic.users.reconcilers.cleanup import TrafficHistoryCleanupReconciler
@@ -74,6 +76,7 @@ def _build_reconcilers() -> list:
         ProbeSyntheticCredentialReconciler(),
         NodePlacementReconciler(),
         TrafficHistoryCleanupReconciler(),
+        NodeTrafficHistoryCleanupReconciler(),
         AdminTransportCleanupReconciler(),
         TrafficResetReconciler(),
         PlacementErrorRetryReconciler(),
