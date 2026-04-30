@@ -10,6 +10,7 @@ from services.vpn.subscriptions.model import (
     SubscriptionDevice,
     SubscriptionDeviceKey,
 )
+from services.plans.models import Plan
 from shared.database.base_repository import BaseRepository
 
 
@@ -30,7 +31,6 @@ class SubscriptionRepository(BaseRepository[Subscription]):
 
     async def list_needing_traffic_reset(self, *, strategy: str, reset_before) -> list[Subscription]:
         """Find active subscriptions with given reset strategy whose last reset is before cutoff."""
-        from services.plans.models import Plan
         stmt = (
             select(self.model)
             .join(Plan, self.model.plan_id == Plan.id)

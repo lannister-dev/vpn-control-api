@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -8,11 +9,34 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.nodes.models import NodeAgentState, VpnNode
 from services.placements.model import UserPlacement
+from services.traffic.nodes.model import NodeTrafficUsage
 
 
 class RoutingRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
+
+    async def recent_traffic_bytes_per_backend(self, *, window_sec: int) -> dict[UUID, int]:
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=max(60, int(window_sec)))
+        stmt = (
+            select(
+                NodeTrafficUsage.backend_node_id,
+                func.coalesce(
+                    func.sum(NodeTrafficUsage.bytes_in + NodeTrafficUsage.bytes_out),
+                    0,
+                ),
+            )
+            .where(
+                NodeTrafficUsage.backend_node_id.is_not(None),
+                NodeTrafficUsage.created_at >= cutoff,
+            )
+            .group_by(NodeTrafficUsage.backend_node_id)
+        )
+        result = await self.session.execute(stmt)
+        rows = result.all()
+        if inspect.isawaitable(rows):
+            rows = await rows
+        return {row[0]: int(row[1]) for row in rows}
 
     async def list_available_nodes(
         self,
