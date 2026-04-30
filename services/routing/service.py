@@ -7,6 +7,7 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.nodes.models import NodeAgentState, VpnNode
+from services.routing.constants import ROUTING_TRAFFIC_WINDOW_SEC
 from services.routing.repository import RoutingRepository
 from shared.database.session import AsyncDatabase
 
@@ -29,22 +30,16 @@ class RoutingService:
         preferred_region: str | None = None,
         exclude_node_ids: list[UUID] | None = None,
     ) -> list[VpnNode]:
-        """
-        Returns sorted list of available nodes.
-
-        Algorithm:
-        1. Filter: is_active=True, is_enabled=True, is_draining=False
-        2. Filter: is_healthy=True (via NodeAgentState)
-        3. Filter: capacity > current active placements count
-        4. If preferred_region — nodes of that region first
-        5. Score: health_weight + load_weight (by capacity fill %)
-        6. Sort by score DESC
-        """
         await self._load_policy()
         rows = await self.repository.list_available_nodes(
             preferred_region=preferred_region,
             exclude_node_ids=exclude_node_ids,
         )
+        traffic_by_node = await self.repository.recent_traffic_bytes_per_backend(
+            window_sec=ROUTING_TRAFFIC_WINDOW_SEC,
+        )
+        max_recent_bytes = max(traffic_by_node.values(), default=0)
+
         scored: list[tuple[float, VpnNode]] = []
         now = datetime.now(timezone.utc)
         for node, agent_state, active_count in rows:
@@ -57,6 +52,8 @@ class RoutingService:
                 node=node,
                 agent_state=agent_state,
                 active_count=active_count,
+                recent_bytes=traffic_by_node.get(node.id, 0),
+                max_recent_bytes=max_recent_bytes,
                 preferred_region=preferred_region,
             )
             scored.append((score, node))
@@ -80,18 +77,16 @@ class RoutingService:
         node: VpnNode,
         agent_state: NodeAgentState | None,
         active_count: int,
+        recent_bytes: int,
+        max_recent_bytes: int,
         preferred_region: str | None,
     ) -> float:
-        # Load weight: 0.0 (full) to 1.0 (empty)
-        load_ratio = active_count / node.capacity if node.capacity > 0 else 1.0
+        count_ratio = active_count / node.capacity if node.capacity > 0 else 1.0
+        traffic_ratio = recent_bytes / max_recent_bytes if max_recent_bytes > 0 else 0.0
+        load_ratio = min(1.0, max(count_ratio, traffic_ratio))
         load_weight = 1.0 - load_ratio
-
-        # Health weight: healthy = 1.0
         health_weight = 1.0 if agent_state and agent_state.is_healthy else 0.0
-
-        # Region bonus
         region_weight = 0.5 if preferred_region and node.region == preferred_region else 0.0
-
         return health_weight + load_weight + region_weight
 
     @staticmethod

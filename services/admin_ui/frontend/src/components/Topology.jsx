@@ -214,6 +214,15 @@ export function Topology({ routes = [], nodes = [], probes = [], onOpenNode }) {
                   <span className={`status-dot ${healthTone(n)}`} />
                   <span className="flag">{nodeGeo(n.region).flag}</span>
                   <span className="topo-v2-node-name">{n.name}</span>
+                  {n.role === "whitelist_entry" && (
+                    <span
+                      className="pill accent"
+                      title="Whitelist entry"
+                      style={{ marginLeft: "auto", padding: "1px 5px", fontSize: 9.5, letterSpacing: 0.3, lineHeight: 1.4 }}
+                    >
+                      WL
+                    </span>
+                  )}
                 </div>
                 <div className="topo-v2-node-meta">
                   <span className="mono">{Math.min(100, Math.round(((n.placements_backend || 0) / Math.max(n.capacity || 50, 1)) * 100))}%</span>
