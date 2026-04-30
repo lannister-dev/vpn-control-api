@@ -412,6 +412,8 @@ class ProbeIngestionService:
             )
             return
         if status == RouteHealthStatus.blocked.value:
+            if await self._route_entry_is_unhealthy(route=route):
+                return
             next_state = resolve_probe_recover(route=route, checked_at=checked_at)
             if next_state is None:
                 return
@@ -426,6 +428,15 @@ class ProbeIngestionService:
                     updated_at=datetime.now(timezone.utc),
                 ).model_dump(),
             )
+
+    async def _route_entry_is_unhealthy(self, *, route) -> bool:
+        entry_node_id = getattr(route, "entry_node_id", None)
+        if entry_node_id is None:
+            return False
+        entry = await self.node_repository.get_by_id(entry_node_id)
+        if entry is None:
+            return False
+        return bool(entry.is_draining or not entry.is_enabled or not entry.is_active)
 
     @staticmethod
     def _to_utc(value: datetime) -> datetime:

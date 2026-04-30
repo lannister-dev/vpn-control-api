@@ -215,7 +215,9 @@ function RouteHealthForm({ routes, onDone }) {
     setBusy(true); setErr("");
     try {
       if (!routeId) throw new Error("Выберите маршрут");
-      await api.post("/admin/set-route-health", { route_id: routeId, action, cooldown_hours: Number(cooldown) || 6 });
+      const parsedCooldown = Number.parseInt(cooldown, 10);
+      const cooldownPayload = Number.isFinite(parsedCooldown) && parsedCooldown >= 0 ? parsedCooldown : 6;
+      await api.post("/admin/set-route-health", { route_id: routeId, action, cooldown_hours: cooldownPayload });
       toast.ok(`Маршрут ${route?.name} → ${ACTION_META[action]?.label}`);
       onDone?.();
     } catch (e) { setErr(e.message || String(e)); toast.bad(e.message || "Ошибка"); }
@@ -266,8 +268,8 @@ function RouteHealthForm({ routes, onDone }) {
             ))}
           </div>
         </div>
-        <Field label="Cooldown, часов" hint="1–72, применяется к block/recover">
-          <input type="number" min={1} max={72} value={cooldown} onChange={(e) => setCooldown(e.target.value)} />
+        <Field label="Cooldown, часов" hint="0–72, применяется к block/recover (0 — без задержки)">
+          <input type="number" min={0} max={72} value={cooldown} onChange={(e) => setCooldown(e.target.value)} />
         </Field>
       </div>
       <div style={{ padding: "12px 14px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "flex-end" }}>

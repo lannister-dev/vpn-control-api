@@ -50,7 +50,7 @@ class ProbePolicyUpdateIn(BaseModel):
     route_suspected_after_failures: int | None = Field(default=None, ge=1, le=50)
     route_degraded_after_failures: int | None = Field(default=None, ge=2, le=50)
     route_block_after_failures: int | None = Field(default=None, ge=3, le=50)
-    route_block_cooldown_hours: int | None = Field(default=None, ge=1, le=168)
+    route_block_cooldown_hours: int | None = Field(default=None, ge=0, le=168)
 
     auto_drain_enabled: bool | None = None
     auto_drain_tick_sec: int | None = Field(default=None, ge=30, le=3600)

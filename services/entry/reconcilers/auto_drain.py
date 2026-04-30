@@ -73,7 +73,7 @@ class EntryAutoDrainReconciler:
             watchdog.heartbeat(self.__class__.__name__, max_silence_sec=sleep_sec * 2 + 60)
             try:
                 await asyncio.wait_for(self._stop_event.wait(), timeout=sleep_sec)
-            except TimeoutError:
+            except asyncio.TimeoutError:
                 continue
 
     async def _execute_tick(self, policy) -> EntryAutoDrainResult:

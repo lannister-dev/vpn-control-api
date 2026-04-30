@@ -54,7 +54,7 @@ class ConnectTelemetryService:
         self.failure_degraded_threshold = max(1, failure_degraded_threshold)
         if self.failure_degraded_threshold >= self.failure_block_threshold:
             self.failure_degraded_threshold = self.failure_block_threshold - 1
-        self.block_cooldown_hours = max(1, block_cooldown_hours)
+        self.block_cooldown_hours = max(0, block_cooldown_hours)
 
     async def report(self, payload: ConnectTelemetryIn) -> ConnectTelemetryOut:
         await self._validate_key(payload.key_id)
