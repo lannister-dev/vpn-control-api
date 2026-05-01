@@ -53,11 +53,10 @@ class SubscriptionExpirationReconciler:
         self._task: asyncio.Task | None = None
 
     async def start(self) -> None:
-        if not self._enabled:
-            logger.info("subscription_expiration_disabled")
-            return
         if self._task is not None and not self._task.done():
             return
+        if not self._enabled:
+            logger.info("subscription_expiration_disabled")
         self._stop_event.clear()
         self._task = asyncio.create_task(self._run())
 

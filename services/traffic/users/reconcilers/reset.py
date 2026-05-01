@@ -40,11 +40,10 @@ class TrafficResetReconciler:
         self._task: asyncio.Task | None = None
 
     async def start(self) -> None:
-        if not self._enabled:
-            logger.info("traffic_reset_disabled")
-            return
         if self._task is not None and not self._task.done():
             return
+        if not self._enabled:
+            logger.info("traffic_reset_disabled")
         self._stop_event.clear()
         self._task = asyncio.create_task(self._run())
 
@@ -57,12 +56,13 @@ class TrafficResetReconciler:
 
     async def _run(self) -> None:
         while not self._stop_event.is_set():
-            try:
-                await self._tick()
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                logger.exception("traffic_reset_tick_failed")
+            if self._enabled:
+                try:
+                    await self._tick()
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    logger.exception("traffic_reset_tick_failed")
 
             watchdog.heartbeat(self.__class__.__name__, max_silence_sec=self._interval_sec * 2 + 60)
             try:
