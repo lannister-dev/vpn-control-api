@@ -222,6 +222,57 @@ class NatsClient:
             info.config.duplicate_window = duplicate_window
         return await self.jetstream().update_stream(config=info.config)
 
+    async def ensure_kv_bucket(
+        self,
+        *,
+        name: str,
+        history: int = 1,
+        ttl: float = 0.0,
+    ):
+        from nats.js.errors import NotFoundError
+
+        js = self.jetstream()
+        try:
+            return await js.key_value(name)
+        except NotFoundError:
+            kwargs: dict = {"bucket": name, "history": max(1, int(history))}
+            if ttl and ttl > 0:
+                kwargs["ttl"] = float(ttl)
+            return await js.create_key_value(**kwargs)
+
+    async def kv_put(
+        self,
+        *,
+        bucket: str,
+        key: str,
+        payload: dict | bytes,
+    ) -> int:
+        kv = await self.jetstream().key_value(bucket)
+        if isinstance(payload, dict):
+            payload = json.dumps(payload).encode()
+        return await kv.put(key, payload)
+
+    async def kv_list_all(self, *, bucket: str) -> dict[str, bytes]:
+        from nats.js.errors import KeyNotFoundError, NoKeysError, NotFoundError
+
+        try:
+            kv = await self.jetstream().key_value(bucket)
+        except NotFoundError:
+            return {}
+        try:
+            keys = await kv.keys()
+        except NoKeysError:
+            return {}
+        out: dict[str, bytes] = {}
+        for key in keys:
+            try:
+                entry = await kv.get(key)
+            except KeyNotFoundError:
+                continue
+            if entry is not None and entry.value is not None:
+                out[key] = entry.value
+        return out
+
     async def jetstream_subscribe_durable(
         self,
         *,

@@ -2,31 +2,12 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.admin_audit.model import AdminAuditRecord
+from shared.database.base_repository import BaseRepository
 
 
-class AdminAuditRepository:
+class AdminAuditRepository(BaseRepository[AdminAuditRecord]):
     def __init__(self, session: AsyncSession):
-        self.session = session
-
-    async def create(
-        self,
-        *,
-        actor: str,
-        action: str,
-        target: str | None = None,
-        summary: str | None = None,
-        details: dict | None = None,
-    ) -> AdminAuditRecord:
-        row = AdminAuditRecord(
-            actor=actor,
-            action=action,
-            target=target,
-            summary=summary,
-            details=details or {},
-        )
-        self.session.add(row)
-        await self.session.flush()
-        return row
+        super().__init__(AdminAuditRecord, session)
 
     async def list_paginated(
         self,

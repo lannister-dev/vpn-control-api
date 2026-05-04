@@ -26,6 +26,9 @@ class VpnKey(Base):
     )
     is_revoked: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"), nullable=False)
     subscription_id: Mapped[UUID | None] = mapped_column(ForeignKey("subscription.id"), nullable=True)
+    entry_routing_override_backend_tag: Mapped[str | None] = mapped_column(
+        String(length=128), nullable=True
+    )
 
     user: Mapped[User] = relationship(back_populates="keys")
     subscription: Mapped[Subscription] = relationship(

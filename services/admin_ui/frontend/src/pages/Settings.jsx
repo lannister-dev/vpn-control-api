@@ -10,6 +10,7 @@ const SECTIONS = [
   { id: "nodes", label: "Ноды и placements", icon: "server", hint: "heartbeat / auto-heal / rebalance / entry" },
   { id: "transport", label: "Транспорт (NATS)", icon: "activity", hint: "хранение событий и outbox" },
   { id: "traffic", label: "Трафик · cleanup", icon: "clock", hint: "retention для traffic_usage и node_traffic_usage" },
+  { id: "routing", label: "Per-user маршрутизация", icon: "route", hint: "форсить юзера на конкретный backend" },
 ];
 
 export function SettingsPage() {
@@ -45,6 +46,7 @@ export function SettingsPage() {
           {section === "nodes" && <NodePolicySection />}
           {section === "transport" && <TransportPolicySection />}
           {section === "traffic" && <TrafficPolicySection />}
+          {section === "routing" && <EntryRoutingOverrideSection />}
         </div>
       </div>
     </div>
@@ -138,6 +140,140 @@ function TransportPolicySection() {
         </div>
       )}
     </>
+  );
+}
+
+function EntryRoutingOverrideSection() {
+  const q = useQuery(() => api.get("/admin/routing/entry/state"), { interval: 30000 });
+  const [search, setSearch] = useState("");
+  const [busyKey, setBusyKey] = useState(null);
+
+  const backends = q.data?.backends || [];
+  const keys = q.data?.keys || [];
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return keys;
+    const term = search.trim().toLowerCase();
+    return keys.filter((k) =>
+      (k.user_username || "").toLowerCase().includes(term) ||
+      String(k.user_telegram_id || "").includes(term) ||
+      (k.client_id || "").toLowerCase().includes(term),
+    );
+  }, [keys, search]);
+
+  const apply = async (key, target) => {
+    setBusyKey(key.key_id);
+    try {
+      const payload = { backend_tag: target || null };
+      await api.patch(`/admin/routing/entry/keys/${key.key_id}/override`, payload);
+      toast.ok(target ? `→ ${target}` : "сброшен на auto");
+      q.refetch();
+    } catch (e) {
+      toast.bad(e.message || "Ошибка");
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  return (
+    <div className="card">
+      <div className="card-head">
+        <Icon name="route" size={14} />
+        <div className="sec-title">Per-user маршрутизация</div>
+        <div className="sec-sub">точечно прибить юзера к конкретному backend (override hash-распределения)</div>
+        <div className="sec-spacer" />
+        <button className="btn btn-ghost btn-xs" onClick={q.refetch}>
+          <Icon name="refresh" size={11} /> Обновить
+        </button>
+      </div>
+
+      {!backends.length && (
+        <div className="card-body muted">
+          Backend-пул пуст — entry-routing publisher либо выключен, либо в зоне нет здоровых backends.
+          Override недоступен.
+        </div>
+      )}
+
+      {!!backends.length && (
+        <>
+          <div className="filterbar" style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)" }}>
+            <input
+              className="input"
+              type="text"
+              placeholder="поиск по username / telegram_id / client_id"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{ flex: 1, maxWidth: 360 }}
+            />
+            <span className="muted text-xs" style={{ marginLeft: "auto" }}>
+              {filtered.length} / {keys.length}
+            </span>
+          </div>
+
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Юзер</th>
+                <th>client_id</th>
+                <th>Транспорт</th>
+                <th>Текущее назначение</th>
+                <th style={{ textAlign: "right" }}>Действие</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((k) => {
+                const busy = busyKey === k.key_id;
+                return (
+                  <tr key={k.key_id}>
+                    <td>
+                      <div style={{ fontWeight: 500 }}>{k.user_username || <span className="muted">—</span>}</div>
+                      {k.user_telegram_id && (
+                        <div className="mono small muted">tg: {k.user_telegram_id}</div>
+                      )}
+                    </td>
+                    <td className="mono muted" style={{ fontSize: 11 }}>
+                      {String(k.client_id).slice(0, 12)}…
+                    </td>
+                    <td className="mono small">{k.transport}</td>
+                    <td>
+                      {k.override ? (
+                        <span className="pill accent" title={`override → ${k.override}`}>{k.override}</span>
+                      ) : k.effective_backend ? (
+                        <span className="pill" title="вычислено хешем — переедет если drain">
+                          {k.effective_backend} <span className="muted">· auto</span>
+                        </span>
+                      ) : (
+                        <span className="muted small">—</span>
+                      )}
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <select
+                        className="select"
+                        disabled={busy}
+                        value={k.override || ""}
+                        onChange={(e) => apply(k, e.target.value)}
+                        style={{ minWidth: 200 }}
+                      >
+                        <option value="">auto (hash)</option>
+                        {backends.map((b) => (
+                          <option key={b.tag} value={b.tag}>{b.tag}</option>
+                        ))}
+                      </select>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {q.loading && !keys.length && <div className="muted" style={{ padding: 14 }}>Загрузка…</div>}
+          {!q.loading && !filtered.length && (
+            <div className="muted" style={{ padding: 14 }}>
+              {search ? "Ничего не найдено" : "Активных ключей нет"}
+            </div>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 

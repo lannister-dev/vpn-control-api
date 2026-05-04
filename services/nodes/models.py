@@ -47,6 +47,8 @@ class VpnNode(Base):
     bootstrapped_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    wg_public_key: Mapped[str | None] = mapped_column(String(length=64), nullable=True)
+    wg_listen_port: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     assignments: Mapped[list["KeyAssignment"]] = relationship(back_populates="node")
     agent_state: Mapped["NodeAgentState"] = relationship(back_populates="node")
