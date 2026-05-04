@@ -99,9 +99,9 @@ class TestEntryRoutingService:
         entry.zone = "europe"
         entry.region = "de"
 
-        key1 = MagicMock(client_id="client-1")
-        key2 = MagicMock(client_id="client-2")
-        key_no_client = MagicMock(client_id=None)
+        key1 = MagicMock(client_id="client-1", entry_routing_override_backend_tag=None)
+        key2 = MagicMock(client_id="client-2", entry_routing_override_backend_tag=None)
+        key_no_client = MagicMock(client_id=None, entry_routing_override_backend_tag=None)
 
         node_repo = MagicMock()
         node_repo.get_by_id = AsyncMock(return_value=entry)
@@ -174,7 +174,7 @@ class TestEntryRoutingService:
         backend_asia.reality_ip = "3.3.3.3"
         backend_asia.public_domain = ""
 
-        keys = [MagicMock(client_id=f"u{i}") for i in range(10)]
+        keys = [MagicMock(client_id=f"u{i}", entry_routing_override_backend_tag=None) for i in range(10)]
         node_repo = MagicMock()
         node_repo.get_by_id = AsyncMock(return_value=entry)
         node_repo.list = AsyncMock(return_value=[entry, backend1, backend2, backend_asia])
@@ -209,6 +209,99 @@ class TestEntryRoutingService:
         assert len(spec.rules) == 10
         assert {r.outbound_tag for r in spec.rules} <= {b.tag for b in spec.backends}
 
+    async def test_override_pins_user_to_specific_backend(self):
+        entry_id = uuid4()
+        entry = MagicMock()
+        entry.id = entry_id
+        entry.role = ROLE_ENTRY
+        entry.zone = "europe"
+        entry.region = "de"
+
+        backend1 = MagicMock()
+        backend1.id = uuid4()
+        backend1.name = "hel"
+        backend1.role = "backend"
+        backend1.is_enabled = True
+        backend1.is_draining = False
+        backend1.zone = "europe"
+        backend1.region = "fi"
+        backend1.reality_ip = "1.1.1.1"
+        backend1.public_domain = ""
+
+        backend2 = MagicMock()
+        backend2.id = uuid4()
+        backend2.name = "par"
+        backend2.role = "backend"
+        backend2.is_enabled = True
+        backend2.is_draining = False
+        backend2.zone = "europe"
+        backend2.region = "fr"
+        backend2.reality_ip = "2.2.2.2"
+        backend2.public_domain = ""
+
+        forced = MagicMock(client_id="forced-user", entry_routing_override_backend_tag="backend-par")
+        free = MagicMock(client_id="free-user", entry_routing_override_backend_tag=None)
+
+        node_repo = MagicMock()
+        node_repo.get_by_id = AsyncMock(return_value=entry)
+        node_repo.list = AsyncMock(return_value=[entry, backend1, backend2])
+        key_repo = MagicMock()
+        key_repo.list_all_active = AsyncMock(return_value=[forced, free])
+
+        svc = EntryRoutingService(
+            session=MagicMock(),
+            config=EntryRoutingConfig(
+                backend_service_uuid="svc",
+                backend_reality_public_key="pubkey",
+            ),
+        )
+        svc.node_repo = node_repo
+        svc.key_repo = key_repo
+
+        spec = await svc.build_spec_for_node(entry_id)
+        rules = {r.user_uuid: r.outbound_tag for r in spec.rules}
+        assert rules["forced-user"] == "backend-par"
+        assert rules["free-user"] in {"backend-hel", "backend-par"}
+
+    async def test_invalid_override_falls_back_to_hash(self):
+        entry_id = uuid4()
+        entry = MagicMock()
+        entry.id = entry_id
+        entry.role = ROLE_ENTRY
+        entry.zone = "europe"
+        entry.region = "de"
+
+        backend = MagicMock()
+        backend.id = uuid4()
+        backend.name = "hel"
+        backend.role = "backend"
+        backend.is_enabled = True
+        backend.is_draining = False
+        backend.zone = "europe"
+        backend.region = "fi"
+        backend.reality_ip = "1.1.1.1"
+        backend.public_domain = ""
+
+        bad = MagicMock(client_id="user-1", entry_routing_override_backend_tag="backend-removed")
+        node_repo = MagicMock()
+        node_repo.get_by_id = AsyncMock(return_value=entry)
+        node_repo.list = AsyncMock(return_value=[entry, backend])
+        key_repo = MagicMock()
+        key_repo.list_all_active = AsyncMock(return_value=[bad])
+
+        svc = EntryRoutingService(
+            session=MagicMock(),
+            config=EntryRoutingConfig(
+                backend_service_uuid="svc",
+                backend_reality_public_key="pubkey",
+            ),
+        )
+        svc.node_repo = node_repo
+        svc.key_repo = key_repo
+
+        spec = await svc.build_spec_for_node(entry_id)
+        assert spec.rules[0].outbound_tag == "backend-hel"
+
     async def test_user_assignment_is_stable_across_runs(self):
         entry_id = uuid4()
         entry = MagicMock()
@@ -239,7 +332,7 @@ class TestEntryRoutingService:
         backend2.reality_ip = "2.2.2.2"
         backend2.public_domain = ""
 
-        keys = [MagicMock(client_id=f"u{i}") for i in range(50)]
+        keys = [MagicMock(client_id=f"u{i}", entry_routing_override_backend_tag=None) for i in range(50)]
         cfg = EntryRoutingConfig(
             listen_port=8443,
             reality_private_key="pk",

@@ -10,6 +10,7 @@ const SECTIONS = [
   { id: "nodes", label: "Ноды и placements", icon: "server", hint: "heartbeat / auto-heal / rebalance / entry" },
   { id: "transport", label: "Транспорт (NATS)", icon: "activity", hint: "хранение событий и outbox" },
   { id: "traffic", label: "Трафик · cleanup", icon: "clock", hint: "retention для traffic_usage и node_traffic_usage" },
+  { id: "routing", label: "Per-user маршрутизация", icon: "route", hint: "форсить юзера на конкретный backend" },
 ];
 
 export function SettingsPage() {
@@ -45,6 +46,7 @@ export function SettingsPage() {
           {section === "nodes" && <NodePolicySection />}
           {section === "transport" && <TransportPolicySection />}
           {section === "traffic" && <TrafficPolicySection />}
+          {section === "routing" && <EntryRoutingOverrideSection />}
         </div>
       </div>
     </div>
@@ -138,6 +140,82 @@ function TransportPolicySection() {
         </div>
       )}
     </>
+  );
+}
+
+function EntryRoutingOverrideSection() {
+  const [keyId, setKeyId] = useState("");
+  const [backendTag, setBackendTag] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [last, setLast] = useState(null);
+
+  const apply = async (clear = false) => {
+    if (!keyId.trim()) {
+      toast.bad("Введите key_id");
+      return;
+    }
+    setBusy(true);
+    try {
+      const payload = { backend_tag: clear ? null : (backendTag.trim() || null) };
+      const res = await api.patch(`/admin/routing/entry/keys/${keyId.trim()}/override`, payload);
+      setLast(res);
+      toast.ok(clear ? "Override снят" : `Override → ${res.entry_routing_override_backend_tag}`);
+    } catch (e) {
+      toast.bad(e.message || "Ошибка");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card">
+      <div className="card-head">
+        <Icon name="route" size={14} />
+        <div className="sec-title">Per-user маршрутизация</div>
+        <div className="sec-sub">принудительно прибиваем VPN-ключ к конкретному backend на entry-нодах</div>
+      </div>
+      <div className="card-body">
+        <div className="form-row">
+          <Field label="VPN key_id (UUID)" hint="идентификатор записи vpn_key, не client_id">
+            <input
+              type="text"
+              value={keyId}
+              onChange={(e) => setKeyId(e.target.value)}
+              placeholder="00000000-0000-0000-0000-000000000000"
+              spellCheck={false}
+              style={{ fontFamily: "var(--font-mono)" }}
+            />
+          </Field>
+          <Field label="Backend tag" hint='напр. "backend-hel-backend-01" — как в spec.backends[].tag'>
+            <input
+              type="text"
+              value={backendTag}
+              onChange={(e) => setBackendTag(e.target.value)}
+              placeholder="backend-<node-name>"
+              spellCheck={false}
+              style={{ fontFamily: "var(--font-mono)" }}
+            />
+          </Field>
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+          <button className="btn btn-primary" onClick={() => apply(false)} disabled={busy}>
+            <Icon name="route" size={12} /> Применить
+          </button>
+          <button className="btn btn-ghost" onClick={() => apply(true)} disabled={busy}>
+            Снять override (вернуть hash)
+          </button>
+        </div>
+        <div className="muted small" style={{ marginTop: 12 }}>
+          Override переживает рестарт sing-box и применяется на следующем тике publisher-реконсайлера (~30 секунд).
+          Если backend недоступен в зоне — игнорируется, юзер возвращается к hash-распределению.
+        </div>
+        {last && (
+          <pre className="mono small" style={{ marginTop: 12, padding: 10, background: "var(--surface-2)", borderRadius: 6 }}>
+{JSON.stringify(last, null, 2)}
+          </pre>
+        )}
+      </div>
+    </div>
   );
 }
 

@@ -48,8 +48,13 @@ class EntryRoutingService:
             for key in keys
             if key.client_id
         ]
+        overrides = {
+            key.client_id: key.entry_routing_override_backend_tag
+            for key in keys
+            if key.client_id and key.entry_routing_override_backend_tag
+        }
         backends = await self._build_backends_for_zone(node)
-        rules, final_outbound = self._assign_users_to_backends(users, backends)
+        rules, final_outbound = self._assign_users_to_backends(users, backends, overrides)
         return EntryRoutingSpec(
             node_id=str(node.id),
             listen_port=self.config.listen_port,
@@ -99,12 +104,21 @@ class EntryRoutingService:
     def _assign_users_to_backends(
         users: list[EntryRoutingUser],
         backends: list[EntryRoutingBackend],
+        overrides: dict[str, str] | None = None,
     ) -> tuple[list[EntryRoutingRule], str]:
         if not backends:
             return [], "direct"
         ordered = sorted(backends, key=lambda b: b.tag)
+        valid_tags = {b.tag for b in ordered}
+        overrides = overrides or {}
         rules: list[EntryRoutingRule] = []
         for user in users:
+            forced = overrides.get(user.uuid)
+            if forced and forced in valid_tags:
+                rules.append(
+                    EntryRoutingRule(user_uuid=user.uuid, outbound_tag=forced)
+                )
+                continue
             digest = hashlib.sha256(user.uuid.encode()).digest()
             idx = int.from_bytes(digest[:8], "big") % len(ordered)
             rules.append(
