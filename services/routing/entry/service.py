@@ -4,9 +4,10 @@ import hashlib
 import logging
 from uuid import UUID
 
+from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.config import EntryRoutingConfig
+from services.config import EntryRoutingConfig, get_settings
 from services.nodes.constants import ROLE_BACKEND, ROLE_ENTRY, ROLE_WHITELIST_ENTRY
 from services.nodes.models import VpnNode
 from services.nodes.repository import VpnNodeRepository
@@ -23,6 +24,7 @@ from services.routing.entry.schemas import (
     RoutingStateOut,
 )
 from services.vpn.keys.repository import VpnKeyRepository
+from shared.database.session import AsyncDatabase
 from shared.utils.logger import StructuredLogger
 from shared.utils.node_display import effective_zone
 
@@ -195,3 +197,9 @@ class EntryRoutingAdminService:
                 entry_routing_override_backend_tag=key.entry_routing_override_backend_tag,
             ),
         )
+
+
+def get_entry_routing_admin_service(
+    session: AsyncSession = Depends(AsyncDatabase.get_session),
+) -> EntryRoutingAdminService:
+    return EntryRoutingAdminService(session, config=get_settings().entry_routing)
