@@ -49,6 +49,7 @@ from services.vpn.keys.models import KeyAssignment, VpnKey  # noqa: F401
 from services.vpn.keys.reconcilers.expiration import VpnKeyExpirationReconciler
 from services.vpn.subscriptions.model import Subscription, SubscriptionDevice, SubscriptionDeviceKey  # noqa: F401
 from services.vpn.subscriptions.reconcilers.expiration import SubscriptionExpirationReconciler
+from services.wg.publisher import WgMeshPeerPublisher
 from shared.app.bootstrap import (
     bootstrap_profiles,
     configure_root_logging,
@@ -87,6 +88,7 @@ def _build_reconcilers() -> list:
         BillingOrderExpirationReconciler(),
         EntryAutoDrainReconciler(),
         EntryRoutingPublisher(),
+        WgMeshPeerPublisher(),
     ]
 
 
