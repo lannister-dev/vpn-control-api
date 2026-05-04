@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -65,3 +66,55 @@ class EntryRoutingSpec(BaseModel):
         )
         payload = normalized.model_dump(mode="json")
         return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
+
+class KeyRoutingOverrideIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    backend_tag: str | None = Field(default=None, max_length=128)
+
+
+class KeyRoutingOverrideOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    key_id: UUID
+    client_id: str
+    entry_routing_override_backend_tag: str | None
+
+
+class RoutingBackendOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tag: str
+    server: str
+    server_port: int
+
+
+class RoutingKeyRowOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    key_id: UUID
+    client_id: str
+    user_id: UUID
+    user_username: str | None = None
+    user_telegram_id: int | None = None
+    subscription_id: UUID | None = None
+    transport: str
+    is_revoked: bool
+    override: str | None = None
+
+
+class RoutingStateOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    backends: list[RoutingBackendOut]
+    keys: list[RoutingKeyRowOut]
+
+
+class OverrideChange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    changed: bool
+    previous: str | None
+    current: str | None
+    key: KeyRoutingOverrideOut

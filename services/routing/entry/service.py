@@ -16,6 +16,11 @@ from services.routing.entry.schemas import (
     EntryRoutingRule,
     EntryRoutingSpec,
     EntryRoutingUser,
+    KeyRoutingOverrideOut,
+    OverrideChange,
+    RoutingBackendOut,
+    RoutingKeyRowOut,
+    RoutingStateOut,
 )
 from services.vpn.keys.repository import VpnKeyRepository
 from shared.utils.logger import StructuredLogger
@@ -125,3 +130,68 @@ class EntryRoutingService:
                 EntryRoutingRule(user_uuid=user.uuid, outbound_tag=ordered[idx].tag)
             )
         return rules, ordered[0].tag
+
+
+class EntryRoutingAdminService:
+    def __init__(self, session: AsyncSession, *, config: EntryRoutingConfig):
+        self.session = session
+        self.config = config
+        self.routing = EntryRoutingService(session, config=config)
+        self.key_repo = self.routing.key_repo
+
+    async def get_state(self, *, key_limit: int = 500) -> RoutingStateOut:
+        target_nodes = await self.routing.list_target_nodes()
+        backends_by_tag: dict[str, RoutingBackendOut] = {}
+        for entry in target_nodes:
+            for b in await self.routing._build_backends_for_zone(entry):
+                if b.tag not in backends_by_tag:
+                    backends_by_tag[b.tag] = RoutingBackendOut(
+                        tag=b.tag, server=b.server, server_port=b.server_port,
+                    )
+        rows = await self.key_repo.list_active_with_user(limit=key_limit)
+        keys = [
+            RoutingKeyRowOut(
+                key_id=row.id,
+                client_id=row.client_id,
+                user_id=row.user_id,
+                user_username=getattr(row.user, "username", None) if row.user else None,
+                user_telegram_id=getattr(row.user, "telegram_id", None) if row.user else None,
+                subscription_id=row.subscription_id,
+                transport=row.transport,
+                is_revoked=row.is_revoked,
+                override=row.entry_routing_override_backend_tag,
+            )
+            for row in rows
+        ]
+        return RoutingStateOut(
+            backends=sorted(backends_by_tag.values(), key=lambda x: x.tag),
+            keys=keys,
+        )
+
+    async def set_key_override(
+        self,
+        *,
+        key_id: UUID,
+        backend_tag: str | None,
+    ) -> OverrideChange | None:
+        key = await self.key_repo.get_by_id(key_id)
+        if key is None:
+            return None
+        previous = key.entry_routing_override_backend_tag
+        normalized = (backend_tag or "").strip() or None
+        changed = normalized != previous
+        if changed:
+            await self.key_repo.update_by_id(
+                key_id, {"entry_routing_override_backend_tag": normalized},
+            )
+            key.entry_routing_override_backend_tag = normalized
+        return OverrideChange(
+            changed=changed,
+            previous=previous,
+            current=normalized,
+            key=KeyRoutingOverrideOut(
+                key_id=key.id,
+                client_id=key.client_id,
+                entry_routing_override_backend_tag=key.entry_routing_override_backend_tag,
+            ),
+        )
