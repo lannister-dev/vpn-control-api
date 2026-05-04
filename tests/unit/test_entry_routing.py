@@ -14,7 +14,7 @@ from services.routing.entry.schemas import (
     EntryRoutingSpec,
     EntryRoutingUser,
 )
-from services.routing.entry.service import EntryRoutingService
+from services.routing.entry.service import EntryRoutingAdminService, EntryRoutingService
 
 
 def _reality() -> EntryRoutingReality:
@@ -362,3 +362,31 @@ class TestEntryRoutingService:
         assert rules_a == rules_b
         tags = {r.outbound_tag for r in spec_a.rules}
         assert len(tags) == 2, "both backends should receive at least one user across 50 keys"
+
+
+class TestAdminServiceEffectiveBackend:
+    @staticmethod
+    def _eff(client_id, override=None, tags=("backend-a", "backend-b")):
+        return EntryRoutingAdminService._effective_backend(
+            client_id=client_id,
+            override=override,
+            backend_tags_sorted=list(tags),
+            valid_tags=set(tags),
+        )
+
+    def test_returns_none_when_no_backends(self):
+        assert self._eff("u1", tags=()) is None
+
+    def test_override_takes_priority(self):
+        assert self._eff("u1", override="backend-b") == "backend-b"
+
+    def test_invalid_override_falls_back_to_hash(self):
+        result = self._eff("u1", override="backend-removed")
+        assert result in {"backend-a", "backend-b"}
+
+    def test_hash_is_deterministic_for_same_id(self):
+        assert self._eff("u-stable") == self._eff("u-stable")
+
+    def test_distribution_uses_all_backends(self):
+        seen = {self._eff(f"u{i}") for i in range(50)}
+        assert seen == {"backend-a", "backend-b"}

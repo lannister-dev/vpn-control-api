@@ -75,24 +75,22 @@ class KeyRoutingOverrideIn(BaseModel):
 
 
 class KeyRoutingOverrideOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
     key_id: UUID
     client_id: str
     entry_routing_override_backend_tag: str | None
 
+    model_config = ConfigDict(from_attributes=True)
+
 
 class RoutingBackendOut(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
     tag: str
     server: str
     server_port: int
 
-
-class RoutingKeyRowOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+
+class RoutingKeyRowOut(BaseModel):
     key_id: UUID
     client_id: str
     user_id: UUID
@@ -102,19 +100,22 @@ class RoutingKeyRowOut(BaseModel):
     transport: str
     is_revoked: bool
     override: str | None = None
+    effective_backend: str | None = None
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class RoutingStateOut(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
     backends: list[RoutingBackendOut]
     keys: list[RoutingKeyRowOut]
 
-
-class OverrideChange(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+
+class OverrideChange(BaseModel):
     changed: bool
     previous: str | None
     current: str | None
     key: KeyRoutingOverrideOut
+
+    model_config = ConfigDict(extra="forbid")

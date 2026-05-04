@@ -150,6 +150,8 @@ class EntryRoutingAdminService:
                     backends_by_tag[b.tag] = RoutingBackendOut(
                         tag=b.tag, server=b.server, server_port=b.server_port,
                     )
+        backend_tags_sorted = sorted(backends_by_tag.keys())
+        valid_tags = set(backend_tags_sorted)
         rows = await self.key_repo.list_active_with_user(limit=key_limit)
         keys = [
             RoutingKeyRowOut(
@@ -162,6 +164,12 @@ class EntryRoutingAdminService:
                 transport=row.transport,
                 is_revoked=row.is_revoked,
                 override=row.entry_routing_override_backend_tag,
+                effective_backend=self._effective_backend(
+                    client_id=row.client_id,
+                    override=row.entry_routing_override_backend_tag,
+                    backend_tags_sorted=backend_tags_sorted,
+                    valid_tags=valid_tags,
+                ),
             )
             for row in rows
         ]
@@ -169,6 +177,22 @@ class EntryRoutingAdminService:
             backends=sorted(backends_by_tag.values(), key=lambda x: x.tag),
             keys=keys,
         )
+
+    @staticmethod
+    def _effective_backend(
+        *,
+        client_id: str,
+        override: str | None,
+        backend_tags_sorted: list[str],
+        valid_tags: set[str],
+    ) -> str | None:
+        if not backend_tags_sorted or not client_id:
+            return None
+        if override and override in valid_tags:
+            return override
+        digest = hashlib.sha256(client_id.encode()).digest()
+        idx = int.from_bytes(digest[:8], "big") % len(backend_tags_sorted)
+        return backend_tags_sorted[idx]
 
     async def set_key_override(
         self,

@@ -237,9 +237,13 @@ function EntryRoutingOverrideSection() {
                     <td className="mono small">{k.transport}</td>
                     <td>
                       {k.override ? (
-                        <span className="pill accent" title={k.override}>{k.override}</span>
+                        <span className="pill accent" title={`override → ${k.override}`}>{k.override}</span>
+                      ) : k.effective_backend ? (
+                        <span className="pill" title="вычислено хешем — переедет если drain">
+                          {k.effective_backend} <span className="muted">· auto</span>
+                        </span>
                       ) : (
-                        <span className="muted small">auto (hash)</span>
+                        <span className="muted small">—</span>
                       )}
                     </td>
                     <td style={{ textAlign: "right" }}>
