@@ -35,7 +35,6 @@ from services.traffic.users.router import router as traffic_admin_router
 from services.users.router import router as users_router
 from services.vpn.keys.router import router as vpn_router
 from services.vpn.subscriptions.router import router as subscriptions_router
-from services.wg.router import router as wg_agent_router
 from shared.app.bootstrap import configure_root_logging
 from shared.app.healthz import add_healthz
 from shared.app.lifespan import build_lifespan
@@ -65,7 +64,6 @@ api_router.include_router(artifacts_router)
 api_router.include_router(connect_router)
 api_router.include_router(entry_router)
 api_router.include_router(node_router)
-api_router.include_router(wg_agent_router)
 api_router.include_router(nodes_admin_router)
 api_router.include_router(nodes_installer_router)
 api_router.include_router(placements_router)
