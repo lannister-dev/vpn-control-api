@@ -4,9 +4,13 @@ import asyncio
 import logging
 from uuid import UUID
 
+from services.auth.utils import AuthUtils
 from services.config import NatsConfig, WgMeshConfig, get_settings
 from services.nodes.repository import VpnNodeRepository
-from services.wg.constants import KV_KEY_PREFIX, KV_PEERS_BUCKET
+from services.nodes.schemas import VpnNodeUpdate
+from services.wg.allocator import allocate_next_ip
+from services.wg.constants import KV_KEY_PREFIX, KV_PEERS_BUCKET, KV_PUBKEYS_BUCKET
+from services.wg.schemas import WgPubkeyKvPayload
 from services.wg.service import WgMeshService
 from shared.database.session import AsyncDatabase
 from shared.nats.client import NatsClient
@@ -64,6 +68,7 @@ class WgMeshPeerPublisher:
         if not self._nats.is_connected:
             await self._nats.connect()
             await self._nats.ensure_kv_bucket(name=KV_PEERS_BUCKET, history=1)
+            await self._nats.ensure_kv_bucket(name=KV_PUBKEYS_BUCKET, history=1)
         return self._nats
 
     async def _run(self) -> None:
@@ -89,6 +94,7 @@ class WgMeshPeerPublisher:
     async def _tick(self) -> None:
         nats = await self._ensure_nats()
         async with self._session_maker() as session:
+            await self._sync_pubkeys_from_kv(session=session, nats=nats)
             service = WgMeshService(session, config=self._cfg)
             nodes = await VpnNodeRepository(session).list()
             published = 0
@@ -116,6 +122,52 @@ class WgMeshPeerPublisher:
                 published += 1
             if published:
                 logger.info("wg_mesh_peers_published", nodes=published, total=len(nodes))
+
+    async def _sync_pubkeys_from_kv(self, *, session, nats: NatsClient) -> None:
+        entries = await nats.kv_list_all(bucket=KV_PUBKEYS_BUCKET)
+        if not entries:
+            return
+        repo = VpnNodeRepository(session)
+        nodes_by_id = {str(n.id): n for n in await repo.list()}
+        synced_count = 0
+        for key, raw in entries.items():
+            try:
+                payload = WgPubkeyKvPayload.model_validate_json(raw)
+            except Exception as exc:
+                logger.warning("wg_pubkey_kv_invalid_payload", key=key, err=str(exc))
+                continue
+            node = nodes_by_id.get(str(payload.node_id))
+            if node is None:
+                logger.warning("wg_pubkey_kv_unknown_node", node_id=str(payload.node_id))
+                continue
+            if AuthUtils.hash_node_token(payload.auth_token) != node.auth_token_hash:
+                logger.warning("wg_pubkey_kv_auth_failed", node_id=str(payload.node_id))
+                continue
+            current_used = {
+                n.internal_wg_ip for n in nodes_by_id.values()
+                if n.id != node.id and (n.internal_wg_ip or "").strip()
+            }
+            address = (node.internal_wg_ip or "").strip()
+            if not address:
+                address = allocate_next_ip(cidr=self._cfg.mesh_cidr, used=current_used)
+            if (
+                node.wg_public_key == payload.public_key
+                and node.wg_listen_port == payload.listen_port
+                and node.internal_wg_ip == address
+            ):
+                continue
+            update = VpnNodeUpdate(
+                wg_public_key=payload.public_key,
+                wg_listen_port=payload.listen_port,
+                internal_wg_ip=address,
+            )
+            await repo.update_by_id(node.id, update.model_dump(exclude_unset=True))
+            node.wg_public_key = payload.public_key
+            node.wg_listen_port = payload.listen_port
+            node.internal_wg_ip = address
+            synced_count += 1
+        if synced_count:
+            logger.info("wg_pubkey_kv_synced", count=synced_count)
 
     @staticmethod
     def _signature_for(payload: dict) -> str:
