@@ -1,16 +1,22 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
+from typing import TYPE_CHECKING
 from uuid import UUID
 
-from fastapi import Depends
+if TYPE_CHECKING:
+    from shared.nats.client import NatsClient
+
+from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.config import EntryRoutingConfig, get_settings
 from services.nodes.constants import ROLE_BACKEND, ROLE_ENTRY, ROLE_WHITELIST_ENTRY
 from services.nodes.models import VpnNode
 from services.nodes.repository import VpnNodeRepository
+from services.routing.entry.constants import KV_STATS_BUCKET
 from services.routing.entry.exceptions import UnknownBackendTagError
 from services.routing.entry.schemas import (
     EntryRoutingBackend,
@@ -22,6 +28,7 @@ from services.routing.entry.schemas import (
     OverrideChange,
     RoutingBackendOut,
     RoutingKeyRowOut,
+    RoutingLiveStatsByBackend,
     RoutingStateOut,
 )
 from services.vpn.keys.repository import VpnKeyRepository
@@ -136,11 +143,18 @@ class EntryRoutingService:
 
 
 class EntryRoutingAdminService:
-    def __init__(self, session: AsyncSession, *, config: EntryRoutingConfig):
+    def __init__(
+        self,
+        session: AsyncSession,
+        *,
+        config: EntryRoutingConfig,
+        nats_client: NatsClient | None = None,
+    ):
         self.session = session
         self.config = config
         self.routing = EntryRoutingService(session, config=config)
         self.key_repo = self.routing.key_repo
+        self._nats = nats_client
 
     async def get_state(self, *, key_limit: int = 500) -> RoutingStateOut:
         target_nodes = await self.routing.list_target_nodes()
@@ -174,10 +188,33 @@ class EntryRoutingAdminService:
             )
             for row in rows
         ]
+        live = await self._collect_live_stats()
         return RoutingStateOut(
             backends=sorted(backends_by_tag.values(), key=lambda x: x.tag),
             keys=keys,
+            live=live,
         )
+
+    async def _collect_live_stats(self) -> list[RoutingLiveStatsByBackend]:
+        if self._nats is None:
+            return []
+        try:
+            entries = await self._nats.kv_list_all(bucket=KV_STATS_BUCKET)
+        except Exception:
+            logger.exception("entry_routing_live_stats_fetch_failed")
+            return []
+        totals: dict[str, int] = {}
+        for raw in entries.values():
+            try:
+                payload = json.loads(raw.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                continue
+            for tag, count in (payload.get("by_backend") or {}).items():
+                totals[tag] = totals.get(tag, 0) + int(count)
+        return [
+            RoutingLiveStatsByBackend(tag=tag, connections=count)
+            for tag, count in sorted(totals.items())
+        ]
 
     @staticmethod
     def _effective_backend(
@@ -237,6 +274,12 @@ class EntryRoutingAdminService:
 
 
 def get_entry_routing_admin_service(
+    request: Request,
     session: AsyncSession = Depends(AsyncDatabase.get_session),
 ) -> EntryRoutingAdminService:
-    return EntryRoutingAdminService(session, config=get_settings().entry_routing)
+    nats_client = getattr(request.app.state, "nats_client", None)
+    return EntryRoutingAdminService(
+        session,
+        config=get_settings().entry_routing,
+        nats_client=nats_client,
+    )

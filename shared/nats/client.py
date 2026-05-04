@@ -252,6 +252,27 @@ class NatsClient:
             payload = json.dumps(payload).encode()
         return await kv.put(key, payload)
 
+    async def kv_list_all(self, *, bucket: str) -> dict[str, bytes]:
+        from nats.js.errors import KeyNotFoundError, NoKeysError, NotFoundError
+
+        try:
+            kv = await self.jetstream().key_value(bucket)
+        except NotFoundError:
+            return {}
+        try:
+            keys = await kv.keys()
+        except NoKeysError:
+            return {}
+        out: dict[str, bytes] = {}
+        for key in keys:
+            try:
+                entry = await kv.get(key)
+            except KeyNotFoundError:
+                continue
+            if entry is not None and entry.value is not None:
+                out[key] = entry.value
+        return out
+
     async def jetstream_subscribe_durable(
         self,
         *,

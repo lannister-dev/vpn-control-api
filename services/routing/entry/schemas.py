@@ -105,9 +105,17 @@ class RoutingKeyRowOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class RoutingLiveStatsByBackend(BaseModel):
+    tag: str
+    connections: int
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class RoutingStateOut(BaseModel):
     backends: list[RoutingBackendOut]
     keys: list[RoutingKeyRowOut]
+    live: list[RoutingLiveStatsByBackend] = []
 
     model_config = ConfigDict(extra="forbid")
 
