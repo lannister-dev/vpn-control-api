@@ -53,26 +53,23 @@ class TestPubkeySyncFromKv:
         nats_cfg = MagicMock()
         return WgMeshPeerPublisher(wg_config=cfg, nats_config=nats_cfg)
 
-    def _kv_payload(self, *, node_id, public_key, auth_token, listen_port=51820) -> bytes:
+    def _kv_payload(self, *, node_id, public_key, listen_port=51820) -> bytes:
         return json.dumps({
             "node_id": str(node_id),
             "public_key": public_key,
             "listen_port": listen_port,
-            "auth_token": auth_token,
         }).encode()
 
-    async def test_syncs_pubkey_with_valid_token(self, monkeypatch):
-        from services.auth.utils import AuthUtils
+    async def test_syncs_pubkey(self, monkeypatch):
         node_id = uuid4()
-        token = "valid-token-1234"
-        node = _node(id=node_id, auth_token_hash=AuthUtils.hash_node_token(token))
+        node = _node(id=node_id)
         repo_list = AsyncMock(return_value=[node])
         update_by_id = AsyncMock()
 
         nats = MagicMock()
         nats.kv_list_all = AsyncMock(return_value={
             f"node.{node_id}": self._kv_payload(
-                node_id=node_id, public_key="P" * 44, auth_token=token,
+                node_id=node_id, public_key="P" * 44,
             ),
         })
 
@@ -87,29 +84,6 @@ class TestPubkeySyncFromKv:
         assert kwargs["wg_public_key"] == "P" * 44
         assert kwargs["internal_wg_ip"] == "10.10.0.2"
 
-    async def test_skips_invalid_token(self, monkeypatch):
-        from services.auth.utils import AuthUtils
-
-        node_id = uuid4()
-        node = _node(id=node_id, auth_token_hash=AuthUtils.hash_node_token("real-token"))
-        repo_list = AsyncMock(return_value=[node])
-        update_by_id = AsyncMock()
-
-        nats = MagicMock()
-        nats.kv_list_all = AsyncMock(return_value={
-            f"node.{node_id}": self._kv_payload(
-                node_id=node_id, public_key="X" * 44, auth_token="wrong-token",
-            ),
-        })
-
-        publisher = self._publisher()
-        with monkeypatch.context() as m:
-            m.setattr("services.wg.publisher.VpnNodeRepository",
-                      lambda session: MagicMock(list=repo_list, update_by_id=update_by_id))
-            await publisher._sync_pubkeys_from_kv(session=MagicMock(), nats=nats)
-
-        update_by_id.assert_not_awaited()
-
     async def test_skips_unknown_node(self, monkeypatch):
         node = _node()
         repo_list = AsyncMock(return_value=[node])
@@ -120,7 +94,6 @@ class TestPubkeySyncFromKv:
             "node.deadbeef-0000-0000-0000-000000000000": self._kv_payload(
                 node_id="deadbeef-0000-0000-0000-000000000000",
                 public_key="Z" * 44,
-                auth_token="any",
             ),
         })
 
@@ -133,14 +106,10 @@ class TestPubkeySyncFromKv:
         update_by_id.assert_not_awaited()
 
     async def test_no_op_when_already_synced(self, monkeypatch):
-        from services.auth.utils import AuthUtils
-
         node_id = uuid4()
-        token = "my-token-xxxx"
         pubkey = "K" * 44
         node = _node(
             id=node_id,
-            auth_token_hash=AuthUtils.hash_node_token(token),
             wg_public_key=pubkey,
             wg_listen_port=51820,
             internal_wg_ip="10.10.0.5",
@@ -151,7 +120,7 @@ class TestPubkeySyncFromKv:
         nats = MagicMock()
         nats.kv_list_all = AsyncMock(return_value={
             f"node.{node_id}": self._kv_payload(
-                node_id=node_id, public_key=pubkey, auth_token=token,
+                node_id=node_id, public_key=pubkey,
             ),
         })
 
