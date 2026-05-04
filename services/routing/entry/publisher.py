@@ -5,15 +5,15 @@ import logging
 from uuid import UUID
 
 from services.config import EntryRoutingConfig, NatsConfig, get_settings
-from services.entry_routing.constants import (
+from services.routing.entry.constants import (
     KV_BUCKET,
     KV_KEY_PREFIX,
     PUBLISHER_IDLE_WHEN_DISABLED_SEC,
 )
-from services.entry_routing.service import (
+from services.routing.entry.service import (
     EntryRoutingConfig as ServiceConfig,
 )
-from services.entry_routing.service import (
+from services.routing.entry.service import (
     EntryRoutingService,
 )
 from shared.database.session import AsyncDatabase

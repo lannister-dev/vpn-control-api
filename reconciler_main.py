@@ -15,7 +15,6 @@ from services.billing.reconcilers.expiration import BillingOrderExpirationReconc
 from services.config import get_settings
 from services.entry.models import EntryBackendAssignment  # noqa: F401
 from services.entry.reconcilers.auto_drain import EntryAutoDrainReconciler
-from services.entry_routing.publisher import EntryRoutingPublisher
 from services.nodes.agent.model import (  # noqa: F401
     NodeTransportEventLog,
     NodeTransportOutbox,
@@ -34,6 +33,7 @@ from services.probe.reconcilers.cleanup import ProbeSignalCleanupReconciler
 from services.probe.reconcilers.synthetic import ProbeSyntheticCredentialReconciler
 from services.routes.model import Route, TransportProfile  # noqa: F401
 from services.routes.reconcilers.warmup import RouteWarmupReconciler
+from services.routing.entry.publisher import EntryRoutingPublisher
 from services.traffic.nodes.consumer import NodeTrafficNatsConsumer
 from services.traffic.nodes.model import NodeTrafficUsage  # noqa: F401
 from services.traffic.nodes.reconcilers.cleanup import NodeTrafficHistoryCleanupReconciler

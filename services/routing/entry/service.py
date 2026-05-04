@@ -6,14 +6,14 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.entry_routing.schemas import (
+from services.nodes.constants import ROLE_ENTRY, ROLE_WHITELIST_ENTRY
+from services.nodes.models import VpnNode
+from services.nodes.repository import VpnNodeRepository
+from services.routing.entry.schemas import (
     EntryRoutingReality,
     EntryRoutingSpec,
     EntryRoutingUser,
 )
-from services.nodes.constants import ROLE_ENTRY, ROLE_WHITELIST_ENTRY
-from services.nodes.models import VpnNode
-from services.nodes.repository import VpnNodeRepository
 from services.vpn.keys.repository import VpnKeyRepository
 from shared.utils.logger import StructuredLogger
 

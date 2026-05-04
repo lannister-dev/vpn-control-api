@@ -5,15 +5,15 @@ from uuid import uuid4
 
 import pytest
 
-from services.entry_routing.schemas import (
+from services.nodes.constants import ROLE_BACKEND, ROLE_ENTRY
+from services.routing.entry.schemas import (
     EntryRoutingBackend,
     EntryRoutingReality,
     EntryRoutingRule,
     EntryRoutingSpec,
     EntryRoutingUser,
 )
-from services.entry_routing.service import EntryRoutingConfig, EntryRoutingService
-from services.nodes.constants import ROLE_BACKEND, ROLE_ENTRY
+from services.routing.entry.service import EntryRoutingConfig, EntryRoutingService
 
 
 def _reality() -> EntryRoutingReality:
