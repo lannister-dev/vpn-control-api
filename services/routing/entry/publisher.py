@@ -10,12 +10,7 @@ from services.routing.entry.constants import (
     KV_KEY_PREFIX,
     PUBLISHER_IDLE_WHEN_DISABLED_SEC,
 )
-from services.routing.entry.service import (
-    EntryRoutingConfig as ServiceConfig,
-)
-from services.routing.entry.service import (
-    EntryRoutingService,
-)
+from services.routing.entry.service import EntryRoutingService
 from shared.database.session import AsyncDatabase
 from shared.nats.client import NatsClient
 from shared.reconciler.watchdog import watchdog
@@ -44,7 +39,7 @@ class EntryRoutingPublisher:
         self._task: asyncio.Task | None = None
         self._last_signatures: dict[UUID, str] = {}
 
-    async def start(self) -> None:
+    async def start(self):
         if self._task is not None and not self._task.done():
             return
         if not self._enabled:
@@ -52,7 +47,7 @@ class EntryRoutingPublisher:
         self._stop_event.clear()
         self._task = asyncio.create_task(self._run())
 
-    async def stop(self) -> None:
+    async def stop(self):
         if self._task is None:
             return
         self._stop_event.set()
@@ -70,7 +65,7 @@ class EntryRoutingPublisher:
             await self._nats.ensure_kv_bucket(name=KV_BUCKET, history=1)
         return self._nats
 
-    async def _run(self) -> None:
+    async def _run(self):
         while not self._stop_event.is_set():
             sleep_sec = PUBLISHER_IDLE_WHEN_DISABLED_SEC
             if self._enabled:
@@ -91,18 +86,10 @@ class EntryRoutingPublisher:
             except asyncio.TimeoutError:
                 continue
 
-    async def _tick(self) -> None:
+    async def _tick(self):
         nats = await self._ensure_nats()
-        service_cfg = ServiceConfig(
-            listen_port=self._cfg.listen_port,
-            reality_private_key=self._cfg.reality_private_key,
-            reality_short_id=self._cfg.reality_short_id,
-            reality_server_name=self._cfg.reality_server_name,
-            reality_handshake_server=self._cfg.reality_handshake_server,
-            reality_handshake_port=self._cfg.reality_handshake_port,
-        )
         async with self._session_maker() as session:
-            service = EntryRoutingService(session, config=service_cfg)
+            service = EntryRoutingService(session, config=self._cfg)
             target_nodes = await service.list_target_nodes()
             published = 0
             for node in target_nodes:

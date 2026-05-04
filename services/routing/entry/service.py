@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.config import EntryRoutingConfig
 from services.nodes.constants import ROLE_ENTRY, ROLE_WHITELIST_ENTRY
 from services.nodes.models import VpnNode
 from services.nodes.repository import VpnNodeRepository
@@ -18,16 +18,6 @@ from services.vpn.keys.repository import VpnKeyRepository
 from shared.utils.logger import StructuredLogger
 
 logger = StructuredLogger(logging.getLogger("entry-routing-service"))
-
-
-@dataclass(frozen=True, slots=True)
-class EntryRoutingConfig:
-    listen_port: int
-    reality_private_key: str
-    reality_short_id: str
-    reality_server_name: str
-    reality_handshake_server: str
-    reality_handshake_port: int
 
 
 class EntryRoutingService:

@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import pytest
 
+from services.config import EntryRoutingConfig
 from services.nodes.constants import ROLE_BACKEND, ROLE_ENTRY
 from services.routing.entry.schemas import (
     EntryRoutingBackend,
@@ -13,7 +14,7 @@ from services.routing.entry.schemas import (
     EntryRoutingSpec,
     EntryRoutingUser,
 )
-from services.routing.entry.service import EntryRoutingConfig, EntryRoutingService
+from services.routing.entry.service import EntryRoutingService
 
 
 def _reality() -> EntryRoutingReality:
