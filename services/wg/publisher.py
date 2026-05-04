@@ -4,7 +4,6 @@ import asyncio
 import logging
 from uuid import UUID
 
-from services.auth.utils import AuthUtils
 from services.config import NatsConfig, WgMeshConfig, get_settings
 from services.nodes.repository import VpnNodeRepository
 from services.nodes.schemas import VpnNodeUpdate
@@ -139,9 +138,6 @@ class WgMeshPeerPublisher:
             node = nodes_by_id.get(str(payload.node_id))
             if node is None:
                 logger.warning("wg_pubkey_kv_unknown_node", node_id=str(payload.node_id))
-                continue
-            if AuthUtils.hash_node_token(payload.auth_token) != node.auth_token_hash:
-                logger.warning("wg_pubkey_kv_auth_failed", node_id=str(payload.node_id))
                 continue
             current_used = {
                 n.internal_wg_ip for n in nodes_by_id.values()
