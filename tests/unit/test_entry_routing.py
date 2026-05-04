@@ -96,6 +96,8 @@ class TestEntryRoutingService:
         entry = MagicMock()
         entry.id = entry_id
         entry.role = ROLE_ENTRY
+        entry.zone = "europe"
+        entry.region = "de"
 
         key1 = MagicMock(client_id="client-1")
         key2 = MagicMock(client_id="client-2")
@@ -103,6 +105,7 @@ class TestEntryRoutingService:
 
         node_repo = MagicMock()
         node_repo.get_by_id = AsyncMock(return_value=entry)
+        node_repo.list = AsyncMock(return_value=[entry])
         key_repo = MagicMock()
         key_repo.list_all_active = AsyncMock(return_value=[key1, key2, key_no_client])
 
@@ -126,3 +129,143 @@ class TestEntryRoutingService:
         assert spec.node_id == str(entry_id)
         assert spec.listen_port == 8443
         assert spec.reality.private_key == "pk"
+        assert spec.backends == []
+        assert spec.rules == []
+        assert spec.final_outbound == "direct"
+
+    async def test_assigns_users_to_backends_in_same_zone(self):
+        entry_id = uuid4()
+        entry = MagicMock()
+        entry.id = entry_id
+        entry.role = ROLE_ENTRY
+        entry.zone = "europe"
+        entry.region = "de"
+
+        backend1 = MagicMock()
+        backend1.id = uuid4()
+        backend1.name = "hel-backend-01"
+        backend1.role = "backend"
+        backend1.is_enabled = True
+        backend1.is_draining = False
+        backend1.zone = "europe"
+        backend1.region = "fi"
+        backend1.reality_ip = "1.1.1.1"
+        backend1.public_domain = ""
+
+        backend2 = MagicMock()
+        backend2.id = uuid4()
+        backend2.name = "par-backend-01"
+        backend2.role = "backend"
+        backend2.is_enabled = True
+        backend2.is_draining = False
+        backend2.zone = "europe"
+        backend2.region = "fr"
+        backend2.reality_ip = "2.2.2.2"
+        backend2.public_domain = ""
+
+        backend_asia = MagicMock()
+        backend_asia.id = uuid4()
+        backend_asia.name = "sg-backend"
+        backend_asia.role = "backend"
+        backend_asia.is_enabled = True
+        backend_asia.is_draining = False
+        backend_asia.zone = "asia"
+        backend_asia.region = "sg"
+        backend_asia.reality_ip = "3.3.3.3"
+        backend_asia.public_domain = ""
+
+        keys = [MagicMock(client_id=f"u{i}") for i in range(10)]
+        node_repo = MagicMock()
+        node_repo.get_by_id = AsyncMock(return_value=entry)
+        node_repo.list = AsyncMock(return_value=[entry, backend1, backend2, backend_asia])
+        key_repo = MagicMock()
+        key_repo.list_all_active = AsyncMock(return_value=keys)
+
+        svc = EntryRoutingService(
+            session=MagicMock(),
+            config=EntryRoutingConfig(
+                listen_port=8443,
+                reality_private_key="pk",
+                reality_short_id="sid",
+                reality_server_name="www.cloudflare.com",
+                reality_handshake_server="www.cloudflare.com",
+                reality_handshake_port=443,
+                backend_service_uuid="svc-uuid",
+                backend_reality_public_key="pubkey",
+                backend_port=443,
+            ),
+        )
+        svc.node_repo = node_repo
+        svc.key_repo = key_repo
+
+        spec = await svc.build_spec_for_node(entry_id)
+        assert spec is not None
+        assert {b.tag for b in spec.backends} == {
+            "backend-hel-backend-01",
+            "backend-par-backend-01",
+        }, "asia backend must be filtered out by zone"
+        assert all(b.uuid == "svc-uuid" for b in spec.backends)
+        assert all(b.reality_public_key == "pubkey" for b in spec.backends)
+        assert len(spec.rules) == 10
+        assert {r.outbound_tag for r in spec.rules} <= {b.tag for b in spec.backends}
+
+    async def test_user_assignment_is_stable_across_runs(self):
+        entry_id = uuid4()
+        entry = MagicMock()
+        entry.id = entry_id
+        entry.role = ROLE_ENTRY
+        entry.zone = "europe"
+        entry.region = "de"
+
+        backend1 = MagicMock()
+        backend1.id = uuid4()
+        backend1.name = "b1"
+        backend1.role = "backend"
+        backend1.is_enabled = True
+        backend1.is_draining = False
+        backend1.zone = "europe"
+        backend1.region = "fi"
+        backend1.reality_ip = "1.1.1.1"
+        backend1.public_domain = ""
+
+        backend2 = MagicMock()
+        backend2.id = uuid4()
+        backend2.name = "b2"
+        backend2.role = "backend"
+        backend2.is_enabled = True
+        backend2.is_draining = False
+        backend2.zone = "europe"
+        backend2.region = "fr"
+        backend2.reality_ip = "2.2.2.2"
+        backend2.public_domain = ""
+
+        keys = [MagicMock(client_id=f"u{i}") for i in range(50)]
+        cfg = EntryRoutingConfig(
+            listen_port=8443,
+            reality_private_key="pk",
+            reality_short_id="sid",
+            reality_server_name="www.cloudflare.com",
+            reality_handshake_server="www.cloudflare.com",
+            reality_handshake_port=443,
+            backend_service_uuid="svc",
+            backend_reality_public_key="pubkey",
+        )
+
+        async def _build():
+            node_repo = MagicMock()
+            node_repo.get_by_id = AsyncMock(return_value=entry)
+            node_repo.list = AsyncMock(return_value=[entry, backend1, backend2])
+            key_repo = MagicMock()
+            key_repo.list_all_active = AsyncMock(return_value=keys)
+            svc = EntryRoutingService(session=MagicMock(), config=cfg)
+            svc.node_repo = node_repo
+            svc.key_repo = key_repo
+            return await svc.build_spec_for_node(entry_id)
+
+        spec_a = await _build()
+        spec_b = await _build()
+        rules_a = sorted((r.user_uuid, r.outbound_tag) for r in spec_a.rules)
+        rules_b = sorted((r.user_uuid, r.outbound_tag) for r in spec_b.rules)
+        assert rules_a == rules_b
+        tags = {r.outbound_tag for r in spec_a.rules}
+        assert len(tags) == 2, "both backends should receive at least one user across 50 keys"

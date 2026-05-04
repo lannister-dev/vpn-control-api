@@ -21,6 +21,10 @@ class EntryRoutingBackend(BaseModel):
     server_port: int = Field(ge=1, le=65535)
     uuid: str
     flow: str = ""
+    reality_public_key: str = ""
+    reality_short_id: str = ""
+    reality_server_name: str = ""
+    reality_fingerprint: str = "chrome"
 
 
 class EntryRoutingRule(BaseModel):
@@ -52,20 +56,12 @@ class EntryRoutingSpec(BaseModel):
     final_outbound: str = "direct"
 
     def signature(self) -> str:
-        payload = {
-            "node_id": self.node_id,
-            "listen_port": self.listen_port,
-            "users": sorted(u.uuid for u in self.users),
-            "backends": [
-                {"tag": b.tag, "server": b.server, "port": b.server_port, "uuid": b.uuid, "flow": b.flow}
-                for b in sorted(self.backends, key=lambda x: x.tag)
-            ],
-            "rules": sorted([(r.user_uuid, r.outbound_tag) for r in self.rules]),
-            "reality": {
-                "private_key": self.reality.private_key,
-                "short_id": self.reality.short_id,
-                "server_name": self.reality.server_name,
-            },
-            "final": self.final_outbound,
-        }
+        normalized = self.model_copy(
+            update={
+                "users": sorted(self.users, key=lambda u: u.uuid),
+                "backends": sorted(self.backends, key=lambda b: b.tag),
+                "rules": sorted(self.rules, key=lambda r: (r.user_uuid, r.outbound_tag)),
+            }
+        )
+        payload = normalized.model_dump(mode="json")
         return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()

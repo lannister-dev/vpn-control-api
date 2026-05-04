@@ -134,6 +134,11 @@ class EntryRoutingConfig:
     reality_server_name: str = "www.cloudflare.com"
     reality_handshake_server: str = "www.cloudflare.com"
     reality_handshake_port: int = 443
+    backend_service_uuid: str = ""
+    backend_reality_public_key: str = ""
+    backend_reality_fingerprint: str = "chrome"
+    backend_port: int = 443
+    backend_flow: str = "xtls-rprx-vision"
 
 @dataclass
 class K3sConfig:
@@ -515,6 +520,11 @@ def get_settings() -> Settings:
         reality_server_name=env.str("ENTRY_ROUTING_REALITY_SERVER_NAME", default="www.cloudflare.com"),
         reality_handshake_server=env.str("ENTRY_ROUTING_REALITY_HANDSHAKE_SERVER", default="www.cloudflare.com"),
         reality_handshake_port=env.int("ENTRY_ROUTING_REALITY_HANDSHAKE_PORT", default=443),
+        backend_service_uuid=env.str("ENTRY_ROUTING_BACKEND_SERVICE_UUID", default=""),
+        backend_reality_public_key=env.str("ENTRY_ROUTING_BACKEND_REALITY_PUBLIC_KEY", default=""),
+        backend_reality_fingerprint=env.str("ENTRY_ROUTING_BACKEND_REALITY_FINGERPRINT", default="chrome"),
+        backend_port=env.int("ENTRY_ROUTING_BACKEND_PORT", default=443),
+        backend_flow=env.str("ENTRY_ROUTING_BACKEND_FLOW", default="xtls-rprx-vision"),
     )
 
     subscriptions_expiration = SubscriptionsExpirationConfig(
