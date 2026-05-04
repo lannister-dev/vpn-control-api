@@ -1,0 +1,6 @@
+KV_BUCKET = "entry-routing"
+KV_STATS_BUCKET = "entry-routing-stats"
+KV_KEY_PREFIX = "node."
+
+PUBLISHER_TICK_SEC_DEFAULT = 30
+PUBLISHER_IDLE_WHEN_DISABLED_SEC = 60

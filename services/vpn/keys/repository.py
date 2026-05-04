@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import Depends
 from sqlalchemy import String, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from services.vpn.keys.models import VpnKey
 from shared.database.base_repository import BaseRepository
@@ -111,6 +112,30 @@ class VpnKeyRepository(BaseRepository[VpnKey]):
         result = await self.session.execute(stmt)
         keys = list(result.scalars().all())
         return keys, total
+
+    async def list_all_active(self) -> list[VpnKey]:
+        now = datetime.now(timezone.utc)
+        stmt = select(self.model).where(
+            self.model.is_active.is_(True),
+            self.model.valid_until > now,
+            or_(
+                self.model.is_revoked.is_(False),
+                self.model.is_revoked.is_(None),
+            ),
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def list_active_with_user(self, *, limit: int = 500) -> list[VpnKey]:
+        stmt = (
+            select(self.model)
+            .options(joinedload(self.model.user))
+            .where(self.model.is_revoked.is_(False))
+            .order_by(self.model.created_at.desc())
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().unique().all())
 
     async def list_active_by_subscription_id(self, subscription_id: UUID) -> list[VpnKey]:
         now = datetime.now(timezone.utc)

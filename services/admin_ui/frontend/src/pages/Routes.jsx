@@ -24,10 +24,34 @@ export function RoutesPage({ initialAction, onActionConsumed, onOpenNode }) {
   const routes = useQuery(() => api.get("/routes?limit=500"), { interval: 15000 });
   const status = useQuery(() => api.get("/admin/status"), { interval: 15000 });
   const probes = useQuery(() => api.get("/probe/reports/recent?limit=200"), { interval: 15000 });
+  const routingState = useQuery(
+    () => api.get("/admin/routing/entry/state").catch(() => null),
+    { interval: 30000 },
+  );
 
   const nodes = status.data?.nodes || [];
   const nodesById = useMemo(() => Object.fromEntries(nodes.map((n) => [n.id, n])), [nodes]);
   const routesList = routes.data || [];
+
+  const userCountByBackendName = useMemo(() => {
+    const counts = {};
+    for (const k of routingState.data?.keys || []) {
+      const tag = k.effective_backend;
+      if (!tag) continue;
+      const name = tag.startsWith("backend-") ? tag.slice("backend-".length) : tag;
+      counts[name] = (counts[name] || 0) + 1;
+    }
+    return counts;
+  }, [routingState.data]);
+
+  const liveByBackendName = useMemo(() => {
+    const counts = {};
+    for (const item of routingState.data?.live || []) {
+      const name = item.tag?.startsWith("backend-") ? item.tag.slice("backend-".length) : item.tag;
+      if (name) counts[name] = (counts[name] || 0) + (item.connections || 0);
+    }
+    return counts;
+  }, [routingState.data]);
 
   const counts = useMemo(() => {
     const c = { healthy: 0, warn: 0, bad: 0, other: 0 };
@@ -63,7 +87,14 @@ export function RoutesPage({ initialAction, onActionConsumed, onOpenNode }) {
       {routes.error && <div className="card card-bad">Ошибка: {routes.error.message}</div>}
 
       {view === "topology" ? (
-        <Topology routes={routesList} nodes={nodes} probes={probes.data || []} onOpenNode={onOpenNode} />
+        <Topology
+          routes={routesList}
+          nodes={nodes}
+          probes={probes.data || []}
+          userCountByBackendName={userCountByBackendName}
+          liveByBackendName={liveByBackendName}
+          onOpenNode={onOpenNode}
+        />
       ) : (
         <RoutesList
           routesList={routesList}

@@ -123,6 +123,32 @@ class EntryRelayConfig:
     api_poll_sec: int = 300
     user_entry_bucket_seconds: int = 0
 
+
+@dataclass
+class WgMeshConfig:
+    enabled: bool = False
+    mesh_cidr: str = "10.10.0.0/24"
+    listen_port: int = 51820
+
+
+@dataclass
+class EntryRoutingConfig:
+    enabled: bool = False
+    publisher_tick_sec: int = 30
+    listen_port: int = 8443
+    reality_private_key: str = ""
+    reality_short_id: str = ""
+    reality_server_name: str = "www.cloudflare.com"
+    reality_handshake_server: str = "www.cloudflare.com"
+    reality_handshake_port: int = 443
+    backend_service_uuid: str = ""
+    backend_reality_public_key: str = ""
+    backend_reality_fingerprint: str = "chrome"
+    backend_port: int = 443
+    backend_flow: str = "xtls-rprx-vision"
+    backend_use_wg: bool = False
+    backend_wg_port: int = 10100
+
 @dataclass
 class K3sConfig:
     server_url: str = ""
@@ -278,7 +304,9 @@ class Settings:
     referral: ReferralConfig
     k3s: K3sConfig
     entry_relay: EntryRelayConfig
+    entry_routing: EntryRoutingConfig
     subscriptions_expiration: SubscriptionsExpirationConfig
+    wg_mesh: WgMeshConfig
 
 
 @lru_cache
@@ -493,10 +521,34 @@ def get_settings() -> Settings:
         user_entry_bucket_seconds=max(0, env.int("ENTRY_RELAY_USER_BUCKET_SECONDS", default=0)),
     )
 
+    entry_routing = EntryRoutingConfig(
+        enabled=env.bool("ENTRY_ROUTING_ENABLED", default=False),
+        publisher_tick_sec=max(5, env.int("ENTRY_ROUTING_PUBLISHER_TICK_SEC", default=30)),
+        listen_port=env.int("ENTRY_ROUTING_LISTEN_PORT", default=8443),
+        reality_private_key=env.str("ENTRY_ROUTING_REALITY_PRIVATE_KEY", default=""),
+        reality_short_id=env.str("ENTRY_ROUTING_REALITY_SHORT_ID", default=""),
+        reality_server_name=env.str("ENTRY_ROUTING_REALITY_SERVER_NAME", default="www.cloudflare.com"),
+        reality_handshake_server=env.str("ENTRY_ROUTING_REALITY_HANDSHAKE_SERVER", default="www.cloudflare.com"),
+        reality_handshake_port=env.int("ENTRY_ROUTING_REALITY_HANDSHAKE_PORT", default=443),
+        backend_service_uuid=env.str("ENTRY_ROUTING_BACKEND_SERVICE_UUID", default=""),
+        backend_reality_public_key=env.str("ENTRY_ROUTING_BACKEND_REALITY_PUBLIC_KEY", default=""),
+        backend_reality_fingerprint=env.str("ENTRY_ROUTING_BACKEND_REALITY_FINGERPRINT", default="chrome"),
+        backend_port=env.int("ENTRY_ROUTING_BACKEND_PORT", default=443),
+        backend_flow=env.str("ENTRY_ROUTING_BACKEND_FLOW", default="xtls-rprx-vision"),
+        backend_use_wg=env.bool("ENTRY_ROUTING_BACKEND_USE_WG", default=False),
+        backend_wg_port=env.int("ENTRY_ROUTING_BACKEND_WG_PORT", default=10100),
+    )
+
     subscriptions_expiration = SubscriptionsExpirationConfig(
         enabled=env.bool("SUBSCRIPTIONS_EXPIRATION_ENABLED", default=True),
         tick_sec=max(30, env.int("SUBSCRIPTIONS_EXPIRATION_TICK_SEC", default=60)),
         batch_size=max(1, env.int("SUBSCRIPTIONS_EXPIRATION_BATCH_SIZE", default=200)),
+    )
+
+    wg_mesh = WgMeshConfig(
+        enabled=env.bool("WG_MESH_ENABLED", default=False),
+        mesh_cidr=env.str("WG_MESH_CIDR", default="10.10.0.0/24"),
+        listen_port=env.int("WG_MESH_LISTEN_PORT", default=51820),
     )
 
     _tg_allowed_raw = env.str("ADMIN_TELEGRAM_ALLOWED_IDS", default="")
@@ -543,5 +595,7 @@ def get_settings() -> Settings:
         referral=referral,
         k3s=k3s,
         entry_relay=entry_relay,
+        entry_routing=entry_routing,
         subscriptions_expiration=subscriptions_expiration,
+        wg_mesh=wg_mesh,
     )

@@ -2,18 +2,15 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.admin_audit.repository import AdminAuditRepository
-from services.admin_audit.schemas import AdminAuditListOut, AdminAuditRecordOut
+from services.admin_audit.schemas import (
+    AdminAuditListOut,
+    AdminAuditRecordCreate,
+    AdminAuditRecordOut,
+)
 from shared.database.session import AsyncDatabase
 
 
 class AdminAuditService:
-    """Writes actor-scoped audit trail for admin-facing mutations.
-
-    Producers call `record()` inside the same session as the mutation so the
-    log row is committed atomically with the action. Readers (admin UI log)
-    read via `list_recent` with optional filters.
-    """
-
     def __init__(self, session: AsyncSession):
         self.session = session
         self.repo = AdminAuditRepository(session)
@@ -27,13 +24,14 @@ class AdminAuditService:
         summary: str | None = None,
         details: dict | None = None,
     ) -> None:
-        await self.repo.create(
+        record = AdminAuditRecordCreate(
             actor=actor,
             action=action,
             target=target,
             summary=summary,
-            details=details,
+            details=details or {},
         )
+        await self.repo.create(record.model_dump())
 
     async def list_recent(
         self,
