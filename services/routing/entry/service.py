@@ -87,7 +87,12 @@ class EntryRoutingService:
         )
 
     async def _build_backends_for_zone(self, entry: VpnNode) -> list[EntryRoutingBackend]:
-        if not (self.config.backend_service_uuid and self.config.backend_reality_public_key):
+        if not self.config.backend_service_uuid:
+            return []
+        if self.config.backend_use_wg:
+            if not self._has_wg_addr(entry):
+                return []
+        elif not self.config.backend_reality_public_key:
             return []
         zone = effective_zone(explicit_zone=entry.zone, region=entry.region)
         all_nodes = await self.node_repo.list()
@@ -97,11 +102,29 @@ class EntryRoutingService:
             and n.is_enabled
             and not n.is_draining
             and effective_zone(explicit_zone=n.zone, region=n.region) == zone
-            and (n.reality_ip or n.public_domain)
+            and self._has_reachable_addr(n)
         ]
         return [self._backend_to_outbound(n) for n in candidates]
 
+    def _has_reachable_addr(self, node: VpnNode) -> bool:
+        if self.config.backend_use_wg:
+            return self._has_wg_addr(node)
+        return bool(node.reality_ip or node.public_domain)
+
+    @staticmethod
+    def _has_wg_addr(node: VpnNode) -> bool:
+        ip = (node.internal_wg_ip or "").strip()
+        return bool(ip) and not ip.startswith("0.")
+
     def _backend_to_outbound(self, node: VpnNode) -> EntryRoutingBackend:
+        if self.config.backend_use_wg:
+            return EntryRoutingBackend(
+                tag=f"backend-{node.name}",
+                server=node.internal_wg_ip,
+                server_port=self.config.backend_wg_port,
+                uuid=self.config.backend_service_uuid,
+                flow="",
+            )
         server = node.reality_ip or node.public_domain
         return EntryRoutingBackend(
             tag=f"backend-{node.name}",

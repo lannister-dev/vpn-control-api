@@ -412,6 +412,71 @@ class TestAdminServiceSetOverride:
         assert change.current is None
 
 
+@pytest.mark.asyncio
+class TestEntryRoutingBackendWGMode:
+    async def _build(self, *, use_wg: bool, backend, entry):
+        keys = [MagicMock(client_id="u1", entry_routing_override_backend_tag=None)]
+        node_repo = MagicMock()
+        node_repo.get_by_id = AsyncMock(return_value=entry)
+        node_repo.list = AsyncMock(return_value=[entry, backend])
+        key_repo = MagicMock()
+        key_repo.list_all_active = AsyncMock(return_value=keys)
+        cfg = EntryRoutingConfig(
+            backend_service_uuid="svc",
+            backend_reality_public_key="pubkey",
+            backend_port=443,
+            backend_use_wg=use_wg,
+            backend_wg_port=10000,
+        )
+        svc = EntryRoutingService(session=MagicMock(), config=cfg)
+        svc.node_repo = node_repo
+        svc.key_repo = key_repo
+        return await svc.build_spec_for_node(entry.id)
+
+    async def test_wg_mode_uses_internal_wg_ip_no_reality(self):
+        entry = MagicMock(id=uuid4(), role=ROLE_ENTRY, zone="europe", region="de", internal_wg_ip="10.10.0.1")
+        backend = MagicMock(
+            id=uuid4(), name="hel", role="backend", is_enabled=True, is_draining=False,
+            zone="europe", region="fi",
+            reality_ip="1.2.3.4", public_domain="",
+            internal_wg_ip="10.10.0.2",
+        )
+        spec = await self._build(use_wg=True, backend=backend, entry=entry)
+        assert len(spec.backends) == 1
+        b = spec.backends[0]
+        assert b.server == "10.10.0.2"
+        assert b.server_port == 10000
+        assert b.reality_public_key == ""
+        assert b.flow == ""
+
+    async def test_reality_mode_uses_public_ip_with_reality_block(self):
+        entry = MagicMock(id=uuid4(), role=ROLE_ENTRY, zone="europe", region="de", internal_wg_ip="1.2.3.4")
+        backend = MagicMock(
+            id=uuid4(), name="hel", role="backend", is_enabled=True, is_draining=False,
+            zone="europe", region="fi",
+            reality_ip="1.2.3.4", public_domain="",
+            internal_wg_ip="1.2.3.4",
+        )
+        spec = await self._build(use_wg=False, backend=backend, entry=entry)
+        assert len(spec.backends) == 1
+        b = spec.backends[0]
+        assert b.server == "1.2.3.4"
+        assert b.server_port == 443
+        assert b.reality_public_key == "pubkey"
+        assert b.flow == "xtls-rprx-vision"
+
+    async def test_wg_mode_skips_backend_without_wg_ip(self):
+        entry = MagicMock(id=uuid4(), role=ROLE_ENTRY, zone="europe", region="de", internal_wg_ip="10.10.0.1")
+        backend = MagicMock(
+            id=uuid4(), name="hel", role="backend", is_enabled=True, is_draining=False,
+            zone="europe", region="fi",
+            reality_ip="1.2.3.4", public_domain="",
+            internal_wg_ip="",
+        )
+        spec = await self._build(use_wg=True, backend=backend, entry=entry)
+        assert spec.backends == []
+
+
 class TestAdminServiceEffectiveBackend:
     @staticmethod
     def _eff(client_id, override=None, tags=("backend-a", "backend-b")):
