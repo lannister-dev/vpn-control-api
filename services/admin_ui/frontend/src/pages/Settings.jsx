@@ -144,26 +144,34 @@ function TransportPolicySection() {
 }
 
 function EntryRoutingOverrideSection() {
-  const [keyId, setKeyId] = useState("");
-  const [backendTag, setBackendTag] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [last, setLast] = useState(null);
+  const q = useQuery(() => api.get("/admin/routing/entry/state"), { interval: 30000 });
+  const [search, setSearch] = useState("");
+  const [busyKey, setBusyKey] = useState(null);
 
-  const apply = async (clear = false) => {
-    if (!keyId.trim()) {
-      toast.bad("Введите key_id");
-      return;
-    }
-    setBusy(true);
+  const backends = q.data?.backends || [];
+  const keys = q.data?.keys || [];
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return keys;
+    const term = search.trim().toLowerCase();
+    return keys.filter((k) =>
+      (k.user_username || "").toLowerCase().includes(term) ||
+      String(k.user_telegram_id || "").includes(term) ||
+      (k.client_id || "").toLowerCase().includes(term),
+    );
+  }, [keys, search]);
+
+  const apply = async (key, target) => {
+    setBusyKey(key.key_id);
     try {
-      const payload = { backend_tag: clear ? null : (backendTag.trim() || null) };
-      const res = await api.patch(`/admin/routing/entry/keys/${keyId.trim()}/override`, payload);
-      setLast(res);
-      toast.ok(clear ? "Override снят" : `Override → ${res.entry_routing_override_backend_tag}`);
+      const payload = { backend_tag: target || null };
+      await api.patch(`/admin/routing/entry/keys/${key.key_id}/override`, payload);
+      toast.ok(target ? `→ ${target}` : "сброшен на auto");
+      q.refetch();
     } catch (e) {
       toast.bad(e.message || "Ошибка");
     } finally {
-      setBusy(false);
+      setBusyKey(null);
     }
   };
 
@@ -172,49 +180,95 @@ function EntryRoutingOverrideSection() {
       <div className="card-head">
         <Icon name="route" size={14} />
         <div className="sec-title">Per-user маршрутизация</div>
-        <div className="sec-sub">принудительно прибиваем VPN-ключ к конкретному backend на entry-нодах</div>
+        <div className="sec-sub">точечно прибить юзера к конкретному backend (override hash-распределения)</div>
+        <div className="sec-spacer" />
+        <button className="btn btn-ghost btn-xs" onClick={q.refetch}>
+          <Icon name="refresh" size={11} /> Обновить
+        </button>
       </div>
-      <div className="card-body">
-        <div className="form-row">
-          <Field label="VPN key_id (UUID)" hint="идентификатор записи vpn_key, не client_id">
+
+      {!backends.length && (
+        <div className="card-body muted">
+          Backend-пул пуст — entry-routing publisher либо выключен, либо в зоне нет здоровых backends.
+          Override недоступен.
+        </div>
+      )}
+
+      {!!backends.length && (
+        <>
+          <div className="filterbar" style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)" }}>
             <input
+              className="input"
               type="text"
-              value={keyId}
-              onChange={(e) => setKeyId(e.target.value)}
-              placeholder="00000000-0000-0000-0000-000000000000"
-              spellCheck={false}
-              style={{ fontFamily: "var(--font-mono)" }}
+              placeholder="поиск по username / telegram_id / client_id"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{ flex: 1, maxWidth: 360 }}
             />
-          </Field>
-          <Field label="Backend tag" hint='напр. "backend-hel-backend-01" — как в spec.backends[].tag'>
-            <input
-              type="text"
-              value={backendTag}
-              onChange={(e) => setBackendTag(e.target.value)}
-              placeholder="backend-<node-name>"
-              spellCheck={false}
-              style={{ fontFamily: "var(--font-mono)" }}
-            />
-          </Field>
-        </div>
-        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-          <button className="btn btn-primary" onClick={() => apply(false)} disabled={busy}>
-            <Icon name="route" size={12} /> Применить
-          </button>
-          <button className="btn btn-ghost" onClick={() => apply(true)} disabled={busy}>
-            Снять override (вернуть hash)
-          </button>
-        </div>
-        <div className="muted small" style={{ marginTop: 12 }}>
-          Override переживает рестарт sing-box и применяется на следующем тике publisher-реконсайлера (~30 секунд).
-          Если backend недоступен в зоне — игнорируется, юзер возвращается к hash-распределению.
-        </div>
-        {last && (
-          <pre className="mono small" style={{ marginTop: 12, padding: 10, background: "var(--surface-2)", borderRadius: 6 }}>
-{JSON.stringify(last, null, 2)}
-          </pre>
-        )}
-      </div>
+            <span className="muted text-xs" style={{ marginLeft: "auto" }}>
+              {filtered.length} / {keys.length}
+            </span>
+          </div>
+
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Юзер</th>
+                <th>client_id</th>
+                <th>Транспорт</th>
+                <th>Текущее назначение</th>
+                <th style={{ textAlign: "right" }}>Действие</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((k) => {
+                const busy = busyKey === k.key_id;
+                return (
+                  <tr key={k.key_id}>
+                    <td>
+                      <div style={{ fontWeight: 500 }}>{k.user_username || <span className="muted">—</span>}</div>
+                      {k.user_telegram_id && (
+                        <div className="mono small muted">tg: {k.user_telegram_id}</div>
+                      )}
+                    </td>
+                    <td className="mono muted" style={{ fontSize: 11 }}>
+                      {String(k.client_id).slice(0, 12)}…
+                    </td>
+                    <td className="mono small">{k.transport}</td>
+                    <td>
+                      {k.override ? (
+                        <span className="pill accent" title={k.override}>{k.override}</span>
+                      ) : (
+                        <span className="muted small">auto (hash)</span>
+                      )}
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <select
+                        className="select"
+                        disabled={busy}
+                        value={k.override || ""}
+                        onChange={(e) => apply(k, e.target.value)}
+                        style={{ minWidth: 200 }}
+                      >
+                        <option value="">auto (hash)</option>
+                        {backends.map((b) => (
+                          <option key={b.tag} value={b.tag}>{b.tag}</option>
+                        ))}
+                      </select>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {q.loading && !keys.length && <div className="muted" style={{ padding: 14 }}>Загрузка…</div>}
+          {!q.loading && !filtered.length && (
+            <div className="muted" style={{ padding: 14 }}>
+              {search ? "Ничего не найдено" : "Активных ключей нет"}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

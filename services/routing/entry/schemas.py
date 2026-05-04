@@ -7,15 +7,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class EntryRoutingUser(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
     uuid: str
     flow: str = "xtls-rprx-vision"
 
-
-class EntryRoutingBackend(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+
+class EntryRoutingBackend(BaseModel):
     tag: str
     server: str
     server_port: int = Field(ge=1, le=65535)
@@ -26,27 +24,27 @@ class EntryRoutingBackend(BaseModel):
     reality_server_name: str = ""
     reality_fingerprint: str = "chrome"
 
-
-class EntryRoutingRule(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+
+class EntryRoutingRule(BaseModel):
     user_uuid: str
     outbound_tag: str
 
-
-class EntryRoutingReality(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+
+class EntryRoutingReality(BaseModel):
     private_key: str
     short_id: str
     server_name: str
     handshake_server: str
     handshake_port: int = Field(default=443, ge=1, le=65535)
 
-
-class EntryRoutingSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+
+class EntryRoutingSpec(BaseModel):
     node_id: str
     listen_port: int = Field(ge=1, le=65535)
     reality: EntryRoutingReality
@@ -54,6 +52,8 @@ class EntryRoutingSpec(BaseModel):
     backends: list[EntryRoutingBackend] = Field(default_factory=list)
     rules: list[EntryRoutingRule] = Field(default_factory=list)
     final_outbound: str = "direct"
+
+    model_config = ConfigDict(extra="forbid")
 
     def signature(self) -> str:
         normalized = self.model_copy(
