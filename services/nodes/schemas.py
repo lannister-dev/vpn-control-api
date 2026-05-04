@@ -36,6 +36,8 @@ class VpnNodeUpdate(BaseModel):
     is_enabled: bool | None = None
     is_draining: bool | None = None
     capacity: int | None = None
+    wg_public_key: str | None = Field(default=None, max_length=64)
+    wg_listen_port: int | None = Field(default=None, ge=1, le=65535)
 
 
 class AdminNodeUpdateIn(BaseModel):

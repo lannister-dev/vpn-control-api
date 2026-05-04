@@ -125,6 +125,13 @@ class EntryRelayConfig:
 
 
 @dataclass
+class WgMeshConfig:
+    enabled: bool = False
+    mesh_cidr: str = "10.10.0.0/24"
+    listen_port: int = 51820
+
+
+@dataclass
 class EntryRoutingConfig:
     enabled: bool = False
     publisher_tick_sec: int = 30
@@ -299,6 +306,7 @@ class Settings:
     entry_relay: EntryRelayConfig
     entry_routing: EntryRoutingConfig
     subscriptions_expiration: SubscriptionsExpirationConfig
+    wg_mesh: WgMeshConfig
 
 
 @lru_cache
@@ -537,6 +545,12 @@ def get_settings() -> Settings:
         batch_size=max(1, env.int("SUBSCRIPTIONS_EXPIRATION_BATCH_SIZE", default=200)),
     )
 
+    wg_mesh = WgMeshConfig(
+        enabled=env.bool("WG_MESH_ENABLED", default=False),
+        mesh_cidr=env.str("WG_MESH_CIDR", default="10.10.0.0/24"),
+        listen_port=env.int("WG_MESH_LISTEN_PORT", default=51820),
+    )
+
     _tg_allowed_raw = env.str("ADMIN_TELEGRAM_ALLOWED_IDS", default="")
     _tg_allowed = tuple(
         int(x.strip()) for x in _tg_allowed_raw.split(",") if x.strip().isdigit()
@@ -583,4 +597,5 @@ def get_settings() -> Settings:
         entry_relay=entry_relay,
         entry_routing=entry_routing,
         subscriptions_expiration=subscriptions_expiration,
+        wg_mesh=wg_mesh,
     )
