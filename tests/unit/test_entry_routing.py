@@ -364,6 +364,54 @@ class TestEntryRoutingService:
         assert len(tags) == 2, "both backends should receive at least one user across 50 keys"
 
 
+@pytest.mark.asyncio
+class TestAdminServiceSetOverride:
+    async def _build(self, *, key, backends):
+        from services.routing.entry.service import EntryRoutingAdminService
+        cfg = EntryRoutingConfig(
+            backend_service_uuid="svc",
+            backend_reality_public_key="pubkey",
+        )
+        svc = EntryRoutingAdminService(session=MagicMock(), config=cfg)
+
+        async def fake_collect():
+            return {b.tag for b in backends}
+
+        svc._collect_valid_backend_tags = fake_collect
+        svc.key_repo = MagicMock()
+        svc.key_repo.get_by_id = AsyncMock(return_value=key)
+        svc.key_repo.update_by_id = AsyncMock()
+        return svc
+
+    async def test_unknown_tag_raises(self):
+        from services.routing.entry.exceptions import UnknownBackendTagError
+        from services.routing.entry.schemas import EntryRoutingBackend
+        key = MagicMock()
+        key.id = uuid4()
+        key.client_id = "u1"
+        key.entry_routing_override_backend_tag = None
+        backends = [EntryRoutingBackend(tag="backend-a", server="1.1.1.1", server_port=443, uuid="x")]
+        svc = await self._build(key=key, backends=backends)
+        with pytest.raises(UnknownBackendTagError):
+            await svc.set_key_override(key_id=key.id, backend_tag="backend-removed")
+
+    async def test_returns_none_when_key_missing(self):
+        svc = await self._build(key=None, backends=[])
+        result = await svc.set_key_override(key_id=uuid4(), backend_tag=None)
+        assert result is None
+
+    async def test_clearing_override_does_not_validate(self):
+        key = MagicMock()
+        key.id = uuid4()
+        key.client_id = "u1"
+        key.entry_routing_override_backend_tag = "stale-tag"
+        svc = await self._build(key=key, backends=[])
+        change = await svc.set_key_override(key_id=key.id, backend_tag=None)
+        assert change is not None
+        assert change.changed is True
+        assert change.current is None
+
+
 class TestAdminServiceEffectiveBackend:
     @staticmethod
     def _eff(client_id, override=None, tags=("backend-a", "backend-b")):

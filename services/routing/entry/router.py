@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from services.admin_audit.service import AdminAuditService, get_admin_audit_service
 from services.auth.dependencies import admin_auth, current_admin_actor
+from services.routing.entry.exceptions import UnknownBackendTagError
 from services.routing.entry.schemas import (
     KeyRoutingOverrideIn,
     KeyRoutingOverrideOut,
@@ -43,7 +44,13 @@ async def set_key_override(
     audit: AdminAuditService = Depends(get_admin_audit_service),
     service: EntryRoutingAdminService = Depends(get_entry_routing_admin_service),
 ) -> KeyRoutingOverrideOut:
-    change = await service.set_key_override(key_id=key_id, backend_tag=data.backend_tag)
+    try:
+        change = await service.set_key_override(key_id=key_id, backend_tag=data.backend_tag)
+    except UnknownBackendTagError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
     if change is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

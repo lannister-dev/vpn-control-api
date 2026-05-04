@@ -11,6 +11,7 @@ from services.config import EntryRoutingConfig, get_settings
 from services.nodes.constants import ROLE_BACKEND, ROLE_ENTRY, ROLE_WHITELIST_ENTRY
 from services.nodes.models import VpnNode
 from services.nodes.repository import VpnNodeRepository
+from services.routing.entry.exceptions import UnknownBackendTagError
 from services.routing.entry.schemas import (
     EntryRoutingBackend,
     EntryRoutingReality,
@@ -203,8 +204,12 @@ class EntryRoutingAdminService:
         key = await self.key_repo.get_by_id(key_id)
         if key is None:
             return None
-        previous = key.entry_routing_override_backend_tag
         normalized = (backend_tag or "").strip() or None
+        if normalized is not None:
+            valid_tags = await self._collect_valid_backend_tags()
+            if normalized not in valid_tags:
+                raise UnknownBackendTagError(normalized, sorted(valid_tags))
+        previous = key.entry_routing_override_backend_tag
         changed = normalized != previous
         if changed:
             await self.key_repo.update_by_id(
@@ -221,6 +226,14 @@ class EntryRoutingAdminService:
                 entry_routing_override_backend_tag=key.entry_routing_override_backend_tag,
             ),
         )
+
+    async def _collect_valid_backend_tags(self) -> set[str]:
+        target_nodes = await self.routing.list_target_nodes()
+        tags: set[str] = set()
+        for entry in target_nodes:
+            for b in await self.routing._build_backends_for_zone(entry):
+                tags.add(b.tag)
+        return tags
 
 
 def get_entry_routing_admin_service(
