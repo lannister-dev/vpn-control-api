@@ -147,7 +147,7 @@ class EntryRoutingConfig:
     backend_port: int = 443
     backend_flow: str = "xtls-rprx-vision"
     backend_use_wg: bool = False
-    backend_wg_port: int = 10000
+    backend_wg_port: int = 10100
 
 @dataclass
 class K3sConfig:
@@ -536,7 +536,7 @@ def get_settings() -> Settings:
         backend_port=env.int("ENTRY_ROUTING_BACKEND_PORT", default=443),
         backend_flow=env.str("ENTRY_ROUTING_BACKEND_FLOW", default="xtls-rprx-vision"),
         backend_use_wg=env.bool("ENTRY_ROUTING_BACKEND_USE_WG", default=False),
-        backend_wg_port=env.int("ENTRY_ROUTING_BACKEND_WG_PORT", default=10000),
+        backend_wg_port=env.int("ENTRY_ROUTING_BACKEND_WG_PORT", default=10100),
     )
 
     subscriptions_expiration = SubscriptionsExpirationConfig(
