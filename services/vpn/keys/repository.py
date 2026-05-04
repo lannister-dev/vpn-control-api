@@ -112,6 +112,19 @@ class VpnKeyRepository(BaseRepository[VpnKey]):
         keys = list(result.scalars().all())
         return keys, total
 
+    async def list_all_active(self) -> list[VpnKey]:
+        now = datetime.now(timezone.utc)
+        stmt = select(self.model).where(
+            self.model.is_active.is_(True),
+            self.model.valid_until > now,
+            or_(
+                self.model.is_revoked.is_(False),
+                self.model.is_revoked.is_(None),
+            ),
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
     async def list_active_by_subscription_id(self, subscription_id: UUID) -> list[VpnKey]:
         now = datetime.now(timezone.utc)
         stmt = (

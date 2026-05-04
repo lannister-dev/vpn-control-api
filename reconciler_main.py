@@ -15,6 +15,7 @@ from services.billing.reconcilers.expiration import BillingOrderExpirationReconc
 from services.config import get_settings
 from services.entry.models import EntryBackendAssignment  # noqa: F401
 from services.entry.reconcilers.auto_drain import EntryAutoDrainReconciler
+from services.entry_routing.publisher import EntryRoutingPublisher
 from services.nodes.agent.model import (  # noqa: F401
     NodeTransportEventLog,
     NodeTransportOutbox,
@@ -85,6 +86,7 @@ def _build_reconcilers() -> list:
         SubscriptionExpirationReconciler(),
         BillingOrderExpirationReconciler(),
         EntryAutoDrainReconciler(),
+        EntryRoutingPublisher(),
     ]
 
 
