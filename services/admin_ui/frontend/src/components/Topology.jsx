@@ -10,7 +10,7 @@ function edgeStatusClass(s) {
   return "";
 }
 
-export function Topology({ routes = [], nodes = [], probes = [], onOpenNode }) {
+export function Topology({ routes = [], nodes = [], probes = [], userCountByBackendName = {}, onOpenNode }) {
   const canvasRef = useRef(null);
   const [edges, setEdges] = useState([]);
   const [focus, setFocus] = useState(null);
@@ -239,6 +239,7 @@ export function Topology({ routes = [], nodes = [], probes = [], onOpenNode }) {
         <div className="topo-v2-nodes topo-v2-nodes-right">
           {sortedBackends.map((n) => {
             const stats = nodeRouteStats[n.name] || { total: 0, problems: 0 };
+            const userCount = userCountByBackendName[n.name] || 0;
             return (
               <div
                 key={n.id}
@@ -252,6 +253,15 @@ export function Topology({ routes = [], nodes = [], probes = [], onOpenNode }) {
                   <span className={`status-dot ${healthTone(n)}`} />
                   <span className="flag">{nodeGeo(n.region).flag}</span>
                   <span className="topo-v2-node-name">{n.name}</span>
+                  {userCount > 0 && (
+                    <span
+                      className="pill accent"
+                      title={`${userCount} ключ(ей) маршрутизировано на этот backend через sing-box`}
+                      style={{ marginLeft: "auto", padding: "1px 6px", fontSize: 10, lineHeight: 1.4 }}
+                    >
+                      <Icon name="user" size={9} /> {userCount}
+                    </span>
+                  )}
                 </div>
                 <div className="topo-v2-node-meta">
                   <span className="mono">{Math.min(100, Math.round(((n.placements_backend || 0) / Math.max(n.capacity || 50, 1)) * 100))}%</span>
