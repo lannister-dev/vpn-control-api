@@ -94,7 +94,7 @@ async def drain_node(
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
     await service.vpn_node_repository.update_by_id(
-        node_id, {"is_draining": True}
+        node_id, {"is_draining": True, "drain_source": "admin"}
     )
     if node.role == ROLE_BACKEND:
         await enqueue_pool_snapshots_for_backend(
@@ -116,7 +116,7 @@ async def enable_node(
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
     await service.vpn_node_repository.update_by_id(
-        node_id, {"is_draining": False, "is_enabled": True}
+        node_id, {"is_draining": False, "is_enabled": True, "drain_source": None}
     )
     if node.role == ROLE_BACKEND:
         await enqueue_pool_snapshots_for_backend(

@@ -107,7 +107,7 @@ async def test_drains_stale_node_and_migrates_orphan_placements(async_session):
     assert out.migrated_nodes == 1
     assert out.migrated_placements == 2
     service.node_repository.update_by_id.assert_awaited_once_with(
-        source.id, {"is_draining": True}
+        source.id, {"is_draining": True, "drain_source": "auto_heal"}
     )
 
 
@@ -314,7 +314,7 @@ async def test_auto_undrains_recovered_empty_node(async_session):
     assert out.undrained_nodes == 1
     service.node_repository.update_by_id.assert_awaited_once_with(
         recovering.id,
-        {"is_draining": False},
+        {"is_draining": False, "drain_source": None},
     )
 
 
@@ -358,7 +358,7 @@ async def test_auto_undrains_probe_drained_node_after_successful_probes(async_se
     assert out.undrained_nodes == 1
     service.node_repository.update_by_id.assert_awaited_once_with(
         recovering.id,
-        {"is_draining": False},
+        {"is_draining": False, "drain_source": None},
     )
     service.node_agent_state_repository.update_by_node_id.assert_awaited_once()
 
