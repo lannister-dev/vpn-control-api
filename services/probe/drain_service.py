@@ -69,6 +69,7 @@ class ProbeDrainService:
                     payload.source_backend_id,
                     VpnNodeUpdate(
                         is_draining=True,
+                        drain_source="auto_heal",
                     ).model_dump(exclude_unset=True),
                 )
                 await self._set_probe_drain_reason(
@@ -95,6 +96,7 @@ class ProbeDrainService:
                         payload.source_backend_id,
                         VpnNodeUpdate(
                             is_draining=False,
+                            drain_source=None,
                         ).model_dump(exclude_unset=True),
                     )
                     await self._clear_probe_drain_reason(node_id=payload.source_backend_id)

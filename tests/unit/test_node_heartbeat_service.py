@@ -67,7 +67,7 @@ async def test_handle_heartbeat_does_not_drain_below_unhealthy_threshold(async_s
     )
     node = SimpleNamespace(
         id=uuid4(),
-        is_draining=False,
+        is_draining=False, drain_source=None,
         is_active=True,
         is_enabled=True,
     )
@@ -99,7 +99,7 @@ async def test_handle_heartbeat_drains_on_unhealthy_threshold(async_session):
     )
     node = SimpleNamespace(
         id=uuid4(),
-        is_draining=False,
+        is_draining=False, drain_source=None,
         is_active=True,
         is_enabled=True,
         role="backend",
@@ -109,7 +109,7 @@ async def test_handle_heartbeat_drains_on_unhealthy_threshold(async_session):
 
     service.vpn_node_repository.update_by_id.assert_awaited_once_with(
         node.id,
-        {"is_draining": True},
+        {"is_draining": True, "drain_source": "auto_heal"},
     )
     upsert_payload = service.node_agent_state_repository.upsert.await_args.args[0]
     assert upsert_payload["details"]["heartbeat"]["consecutive_unhealthy"] == 2
@@ -136,7 +136,7 @@ async def test_handle_heartbeat_undrains_when_recovered_after_threshold(async_se
     )
     node = SimpleNamespace(
         id=uuid4(),
-        is_draining=True,
+        is_draining=True, drain_source=None,
         is_active=True,
         is_enabled=True,
         role="backend",
@@ -146,7 +146,7 @@ async def test_handle_heartbeat_undrains_when_recovered_after_threshold(async_se
 
     service.vpn_node_repository.update_by_id.assert_awaited_once_with(
         node.id,
-        {"is_draining": False},
+        {"is_draining": False, "drain_source": None},
     )
     upsert_payload = service.node_agent_state_repository.upsert.await_args.args[0]
     assert upsert_payload["details"]["heartbeat"]["consecutive_unhealthy"] == 0
@@ -173,7 +173,7 @@ async def test_handle_heartbeat_does_not_undrain_for_non_heartbeat_reason(async_
     )
     node = SimpleNamespace(
         id=uuid4(),
-        is_draining=True,
+        is_draining=True, drain_source=None,
         is_active=True,
         is_enabled=True,
     )
@@ -198,7 +198,7 @@ async def test_handle_heartbeat_treats_runtime_not_ready_as_unhealthy(async_sess
     )
     node = SimpleNamespace(
         id=uuid4(),
-        is_draining=False,
+        is_draining=False, drain_source=None,
         is_active=True,
         is_enabled=True,
         role="backend",
@@ -211,7 +211,7 @@ async def test_handle_heartbeat_treats_runtime_not_ready_as_unhealthy(async_sess
 
     service.vpn_node_repository.update_by_id.assert_awaited_once_with(
         node.id,
-        {"is_draining": True},
+        {"is_draining": True, "drain_source": "auto_heal"},
     )
     upsert_payload = service.node_agent_state_repository.upsert.await_args.args[0]
     assert upsert_payload["is_healthy"] is False
@@ -238,7 +238,7 @@ async def test_handle_heartbeat_does_not_undrain_when_runtime_not_ready(async_se
     )
     node = SimpleNamespace(
         id=uuid4(),
-        is_draining=True,
+        is_draining=True, drain_source=None,
         is_active=True,
         is_enabled=True,
     )
