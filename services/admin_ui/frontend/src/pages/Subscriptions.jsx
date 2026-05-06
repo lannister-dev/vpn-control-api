@@ -4,30 +4,10 @@ import { useQuery } from "../hooks/useQuery.js";
 import { Icon } from "../components/Icon.jsx";
 import { SubscriptionDrawer } from "../components/SubscriptionDrawer.jsx";
 import { SubscriptionCreateModal } from "../components/SubscriptionCreateModal.jsx";
-
-function fmtBytes(b) {
-  if (!b) return "0";
-  const u = ["B", "KB", "MB", "GB", "TB"];
-  let i = 0, n = Number(b);
-  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
-  return n.toFixed(n >= 100 || i === 0 ? 0 : 1) + " " + u[i];
-}
-
-function fmtDate(s) {
-  if (!s) return "—";
-  try { return new Date(s).toLocaleDateString("ru-RU"); } catch { return s; }
-}
-
-function expiresStatus(expires_at) {
-  if (!expires_at) return { label: "бессрочно", tone: "" };
-  const d = new Date(expires_at).getTime();
-  const now = Date.now();
-  if (d < now) return { label: "истекла", tone: "bad" };
-  const days = Math.floor((d - now) / 86400000);
-  if (days < 3) return { label: `через ${days}д`, tone: "warn" };
-  if (days < 7) return { label: `через ${days}д`, tone: "warn" };
-  return { label: fmtDate(expires_at), tone: "" };
-}
+import { StatusPill, deriveSubStatus } from "../components/users/StatusPill.jsx";
+import { TrafficBar } from "../components/users/TrafficBar.jsx";
+import { DaysCountdown, daysLeft } from "../components/users/DaysCountdown.jsx";
+import "../components/users/users.css";
 
 export function SubscriptionsPage() {
   const [activeOnly, setActiveOnly] = useState(false);
@@ -57,9 +37,7 @@ export function SubscriptionsPage() {
       <div className="page-head">
         <div className="page-head-main">
           <h1 className="page-title">Подписки</h1>
-          <div className="page-subtitle">
-            {stats.data ? `${stats.data.active} активных · ${stats.data.expired} истёкших · ${stats.data.total} всего` : "загрузка…"}
-          </div>
+          <div className="page-subtitle">{q.data?.total ?? 0} всего</div>
         </div>
         <div className="page-head-actions">
           <button className="btn btn-ghost" onClick={q.refetch}><Icon name="refresh" size={13} /> Обновить</button>
@@ -70,17 +48,27 @@ export function SubscriptionsPage() {
       </div>
 
       {stats.data && (
-        <div className="sec">
-          <div className="kpi-hero">
-            <Kpi icon="key" label="Активные" value={stats.data.active} tone="up" />
-            <Kpi icon="clock" label="Истекли" value={stats.data.expired} tone={stats.data.expired ? "down" : "flat"} />
-            <Kpi icon="bar-chart" label="Всего" value={stats.data.total} tone="flat" />
-            <Kpi icon="wallet" label="Тарифы" value={plans.data?.items?.length ?? 0} tone="flat" />
+        <div className="u-kpi-bar">
+          <div className="u-kpi">
+            <div className="u-kpi-label"><Icon name="key" size={11} /> Активные</div>
+            <div className="u-kpi-val">{stats.data.active}</div>
+          </div>
+          <div className={"u-kpi" + (stats.data.expired ? " warn" : "")}>
+            <div className="u-kpi-label"><Icon name="clock" size={11} /> Истекли</div>
+            <div className="u-kpi-val">{stats.data.expired}</div>
+          </div>
+          <div className="u-kpi">
+            <div className="u-kpi-label"><Icon name="bar-chart" size={11} /> Всего</div>
+            <div className="u-kpi-val">{stats.data.total}</div>
+          </div>
+          <div className="u-kpi">
+            <div className="u-kpi-label"><Icon name="wallet" size={11} /> Тарифы</div>
+            <div className="u-kpi-val">{plans.data?.items?.length ?? 0}</div>
           </div>
         </div>
       )}
 
-      <div className="filterbar">
+      <div className="u-filter-bar">
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--text-secondary)", cursor: "pointer" }}>
           <input type="checkbox" checked={activeOnly} onChange={(e) => setActiveOnly(e.target.checked)} /> Только активные
         </label>
@@ -101,45 +89,36 @@ export function SubscriptionsPage() {
             <tr>
               <th>ID</th>
               <th>Тариф</th>
-              <th style={{ textAlign: "right" }}>Устройств</th>
-              <th>Регион</th>
-              <th>Трафик</th>
-              <th>Истекает</th>
               <th>Статус</th>
+              <th>Трафик</th>
+              <th>Осталось</th>
+              <th>Регион</th>
+              <th style={{ textAlign: "right" }}>Устройств</th>
             </tr>
           </thead>
           <tbody>
             {items.map((s) => {
               const plan = s.plan_id ? plansById[s.plan_id] : null;
-              const exp = expiresStatus(s.expires_at);
-              const limitBytes = plan?.traffic_limit_bytes || 0;
-              const used = s.used_traffic_bytes || 0;
-              const pct = limitBytes > 0 ? Math.min(100, Math.round((used / limitBytes) * 100)) : 0;
+              const status = deriveSubStatus(s);
+              const days = daysLeft(s.expires_at);
+              const cap = plan?.traffic_limit_bytes || (plan?.traffic_limit_mb ? plan.traffic_limit_mb * 1024 * 1024 : null);
               return (
                 <tr key={s.id} style={{ cursor: "pointer" }} onClick={() => setSelected(s)}>
                   <td className="mono muted" style={{ fontSize: 11 }}>{String(s.id).slice(0, 12)}…</td>
                   <td style={{ fontWeight: 500 }}>
-                    {plan ? plan.name : <span className="muted">—</span>}
-                    {s.plan_name && !plan && <span>{s.plan_name}</span>}
+                    {plan ? plan.name : (s.plan_name || <span className="muted">—</span>)}
                   </td>
-                  <td className="tbl-num mono">{s.max_devices ?? "—"}</td>
-                  <td className="mono">{s.preferred_region || "—"}</td>
-                  <td>
-                    {limitBytes > 0 ? (
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 160 }}>
-                        <div style={{ flex: 1, height: 5, background: "var(--surface-2)", borderRadius: 3, overflow: "hidden", maxWidth: 120 }}>
-                          <div style={{ width: `${pct}%`, height: "100%", background: `var(--${pct > 90 ? "bad" : pct > 70 ? "warn" : "ok"})` }} />
-                        </div>
-                        <span className="mono small">{fmtBytes(used)} / {fmtBytes(limitBytes)}</span>
-                      </div>
+                  <td><StatusPill status={status} /></td>
+                  <td style={{ minWidth: 180 }}>
+                    {cap ? (
+                      <TrafficBar used={s.used_traffic_bytes || 0} cap={cap} />
                     ) : (
-                      <span className="mono small">{fmtBytes(used)} <span className="muted">∞</span></span>
+                      <span className="mono small muted">∞</span>
                     )}
                   </td>
-                  <td>
-                    <span className={`pill ${exp.tone}`}>{exp.label}</span>
-                  </td>
-                  <td>{s.is_active ? <span className="pill ok">active</span> : <span className="pill">inactive</span>}</td>
+                  <td><DaysCountdown days={days} /></td>
+                  <td className="mono">{s.preferred_region || "—"}</td>
+                  <td className="tbl-num mono">{s.max_devices ?? "—"}</td>
                 </tr>
               );
             })}
@@ -157,17 +136,6 @@ export function SubscriptionsPage() {
           onCreated={() => { setCreating(false); q.refetch(); stats.refetch(); }}
         />
       )}
-    </div>
-  );
-}
-
-function Kpi({ icon, label, value, unit, tone }) {
-  return (
-    <div className="kpi-cell">
-      <div className="kpi-label"><Icon name={icon} size={12} /> <span>{label}</span></div>
-      <div className="kpi-value-row">
-        <div className="kpi-value tnum">{value}{unit && <span className="kpi-unit">{unit}</span>}</div>
-      </div>
     </div>
   );
 }
