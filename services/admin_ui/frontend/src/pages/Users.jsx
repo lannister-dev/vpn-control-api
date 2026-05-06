@@ -8,7 +8,7 @@ import { toast } from "../components/Toast.jsx";
 import { UserDrawer } from "../components/UserDrawer.jsx";
 import { UserAvatar } from "../components/users/UserAvatar.jsx";
 import { BalancePill } from "../components/users/BalancePill.jsx";
-import { FilterChip, FilterPresets } from "../components/users/FilterChip.jsx";
+import { FilterPresets } from "../components/users/FilterChip.jsx";
 import "../components/users/users.css";
 
 const PRESETS = [
@@ -31,43 +31,31 @@ export function UsersPage() {
   const [search, setSearch] = useState("");
   const [preset, setPreset] = useState("all");
   const [activeFilter, setActiveFilter] = useState("");
-  const [tagFilter, setTagFilter] = useState("");
   const [selected, setSelected] = useState(null);
   const [creating, setCreating] = useState(false);
-  const [bulkSelected, setBulkSelected] = useState(new Set());
 
   const presetParams = useMemo(() => applyPreset(preset), [preset]);
 
   const qs = new URLSearchParams({ limit: "100" });
   if (search) qs.set("search", search);
   if (activeFilter) qs.set("is_active", activeFilter);
-  if (tagFilter) qs.set("tag", tagFilter);
   Object.entries(presetParams).forEach(([k, v]) => qs.set(k, String(v)));
 
   const { data, loading, error, refetch } = useQuery(
     () => api.get(`/users?${qs.toString()}`),
-    { interval: 30000, deps: [search, activeFilter, tagFilter, preset] }
+    { interval: 30000, deps: [search, activeFilter, preset] }
   );
   const items = data?.items || [];
   const total = data?.total ?? 0;
 
-  const summary = useMemo(() => {
-    const active = items.filter((u) => u.is_active).length;
-    const debt = items.filter((u) => Number(u.balance) < 0).length;
-    const noSub = items.filter((u) => !u.subscription_count).length;
-    const expiring = items.filter(
-      (u) => u.subscription_status === "expiring"
-    ).length;
-    return { active, debt, noSub, expiring };
-  }, [items]);
-
-  const toggleBulk = (id) => {
-    const next = new Set(bulkSelected);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setBulkSelected(next);
-  };
-  const clearBulk = () => setBulkSelected(new Set());
+  const debtCount = useQuery(
+    () => api.get(`/users?has_debt=true&limit=1`),
+    { interval: 60000 }
+  );
+  const expiringCount = useQuery(
+    () => api.get(`/users?expiring_within_days=7&limit=1`),
+    { interval: 60000 }
+  );
 
   return (
     <div className="page">
@@ -91,17 +79,13 @@ export function UsersPage() {
           <div className="u-kpi-label"><Icon name="user" size={11} /> Всего</div>
           <div className="u-kpi-val">{total.toLocaleString("ru-RU")}</div>
         </div>
-        <div className="u-kpi">
-          <div className="u-kpi-label"><Icon name="activity" size={11} /> Активные</div>
-          <div className="u-kpi-val">{summary.active}</div>
-        </div>
-        <div className={"u-kpi" + (summary.debt > 0 ? " attention" : "")}>
+        <div className={"u-kpi" + ((debtCount.data?.total ?? 0) > 0 ? " attention" : "")}>
           <div className="u-kpi-label"><Icon name="alert-circle" size={11} /> С долгом</div>
-          <div className="u-kpi-val">{summary.debt}</div>
+          <div className="u-kpi-val">{debtCount.data?.total ?? "—"}</div>
         </div>
-        <div className={"u-kpi" + (summary.expiring > 0 ? " warn" : "")}>
-          <div className="u-kpi-label"><Icon name="clock" size={11} /> Истекают</div>
-          <div className="u-kpi-val">{summary.expiring}</div>
+        <div className={"u-kpi" + ((expiringCount.data?.total ?? 0) > 0 ? " warn" : "")}>
+          <div className="u-kpi-label"><Icon name="clock" size={11} /> Истекают (7д)</div>
+          <div className="u-kpi-val">{expiringCount.data?.total ?? "—"}</div>
         </div>
       </div>
 
@@ -116,26 +100,6 @@ export function UsersPage() {
           />
         </div>
         <FilterPresets items={PRESETS} value={preset} onPick={setPreset} />
-        <div className="u-filter-chips">
-          {tagFilter && (
-            <FilterChip
-              icon="tag"
-              label="Тег"
-              value={tagFilter}
-              applied
-              onRemove={() => setTagFilter("")}
-            />
-          )}
-          {activeFilter && (
-            <FilterChip
-              icon="shield"
-              label="Статус"
-              value={activeFilter === "true" ? "активные" : "отключённые"}
-              applied
-              onRemove={() => setActiveFilter("")}
-            />
-          )}
-        </div>
         <div style={{ marginLeft: "auto" }}>
           <select
             className="select"
@@ -149,31 +113,13 @@ export function UsersPage() {
         </div>
       </div>
 
-      {bulkSelected.size > 0 && (
-        <div className="u-bulk-bar">
-          <span className="u-bulk-count">{bulkSelected.size}</span>
-          <span>выбрано</span>
-          <div className="u-bulk-actions">
-            <button className="btn btn-ghost btn-sm" onClick={clearBulk}>
-              Отменить
-            </button>
-            <button className="btn btn-ghost btn-sm" disabled title="WIP">
-              <Icon name="tag" size={12} /> Добавить тег
-            </button>
-            <button className="btn btn-ghost btn-sm" disabled title="WIP">
-              <Icon name="shield-off" size={12} /> Заблокировать
-            </button>
-          </div>
-        </div>
-      )}
-
       {error && <div className="card card-bad">Ошибка: {error.message}</div>}
 
       {loading && !items.length ? (
         <UsersSkeleton />
       ) : !items.length ? (
-        <UsersEmpty hasFilters={Boolean(search || activeFilter || tagFilter || preset !== "all")}
-          onReset={() => { setSearch(""); setActiveFilter(""); setTagFilter(""); setPreset("all"); }}
+        <UsersEmpty hasFilters={Boolean(search || activeFilter || preset !== "all")}
+          onReset={() => { setSearch(""); setActiveFilter(""); setPreset("all"); }}
         />
       ) : (
         <>
@@ -181,16 +127,6 @@ export function UsersPage() {
             <table className="tbl u-tbl">
               <thead>
                 <tr>
-                  <th style={{ width: 36 }}>
-                    <input
-                      type="checkbox"
-                      checked={items.length > 0 && bulkSelected.size === items.length}
-                      onChange={() => {
-                        if (bulkSelected.size === items.length) clearBulk();
-                        else setBulkSelected(new Set(items.map((u) => u.id)));
-                      }}
-                    />
-                  </th>
                   <th>Пользователь</th>
                   <th>Баланс</th>
                   <th>Тег</th>
@@ -201,13 +137,7 @@ export function UsersPage() {
               </thead>
               <tbody>
                 {items.map((u) => (
-                  <UserRow
-                    key={u.id}
-                    u={u}
-                    selected={bulkSelected.has(u.id)}
-                    onToggleSelect={() => toggleBulk(u.id)}
-                    onOpen={() => setSelected(u)}
-                  />
+                  <UserRow key={u.id} u={u} onOpen={() => setSelected(u)} />
                 ))}
               </tbody>
             </table>
@@ -237,22 +167,16 @@ function fmtDate(s) {
   try { return new Date(s).toLocaleDateString("ru-RU"); } catch { return s; }
 }
 
-function UserRow({ u, selected, onToggleSelect, onOpen }) {
+function UserRow({ u, onOpen }) {
   const balance = Number(u.balance || 0);
   const att = balance < 0 ? "attention" : "";
   return (
     <tr
-      className={`${selected ? "selected" : ""} ${att}`}
+      className={att}
       style={{ cursor: "pointer" }}
+      onClick={onOpen}
     >
-      <td onClick={(e) => e.stopPropagation()}>
-        <input
-          type="checkbox"
-          checked={selected}
-          onChange={onToggleSelect}
-        />
-      </td>
-      <td onClick={onOpen}>
+      <td>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <UserAvatar name={u.username || `tg${u.telegram_id}`} muted={!u.is_active} />
           <div>
@@ -265,20 +189,18 @@ function UserRow({ u, selected, onToggleSelect, onOpen }) {
           </div>
         </div>
       </td>
-      <td onClick={onOpen}>
+      <td>
         <BalancePill amount={u.balance} />
       </td>
-      <td onClick={onOpen}>
+      <td>
         {u.tag ? <span className="pill">{u.tag}</span> : <span className="muted">—</span>}
       </td>
-      <td className="small muted" onClick={onOpen}>{fmtDate(u.created_at)}</td>
-      <td onClick={onOpen}>
+      <td className="small muted">{fmtDate(u.created_at)}</td>
+      <td>
         {u.is_active ? <span className="pill ok">active</span> : <span className="pill">disabled</span>}
       </td>
-      <td style={{ width: 100, textAlign: "right" }}>
-        <div className="u-row-quick">
-          <button title="Открыть" onClick={onOpen}><Icon name="external-link" size={12} /></button>
-        </div>
+      <td style={{ width: 32, textAlign: "right", paddingRight: 16 }}>
+        <Icon name="chevron-right" size={14} className="muted" />
       </td>
     </tr>
   );
@@ -320,14 +242,12 @@ function UsersSkeleton() {
       <table className="tbl u-tbl">
         <thead>
           <tr>
-            <th style={{ width: 36 }}></th>
             <th>Пользователь</th><th>Баланс</th><th>Тег</th><th>Создан</th><th>Статус</th><th></th>
           </tr>
         </thead>
         <tbody>
           {[0,1,2,3,4,5,6].map((i) => (
             <tr key={i}>
-              <td><div className="u-skel" style={{ width: 14, height: 14 }}></div></td>
               <td>
                 <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                   <div className="u-skel" style={{ width: 32, height: 32, borderRadius: "50%" }}></div>
