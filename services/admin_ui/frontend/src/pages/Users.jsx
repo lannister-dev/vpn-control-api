@@ -13,14 +13,12 @@ import "../components/users/users.css";
 
 const PRESETS = [
   { id: "all", label: "Все" },
-  { id: "debt", label: "Должники", icon: "alert-circle" },
   { id: "no_sub", label: "Без подписки", icon: "user" },
-  { id: "expiring", label: "Истекают", icon: "clock" },
+  { id: "expiring", label: "Истекают (7д)", icon: "clock" },
 ];
 
-function applyPreset(preset) {
+function presetParams(preset) {
   switch (preset) {
-    case "debt": return { has_debt: true };
     case "no_sub": return { has_subscription: false };
     case "expiring": return { expiring_within_days: 7 };
     default: return {};
@@ -34,35 +32,36 @@ export function UsersPage() {
   const [selected, setSelected] = useState(null);
   const [creating, setCreating] = useState(false);
 
-  const presetParams = useMemo(() => applyPreset(preset), [preset]);
+  const params = useMemo(() => presetParams(preset), [preset]);
 
   const qs = new URLSearchParams({ limit: "100" });
   if (search) qs.set("search", search);
   if (activeFilter) qs.set("is_active", activeFilter);
-  Object.entries(presetParams).forEach(([k, v]) => qs.set(k, String(v)));
+  Object.entries(params).forEach(([k, v]) => qs.set(k, String(v)));
 
   const { data, loading, error, refetch } = useQuery(
     () => api.get(`/users?${qs.toString()}`),
     { interval: 30000, deps: [search, activeFilter, preset] }
   );
-  const items = data?.items || [];
-  const total = data?.total ?? 0;
 
-  const debtCount = useQuery(
-    () => api.get(`/users?has_debt=true&limit=1`),
-    { interval: 60000 }
-  );
-  const expiringCount = useQuery(
+  const expiringQuery = useQuery(
     () => api.get(`/users?expiring_within_days=7&limit=1`),
     { interval: 60000 }
   );
+  const noSubQuery = useQuery(
+    () => api.get(`/users?has_subscription=false&limit=1`),
+    { interval: 60000 }
+  );
+
+  const items = data?.items || [];
+  const total = data?.total ?? 0;
 
   return (
     <div className="page">
       <div className="page-head">
         <div className="page-head-main">
           <h1 className="page-title">Пользователи</h1>
-          <div className="page-subtitle">{total} всего</div>
+          <div className="page-subtitle">{total.toLocaleString("ru-RU")} всего</div>
         </div>
         <div className="page-head-actions">
           <button className="btn btn-ghost" onClick={refetch}>
@@ -75,18 +74,14 @@ export function UsersPage() {
       </div>
 
       <div className="u-kpi-bar">
-        <div className="u-kpi">
-          <div className="u-kpi-label"><Icon name="user" size={11} /> Всего</div>
-          <div className="u-kpi-val">{total.toLocaleString("ru-RU")}</div>
-        </div>
-        <div className={"u-kpi" + ((debtCount.data?.total ?? 0) > 0 ? " attention" : "")}>
-          <div className="u-kpi-label"><Icon name="alert-circle" size={11} /> С долгом</div>
-          <div className="u-kpi-val">{debtCount.data?.total ?? "—"}</div>
-        </div>
-        <div className={"u-kpi" + ((expiringCount.data?.total ?? 0) > 0 ? " warn" : "")}>
-          <div className="u-kpi-label"><Icon name="clock" size={11} /> Истекают (7д)</div>
-          <div className="u-kpi-val">{expiringCount.data?.total ?? "—"}</div>
-        </div>
+        <KpiCard icon="user" label="Всего" value={total.toLocaleString("ru-RU")} />
+        <KpiCard icon="user" label="Без подписки" value={noSubQuery.data?.total ?? "—"} />
+        <KpiCard
+          icon="clock"
+          label="Истекают за 7 дней"
+          value={expiringQuery.data?.total ?? "—"}
+          tone={(expiringQuery.data?.total ?? 0) > 0 ? "warn" : ""}
+        />
       </div>
 
       <div className="u-filter-bar">
@@ -118,7 +113,8 @@ export function UsersPage() {
       {loading && !items.length ? (
         <UsersSkeleton />
       ) : !items.length ? (
-        <UsersEmpty hasFilters={Boolean(search || activeFilter || preset !== "all")}
+        <UsersEmpty
+          hasFilters={Boolean(search || activeFilter || preset !== "all")}
           onReset={() => { setSearch(""); setActiveFilter(""); setPreset("all"); }}
         />
       ) : (
@@ -128,9 +124,9 @@ export function UsersPage() {
               <thead>
                 <tr>
                   <th>Пользователь</th>
-                  <th>Баланс</th>
-                  <th>Тег</th>
+                  <th style={{ textAlign: "right" }}>Баланс</th>
                   <th>Создан</th>
+                  <th>Условия</th>
                   <th>Статус</th>
                   <th></th>
                 </tr>
@@ -162,44 +158,52 @@ export function UsersPage() {
   );
 }
 
+function KpiCard({ icon, label, value, tone }) {
+  return (
+    <div className={"u-kpi" + (tone ? ` ${tone}` : "")}>
+      <div className="u-kpi-label"><Icon name={icon} size={11} /> {label}</div>
+      <div className="u-kpi-val">{value}</div>
+    </div>
+  );
+}
+
 function fmtDate(s) {
   if (!s) return "—";
   try { return new Date(s).toLocaleDateString("ru-RU"); } catch { return s; }
 }
 
 function UserRow({ u, onOpen }) {
-  const balance = Number(u.balance || 0);
-  const att = balance < 0 ? "attention" : "";
   return (
-    <tr
-      className={att}
-      style={{ cursor: "pointer" }}
-      onClick={onOpen}
-    >
+    <tr style={{ cursor: "pointer" }} onClick={onOpen}>
       <td>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <UserAvatar name={u.username || `tg${u.telegram_id}`} muted={!u.is_active} />
-          <div>
+          <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
               {u.username ? `@${u.username}` : <span className="muted">tg:{u.telegram_id}</span>}
-              {u.tag === "vip" && <Icon name="star" size={11} style={{ color: "var(--warn)" }} />}
               {!u.is_active && <Icon name="shield-off" size={11} style={{ color: "var(--bad)" }} />}
             </div>
-            <div className="mono muted" style={{ fontSize: 11 }}>tg:{u.telegram_id}</div>
+            <div className="mono muted" style={{ fontSize: 11 }}>
+              tg:{u.telegram_id}
+            </div>
           </div>
         </div>
       </td>
-      <td>
+      <td style={{ textAlign: "right" }}>
         <BalancePill amount={u.balance} />
-      </td>
-      <td>
-        {u.tag ? <span className="pill">{u.tag}</span> : <span className="muted">—</span>}
       </td>
       <td className="small muted">{fmtDate(u.created_at)}</td>
       <td>
-        {u.is_active ? <span className="pill ok">active</span> : <span className="pill">disabled</span>}
+        {u.terms_accepted
+          ? <span className="pill ok small">принято</span>
+          : <span className="pill small">нет</span>}
       </td>
-      <td style={{ width: 32, textAlign: "right", paddingRight: 16 }}>
+      <td>
+        {u.is_active
+          ? <span className="pill ok small">активен</span>
+          : <span className="pill small">отключён</span>}
+      </td>
+      <td style={{ width: 32, textAlign: "right", paddingRight: 12 }}>
         <Icon name="chevron-right" size={14} className="muted" />
       </td>
     </tr>
@@ -207,16 +211,13 @@ function UserRow({ u, onOpen }) {
 }
 
 function UserMobileCard({ u, onOpen }) {
-  const balance = Number(u.balance || 0);
-  const att = balance < 0 ? "attention" : "";
   return (
-    <div className={`u-mobile-card ${att}`} onClick={onOpen}>
+    <div className="u-mobile-card" onClick={onOpen}>
       <div className="u-mobile-card-head">
         <UserAvatar name={u.username || `tg${u.telegram_id}`} muted={!u.is_active} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 500 }}>
+          <div style={{ fontWeight: 500 }}>
             {u.username ? `@${u.username}` : `tg${u.telegram_id}`}
-            {u.tag === "vip" && <Icon name="star" size={11} style={{ color: "var(--warn)" }} />}
           </div>
           <div className="mono muted" style={{ fontSize: 11 }}>tg:{u.telegram_id}</div>
         </div>
@@ -224,12 +225,14 @@ function UserMobileCard({ u, onOpen }) {
       </div>
       <div className="u-mobile-card-row">
         <div>
-          <div className="u-mobile-card-lbl">Тег</div>
-          {u.tag ? <span className="pill">{u.tag}</span> : <span className="muted small">—</span>}
-        </div>
-        <div>
           <div className="u-mobile-card-lbl">Создан</div>
           <span className="small muted">{fmtDate(u.created_at)}</span>
+        </div>
+        <div>
+          <div className="u-mobile-card-lbl">Статус</div>
+          {u.is_active
+            ? <span className="pill ok small">активен</span>
+            : <span className="pill small">отключён</span>}
         </div>
       </div>
     </div>
@@ -242,7 +245,12 @@ function UsersSkeleton() {
       <table className="tbl u-tbl">
         <thead>
           <tr>
-            <th>Пользователь</th><th>Баланс</th><th>Тег</th><th>Создан</th><th>Статус</th><th></th>
+            <th>Пользователь</th>
+            <th style={{ textAlign: "right" }}>Баланс</th>
+            <th>Создан</th>
+            <th>Условия</th>
+            <th>Статус</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -257,9 +265,9 @@ function UsersSkeleton() {
                   </div>
                 </div>
               </td>
-              <td><div className="u-skel" style={{ width: 80, height: 18, borderRadius: 6 }}></div></td>
-              <td><div className="u-skel" style={{ width: 60, height: 14 }}></div></td>
+              <td style={{ textAlign: "right" }}><div className="u-skel" style={{ width: 80, height: 18, borderRadius: 6, display: "inline-block" }}></div></td>
               <td><div className="u-skel" style={{ width: 70, height: 12 }}></div></td>
+              <td><div className="u-skel" style={{ width: 60, height: 18, borderRadius: 6 }}></div></td>
               <td><div className="u-skel" style={{ width: 60, height: 18, borderRadius: 6 }}></div></td>
               <td></td>
             </tr>
@@ -280,23 +288,23 @@ function UsersEmpty({ hasFilters, onReset }) {
         </div>
         <div className="u-empty-text">
           {hasFilters
-            ? "Попробуйте смягчить условия или сбросить фильтры. Поиск работает по @username, telegram_id и UUID."
+            ? "Попробуйте смягчить условия. Поиск работает по @username, telegram_id и UUID."
             : "Создайте первого пользователя по telegram_id, либо они появятся автоматически после регистрации в боте."}
         </div>
-        <div className="u-empty-actions">
-          {hasFilters && (
+        {hasFilters && (
+          <div className="u-empty-actions">
             <button className="btn btn-ghost" onClick={onReset}>
               <Icon name="x" size={13} /> Сбросить фильтры
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 function UserCreateModal({ onClose, onCreated }) {
-  const [f, setF] = useState({ telegram_id: "", username: "", tag: "", description: "" });
+  const [f, setF] = useState({ telegram_id: "", username: "", description: "" });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
@@ -313,8 +321,6 @@ function UserCreateModal({ onClose, onCreated }) {
     const payload = { telegram_id: tg };
     const username = f.username.trim().replace(/^@/, "");
     if (username) payload.username = username;
-    const tag = f.tag.trim();
-    if (tag) payload.tag = tag;
     const description = f.description.trim();
     if (description) payload.description = description;
     setBusy(true);
@@ -361,9 +367,6 @@ function UserCreateModal({ onClose, onCreated }) {
         </Field>
         <Field label="Username" hint="без @, опционально">
           <input type="text" value={f.username} onChange={set("username")} placeholder="username" />
-        </Field>
-        <Field label="Тег" hint="опционально (например vip)">
-          <input type="text" value={f.tag} onChange={set("tag")} placeholder="vip / partner / …" />
         </Field>
         <Field label="Описание" hint="опционально">
           <textarea rows={3} value={f.description} onChange={set("description")} />

@@ -22,7 +22,6 @@ class UserRepository(BaseRepository[User]):
         search: str | None = None,
         is_active: bool | None = None,
         tag: str | None = None,
-        has_debt: bool | None = None,
         has_subscription: bool | None = None,
         expiring_within_days: int | None = None,
         limit: int = 50,
@@ -52,11 +51,6 @@ class UserRepository(BaseRepository[User]):
 
         if tag:
             add(User.tag == tag)
-
-        if has_debt is True:
-            add(User.balance < 0)
-        elif has_debt is False:
-            add(User.balance >= 0)
 
         if has_subscription is not None:
             sub_exists = exists().where(Subscription.user_id == User.id)
