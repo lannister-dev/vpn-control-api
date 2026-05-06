@@ -53,7 +53,7 @@ class TestEntryRoutingSpecSignature:
 
     def test_signature_changes_when_rule_outbound_changes(self):
         a = _spec(
-            backends=[EntryRoutingBackend(tag="b1", server="1.1.1.1", server_port=10000, uuid="svc")],
+            backends=[EntryRoutingBackend(tag="b1", backend_node_id=uuid4(), server="1.1.1.1", server_port=10000, uuid="svc")],
             rules=[EntryRoutingRule(user_uuid="u1", outbound_tag="b1")],
         )
         b = _spec(
@@ -390,7 +390,7 @@ class TestAdminServiceSetOverride:
         key.id = uuid4()
         key.client_id = "u1"
         key.entry_routing_override_backend_tag = None
-        backends = [EntryRoutingBackend(tag="backend-a", server="1.1.1.1", server_port=443, uuid="x")]
+        backends = [EntryRoutingBackend(tag="backend-a", backend_node_id=uuid4(), server="1.1.1.1", server_port=443, uuid="x")]
         svc = await self._build(key=key, backends=backends)
         with pytest.raises(UnknownBackendTagError):
             await svc.set_key_override(key_id=key.id, backend_tag="backend-removed")

@@ -131,7 +131,9 @@ class NodePlacementAutoHealService:
             PLACEMENT_AUTO_HEAL_TOTAL.labels(action="evaluate", result=reason).inc()
 
             if node is not None and not node.is_draining:
-                await self.node_repository.update_by_id(node.id, {"is_draining": True})
+                await self.node_repository.update_by_id(
+                    node.id, {"is_draining": True, "drain_source": "auto_heal"},
+                )
                 await self._record_drain_reason(
                     node_id=node.id,
                     state=state,
@@ -206,6 +208,8 @@ class NodePlacementAutoHealService:
         for node, state in rows:
             if not node.is_active or not node.is_enabled or not node.is_draining:
                 continue
+            if node.drain_source == "admin":
+                continue
             if state is None or not state.is_healthy:
                 continue
             freshness = self._freshness_seconds(state=state, now=now)
@@ -223,7 +227,9 @@ class NodePlacementAutoHealService:
                         continue
                 else:
                     continue
-            await self.node_repository.update_by_id(node.id, {"is_draining": False})
+            await self.node_repository.update_by_id(
+                node.id, {"is_draining": False, "drain_source": None},
+            )
             await self._clear_drain_reason(node_id=node.id, state=state)
             if node.role == ROLE_BACKEND:
                 await enqueue_pool_snapshots_for_backend(

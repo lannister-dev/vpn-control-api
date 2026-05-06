@@ -120,6 +120,7 @@ class EntryRoutingService:
         if self.config.backend_use_wg:
             return EntryRoutingBackend(
                 tag=f"backend-{node.name}",
+                backend_node_id=node.id,
                 server=node.internal_wg_ip,
                 server_port=self.config.backend_wg_port,
                 uuid=self.config.backend_service_uuid,
@@ -128,6 +129,7 @@ class EntryRoutingService:
         server = node.reality_ip or node.public_domain
         return EntryRoutingBackend(
             tag=f"backend-{node.name}",
+            backend_node_id=node.id,
             server=server,
             server_port=self.config.backend_port,
             uuid=self.config.backend_service_uuid,

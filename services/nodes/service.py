@@ -224,9 +224,10 @@ class VpnNodeService:
         if should_drain:
             await self.vpn_node_repository.update_by_id(
                 node.id,
-                {"is_draining": True},
+                {"is_draining": True, "drain_source": "auto_heal"},
             )
             node.is_draining = True
+            node.drain_source = "auto_heal"
             heartbeat_meta.drain_reason = DRAIN_REASON_UNHEALTHY_HEARTBEAT
             heartbeat_meta.drained_at = now
             if node.role == ROLE_BACKEND:
@@ -244,15 +245,17 @@ class VpnNodeService:
             and node.is_draining
             and node.is_active
             and node.is_enabled
+            and node.drain_source != "admin"
             and heartbeat_meta.drain_reason in (DRAIN_REASON_UNHEALTHY_HEARTBEAT, None)
             and heartbeat_meta.consecutive_healthy >= healthy_undrain_threshold
         )
         if should_undrain:
             await self.vpn_node_repository.update_by_id(
                 node.id,
-                {"is_draining": False},
+                {"is_draining": False, "drain_source": None},
             )
             node.is_draining = False
+            node.drain_source = None
             heartbeat_meta.drain_reason = None
             heartbeat_meta.drained_at = None
             if node.role == ROLE_BACKEND:

@@ -35,6 +35,7 @@ class VpnNodeUpdate(BaseModel):
     auth_token_hash: str | None = None
     is_enabled: bool | None = None
     is_draining: bool | None = None
+    drain_source: str | None = Field(default=None, max_length=16)
     capacity: int | None = None
     wg_public_key: str | None = Field(default=None, max_length=64)
     wg_listen_port: int | None = Field(default=None, ge=1, le=65535)
