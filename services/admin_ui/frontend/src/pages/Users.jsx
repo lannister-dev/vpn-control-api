@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { api } from "../api/client.js";
 import { useQuery } from "../hooks/useQuery.js";
 import { Icon } from "../components/Icon.jsx";
@@ -6,101 +6,220 @@ import { Modal } from "../components/Modal.jsx";
 import { Field } from "../components/Field.jsx";
 import { toast } from "../components/Toast.jsx";
 import { UserDrawer } from "../components/UserDrawer.jsx";
+import { UserAvatar } from "../components/users/UserAvatar.jsx";
+import { BalancePill } from "../components/users/BalancePill.jsx";
+import { FilterChip, FilterPresets } from "../components/users/FilterChip.jsx";
+import "../components/users/users.css";
 
-function fmtDate(s) {
-  if (!s) return "—";
-  try { return new Date(s).toLocaleDateString("ru-RU"); } catch { return s; }
+const PRESETS = [
+  { id: "all", label: "Все" },
+  { id: "debt", label: "Должники", icon: "alert-circle" },
+  { id: "no_sub", label: "Без подписки", icon: "user" },
+  { id: "expiring", label: "Истекают", icon: "clock" },
+];
+
+function applyPreset(preset) {
+  switch (preset) {
+    case "debt": return { has_debt: true };
+    case "no_sub": return { has_subscription: false };
+    case "expiring": return { expiring_within_days: 7 };
+    default: return {};
+  }
 }
 
 export function UsersPage() {
   const [search, setSearch] = useState("");
+  const [preset, setPreset] = useState("all");
   const [activeFilter, setActiveFilter] = useState("");
+  const [tagFilter, setTagFilter] = useState("");
   const [selected, setSelected] = useState(null);
   const [creating, setCreating] = useState(false);
+  const [bulkSelected, setBulkSelected] = useState(new Set());
+
+  const presetParams = useMemo(() => applyPreset(preset), [preset]);
 
   const qs = new URLSearchParams({ limit: "100" });
   if (search) qs.set("search", search);
   if (activeFilter) qs.set("is_active", activeFilter);
+  if (tagFilter) qs.set("tag", tagFilter);
+  Object.entries(presetParams).forEach(([k, v]) => qs.set(k, String(v)));
 
   const { data, loading, error, refetch } = useQuery(
     () => api.get(`/users?${qs.toString()}`),
-    { interval: 30000, deps: [search, activeFilter] },
+    { interval: 30000, deps: [search, activeFilter, tagFilter, preset] }
   );
   const items = data?.items || [];
+  const total = data?.total ?? 0;
+
+  const summary = useMemo(() => {
+    const active = items.filter((u) => u.is_active).length;
+    const debt = items.filter((u) => Number(u.balance) < 0).length;
+    const noSub = items.filter((u) => !u.subscription_count).length;
+    const expiring = items.filter(
+      (u) => u.subscription_status === "expiring"
+    ).length;
+    return { active, debt, noSub, expiring };
+  }, [items]);
+
+  const toggleBulk = (id) => {
+    const next = new Set(bulkSelected);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setBulkSelected(next);
+  };
+  const clearBulk = () => setBulkSelected(new Set());
 
   return (
     <div className="page">
       <div className="page-head">
         <div className="page-head-main">
           <h1 className="page-title">Пользователи</h1>
-          <div className="page-subtitle">
-            {data?.total ?? 0} всего{activeFilter === "true" ? " (только активные)" : activeFilter === "false" ? " (только отключённые)" : ""}
-          </div>
+          <div className="page-subtitle">{total} всего</div>
         </div>
         <div className="page-head-actions">
-          <button className="btn btn-ghost" onClick={refetch}><Icon name="refresh" size={13} /> Обновить</button>
+          <button className="btn btn-ghost" onClick={refetch}>
+            <Icon name="refresh" size={13} /> Обновить
+          </button>
           <button className="btn btn-primary" onClick={() => setCreating(true)}>
             <Icon name="plus" size={13} /> Создать
           </button>
         </div>
       </div>
 
-      <div className="filterbar">
-        <div className="input-search-wrap">
-          <Icon name="search" size={13} className="input-search-icon" />
-          <input className="input" placeholder="Поиск UUID / telegram / username…" value={search} onChange={(e) => setSearch(e.target.value)} />
+      <div className="u-kpi-bar">
+        <div className="u-kpi">
+          <div className="u-kpi-label"><Icon name="user" size={11} /> Всего</div>
+          <div className="u-kpi-val">{total.toLocaleString("ru-RU")}</div>
         </div>
-        <select className="select" value={activeFilter} onChange={(e) => setActiveFilter(e.target.value)}>
-          <option value="">Любой статус</option>
-          <option value="true">Активные</option>
-          <option value="false">Отключённые</option>
-        </select>
-        <div style={{ marginLeft: "auto" }}>
-          <span className="muted text-xs">{items.length} / {data?.total ?? 0}</span>
+        <div className="u-kpi">
+          <div className="u-kpi-label"><Icon name="activity" size={11} /> Активные</div>
+          <div className="u-kpi-val">{summary.active}</div>
+        </div>
+        <div className={"u-kpi" + (summary.debt > 0 ? " attention" : "")}>
+          <div className="u-kpi-label"><Icon name="alert-circle" size={11} /> С долгом</div>
+          <div className="u-kpi-val">{summary.debt}</div>
+        </div>
+        <div className={"u-kpi" + (summary.expiring > 0 ? " warn" : "")}>
+          <div className="u-kpi-label"><Icon name="clock" size={11} /> Истекают</div>
+          <div className="u-kpi-val">{summary.expiring}</div>
         </div>
       </div>
+
+      <div className="u-filter-bar">
+        <div className="input-search-wrap" style={{ flex: 1, minWidth: 240, maxWidth: 360 }}>
+          <Icon name="search" size={13} className="input-search-icon" />
+          <input
+            className="input"
+            placeholder="Поиск: tg-id, @username, uuid…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <FilterPresets items={PRESETS} value={preset} onPick={setPreset} />
+        <div className="u-filter-chips">
+          {tagFilter && (
+            <FilterChip
+              icon="tag"
+              label="Тег"
+              value={tagFilter}
+              applied
+              onRemove={() => setTagFilter("")}
+            />
+          )}
+          {activeFilter && (
+            <FilterChip
+              icon="shield"
+              label="Статус"
+              value={activeFilter === "true" ? "активные" : "отключённые"}
+              applied
+              onRemove={() => setActiveFilter("")}
+            />
+          )}
+        </div>
+        <div style={{ marginLeft: "auto" }}>
+          <select
+            className="select"
+            value={activeFilter}
+            onChange={(e) => setActiveFilter(e.target.value)}
+          >
+            <option value="">Любой статус</option>
+            <option value="true">Активные</option>
+            <option value="false">Отключённые</option>
+          </select>
+        </div>
+      </div>
+
+      {bulkSelected.size > 0 && (
+        <div className="u-bulk-bar">
+          <span className="u-bulk-count">{bulkSelected.size}</span>
+          <span>выбрано</span>
+          <div className="u-bulk-actions">
+            <button className="btn btn-ghost btn-sm" onClick={clearBulk}>
+              Отменить
+            </button>
+            <button className="btn btn-ghost btn-sm" disabled title="WIP">
+              <Icon name="tag" size={12} /> Добавить тег
+            </button>
+            <button className="btn btn-ghost btn-sm" disabled title="WIP">
+              <Icon name="shield-off" size={12} /> Заблокировать
+            </button>
+          </div>
+        </div>
+      )}
 
       {error && <div className="card card-bad">Ошибка: {error.message}</div>}
 
-      <div className="card">
-        <table className="tbl">
-          <thead>
-            <tr>
-              <th>Пользователь</th>
-              <th>Telegram</th>
-              <th style={{ textAlign: "right" }}>Баланс</th>
-              <th>Создан</th>
-              <th>Статус</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((u) => {
-              const initials = (u.username || `tg${u.telegram_id}`).slice(0, 2).toUpperCase();
-              return (
-                <tr key={u.id} style={{ cursor: "pointer" }} onClick={() => setSelected(u)}>
-                  <td>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <div className="user-avatar" style={{ width: 28, height: 28, fontSize: 11 }}>{initials}</div>
-                      <div>
-                        <div style={{ fontWeight: 500 }}>
-                          {u.username ? `@${u.username}` : <span className="muted">—</span>}
-                        </div>
-                        <div className="mono muted" style={{ fontSize: 11 }}>{String(u.id).slice(0, 12)}…</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="mono">{u.telegram_id}</td>
-                  <td className="tbl-num mono">{u.balance ?? 0} ₽</td>
-                  <td className="small muted">{fmtDate(u.created_at)}</td>
-                  <td>{u.is_active ? <span className="pill ok">active</span> : <span className="pill">disabled</span>}</td>
+      {loading && !items.length ? (
+        <UsersSkeleton />
+      ) : !items.length ? (
+        <UsersEmpty hasFilters={Boolean(search || activeFilter || tagFilter || preset !== "all")}
+          onReset={() => { setSearch(""); setActiveFilter(""); setTagFilter(""); setPreset("all"); }}
+        />
+      ) : (
+        <>
+          <div className="card">
+            <table className="tbl u-tbl">
+              <thead>
+                <tr>
+                  <th style={{ width: 36 }}>
+                    <input
+                      type="checkbox"
+                      checked={items.length > 0 && bulkSelected.size === items.length}
+                      onChange={() => {
+                        if (bulkSelected.size === items.length) clearBulk();
+                        else setBulkSelected(new Set(items.map((u) => u.id)));
+                      }}
+                    />
+                  </th>
+                  <th>Пользователь</th>
+                  <th>Баланс</th>
+                  <th>Тег</th>
+                  <th>Создан</th>
+                  <th>Статус</th>
+                  <th></th>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        {(loading && !items.length) && <div className="muted" style={{ padding: 14 }}>Загрузка…</div>}
-        {(!loading && !items.length) && <div className="muted" style={{ padding: 14 }}>Нет пользователей.</div>}
-      </div>
+              </thead>
+              <tbody>
+                {items.map((u) => (
+                  <UserRow
+                    key={u.id}
+                    u={u}
+                    selected={bulkSelected.has(u.id)}
+                    onToggleSelect={() => toggleBulk(u.id)}
+                    onOpen={() => setSelected(u)}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="u-mobile-list">
+            {items.map((u) => (
+              <UserMobileCard key={u.id} u={u} onOpen={() => setSelected(u)} />
+            ))}
+          </div>
+        </>
+      )}
 
       {selected && <UserDrawer user={selected} onClose={() => setSelected(null)} />}
       {creating && (
@@ -109,6 +228,149 @@ export function UsersPage() {
           onCreated={(u) => { setCreating(false); refetch(); setSelected(u); }}
         />
       )}
+    </div>
+  );
+}
+
+function fmtDate(s) {
+  if (!s) return "—";
+  try { return new Date(s).toLocaleDateString("ru-RU"); } catch { return s; }
+}
+
+function UserRow({ u, selected, onToggleSelect, onOpen }) {
+  const balance = Number(u.balance || 0);
+  const att = balance < 0 ? "attention" : "";
+  return (
+    <tr
+      className={`${selected ? "selected" : ""} ${att}`}
+      style={{ cursor: "pointer" }}
+    >
+      <td onClick={(e) => e.stopPropagation()}>
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggleSelect}
+        />
+      </td>
+      <td onClick={onOpen}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <UserAvatar name={u.username || `tg${u.telegram_id}`} muted={!u.is_active} />
+          <div>
+            <div style={{ fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
+              {u.username ? `@${u.username}` : <span className="muted">tg:{u.telegram_id}</span>}
+              {u.tag === "vip" && <Icon name="star" size={11} style={{ color: "var(--warn)" }} />}
+              {!u.is_active && <Icon name="shield-off" size={11} style={{ color: "var(--bad)" }} />}
+            </div>
+            <div className="mono muted" style={{ fontSize: 11 }}>tg:{u.telegram_id}</div>
+          </div>
+        </div>
+      </td>
+      <td onClick={onOpen}>
+        <BalancePill amount={u.balance} />
+      </td>
+      <td onClick={onOpen}>
+        {u.tag ? <span className="pill">{u.tag}</span> : <span className="muted">—</span>}
+      </td>
+      <td className="small muted" onClick={onOpen}>{fmtDate(u.created_at)}</td>
+      <td onClick={onOpen}>
+        {u.is_active ? <span className="pill ok">active</span> : <span className="pill">disabled</span>}
+      </td>
+      <td style={{ width: 100, textAlign: "right" }}>
+        <div className="u-row-quick">
+          <button title="Открыть" onClick={onOpen}><Icon name="external-link" size={12} /></button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function UserMobileCard({ u, onOpen }) {
+  const balance = Number(u.balance || 0);
+  const att = balance < 0 ? "attention" : "";
+  return (
+    <div className={`u-mobile-card ${att}`} onClick={onOpen}>
+      <div className="u-mobile-card-head">
+        <UserAvatar name={u.username || `tg${u.telegram_id}`} muted={!u.is_active} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 500 }}>
+            {u.username ? `@${u.username}` : `tg${u.telegram_id}`}
+            {u.tag === "vip" && <Icon name="star" size={11} style={{ color: "var(--warn)" }} />}
+          </div>
+          <div className="mono muted" style={{ fontSize: 11 }}>tg:{u.telegram_id}</div>
+        </div>
+        <BalancePill amount={u.balance} />
+      </div>
+      <div className="u-mobile-card-row">
+        <div>
+          <div className="u-mobile-card-lbl">Тег</div>
+          {u.tag ? <span className="pill">{u.tag}</span> : <span className="muted small">—</span>}
+        </div>
+        <div>
+          <div className="u-mobile-card-lbl">Создан</div>
+          <span className="small muted">{fmtDate(u.created_at)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UsersSkeleton() {
+  return (
+    <div className="card">
+      <table className="tbl u-tbl">
+        <thead>
+          <tr>
+            <th style={{ width: 36 }}></th>
+            <th>Пользователь</th><th>Баланс</th><th>Тег</th><th>Создан</th><th>Статус</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {[0,1,2,3,4,5,6].map((i) => (
+            <tr key={i}>
+              <td><div className="u-skel" style={{ width: 14, height: 14 }}></div></td>
+              <td>
+                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                  <div className="u-skel" style={{ width: 32, height: 32, borderRadius: "50%" }}></div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                    <div className="u-skel" style={{ width: 140, height: 11 }}></div>
+                    <div className="u-skel" style={{ width: 96, height: 9 }}></div>
+                  </div>
+                </div>
+              </td>
+              <td><div className="u-skel" style={{ width: 80, height: 18, borderRadius: 6 }}></div></td>
+              <td><div className="u-skel" style={{ width: 60, height: 14 }}></div></td>
+              <td><div className="u-skel" style={{ width: 70, height: 12 }}></div></td>
+              <td><div className="u-skel" style={{ width: 60, height: 18, borderRadius: 6 }}></div></td>
+              <td></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function UsersEmpty({ hasFilters, onReset }) {
+  return (
+    <div className="card">
+      <div className="u-empty">
+        <div className="u-empty-art"><Icon name="user" size={36} /></div>
+        <div className="u-empty-title">
+          {hasFilters ? "Нет пользователей под фильтры" : "Пока нет пользователей"}
+        </div>
+        <div className="u-empty-text">
+          {hasFilters
+            ? "Попробуйте смягчить условия или сбросить фильтры. Поиск работает по @username, telegram_id и UUID."
+            : "Создайте первого пользователя по telegram_id, либо они появятся автоматически после регистрации в боте."}
+        </div>
+        <div className="u-empty-actions">
+          {hasFilters && (
+            <button className="btn btn-ghost" onClick={onReset}>
+              <Icon name="x" size={13} /> Сбросить фильтры
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -180,7 +442,7 @@ function UserCreateModal({ onClose, onCreated }) {
         <Field label="Username" hint="без @, опционально">
           <input type="text" value={f.username} onChange={set("username")} placeholder="username" />
         </Field>
-        <Field label="Тег" hint="опционально">
+        <Field label="Тег" hint="опционально (например vip)">
           <input type="text" value={f.tag} onChange={set("tag")} placeholder="vip / partner / …" />
         </Field>
         <Field label="Описание" hint="опционально">
