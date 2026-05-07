@@ -68,8 +68,10 @@ class EntryRoutingService:
             for key in keys
             if key.client_id and key.entry_routing_override_backend_tag
         }
-        backends = await self._build_backends_for_zone(node)
-        rules, final_outbound = self._assign_users_to_backends(users, backends, overrides)
+        backend_nodes = await self._candidate_backend_nodes_for_zone(node)
+        backends, rules, final_outbound = self._materialize_outbounds_and_rules(
+            users, backend_nodes, overrides,
+        )
         return EntryRoutingSpec(
             node_id=str(node.id),
             listen_port=self.config.listen_port,
@@ -86,17 +88,18 @@ class EntryRoutingService:
             final_outbound=final_outbound,
         )
 
-    async def _build_backends_for_zone(self, entry: VpnNode) -> list[EntryRoutingBackend]:
-        if not self.config.backend_service_uuid:
-            return []
+    async def _candidate_backend_nodes_for_zone(self, entry: VpnNode) -> list[VpnNode]:
         if self.config.backend_use_wg:
             if not self._has_wg_addr(entry):
                 return []
-        elif not self.config.backend_reality_public_key:
-            return []
+        else:
+            if not self.config.backend_service_uuid:
+                return []
+            if not self.config.backend_reality_public_key:
+                return []
         zone = effective_zone(explicit_zone=entry.zone, region=entry.region)
         all_nodes = await self.node_repo.list()
-        candidates = [
+        return [
             n for n in all_nodes
             if n.role == ROLE_BACKEND
             and n.is_enabled
@@ -104,7 +107,13 @@ class EntryRoutingService:
             and effective_zone(explicit_zone=n.zone, region=n.region) == zone
             and self._has_reachable_addr(n)
         ]
-        return [self._backend_to_outbound(n) for n in candidates]
+
+    async def _build_backends_for_zone(self, entry: VpnNode) -> list[EntryRoutingBackend]:
+        nodes = await self._candidate_backend_nodes_for_zone(entry)
+        return [
+            self._make_outbound(n, tag=self._backend_node_tag(n), uuid=self.config.backend_service_uuid)
+            for n in nodes
+        ]
 
     def _has_reachable_addr(self, node: VpnNode) -> bool:
         if self.config.backend_use_wg:
@@ -116,23 +125,33 @@ class EntryRoutingService:
         ip = (node.internal_wg_ip or "").strip()
         return bool(ip) and not ip.startswith("0.")
 
-    def _backend_to_outbound(self, node: VpnNode) -> EntryRoutingBackend:
+    @staticmethod
+    def _backend_node_tag(node: VpnNode) -> str:
+        return f"backend-{node.name}"
+
+    @staticmethod
+    def _user_outbound_tag(node_name: str, client_id: str) -> str:
+        return f"b-{client_id}-{node_name}"
+
+    def _make_outbound(
+        self, node: VpnNode, *, tag: str, uuid: str,
+    ) -> EntryRoutingBackend:
         if self.config.backend_use_wg:
             return EntryRoutingBackend(
-                tag=f"backend-{node.name}",
+                tag=tag,
                 backend_node_id=node.id,
                 server=node.internal_wg_ip,
                 server_port=self.config.backend_wg_port,
-                uuid=self.config.backend_service_uuid,
+                uuid=uuid,
                 flow="",
             )
         server = node.reality_ip or node.public_domain
         return EntryRoutingBackend(
-            tag=f"backend-{node.name}",
+            tag=tag,
             backend_node_id=node.id,
             server=server,
             server_port=self.config.backend_port,
-            uuid=self.config.backend_service_uuid,
+            uuid=uuid,
             flow=self.config.backend_flow,
             reality_public_key=self.config.backend_reality_public_key,
             reality_short_id=self.config.reality_short_id,
@@ -140,31 +159,49 @@ class EntryRoutingService:
             reality_fingerprint=self.config.backend_reality_fingerprint,
         )
 
-    @staticmethod
-    def _assign_users_to_backends(
+    def _materialize_outbounds_and_rules(
+        self,
         users: list[EntryRoutingUser],
-        backends: list[EntryRoutingBackend],
+        backend_nodes: list[VpnNode],
         overrides: dict[str, str] | None = None,
-    ) -> tuple[list[EntryRoutingRule], str]:
-        if not backends:
-            return [], "direct"
-        ordered = sorted(backends, key=lambda b: b.tag)
-        valid_tags = {b.tag for b in ordered}
+    ) -> tuple[list[EntryRoutingBackend], list[EntryRoutingRule], str]:
+        if not backend_nodes:
+            return [], [], "direct"
+        sorted_nodes = sorted(backend_nodes, key=lambda n: n.name)
+        node_by_backend_tag = {self._backend_node_tag(n): n for n in sorted_nodes}
         overrides = overrides or {}
+
+        outbounds: list[EntryRoutingBackend] = []
         rules: list[EntryRoutingRule] = []
+        seen_outbound_tags: set[str] = set()
+
         for user in users:
             forced = overrides.get(user.uuid)
-            if forced and forced in valid_tags:
-                rules.append(
-                    EntryRoutingRule(user_uuid=user.uuid, outbound_tag=forced)
-                )
-                continue
-            digest = hashlib.sha256(user.uuid.encode()).digest()
-            idx = int.from_bytes(digest[:8], "big") % len(ordered)
-            rules.append(
-                EntryRoutingRule(user_uuid=user.uuid, outbound_tag=ordered[idx].tag)
-            )
-        return rules, ordered[0].tag
+            if forced and forced in node_by_backend_tag:
+                assigned = node_by_backend_tag[forced]
+            else:
+                digest = hashlib.sha256(user.uuid.encode()).digest()
+                idx = int.from_bytes(digest[:8], "big") % len(sorted_nodes)
+                assigned = sorted_nodes[idx]
+
+            if self.config.backend_use_wg and self.config.per_user_outbound_uuid:
+                ob_tag = self._user_outbound_tag(assigned.name, user.uuid)
+                ob_uuid = user.uuid
+            else:
+                ob_tag = self._backend_node_tag(assigned)
+                ob_uuid = self.config.backend_service_uuid
+
+            if ob_tag not in seen_outbound_tags:
+                outbounds.append(self._make_outbound(assigned, tag=ob_tag, uuid=ob_uuid))
+                seen_outbound_tags.add(ob_tag)
+
+            rules.append(EntryRoutingRule(user_uuid=user.uuid, outbound_tag=ob_tag))
+
+        if self.config.backend_use_wg and self.config.per_user_outbound_uuid:
+            final_outbound = "block"
+        else:
+            final_outbound = self._backend_node_tag(sorted_nodes[0])
+        return outbounds, rules, final_outbound
 
 
 class EntryRoutingAdminService:

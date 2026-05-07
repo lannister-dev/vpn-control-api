@@ -477,6 +477,158 @@ class TestEntryRoutingBackendWGMode:
         assert spec.backends == []
 
 
+@pytest.mark.asyncio
+class TestEntryRoutingPerUserOutboundWG:
+    @staticmethod
+    def _entry():
+        return MagicMock(
+            id=uuid4(), role=ROLE_ENTRY, zone="europe", region="de",
+            internal_wg_ip="10.10.0.1",
+        )
+
+    @staticmethod
+    def _backend(name: str, wg_ip: str):
+        b = MagicMock(
+            id=uuid4(), role="backend",
+            is_enabled=True, is_draining=False,
+            zone="europe", region="fi",
+            reality_ip="", public_domain="",
+            internal_wg_ip=wg_ip,
+        )
+        b.name = name
+        return b
+
+    @staticmethod
+    def _cfg():
+        return EntryRoutingConfig(
+            backend_use_wg=True,
+            backend_wg_port=10100,
+            backend_service_uuid="legacy-relay",
+            per_user_outbound_uuid=True,
+        )
+
+    async def _build_spec(self, *, entry, backends, keys):
+        node_repo = MagicMock()
+        node_repo.get_by_id = AsyncMock(return_value=entry)
+        node_repo.list = AsyncMock(return_value=[entry, *backends])
+        key_repo = MagicMock()
+        key_repo.list_all_active = AsyncMock(return_value=keys)
+        svc = EntryRoutingService(session=MagicMock(), config=self._cfg())
+        svc.node_repo = node_repo
+        svc.key_repo = key_repo
+        return await svc.build_spec_for_node(entry.id)
+
+    async def test_each_user_gets_own_outbound_with_own_uuid(self):
+        entry = self._entry()
+        backends = [self._backend("rix", "10.10.0.2")]
+        keys = [
+            MagicMock(client_id="user-aaa", entry_routing_override_backend_tag=None),
+            MagicMock(client_id="user-bbb", entry_routing_override_backend_tag=None),
+            MagicMock(client_id="user-ccc", entry_routing_override_backend_tag=None),
+        ]
+        spec = await self._build_spec(entry=entry, backends=backends, keys=keys)
+
+        assert len(spec.backends) == 3
+        outbound_uuids = {b.uuid for b in spec.backends}
+        assert outbound_uuids == {"user-aaa", "user-bbb", "user-ccc"}
+        for b in spec.backends:
+            assert b.tag == f"b-{b.uuid}-rix"
+            assert b.server == "10.10.0.2"
+            assert b.server_port == 10100
+            assert b.flow == ""
+            assert b.reality_public_key == ""
+
+    async def test_rules_point_each_user_to_own_outbound(self):
+        entry = self._entry()
+        backends = [self._backend("rix", "10.10.0.2")]
+        keys = [MagicMock(client_id=f"u{i}", entry_routing_override_backend_tag=None) for i in range(5)]
+        spec = await self._build_spec(entry=entry, backends=backends, keys=keys)
+        for rule in spec.rules:
+            assert rule.outbound_tag == f"b-{rule.user_uuid}-rix"
+
+    async def test_final_outbound_is_block_in_wg_mode(self):
+        entry = self._entry()
+        backends = [self._backend("rix", "10.10.0.2")]
+        keys = [MagicMock(client_id="u1", entry_routing_override_backend_tag=None)]
+        spec = await self._build_spec(entry=entry, backends=backends, keys=keys)
+        assert spec.final_outbound == "block"
+
+    async def test_two_users_same_backend_get_separate_outbounds(self):
+        entry = self._entry()
+        backends = [self._backend("solo", "10.10.0.2")]
+        keys = [
+            MagicMock(client_id="user-x", entry_routing_override_backend_tag=None),
+            MagicMock(client_id="user-y", entry_routing_override_backend_tag=None),
+        ]
+        spec = await self._build_spec(entry=entry, backends=backends, keys=keys)
+        tags = [b.tag for b in spec.backends]
+        assert tags == ["b-user-x-solo", "b-user-y-solo"] or tags == ["b-user-y-solo", "b-user-x-solo"]
+        assert {b.uuid for b in spec.backends} == {"user-x", "user-y"}
+
+    async def test_override_resolves_to_user_outbound_on_chosen_backend(self):
+        entry = self._entry()
+        backends = [
+            self._backend("hel", "10.10.0.3"),
+            self._backend("rix", "10.10.0.2"),
+        ]
+        forced = MagicMock(client_id="forced", entry_routing_override_backend_tag="backend-rix")
+        free = MagicMock(client_id="free", entry_routing_override_backend_tag=None)
+        spec = await self._build_spec(entry=entry, backends=backends, keys=[forced, free])
+
+        rules = {r.user_uuid: r.outbound_tag for r in spec.rules}
+        assert rules["forced"] == "b-forced-rix"
+        assert rules["free"] in {"b-free-hel", "b-free-rix"}
+
+        outbound_by_tag = {b.tag: b for b in spec.backends}
+        assert outbound_by_tag["b-forced-rix"].server == "10.10.0.2"
+        assert outbound_by_tag["b-forced-rix"].uuid == "forced"
+
+    async def test_invalid_override_tag_falls_back_to_hash(self):
+        entry = self._entry()
+        backends = [self._backend("rix", "10.10.0.2")]
+        bad = MagicMock(client_id="u1", entry_routing_override_backend_tag="backend-removed")
+        spec = await self._build_spec(entry=entry, backends=backends, keys=[bad])
+        assert spec.rules[0].outbound_tag == "b-u1-rix"
+
+    async def test_no_users_yields_no_outbounds(self):
+        entry = self._entry()
+        backends = [self._backend("rix", "10.10.0.2")]
+        spec = await self._build_spec(entry=entry, backends=backends, keys=[])
+        assert spec.backends == []
+        assert spec.rules == []
+        assert spec.final_outbound == "block"
+
+    async def test_flag_off_keeps_legacy_shared_uuid_in_wg_mode(self):
+        entry = self._entry()
+        backend = self._backend("rix", "10.10.0.2")
+        keys = [
+            MagicMock(client_id="u1", entry_routing_override_backend_tag=None),
+            MagicMock(client_id="u2", entry_routing_override_backend_tag=None),
+        ]
+        node_repo = MagicMock()
+        node_repo.get_by_id = AsyncMock(return_value=entry)
+        node_repo.list = AsyncMock(return_value=[entry, backend])
+        key_repo = MagicMock()
+        key_repo.list_all_active = AsyncMock(return_value=keys)
+        cfg = EntryRoutingConfig(
+            backend_use_wg=True,
+            backend_wg_port=10100,
+            backend_service_uuid="legacy-relay",
+            per_user_outbound_uuid=False,
+        )
+        svc = EntryRoutingService(session=MagicMock(), config=cfg)
+        svc.node_repo = node_repo
+        svc.key_repo = key_repo
+        spec = await svc.build_spec_for_node(entry.id)
+
+        assert len(spec.backends) == 1
+        assert spec.backends[0].tag == "backend-rix"
+        assert spec.backends[0].uuid == "legacy-relay"
+        assert spec.final_outbound == "backend-rix"
+        for rule in spec.rules:
+            assert rule.outbound_tag == "backend-rix"
+
+
 class TestAdminServiceEffectiveBackend:
     @staticmethod
     def _eff(client_id, override=None, tags=("backend-a", "backend-b")):
