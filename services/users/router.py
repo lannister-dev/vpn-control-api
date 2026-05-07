@@ -24,12 +24,21 @@ router = APIRouter(prefix="/users", tags=["Users"], dependencies=[Depends(admin_
 async def list_users(
     search: str | None = Query(None, description="Search by username, telegram_id or UUID"),
     is_active: bool | None = Query(None, description="Filter by active status"),
+    tag: str | None = Query(None, description="Filter by exact tag"),
+    has_subscription: bool | None = Query(None, description="Filter users with/without subscriptions"),
+    expiring_within_days: int | None = Query(None, ge=1, le=365, description="Filter users with active subscription expiring within N days"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     service: UserService = Depends(get_user_service),
 ):
     return await service.list_users(
-        search=search, is_active=is_active, limit=limit, offset=offset
+        search=search,
+        is_active=is_active,
+        tag=tag,
+        has_subscription=has_subscription,
+        expiring_within_days=expiring_within_days,
+        limit=limit,
+        offset=offset,
     )
 
 

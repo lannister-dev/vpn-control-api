@@ -26,11 +26,20 @@ class UserService:
         self,
         search: str | None = None,
         is_active: bool | None = None,
+        tag: str | None = None,
+        has_subscription: bool | None = None,
+        expiring_within_days: int | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> UserListOut:
         rows, total = await self.repo.list_paginated(
-            search=search, is_active=is_active, limit=limit, offset=offset
+            search=search,
+            is_active=is_active,
+            tag=tag,
+            has_subscription=has_subscription,
+            expiring_within_days=expiring_within_days,
+            limit=limit,
+            offset=offset,
         )
         return UserListOut(
             items=[UserOut.model_validate(u) for u in rows],
