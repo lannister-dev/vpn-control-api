@@ -139,6 +139,7 @@ class EntryRoutingService:
         if self.config.backend_use_wg:
             return EntryRoutingBackend(
                 tag=tag,
+                node_name=node.name,
                 backend_node_id=node.id,
                 server=node.internal_wg_ip,
                 server_port=self.config.backend_wg_port,
@@ -148,6 +149,7 @@ class EntryRoutingService:
         server = node.reality_ip or node.public_domain
         return EntryRoutingBackend(
             tag=tag,
+            node_name=node.name,
             backend_node_id=node.id,
             server=server,
             server_port=self.config.backend_port,
