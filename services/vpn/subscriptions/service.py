@@ -1195,12 +1195,7 @@ class SubscriptionService:
         if is_entry_route:
             zone_key = (zone or "unknown").strip().lower() or "unknown"
             kind = "wl_entry" if is_whitelist else "entry"
-            return (
-                zone_key,
-                norm_transport,
-                kind,
-                str(entry_node_id) if entry_node_id else "",
-            )
+            return (zone_key, norm_transport, kind)
         return (location_key, norm_transport, False, str(backend_node_id) if backend_node_id else "")
 
     def _number_routes_display(
