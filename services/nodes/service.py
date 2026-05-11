@@ -42,7 +42,10 @@ from services.nodes.schemas import (
     NodeSyncReportIn,
     VpnNodeCreate,
     VpnNodeOut,
+    VpnNodeUpdate,
 )
+from services.wg.allocator import allocate_next_ip
+from services.wg.exceptions import WgMeshAddressPoolExhaustedError
 from shared.database.session import AsyncDatabase
 from shared.monitoring.metrics import (
     NODE_BOOTSTRAP_TOTAL,
@@ -63,13 +66,15 @@ class VpnNodeService:
         self.node_agent_identity_repository = (
             NodeAgentIdentityRepository(session)
         )
-        node_agent_settings = get_settings().node_agent
+        settings = get_settings()
+        node_agent_settings = settings.node_agent
         self.sync_report_debounce_sec = max(0, int(node_agent_settings.sync_report_debounce_sec))
         self.auth_token_rotation_grace_sec = max(
             0,
             int(node_agent_settings.auth_token_rotation_grace_sec),
         )
         self.bootstrap_allow_create = bool(node_agent_settings.bootstrap_allow_create)
+        self.wg_mesh_cidr = settings.wg_mesh.mesh_cidr
         self._node_policy_repository = None  # lazy — NodePolicyRepository(session)
         self._policy_cache = None
 
@@ -103,14 +108,17 @@ class VpnNodeService:
         normalized_node_role = self._normalize_bootstrap_node_role(node_role)
         node = await self.vpn_node_repository.get_by_node_key(normalized_node_key)
         if node is None:
-            # Admin-created nodes have node_key=None; match by name since
-            # AGENT_NODE_KEY == spec.nodeName == node.name from the installer.
             candidate = await self.vpn_node_repository.get_one_by(name=normalized_node_key)
             if candidate is not None and candidate.node_key is None:
                 node = candidate
+                update_payload = VpnNodeUpdate(node_key=normalized_node_key)
+                if not (node.internal_wg_ip or "").strip():
+                    update_payload = update_payload.model_copy(
+                        update={"internal_wg_ip": await self._allocate_wg_ip()},
+                    )
                 await self.vpn_node_repository.update_by_id(
                     node.id,
-                    {"node_key": normalized_node_key, "internal_wg_ip": source_ip},
+                    update_payload.model_dump(exclude_unset=True),
                 )
                 NODE_BOOTSTRAP_TOTAL.labels(result="recovered_by_name").inc()
                 logger_node.info(
@@ -124,7 +132,7 @@ class VpnNodeService:
                 node = same_ip_nodes[0]
                 await self.vpn_node_repository.update_by_id(
                     node.id,
-                    {"node_key": normalized_node_key},
+                    VpnNodeUpdate(node_key=normalized_node_key).model_dump(exclude_unset=True),
                 )
                 NODE_BOOTSTRAP_TOTAL.labels(result="recovered_by_source_ip").inc()
                 logger_node.warning(
@@ -153,21 +161,17 @@ class VpnNodeService:
                     "Set stable AGENT_NODE_KEY for this node or enable NODE_BOOTSTRAP_ALLOW_CREATE."
                 )
             create_schema = VpnNodeCreate(
-                name=f"node-{source_ip.replace('.', '-')}",
+                name=self._build_node_name(source_ip=source_ip, node_key=normalized_node_key),
                 role=normalized_node_role,
                 region="unknown",
                 public_domain="",
-                internal_wg_ip=source_ip,
+                internal_wg_ip=await self._allocate_wg_ip(),
                 node_key=normalized_node_key,
                 xray_api_port=10085,
                 agent_port=9000,
                 auth_token_hash=token_hash,
             )
-            create_schema.name = self._build_node_name(source_ip=source_ip, node_key=normalized_node_key)
-
-            node = await self.vpn_node_repository.create(
-                create_schema.model_dump()
-            )
+            node = await self.vpn_node_repository.create(create_schema.model_dump())
             NODE_BOOTSTRAP_TOTAL.labels(result="created").inc()
         await self.node_agent_identity_repository.upsert_token(
             node_id=node.id,
@@ -191,6 +195,14 @@ class VpnNodeService:
         if node_role in ALLOWED_NODE_ROLES:
             return node_role
         return DEFAULT_NODE_ROLE
+
+    async def _allocate_wg_ip(self) -> str:
+        used = await self.vpn_node_repository.list_used_wg_ips()
+        try:
+            return allocate_next_ip(cidr=self.wg_mesh_cidr, used=used)
+        except WgMeshAddressPoolExhaustedError as exc:
+            NODE_BOOTSTRAP_TOTAL.labels(result="wg_pool_exhausted").inc()
+            raise NodeBootstrapConflictError(str(exc)) from exc
 
     async def handle_heartbeat(
             self,
@@ -224,7 +236,7 @@ class VpnNodeService:
         if should_drain:
             await self.vpn_node_repository.update_by_id(
                 node.id,
-                {"is_draining": True, "drain_source": "auto_heal"},
+                VpnNodeUpdate(is_draining=True, drain_source="auto_heal").model_dump(exclude_unset=True),
             )
             node.is_draining = True
             node.drain_source = "auto_heal"
@@ -252,7 +264,7 @@ class VpnNodeService:
         if should_undrain:
             await self.vpn_node_repository.update_by_id(
                 node.id,
-                {"is_draining": False, "drain_source": None},
+                VpnNodeUpdate(is_draining=False, drain_source=None).model_dump(exclude_unset=True),
             )
             node.is_draining = False
             node.drain_source = None
@@ -538,10 +550,10 @@ class VpnNodeService:
         expires_at = self._bootstrap_token_expires_at()
         await self.vpn_node_repository.update_by_id(
             node.id,
-            {
-                "auth_token_hash": token_hash,
-                "bootstrap_token_expires_at": expires_at,
-            },
+            VpnNodeUpdate(
+                auth_token_hash=token_hash,
+                bootstrap_token_expires_at=expires_at,
+            ).model_dump(exclude_unset=True),
         )
         NODE_BOOTSTRAP_TOTAL.labels(result="admin_token_rotated").inc()
         return AdminNodeRotateBootstrapOut(
@@ -555,10 +567,10 @@ class VpnNodeService:
         now = datetime.now(timezone.utc)
         await self.vpn_node_repository.update_by_id(
             node.id,
-            {
-                "bootstrapped_at": now,
-                "bootstrap_token_expires_at": None,
-            },
+            VpnNodeUpdate(
+                bootstrapped_at=now,
+                bootstrap_token_expires_at=None,
+            ).model_dump(exclude_unset=True),
         )
         NODE_BOOTSTRAP_TOTAL.labels(result="installer_completed").inc()
         logger_node.info(
