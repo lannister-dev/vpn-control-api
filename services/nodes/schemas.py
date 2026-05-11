@@ -39,6 +39,10 @@ class VpnNodeUpdate(BaseModel):
     capacity: int | None = None
     wg_public_key: str | None = Field(default=None, max_length=64)
     wg_listen_port: int | None = Field(default=None, ge=1, le=65535)
+    bootstrap_token_expires_at: datetime | None = None
+    bootstrapped_at: datetime | None = None
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class AdminNodeUpdateIn(BaseModel):
