@@ -16,6 +16,7 @@ class EntryRoutingUser(BaseModel):
 
 class EntryRoutingBackend(BaseModel):
     tag: str
+    node_name: str = ""
     backend_node_id: UUID
     server: str
     server_port: int = Field(ge=1, le=65535)

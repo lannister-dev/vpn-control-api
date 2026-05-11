@@ -436,11 +436,12 @@ class TestEntryRoutingBackendWGMode:
     async def test_wg_mode_uses_internal_wg_ip_no_reality(self):
         entry = MagicMock(id=uuid4(), role=ROLE_ENTRY, zone="europe", region="de", internal_wg_ip="10.10.0.1")
         backend = MagicMock(
-            id=uuid4(), name="hel", role="backend", is_enabled=True, is_draining=False,
+            id=uuid4(), role="backend", is_enabled=True, is_draining=False,
             zone="europe", region="fi",
             reality_ip="1.2.3.4", public_domain="",
             internal_wg_ip="10.10.0.2",
         )
+        backend.name = "hel"
         spec = await self._build(use_wg=True, backend=backend, entry=entry)
         assert len(spec.backends) == 1
         b = spec.backends[0]
@@ -448,15 +449,17 @@ class TestEntryRoutingBackendWGMode:
         assert b.server_port == 10000
         assert b.reality_public_key == ""
         assert b.flow == ""
+        assert b.node_name == "hel"
 
     async def test_reality_mode_uses_public_ip_with_reality_block(self):
         entry = MagicMock(id=uuid4(), role=ROLE_ENTRY, zone="europe", region="de", internal_wg_ip="1.2.3.4")
         backend = MagicMock(
-            id=uuid4(), name="hel", role="backend", is_enabled=True, is_draining=False,
+            id=uuid4(), role="backend", is_enabled=True, is_draining=False,
             zone="europe", region="fi",
             reality_ip="1.2.3.4", public_domain="",
             internal_wg_ip="1.2.3.4",
         )
+        backend.name = "hel"
         spec = await self._build(use_wg=False, backend=backend, entry=entry)
         assert len(spec.backends) == 1
         b = spec.backends[0]
@@ -464,6 +467,7 @@ class TestEntryRoutingBackendWGMode:
         assert b.server_port == 443
         assert b.reality_public_key == "pubkey"
         assert b.flow == "xtls-rprx-vision"
+        assert b.node_name == "hel"
 
     async def test_wg_mode_skips_backend_without_wg_ip(self):
         entry = MagicMock(id=uuid4(), role=ROLE_ENTRY, zone="europe", region="de", internal_wg_ip="10.10.0.1")
@@ -597,6 +601,16 @@ class TestEntryRoutingPerUserOutboundWG:
         assert spec.backends == []
         assert spec.rules == []
         assert spec.final_outbound == "block"
+
+    async def test_node_name_populated_for_per_user_outbounds(self):
+        entry = self._entry()
+        backends = [self._backend("rix-backend-01", "10.10.0.2")]
+        keys = [
+            MagicMock(client_id="user-x", entry_routing_override_backend_tag=None),
+            MagicMock(client_id="user-y", entry_routing_override_backend_tag=None),
+        ]
+        spec = await self._build_spec(entry=entry, backends=backends, keys=keys)
+        assert {b.node_name for b in spec.backends} == {"rix-backend-01"}
 
     async def test_flag_off_keeps_legacy_shared_uuid_in_wg_mode(self):
         entry = self._entry()

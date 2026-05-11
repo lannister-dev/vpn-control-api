@@ -35,6 +35,15 @@ class VpnNodeRepository(BaseRepository[VpnNode]):
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def list_used_wg_ips(self) -> set[str]:
+        stmt = (
+            select(self.model.internal_wg_ip)
+            .where(self.model.internal_wg_ip.isnot(None))
+            .where(self.model.internal_wg_ip != "")
+        )
+        result = await self.session.execute(stmt)
+        return {row[0].strip() for row in result.all() if (row[0] or "").strip()}
+
     async def get_by_auth_token_hash(self, token_hash: str) -> VpnNode | None:
         stmt = select(self.model).where(self.model.auth_token_hash == token_hash)
         result = await self.session.execute(stmt)

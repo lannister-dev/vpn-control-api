@@ -20,7 +20,7 @@ async def test_initial_with_agent_instance_issues_identity_token_without_node_ro
         get_one_by=AsyncMock(return_value=None),
         list_by_internal_ip=AsyncMock(return_value=[]),
         update_by_id=AsyncMock(),
-        create=AsyncMock(),
+        create=AsyncMock(), list_used_wg_ips=AsyncMock(return_value=set()),
     )
     service.node_agent_identity_repository = SimpleNamespace(
         upsert_token=AsyncMock(),
@@ -52,7 +52,7 @@ async def test_initial_strict_mode_creates_node_by_node_key(async_session):
         get_one_by=AsyncMock(return_value=None),
         list_by_internal_ip=AsyncMock(return_value=[]),
         update_by_id=AsyncMock(),
-        create=AsyncMock(return_value=created_node),
+        create=AsyncMock(return_value=created_node), list_used_wg_ips=AsyncMock(return_value=set()),
     )
     service.node_agent_identity_repository = SimpleNamespace(
         upsert_token=AsyncMock(),
@@ -83,7 +83,7 @@ async def test_initial_with_node_key_does_not_merge_into_different_key_node(asyn
         get_one_by=AsyncMock(return_value=None),
         list_by_internal_ip=AsyncMock(return_value=[]),
         update_by_id=AsyncMock(),
-        create=AsyncMock(return_value=created_node),
+        create=AsyncMock(return_value=created_node), list_used_wg_ips=AsyncMock(return_value=set()),
     )
     service.node_agent_identity_repository = SimpleNamespace(
         upsert_token=AsyncMock(),
@@ -113,7 +113,7 @@ async def test_initial_recovers_existing_node_by_source_ip(async_session):
         get_one_by=AsyncMock(return_value=None),
         list_by_internal_ip=AsyncMock(return_value=[existing_node]),
         update_by_id=AsyncMock(),
-        create=AsyncMock(),
+        create=AsyncMock(), list_used_wg_ips=AsyncMock(return_value=set()),
     )
     service.node_agent_identity_repository = SimpleNamespace(
         upsert_token=AsyncMock(),
@@ -142,7 +142,7 @@ async def test_initial_recovery_ambiguous_source_ip_raises_conflict(async_sessio
         get_one_by=AsyncMock(return_value=None),
         list_by_internal_ip=AsyncMock(return_value=[SimpleNamespace(id=uuid4()), SimpleNamespace(id=uuid4())]),
         update_by_id=AsyncMock(),
-        create=AsyncMock(),
+        create=AsyncMock(), list_used_wg_ips=AsyncMock(return_value=set()),
     )
     service.node_agent_identity_repository = SimpleNamespace(
         upsert_token=AsyncMock(),
@@ -168,7 +168,7 @@ async def test_initial_with_create_disabled_raises_conflict(async_session):
         get_one_by=AsyncMock(return_value=None),
         list_by_internal_ip=AsyncMock(return_value=[]),
         update_by_id=AsyncMock(),
-        create=AsyncMock(),
+        create=AsyncMock(), list_used_wg_ips=AsyncMock(return_value=set()),
     )
     service.node_agent_identity_repository = SimpleNamespace(
         upsert_token=AsyncMock(),
@@ -195,7 +195,7 @@ async def test_initial_auto_create_uses_entry_role_when_requested(async_session)
         get_one_by=AsyncMock(return_value=None),
         list_by_internal_ip=AsyncMock(return_value=[]),
         update_by_id=AsyncMock(),
-        create=AsyncMock(return_value=created_node),
+        create=AsyncMock(return_value=created_node), list_used_wg_ips=AsyncMock(return_value=set()),
     )
     service.node_agent_identity_repository = SimpleNamespace(
         upsert_token=AsyncMock(),
@@ -210,3 +210,83 @@ async def test_initial_auto_create_uses_entry_role_when_requested(async_session)
 
     create_payload = service.vpn_node_repository.create.await_args.args[0]
     assert create_payload["role"] == "whitelist_entry"
+
+
+@pytest.mark.asyncio
+async def test_initial_auto_create_allocates_wg_ip_not_source_ip(async_session):
+    service = VpnNodeService(async_session)
+    service.wg_mesh_cidr = "10.10.0.0/24"
+    service.vpn_node_repository = SimpleNamespace(
+        get_by_node_key=AsyncMock(return_value=None),
+        get_one_by=AsyncMock(return_value=None),
+        list_by_internal_ip=AsyncMock(return_value=[]),
+        update_by_id=AsyncMock(),
+        create=AsyncMock(return_value=SimpleNamespace(id=uuid4())),
+        list_used_wg_ips=AsyncMock(return_value={"10.10.0.2", "10.10.0.3"}),
+    )
+    service.node_agent_identity_repository = SimpleNamespace(upsert_token=AsyncMock())
+
+    await service.initial(
+        source_ip="5.180.20.36",
+        node_key="prg-backend-01",
+        node_role=None,
+        agent_instance_id=uuid4(),
+    )
+
+    create_payload = service.vpn_node_repository.create.await_args.args[0]
+    assert create_payload["internal_wg_ip"] == "10.10.0.4"
+    assert create_payload["internal_wg_ip"] != "5.180.20.36"
+
+
+@pytest.mark.asyncio
+async def test_initial_admin_claim_allocates_wg_ip_when_node_has_no_wg_ip(async_session):
+    service = VpnNodeService(async_session)
+    service.wg_mesh_cidr = "10.10.0.0/24"
+    admin_node = SimpleNamespace(id=uuid4(), node_key=None, internal_wg_ip="", name="prg-backend-01")
+    service.vpn_node_repository = SimpleNamespace(
+        get_by_node_key=AsyncMock(return_value=None),
+        get_one_by=AsyncMock(return_value=admin_node),
+        list_by_internal_ip=AsyncMock(return_value=[]),
+        update_by_id=AsyncMock(),
+        create=AsyncMock(),
+        list_used_wg_ips=AsyncMock(return_value={"10.10.0.2"}),
+    )
+    service.node_agent_identity_repository = SimpleNamespace(upsert_token=AsyncMock())
+
+    await service.initial(
+        source_ip="5.180.20.36",
+        node_key="prg-backend-01",
+        node_role=None,
+        agent_instance_id=uuid4(),
+    )
+
+    update_payload = service.vpn_node_repository.update_by_id.await_args.args[1]
+    assert update_payload["internal_wg_ip"] == "10.10.0.3"
+    assert update_payload["node_key"] == "prg-backend-01"
+
+
+@pytest.mark.asyncio
+async def test_initial_admin_claim_keeps_existing_wg_ip(async_session):
+    service = VpnNodeService(async_session)
+    service.wg_mesh_cidr = "10.10.0.0/24"
+    admin_node = SimpleNamespace(id=uuid4(), node_key=None, internal_wg_ip="10.10.0.99", name="prg-backend-01")
+    service.vpn_node_repository = SimpleNamespace(
+        get_by_node_key=AsyncMock(return_value=None),
+        get_one_by=AsyncMock(return_value=admin_node),
+        list_by_internal_ip=AsyncMock(return_value=[]),
+        update_by_id=AsyncMock(),
+        create=AsyncMock(),
+        list_used_wg_ips=AsyncMock(return_value=set()),
+    )
+    service.node_agent_identity_repository = SimpleNamespace(upsert_token=AsyncMock())
+
+    await service.initial(
+        source_ip="5.180.20.36",
+        node_key="prg-backend-01",
+        node_role=None,
+        agent_instance_id=uuid4(),
+    )
+
+    update_payload = service.vpn_node_repository.update_by_id.await_args.args[1]
+    assert "internal_wg_ip" not in update_payload
+    assert update_payload["node_key"] == "prg-backend-01"
