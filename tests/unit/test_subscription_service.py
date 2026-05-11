@@ -470,18 +470,32 @@ class TestCalcEtag:
 
 
 class TestRouteCountryTransportKey:
-    def test_entry_routes_in_same_zone_collapse(self, service):
+    def test_entry_routes_in_same_zone_with_same_entry_node_collapse(self, service):
+        shared_entry = uuid4()
         eu_a = service._route_country_transport_key(
             country_code="FI", region="fi", transport="reality",
-            is_entry_route=True, backend_node_id=uuid4(), entry_node_id=uuid4(),
+            is_entry_route=True, backend_node_id=uuid4(), entry_node_id=shared_entry,
             zone="europe", is_whitelist=False,
         )
         eu_b = service._route_country_transport_key(
             country_code="FR", region="fr", transport="reality",
-            is_entry_route=True, backend_node_id=uuid4(), entry_node_id=uuid4(),
+            is_entry_route=True, backend_node_id=uuid4(), entry_node_id=shared_entry,
             zone="europe", is_whitelist=False,
         )
         assert eu_a == eu_b
+
+    def test_entry_routes_in_same_zone_with_different_entry_nodes_keep_separate(self, service):
+        eu_de = service._route_country_transport_key(
+            country_code="DE", region="de", transport="reality",
+            is_entry_route=True, backend_node_id=uuid4(), entry_node_id=uuid4(),
+            zone="europe", is_whitelist=False,
+        )
+        eu_nl = service._route_country_transport_key(
+            country_code="NL", region="ams", transport="reality",
+            is_entry_route=True, backend_node_id=uuid4(), entry_node_id=uuid4(),
+            zone="europe", is_whitelist=False,
+        )
+        assert eu_de != eu_nl
 
     def test_entry_routes_in_different_zones_keep_separate(self, service):
         eu = service._route_country_transport_key(
