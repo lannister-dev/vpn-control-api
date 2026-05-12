@@ -569,23 +569,38 @@ class TestEntryRoutingPerUserOutboundWG:
         assert tags == ["b-user-x-solo", "b-user-y-solo"] or tags == ["b-user-y-solo", "b-user-x-solo"]
         assert {b.uuid for b in spec.backends} == {"user-x", "user-y"}
 
-    async def test_override_resolves_to_user_outbound_on_chosen_backend(self):
+    async def test_override_pins_user_to_single_outbound_no_urltest(self):
         entry = self._entry()
         backends = [
             self._backend("hel", "10.10.0.3"),
             self._backend("rix", "10.10.0.2"),
         ]
         forced = MagicMock(client_id="forced", entry_routing_override_backend_tag="backend-rix")
-        free = MagicMock(client_id="free", entry_routing_override_backend_tag=None)
-        spec = await self._build_spec(entry=entry, backends=backends, keys=[forced, free])
+        spec = await self._build_spec(entry=entry, backends=backends, keys=[forced])
 
         rules = {r.user_uuid: r.outbound_tag for r in spec.rules}
         assert rules["forced"] == "b-forced-rix"
-        assert rules["free"] in {"b-free-hel", "b-free-rix"}
-
         outbound_by_tag = {b.tag: b for b in spec.backends}
         assert outbound_by_tag["b-forced-rix"].server == "10.10.0.2"
         assert outbound_by_tag["b-forced-rix"].uuid == "forced"
+        assert all(g.tag != "auto-forced" for g in spec.urltest_groups)
+
+    async def test_free_user_with_multi_backend_routes_via_urltest_group(self):
+        entry = self._entry()
+        backends = [
+            self._backend("hel", "10.10.0.3"),
+            self._backend("rix", "10.10.0.2"),
+        ]
+        free = MagicMock(client_id="free", entry_routing_override_backend_tag=None)
+        spec = await self._build_spec(entry=entry, backends=backends, keys=[free])
+
+        rules = {r.user_uuid: r.outbound_tag for r in spec.rules}
+        assert rules["free"] == "auto-free"
+        groups = {g.tag: g for g in spec.urltest_groups}
+        assert "auto-free" in groups
+        assert sorted(groups["auto-free"].outbounds) == ["b-free-hel", "b-free-rix"]
+        backend_tags = {b.tag for b in spec.backends}
+        assert "b-free-hel" in backend_tags and "b-free-rix" in backend_tags
 
     async def test_invalid_override_tag_falls_back_to_hash(self):
         entry = self._entry()

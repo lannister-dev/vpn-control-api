@@ -23,6 +23,7 @@ from services.routing.entry.schemas import (
     EntryRoutingReality,
     EntryRoutingRule,
     EntryRoutingSpec,
+    EntryRoutingUrltestGroup,
     EntryRoutingUser,
     KeyRoutingOverrideOut,
     OverrideChange,
@@ -69,7 +70,7 @@ class EntryRoutingService:
             if key.client_id and key.entry_routing_override_backend_tag
         }
         backend_nodes = await self._candidate_backend_nodes_for_zone(node)
-        backends, rules, final_outbound = self._materialize_outbounds_and_rules(
+        backends, rules, urltest_groups, final_outbound = self._materialize_outbounds_and_rules(
             users, backend_nodes, overrides,
         )
         return EntryRoutingSpec(
@@ -85,6 +86,7 @@ class EntryRoutingService:
             users=users,
             backends=backends,
             rules=rules,
+            urltest_groups=urltest_groups,
             final_outbound=final_outbound,
         )
 
@@ -161,49 +163,85 @@ class EntryRoutingService:
             reality_fingerprint=self.config.backend_reality_fingerprint,
         )
 
+    @staticmethod
+    def _user_urltest_tag(client_id: str) -> str:
+        return f"auto-{client_id}"
+
     def _materialize_outbounds_and_rules(
         self,
         users: list[EntryRoutingUser],
         backend_nodes: list[VpnNode],
         overrides: dict[str, str] | None = None,
-    ) -> tuple[list[EntryRoutingBackend], list[EntryRoutingRule], str]:
+    ) -> tuple[
+        list[EntryRoutingBackend],
+        list[EntryRoutingRule],
+        list[EntryRoutingUrltestGroup],
+        str,
+    ]:
         if not backend_nodes:
-            return [], [], "direct"
+            return [], [], [], "direct"
         sorted_nodes = sorted(backend_nodes, key=lambda n: n.name)
         node_by_backend_tag = {self._backend_node_tag(n): n for n in sorted_nodes}
         overrides = overrides or {}
 
+        per_user_mode = self.config.backend_use_wg and self.config.per_user_outbound_uuid
+
         outbounds: list[EntryRoutingBackend] = []
         rules: list[EntryRoutingRule] = []
+        urltest_groups: list[EntryRoutingUrltestGroup] = []
         seen_outbound_tags: set[str] = set()
 
-        for user in users:
-            forced = overrides.get(user.uuid)
-            if forced and forced in node_by_backend_tag:
-                assigned = node_by_backend_tag[forced]
-            else:
-                digest = hashlib.sha256(user.uuid.encode()).digest()
-                idx = int.from_bytes(digest[:8], "big") % len(sorted_nodes)
-                assigned = sorted_nodes[idx]
-
-            if self.config.backend_use_wg and self.config.per_user_outbound_uuid:
-                ob_tag = self._user_outbound_tag(assigned.name, user.uuid)
-                ob_uuid = user.uuid
-            else:
+        if not per_user_mode:
+            for user in users:
+                forced = overrides.get(user.uuid)
+                if forced and forced in node_by_backend_tag:
+                    assigned = node_by_backend_tag[forced]
+                else:
+                    digest = hashlib.sha256(user.uuid.encode()).digest()
+                    idx = int.from_bytes(digest[:8], "big") % len(sorted_nodes)
+                    assigned = sorted_nodes[idx]
                 ob_tag = self._backend_node_tag(assigned)
-                ob_uuid = self.config.backend_service_uuid
+                if ob_tag not in seen_outbound_tags:
+                    outbounds.append(self._make_outbound(
+                        assigned, tag=ob_tag, uuid=self.config.backend_service_uuid,
+                    ))
+                    seen_outbound_tags.add(ob_tag)
+                rules.append(EntryRoutingRule(user_uuid=user.uuid, outbound_tag=ob_tag))
+            return outbounds, rules, urltest_groups, self._backend_node_tag(sorted_nodes[0])
 
-            if ob_tag not in seen_outbound_tags:
-                outbounds.append(self._make_outbound(assigned, tag=ob_tag, uuid=ob_uuid))
-                seen_outbound_tags.add(ob_tag)
+        for user in users:
+            forced_tag = overrides.get(user.uuid)
+            forced_node = node_by_backend_tag.get(forced_tag) if forced_tag else None
 
-            rules.append(EntryRoutingRule(user_uuid=user.uuid, outbound_tag=ob_tag))
+            if forced_node is not None:
+                ob_tag = self._user_outbound_tag(forced_node.name, user.uuid)
+                if ob_tag not in seen_outbound_tags:
+                    outbounds.append(self._make_outbound(forced_node, tag=ob_tag, uuid=user.uuid))
+                    seen_outbound_tags.add(ob_tag)
+                rules.append(EntryRoutingRule(user_uuid=user.uuid, outbound_tag=ob_tag))
+                continue
 
-        if self.config.backend_use_wg and self.config.per_user_outbound_uuid:
-            final_outbound = "block"
-        else:
-            final_outbound = self._backend_node_tag(sorted_nodes[0])
-        return outbounds, rules, final_outbound
+            per_user_outbound_tags: list[str] = []
+            for node in sorted_nodes:
+                ob_tag = self._user_outbound_tag(node.name, user.uuid)
+                if ob_tag not in seen_outbound_tags:
+                    outbounds.append(self._make_outbound(node, tag=ob_tag, uuid=user.uuid))
+                    seen_outbound_tags.add(ob_tag)
+                per_user_outbound_tags.append(ob_tag)
+
+            if len(per_user_outbound_tags) == 1:
+                rules.append(EntryRoutingRule(
+                    user_uuid=user.uuid, outbound_tag=per_user_outbound_tags[0],
+                ))
+            else:
+                urltest_tag = self._user_urltest_tag(user.uuid)
+                urltest_groups.append(EntryRoutingUrltestGroup(
+                    tag=urltest_tag,
+                    outbounds=per_user_outbound_tags,
+                ))
+                rules.append(EntryRoutingRule(user_uuid=user.uuid, outbound_tag=urltest_tag))
+
+        return outbounds, rules, urltest_groups, "block"
 
 
 class EntryRoutingAdminService:

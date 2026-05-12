@@ -37,6 +37,17 @@ class EntryRoutingRule(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class EntryRoutingUrltestGroup(BaseModel):
+    tag: str
+    outbounds: list[str]
+    url: str = "https://www.gstatic.com/generate_204"
+    interval: str = "1m"
+    tolerance: int = Field(default=50, ge=0)
+    interrupt_exist_connections: bool = True
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class EntryRoutingReality(BaseModel):
     private_key: str
     short_id: str
@@ -54,6 +65,7 @@ class EntryRoutingSpec(BaseModel):
     users: list[EntryRoutingUser] = Field(default_factory=list)
     backends: list[EntryRoutingBackend] = Field(default_factory=list)
     rules: list[EntryRoutingRule] = Field(default_factory=list)
+    urltest_groups: list[EntryRoutingUrltestGroup] = Field(default_factory=list)
     final_outbound: str = "direct"
 
     model_config = ConfigDict(extra="forbid")
@@ -64,6 +76,7 @@ class EntryRoutingSpec(BaseModel):
                 "users": sorted(self.users, key=lambda u: u.uuid),
                 "backends": sorted(self.backends, key=lambda b: b.tag),
                 "rules": sorted(self.rules, key=lambda r: (r.user_uuid, r.outbound_tag)),
+                "urltest_groups": sorted(self.urltest_groups, key=lambda g: g.tag),
             }
         )
         payload = normalized.model_dump(mode="json")
