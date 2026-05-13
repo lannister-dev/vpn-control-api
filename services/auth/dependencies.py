@@ -6,11 +6,15 @@ from fastapi import Depends, Header, HTTPException, Query, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from starlette import status
 
+from services.auth.admin.constants import SESSION_COOKIE_NAME
+from services.auth.admin.crypto import hash_session_id
+from services.auth.admin.service import AdminAuthService
 from services.auth.utils import AuthUtils
 from services.config import get_settings
 from services.nodes.auth_utils import identity_accepts_token
 from services.nodes.models import VpnNode
 from services.nodes.service import VpnNodeService, get_vpn_node_service
+from shared.database.session import AsyncDatabase
 from shared.monitoring.metrics import AUTH_ATTEMPT_TOTAL
 
 node_bearer = HTTPBearer(auto_error=False)
@@ -80,20 +84,12 @@ async def node_auth(
 
 async def _admin_auth_session(request) -> bool:
     """Try session cookie auth. Returns True if valid."""
-    from services.auth.admin.constants import SESSION_COOKIE_NAME
-    from services.auth.admin.crypto import hash_session_id
-
     settings = get_settings()
     if not settings.admin_auth.enabled:
         return False
-
     session_id = request.cookies.get(SESSION_COOKIE_NAME)
     if not session_id:
         return False
-
-    from services.auth.admin.service import AdminAuthService
-    from shared.database.session import AsyncDatabase
-
     session_hash = hash_session_id(session_id)
     async with AsyncDatabase.get_session_maker()() as db_session:
         svc = AdminAuthService(db_session)
@@ -154,11 +150,6 @@ async def current_admin_actor(
         - "api-key" when authenticated via bearer API key
         - "system" otherwise (auth disabled / anonymous)
     """
-    from services.auth.admin.constants import SESSION_COOKIE_NAME
-    from services.auth.admin.crypto import hash_session_id
-    from services.auth.admin.service import AdminAuthService
-    from shared.database.session import AsyncDatabase
-
     settings = get_settings()
     if settings.admin_auth.enabled:
         session_id = request.cookies.get(SESSION_COOKIE_NAME)
@@ -175,6 +166,26 @@ async def current_admin_actor(
         return "api-key"
 
     return "system"
+
+
+async def current_admin_user_id(
+    request: Request,
+) -> UUID | None:
+    """Resolve UUID of admin behind the current session cookie. None if API-key or anonymous."""
+    settings = get_settings()
+    if not settings.admin_auth.enabled:
+        return None
+    session_id = request.cookies.get(SESSION_COOKIE_NAME)
+    if not session_id:
+        return None
+    session_hash = hash_session_id(session_id)
+    async with AsyncDatabase.get_session_maker()() as db_session:
+        svc = AdminAuthService(db_session)
+        result = await svc.validate_session(session_hash)
+        if result is None:
+            return None
+        user, _session = result
+        return user.id
 
 
 connect_bearer = HTTPBearer(auto_error=False)

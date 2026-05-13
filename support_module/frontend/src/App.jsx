@@ -181,7 +181,7 @@ function AuthedApp({ theme, setTheme, me, onLogout }) {
     if (routesData.data) out.routes = routesData.data.length;
     if (usersData.data?.total != null) out.users = usersData.data.total;
     if (subsStats.data?.active != null) out.subscriptions = subsStats.data.active;
-    if (ticketsStats.data?.open != null) out.tickets = ticketsStats.data.open;
+    if (ticketsStats.data?.unanswered != null) out.tickets = ticketsStats.data.unanswered;
     return out;
   }, [status.data, routesData.data, usersData.data, subsStats.data, ticketsStats.data]);
 

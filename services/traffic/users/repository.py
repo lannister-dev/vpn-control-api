@@ -65,13 +65,14 @@ class TrafficUsageRepository(BaseRepository[TrafficUsage]):
     ) -> list[tuple[UUID, int | None, str | None, str | None, int, int]]:
         total_bytes = func.coalesce(func.sum(self.model.delta_bytes), 0).label("total_bytes")
         key_count = func.count(func.distinct(VpnKey.id)).label("keys")
+        plan_name = func.max(Plan.name).label("plan_name")
 
         stmt = (
             select(
                 User.id,
                 User.telegram_id,
                 User.username,
-                Plan.name.label("plan_name"),
+                plan_name,
                 total_bytes,
                 key_count,
             )
@@ -81,7 +82,7 @@ class TrafficUsageRepository(BaseRepository[TrafficUsage]):
             .outerjoin(Plan, Plan.id == Subscription.plan_id)
             .where(self.model.created_at >= from_ts)
             .where(self.model.created_at < to_ts)
-            .group_by(User.id, User.telegram_id, User.username, Plan.name)
+            .group_by(User.id, User.telegram_id, User.username)
             .order_by(total_bytes.desc())
             .limit(limit)
         )

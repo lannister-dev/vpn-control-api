@@ -4,7 +4,6 @@ import { api } from "../api/client.js";
 import { useQuery } from "../hooks/useQuery.js";
 import { Icon } from "../components/Icon.jsx";
 import { Empty, SkeletonRows } from "../components/Empty.jsx";
-import { ConfirmModal } from "../components/ConfirmModal.jsx";
 import { Modal } from "../components/Modal.jsx";
 import { Field } from "../components/Field.jsx";
 import { toast } from "../components/Toast.jsx";
@@ -39,7 +38,6 @@ export function TicketsPage({ initialAction, onActionConsumed }) {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [openTicket, setOpenTicket] = useState(null);
   const [creating, setCreating] = useState(false);
-  const [confirmClose, setConfirmClose] = useState(false);
 
   // ⌘K palette quick-action: "new-ticket"
   useEffect(() => {
@@ -90,17 +88,14 @@ export function TicketsPage({ initialAction, onActionConsumed }) {
   const selectedCount = selectedIds.size;
 
   // Bulk actions
-  const bulkClose = () => {
+  const bulkClose = async () => {
     if (!selectedCount) return;
-    setConfirmClose(true);
-  };
-  const runBulkClose = async () => {
+    if (!confirm(`Закрыть ${selectedCount} тикетов?`)) return;
     try {
       await api.post("/support/tickets/bulk-update", { ids: [...selectedIds], status: "closed" }).catch(() => null);
       toast.ok(`Закрыто: ${selectedCount}`);
       setSelectedIds(new Set()); q.refetch();
     } catch (e) { toast.bad(e.message); }
-    setConfirmClose(false);
   };
   const bulkAssignMe = async () => {
     if (!selectedCount) return;
@@ -297,17 +292,6 @@ export function TicketsPage({ initialAction, onActionConsumed }) {
         <TicketCreateModal
           onClose={() => setCreating(false)}
           onCreated={(t) => { setCreating(false); q.refetch(); setOpenTicket(t); }}
-        />
-      )}
-      {confirmClose && (
-        <ConfirmModal
-          title="Закрыть тикеты"
-          body={`Будет закрыто ${selectedCount} тикетов. Юзер сможет открыть новый, написав в бот.`}
-          confirmLabel="Закрыть"
-          tone="primary"
-          icon="check"
-          onConfirm={runBulkClose}
-          onClose={() => setConfirmClose(false)}
         />
       )}
     </div>

@@ -1,20 +1,21 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import UUID
 
 from fastapi import Depends, Request
-from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.auth.admin.models import AdminUser
-from services.billing.models import PaymentOrder
-from services.plans.models import Plan
+from services.auth.admin.repository import AdminUserRepository
+from services.billing.models import BalanceTransaction
+from services.billing.repository import OrderRepository
 from services.support.constants import (
     REOPEN_WINDOW_MIN,
     SUBJECT_PREVIEW_LEN,
     SUPPORT_OUTBOUND_SUBJECT,
 )
 from services.support.exceptions import (
+    EmptyMessage,
+    SupportActionFailed,
     TemplateAlreadyExists,
     TemplateNotFound,
     TicketNotFound,
@@ -35,6 +36,7 @@ from services.support.schemas import (
     AttachmentOut,
     BroadcastAudience,
     BroadcastAudienceCount,
+    BroadcastCreate,
     BroadcastListOut,
     BroadcastOut,
     BroadcastStatus,
@@ -42,6 +44,10 @@ from services.support.schemas import (
     MessageListOut,
     MessageOut,
     MessageSenderKind,
+    SupportAttachmentCreate,
+    SupportMessageCreate,
+    SupportOutboundPayload,
+    SupportTicketCreate,
     TemplateCreateIn,
     TemplateListOut,
     TemplateOut,
@@ -57,8 +63,13 @@ from services.support.schemas import (
     TicketStatus,
     TicketUserRef,
 )
-from services.users.models import User
-from services.vpn.subscriptions.model import Subscription
+from services.support.texts import (
+    GRANT_DAY_SYSTEM,
+    REFUND_DESCRIPTION,
+    REFUND_SYSTEM,
+)
+from services.users.repository import UserRepository
+from services.vpn.subscriptions.repository import SubscriptionRepository
 from shared.database.session import AsyncDatabase
 from shared.nats.client import NatsClient
 
@@ -72,6 +83,10 @@ class SupportService:
         self.templates = SupportTemplateRepository(session)
         self.broadcasts = BroadcastRepository(session)
         self.broadcast_log = BroadcastLogRepository(session)
+        self.users = UserRepository(session)
+        self.admins = AdminUserRepository(session)
+        self.subscriptions = SubscriptionRepository(session)
+        self.orders = OrderRepository(session)
         self._nats = nats_client
 
     async def list_tickets(
@@ -102,7 +117,7 @@ class SupportService:
         ids = [t.id for t in rows]
         media = await self.messages.has_media_flags(ids)
         users = await self._fetch_users_with_meta([t.user_id for t in rows])
-        assignees = await self._fetch_admin_usernames([t.assignee_admin_id for t in rows if t.assignee_admin_id])
+        assignees = await self.admins.list_usernames_by_ids([t.assignee_admin_id for t in rows if t.assignee_admin_id])
 
         items = []
         for t in rows:
@@ -145,7 +160,7 @@ class SupportService:
         users = await self._fetch_users_with_meta([t.user_id])
         media = await self.messages.has_media_flags([t.id])
         has_media, att_count = media.get(t.id, (False, 0))
-        assignees = await self._fetch_admin_usernames([t.assignee_admin_id] if t.assignee_admin_id else [])
+        assignees = await self.admins.list_usernames_by_ids([t.assignee_admin_id] if t.assignee_admin_id else [])
         return TicketOut(
             id=t.id,
             subject=t.subject or "",
@@ -163,14 +178,14 @@ class SupportService:
 
     async def create_ticket(self, data: TicketCreateIn) -> TicketOut:
         ticket = await self.tickets.create(
-            {
-                "user_id": data.user_id,
-                "subject": (data.subject or "")[:SUBJECT_PREVIEW_LEN],
-                "category": data.category.value,
-                "priority": data.priority.value,
-                "status": TicketStatus.NEW.value,
-                "last_activity_at": datetime.now(timezone.utc),
-            }
+            SupportTicketCreate(
+                user_id=data.user_id,
+                subject=(data.subject or "")[:SUBJECT_PREVIEW_LEN],
+                category=data.category,
+                priority=data.priority,
+                status=TicketStatus.NEW,
+                last_activity_at=datetime.now(timezone.utc),
+            ).model_dump()
         )
         await self.session.commit()
         return await self.get_ticket(ticket.id)
@@ -241,13 +256,13 @@ class SupportService:
 
         attachments = await self.messages.attachments_by_message_ids([m.id for m in rows])
         admin_ids = [m.sender_admin_id for m in rows if m.sender_admin_id]
-        admin_names = await self._fetch_admin_usernames(admin_ids)
+        admin_names = await self.admins.list_usernames_by_ids(admin_ids)
 
         items: list[MessageOut] = []
         for m in rows:
             media_list = []
             for a in attachments.get(m.id, []):
-                url = a.storage_url or (f"tg://file/{a.tg_file_id}" if a.tg_file_id else "")
+                url = a.storage_url or (f"/api/v1/support/media/{a.tg_file_id}" if a.tg_file_id else "")
                 media_list.append(
                     AttachmentOut(
                         kind=a.kind,
@@ -289,15 +304,19 @@ class SupportService:
         if not ticket:
             raise TicketNotFound(str(ticket_id))
 
+        clean_text = (text or "").strip()
+        if not clean_text:
+            raise EmptyMessage("Message must contain text")
+
         msg = await self.messages.create(
-            {
-                "ticket_id": ticket_id,
-                "sender_kind": MessageSenderKind.OPERATOR.value,
-                "sender_admin_id": actor_admin_id,
-                "body": text or "",
-                "is_note": is_note,
-                "delivered": False,
-            }
+            SupportMessageCreate(
+                ticket_id=ticket_id,
+                sender_kind=MessageSenderKind.OPERATOR,
+                sender_admin_id=actor_admin_id,
+                body=clean_text,
+                is_note=is_note,
+                delivered=False,
+            ).model_dump()
         )
 
         if not is_note:
@@ -310,10 +329,81 @@ class SupportService:
         await self.session.commit()
 
         if not is_note:
-            await self._publish_outbound(ticket, msg, text=text)
+            await self._publish_outbound(ticket, msg, text=clean_text)
 
         list_msg = await self.list_messages(ticket_id)
         return next((m for m in list_msg.items if m.id == msg.id), list_msg.items[-1])
+
+    async def grant_day(self, ticket_id: UUID, *, actor_admin_id: UUID | None) -> SupportTicket:
+        ticket = await self.tickets.get_by_id(ticket_id)
+        if not ticket:
+            raise TicketNotFound(str(ticket_id))
+
+        subscription = await self.subscriptions.get_latest_for_user(ticket.user_id)
+        if subscription is None or subscription.expires_at is None:
+            raise SupportActionFailed("У пользователя нет активной подписки")
+
+        now = datetime.now(timezone.utc)
+        base = subscription.expires_at if subscription.expires_at > now else now
+        subscription.expires_at = base + timedelta(days=1)
+
+        await self._add_system_message(ticket_id, GRANT_DAY_SYSTEM, actor_admin_id)
+        ticket.last_activity_at = now
+        await self.session.flush()
+        await self.session.commit()
+        return ticket
+
+    async def refund_last_order(self, ticket_id: UUID, *, actor_admin_id: UUID | None) -> SupportTicket:
+        ticket = await self.tickets.get_by_id(ticket_id)
+        if not ticket:
+            raise TicketNotFound(str(ticket_id))
+
+        order = await self.orders.get_last_paid_for_user(ticket.user_id)
+        if order is None:
+            raise SupportActionFailed("У пользователя нет оплаченных заказов")
+
+        user = await self.users.get_by_id(ticket.user_id)
+        if user is None:
+            raise SupportActionFailed("Пользователь не найден")
+
+        amount = Decimal(order.amount_rub)
+        new_balance = (user.balance or Decimal("0")) + amount
+        user.balance = new_balance
+        order.status = "refunded"
+        self.session.add(
+            BalanceTransaction(
+                user_id=user.id,
+                amount=amount,
+                balance_after=new_balance,
+                type="refund",
+                order_id=order.id,
+                description=REFUND_DESCRIPTION.format(order_id=order.id, ticket_id=ticket_id),
+            )
+        )
+
+        await self._add_system_message(
+            ticket_id,
+            REFUND_SYSTEM.format(amount=amount),
+            actor_admin_id,
+        )
+        ticket.last_activity_at = datetime.now(timezone.utc)
+        await self.session.flush()
+        await self.session.commit()
+        return ticket
+
+    async def _add_system_message(
+        self, ticket_id: UUID, body: str, actor_admin_id: UUID | None
+    ) -> SupportMessage:
+        return await self.messages.create(
+            SupportMessageCreate(
+                ticket_id=ticket_id,
+                sender_kind=MessageSenderKind.SYSTEM,
+                sender_admin_id=actor_admin_id,
+                body=body,
+                is_note=False,
+                delivered=True,
+            ).model_dump()
+        )
 
     async def ingest_user_message(
         self,
@@ -322,6 +412,7 @@ class SupportService:
         text: str,
         attachments_payload: list[dict] | None = None,
     ) -> tuple[SupportTicket, SupportMessage]:
+        now = datetime.now(timezone.utc)
         ticket = await self.tickets.find_open_by_user(user_id)
         if ticket is None:
             recent = await self.tickets.find_recent_closed_by_user(user_id, within_minutes=REOPEN_WINDOW_MIN)
@@ -331,35 +422,37 @@ class SupportService:
                 ticket = recent
             else:
                 ticket = await self.tickets.create(
-                    {
-                        "user_id": user_id,
-                        "subject": (text or "")[:SUBJECT_PREVIEW_LEN],
-                        "status": TicketStatus.NEW.value,
-                        "category": TicketCategory.OTHER.value,
-                        "priority": TicketPriority.NORMAL.value,
-                        "last_activity_at": datetime.now(timezone.utc),
-                        "first_user_msg_at": datetime.now(timezone.utc),
-                    }
+                    SupportTicketCreate(
+                        user_id=user_id,
+                        subject=(text or "")[:SUBJECT_PREVIEW_LEN],
+                        status=TicketStatus.NEW,
+                        category=TicketCategory.OTHER,
+                        priority=TicketPriority.NORMAL,
+                        last_activity_at=now,
+                        first_user_msg_at=now,
+                    ).model_dump()
                 )
 
         if not ticket.subject:
             ticket.subject = (text or "")[:SUBJECT_PREVIEW_LEN]
         if not ticket.first_user_msg_at:
-            ticket.first_user_msg_at = datetime.now(timezone.utc)
-        ticket.last_activity_at = datetime.now(timezone.utc)
+            ticket.first_user_msg_at = now
+        ticket.last_activity_at = now
 
         msg = await self.messages.create(
-            {
-                "ticket_id": ticket.id,
-                "sender_kind": MessageSenderKind.USER.value,
-                "body": text or "",
-                "is_note": False,
-                "delivered": True,
-            }
+            SupportMessageCreate(
+                ticket_id=ticket.id,
+                sender_kind=MessageSenderKind.USER,
+                body=text or "",
+                is_note=False,
+                delivered=True,
+            ).model_dump()
         )
 
         for att in attachments_payload or []:
-            await self.attachments.create({"message_id": msg.id, **att})
+            await self.attachments.create(
+                SupportAttachmentCreate(message_id=msg.id, **att).model_dump()
+            )
 
         await self.session.commit()
         return ticket, msg
@@ -436,19 +529,18 @@ class SupportService:
     ) -> BroadcastOut:
         target_ids = await self._resolve_audience(audience, plan_id)
         b = await self.broadcasts.create(
-            {
-                "audience": audience.value,
-                "audience_label": None,
-                "plan_id": plan_id,
-                "text_body": text,
-                "media_kind": media_kind,
-                "media_url": media_url,
-                "inline_buttons": buttons,
-                "status": status.value,
-                "scheduled_at": scheduled_at,
-                "target_count": len(target_ids),
-                "created_by_admin_id": actor_admin_id,
-            }
+            BroadcastCreate(
+                audience=audience,
+                plan_id=plan_id,
+                text_body=text,
+                media_kind=media_kind,
+                media_url=media_url,
+                inline_buttons=buttons,
+                status=status,
+                scheduled_at=scheduled_at,
+                target_count=len(target_ids),
+                created_by_admin_id=actor_admin_id,
+            ).model_dump()
         )
         await self.session.commit()
         return BroadcastOut(
@@ -469,70 +561,30 @@ class SupportService:
     async def _resolve_audience(
         self, audience: BroadcastAudience, plan_id: UUID | None
     ) -> list[UUID]:
-        now = datetime.now(timezone.utc)
-        if audience == BroadcastAudience.ALL:
-            stmt = select(User.id)
-        elif audience == BroadcastAudience.ACTIVE:
-            stmt = (
-                select(User.id)
-                .join(Subscription, Subscription.user_id == User.id)
-                .where(Subscription.expires_at.isnot(None), Subscription.expires_at >= now)
-                .distinct()
-            )
-        elif audience == BroadcastAudience.EXPIRING:
-            from datetime import timedelta
-            horizon = now + timedelta(days=7)
-            stmt = (
-                select(User.id)
-                .join(Subscription, Subscription.user_id == User.id)
-                .where(
-                    Subscription.expires_at.isnot(None),
-                    Subscription.expires_at >= now,
-                    Subscription.expires_at <= horizon,
-                )
-                .distinct()
-            )
-        elif audience == BroadcastAudience.BY_PLAN:
-            if plan_id is None:
-                return []
-            stmt = (
-                select(User.id)
-                .join(Subscription, Subscription.user_id == User.id)
-                .where(Subscription.plan_id == plan_id)
-                .distinct()
-            )
-        elif audience == BroadcastAudience.NO_SUB:
-            sub_exists = select(Subscription.id).where(Subscription.user_id == User.id).exists()
-            stmt = select(User.id).where(~sub_exists)
-        elif audience == BroadcastAudience.TRIAL:
-            stmt = (
-                select(User.id)
-                .join(Subscription, Subscription.user_id == User.id)
-                .join(Plan, Plan.id == Subscription.plan_id)
-                .where(Plan.price_rub == Decimal("0"))
-                .distinct()
-            )
-        else:
-            return []
-        rows = (await self.session.execute(stmt)).scalars().all()
-        return list(rows)
+        return await self.broadcasts.resolve_audience_user_ids(
+            audience, plan_id=plan_id, now=datetime.now(timezone.utc)
+        )
 
     async def _publish_outbound(self, ticket: SupportTicket, msg: SupportMessage, *, text: str) -> None:
         if self._nats is None:
             return
 
-        user = (await self.session.execute(select(User).where(User.id == ticket.user_id))).scalar_one_or_none()
+        user = await self.users.get_by_id(ticket.user_id)
         if not user:
             return
-        payload = {
-            "ticket_id": str(ticket.id),
-            "message_id": str(msg.id),
-            "telegram_id": user.telegram_id,
-            "text": text or "",
-            "media": [],
-        }
+        payload = SupportOutboundPayload(
+            ticket_id=str(ticket.id),
+            message_id=str(msg.id),
+            telegram_id=user.telegram_id,
+            text=text or "",
+            media=[],
+        )
         try:  # noqa: SIM105
-            await self._nats.publish_jetstream(subject=SUPPORT_OUTBOUND_SUBJECT, payload=payload, msg_id=str(msg.id))
+            await self._nats.publish_jetstream(
+                subject=SUPPORT_OUTBOUND_SUBJECT,
+                payload=payload.model_dump(),
+                msg_id=str(msg.id),
+            )
         except Exception:
             pass
 
@@ -540,64 +592,23 @@ class SupportService:
         ids = [u for u in user_ids if u]
         if not ids:
             return {}
-        users_q = select(User).where(User.id.in_(ids))
-        users = (await self.session.execute(users_q)).scalars().all()
-
-        sub_q = (
-            select(
-                Subscription.user_id,
-                func.max(Subscription.expires_at).label("max_expires"),
-            )
-            .where(Subscription.user_id.in_(ids))
-            .group_by(Subscription.user_id)
-        )
-        sub_rows = (await self.session.execute(sub_q)).all()
-        subs_max: dict[UUID, datetime | None] = dict(sub_rows)
-
-        sub_plan_q = (
-            select(Subscription.user_id, Plan.name, Subscription.expires_at)
-            .join(Plan, Plan.id == Subscription.plan_id)
-            .where(Subscription.user_id.in_(ids))
-            .order_by(desc(Subscription.expires_at))
-        )
-        plan_rows = (await self.session.execute(sub_plan_q)).all()
-        plan_map: dict[UUID, str] = {}
-        for uid, pname, _ in plan_rows:
-            if uid not in plan_map:
-                plan_map[uid] = pname
-
-        spend_q = (
-            select(PaymentOrder.user_id, func.coalesce(func.sum(PaymentOrder.amount_rub), 0))
-            .where(PaymentOrder.user_id.in_(ids), PaymentOrder.status == "paid")
-            .group_by(PaymentOrder.user_id)
-        )
-        try:
-            spend_rows = (await self.session.execute(spend_q)).all()
-            spend_map: dict[UUID, Decimal] = {uid: Decimal(s) for uid, s in spend_rows}
-        except Exception:
-            spend_map = {}
+        users = await self.users.list_by_ids(ids)
+        sub_meta = await self.tickets.aggregate_subscription_meta(ids)
+        spend_map = await self.tickets.aggregate_lifetime_spend(ids)
 
         out: dict[UUID, TicketUserRef] = {}
         for u in users:
+            expires_at, plan_name = sub_meta.get(u.id, (None, None))
             out[u.id] = TicketUserRef(
                 id=u.id,
                 username=u.username,
                 telegram_id=u.telegram_id,
                 balance=u.balance or Decimal("0"),
-                plan_name=plan_map.get(u.id),
-                expires_at=subs_max.get(u.id),
+                plan_name=plan_name,
+                expires_at=expires_at,
                 lifetime_spend=spend_map.get(u.id) or Decimal("0"),
             )
         return out
-
-    async def _fetch_admin_usernames(self, admin_ids: list[UUID | None]) -> dict[UUID, str]:
-        ids = [a for a in admin_ids if a]
-        if not ids:
-            return {}
-        rows = (
-            await self.session.execute(select(AdminUser.id, AdminUser.username).where(AdminUser.id.in_(ids)))
-        ).all()
-        return dict(rows)
 
     async def _resolve_admin_id(
         self, value: str, *, fallback_self: UUID | None = None
@@ -612,9 +623,7 @@ class SupportService:
             return UUID(value)
         except (ValueError, TypeError):
             pass
-        admin = (
-            await self.session.execute(select(AdminUser).where(AdminUser.username == value))
-        ).scalar_one_or_none()
+        admin = await self.admins.get_by_username(value)
         return admin.id if admin else None
 
 

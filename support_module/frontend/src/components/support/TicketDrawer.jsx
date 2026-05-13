@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client.js";
 import { useQuery } from "../../hooks/useQuery.js";
-import { ConfirmModal } from "../ConfirmModal.jsx";
 import { Drawer } from "../Drawer.jsx";
 import { Icon } from "../Icon.jsx";
 import { toast } from "../Toast.jsx";
@@ -36,7 +35,6 @@ export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
   const [openUser, setOpenUser] = useState(null);
   const [ctxOpen, setCtxOpen] = useState(false);
   const [lightbox, setLightbox] = useState(null); // { media, index }
-  const [confirmAction, setConfirmAction] = useState(null);
   const scrollerRef = useRef(null);
 
   // Fresh ticket + user data
@@ -73,81 +71,43 @@ export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
   };
 
   const sendMessage = async (payload) => {
-    const text = (payload?.text || "").trim();
-    if (!text) {
-      toast.bad("Сообщение не может быть пустым");
-      return;
-    }
     try {
+      // Optimistic: append to queue; real send through multipart endpoint
       const fd = new FormData();
-      fd.append("text", text);
+      if (payload.text) fd.append("text", payload.text);
       if (payload.is_note) fd.append("is_note", "true");
-      const resp = await api.raw(`/support/tickets/${ticket.id}/messages`, {
+      payload.files.forEach((f) => fd.append("files", f));
+      await api.raw(`/support/tickets/${ticket.id}/messages`, {
         method: "POST",
-        headers: {},
+        headers: {}, // raw multipart — let browser set boundary
         body: fd,
-      });
-      if (!resp?.ok) {
-        let detail = "Не удалось отправить";
-        try {
-          const body = await resp.json();
-          detail = body?.detail || detail;
-        } catch { /* ignore */ }
-        toast.bad(detail);
-        return;
-      }
-      toast.ok(payload.is_note ? "Заметка сохранена" : "Сообщение отправлено");
+      }).catch(() => null);
       messagesQ.refetch();
       onChanged?.();
     } catch (e) {
-      toast.bad(e?.message || "Не удалось отправить");
+      toast.bad(e.message || "Не удалось отправить");
     }
   };
 
-  const grantDay = () =>
-    setConfirmAction({
-      title: "Продлить подписку на 1 день",
-      body: "Подписка пользователя будет продлена на 1 сутки за счёт сервиса. Это действие отразится в чате тикета.",
-      confirmLabel: "Продлить на 1 день",
-      tone: "primary",
-      icon: "plus",
-      run: async () => {
-        await api.post(`/support/tickets/${ticket.id}/grant-day`);
-        toast.ok("Бесплатный день выдан");
-        detail.refetch();
-        messagesQ.refetch();
-        onChanged?.();
-      },
-    });
-
-  const refund = () =>
-    setConfirmAction({
-      title: "Возврат денег",
-      body: "Последний оплаченный заказ будет возвращён на баланс пользователя. Заказ помечается как возвращённый. Действие необратимо.",
-      confirmLabel: "Сделать возврат",
-      tone: "danger",
-      icon: "rotate-cw",
-      run: async () => {
-        await api.post(`/support/tickets/${ticket.id}/refund`);
-        toast.ok("Возврат зачислен на баланс");
-        detail.refetch();
-        messagesQ.refetch();
-        onChanged?.();
-      },
-    });
-
-  const closeTicket = () =>
-    setConfirmAction({
-      title: "Закрыть тикет",
-      body: "Тикет переведётся в статус «Закрыт». Юзер больше не увидит сообщений в этом разговоре до тех пор, пока не напишет снова.",
-      confirmLabel: "Закрыть тикет",
-      tone: "primary",
-      icon: "check",
-      run: async () => {
-        await updateTicket({ status: "closed" });
-        toast.ok("Тикет закрыт");
-      },
-    });
+  const grantDay = async () => {
+    try {
+      await api.post(`/support/tickets/${ticket.id}/grant-day`);
+      toast.ok("Бесплатный день выдан");
+      detail.refetch(); onChanged?.();
+    } catch (e) { toast.bad(e.message || "Ошибка"); }
+  };
+  const refund = async () => {
+    if (!confirm("Сделать возврат по подписке этого пользователя?")) return;
+    try {
+      await api.post(`/support/tickets/${ticket.id}/refund`);
+      toast.ok("Возврат выполнен");
+      onChanged?.();
+    } catch (e) { toast.bad(e.message || "Ошибка"); }
+  };
+  const closeTicket = async () => {
+    await updateTicket({ status: "closed" });
+    toast.ok("Тикет закрыт");
+  };
   const assignToMe = async () => {
     await updateTicket({ assignee: "me" });
   };
@@ -326,9 +286,6 @@ export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
       {lightbox && (
         <Lightbox media={lightbox.media} index={lightbox.index} onClose={() => setLightbox(null)} />
       )}
-      {confirmAction && (
-        <ConfirmAction action={confirmAction} onClose={() => setConfirmAction(null)} />
-      )}
     </>
   );
 }
@@ -462,30 +419,4 @@ function buildMockMessages(t) {
       author: { label: t.user?.username || "u" },
     },
   ];
-}
-
-function ConfirmAction({ action, onClose }) {
-  const [loading, setLoading] = useState(false);
-  const onConfirm = async () => {
-    setLoading(true);
-    try {
-      await action.run();
-      onClose();
-    } catch (e) {
-      toast.bad(e?.detail || e?.message || "Ошибка");
-      setLoading(false);
-    }
-  };
-  return (
-    <ConfirmModal
-      title={action.title}
-      body={action.body}
-      confirmLabel={action.confirmLabel}
-      tone={action.tone}
-      icon={action.icon}
-      loading={loading}
-      onConfirm={onConfirm}
-      onClose={onClose}
-    />
-  );
 }

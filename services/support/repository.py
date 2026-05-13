@@ -1,9 +1,12 @@
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.billing.models import PaymentOrder
+from services.plans.models import Plan
 from services.support.models import (
     Broadcast,
     BroadcastLog,
@@ -13,10 +16,13 @@ from services.support.models import (
     SupportTicket,
 )
 from services.support.schemas import (
+    BroadcastAudience,
     MessageSenderKind,
     TicketStatsRaw,
     TicketStatus,
 )
+from services.users.models import User
+from services.vpn.subscriptions.model import Subscription
 from shared.database.base_repository import BaseRepository
 
 
@@ -148,6 +154,39 @@ class SupportTicketRepository(BaseRepository[SupportTicket]):
             ticket.last_activity_at = datetime.now(timezone.utc)
             await self.session.flush()
 
+    async def aggregate_subscription_meta(
+        self, user_ids: list[UUID]
+    ) -> dict[UUID, tuple[datetime | None, str | None]]:
+        """Return mapping user_id -> (latest_expires_at, plan_name)."""
+        if not user_ids:
+            return {}
+        stmt = (
+            select(Subscription.user_id, Subscription.expires_at, Plan.name)
+            .join(Plan, Plan.id == Subscription.plan_id, isouter=True)
+            .where(Subscription.user_id.in_(user_ids))
+            .order_by(Subscription.user_id, desc(Subscription.expires_at))
+        )
+        rows = (await self.session.execute(stmt)).all()
+        seen: set[UUID] = set()
+        out: dict[UUID, tuple[datetime | None, str | None]] = {}
+        for uid, expires, plan_name in rows:
+            if uid in seen:
+                continue
+            seen.add(uid)
+            out[uid] = (expires, plan_name)
+        return out
+
+    async def aggregate_lifetime_spend(self, user_ids: list[UUID]) -> dict[UUID, Decimal]:
+        if not user_ids:
+            return {}
+        stmt = (
+            select(PaymentOrder.user_id, func.coalesce(func.sum(PaymentOrder.amount_rub), 0))
+            .where(PaymentOrder.user_id.in_(user_ids), PaymentOrder.status == "paid")
+            .group_by(PaymentOrder.user_id)
+        )
+        rows = (await self.session.execute(stmt)).all()
+        return {uid: Decimal(s) for uid, s in rows}
+
 
 class SupportMessageRepository(BaseRepository[SupportMessage]):
     def __init__(self, session: AsyncSession):
@@ -235,6 +274,60 @@ class BroadcastRepository(BaseRepository[Broadcast]):
             .limit(limit)
         )
         return list((await self.session.execute(stmt)).scalars().all())
+
+    async def resolve_audience_user_ids(
+        self,
+        audience: BroadcastAudience,
+        *,
+        plan_id: UUID | None,
+        now: datetime,
+        expiring_horizon: timedelta = timedelta(days=7),
+    ) -> list[UUID]:
+        if audience == BroadcastAudience.ALL:
+            stmt = select(User.id)
+        elif audience == BroadcastAudience.ACTIVE:
+            stmt = (
+                select(User.id)
+                .join(Subscription, Subscription.user_id == User.id)
+                .where(Subscription.expires_at.is_not(None), Subscription.expires_at >= now)
+                .distinct()
+            )
+        elif audience == BroadcastAudience.EXPIRING:
+            horizon = now + expiring_horizon
+            stmt = (
+                select(User.id)
+                .join(Subscription, Subscription.user_id == User.id)
+                .where(
+                    Subscription.expires_at.is_not(None),
+                    Subscription.expires_at >= now,
+                    Subscription.expires_at <= horizon,
+                )
+                .distinct()
+            )
+        elif audience == BroadcastAudience.BY_PLAN:
+            if plan_id is None:
+                return []
+            stmt = (
+                select(User.id)
+                .join(Subscription, Subscription.user_id == User.id)
+                .where(Subscription.plan_id == plan_id)
+                .distinct()
+            )
+        elif audience == BroadcastAudience.NO_SUB:
+            sub_exists = select(Subscription.id).where(Subscription.user_id == User.id).exists()
+            stmt = select(User.id).where(~sub_exists)
+        elif audience == BroadcastAudience.TRIAL:
+            stmt = (
+                select(User.id)
+                .join(Subscription, Subscription.user_id == User.id)
+                .join(Plan, Plan.id == Subscription.plan_id)
+                .where(Plan.price_rub == Decimal("0"))
+                .distinct()
+            )
+        else:
+            return []
+        rows = (await self.session.execute(stmt)).scalars().all()
+        return list(rows)
 
 
 class BroadcastLogRepository(BaseRepository[BroadcastLog]):

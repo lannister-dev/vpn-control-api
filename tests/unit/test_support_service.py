@@ -52,8 +52,8 @@ async def test_patch_ticket_close_sets_closed_at(monkeypatch):
     t = _ticket()
     svc.tickets = SimpleNamespace(get_by_id=_async_return(t))
     svc._fetch_users_with_meta = _async_return({})
-    svc._fetch_admin_usernames = _async_return({})
     svc.messages = SimpleNamespace(has_media_flags=_async_return({}))
+    svc.admins = SimpleNamespace(list_usernames_by_ids=_async_return({}))
     svc._resolve_admin_id = _async_return(None)
 
     async def _flush():
