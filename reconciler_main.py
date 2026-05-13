@@ -34,6 +34,8 @@ from services.probe.reconcilers.synthetic import ProbeSyntheticCredentialReconci
 from services.routes.model import Route, TransportProfile  # noqa: F401
 from services.routes.reconcilers.warmup import RouteWarmupReconciler
 from services.routing.entry.publisher import EntryRoutingPublisher
+from services.support.consumer import SupportInboundConsumer
+from services.support.models import SupportTicket  # noqa: F401
 from services.traffic.nodes.consumer import NodeTrafficNatsConsumer
 from services.traffic.nodes.model import NodeTrafficUsage  # noqa: F401
 from services.traffic.nodes.reconcilers.cleanup import NodeTrafficHistoryCleanupReconciler
@@ -97,6 +99,7 @@ def _build_nats_runtimes(nats_settings) -> list:
         NodeAgentRuntime(nats_settings),
         UserTrafficNatsConsumer(nats_settings),
         NodeTrafficNatsConsumer(nats_settings),
+        SupportInboundConsumer(nats_settings),
     ]
 
 
