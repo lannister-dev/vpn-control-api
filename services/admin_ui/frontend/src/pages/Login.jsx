@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client.js";
 import { Icon } from "../components/Icon.jsx";
+import "./Login.css";
 
 export function LoginPage({ theme, onToggleTheme, onSuccess }) {
   const [username, setUsername] = useState("");
