@@ -76,6 +76,7 @@ class NodeTrafficSummaryListOut(BaseModel):
     from_ts: datetime
     to_ts: datetime
     items: list[NodeTrafficSummaryOut]
+    previous_total_bytes: int = 0
 
 
 class NodeTimeseriesOut(BaseModel):

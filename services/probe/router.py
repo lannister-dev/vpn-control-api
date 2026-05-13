@@ -13,6 +13,7 @@ from services.probe.schemas import (
     ProbeDrainMigrateOut,
     ProbeReportIn,
     ProbeReportOut,
+    ProbeStatsOut,
     ProbeTargetOut,
     ProbeTargetRole,
 )
@@ -52,6 +53,20 @@ async def list_probe_targets(
         include_disabled=include_disabled,
         role=role,
     )
+
+
+@router.get(
+    "/stats",
+    response_model=ProbeStatsOut,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(admin_auth)],
+    summary="Aggregate probe stats: current vs 24h ago",
+)
+async def get_probe_stats(
+        window_hours: int = Query(default=1, ge=1, le=24),
+        service: ProbeIngestionService = Depends(get_probe_ingestion_service),
+) -> ProbeStatsOut:
+    return await service.get_stats(window_hours=window_hours)
 
 
 @router.get(

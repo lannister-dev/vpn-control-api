@@ -18,6 +18,7 @@ from services.probe.schemas import (
     ProbeReportIn,
     ProbeReportOut,
     ProbeSignalInternalCreate,
+    ProbeStatsOut,
     ProbeSyntheticClientIds,
     ProbeTargetOut,
     ProbeTargetRole,
@@ -206,6 +207,27 @@ class ProbeIngestionService:
             source=source,
         )
         return [ProbeReportOut.model_validate(row) for row in rows]
+
+    async def get_stats(self, *, window_hours: int = 1) -> ProbeStatsOut:
+        now = datetime.now(timezone.utc)
+        window = timedelta(hours=window_hours)
+        cur_from = now - window
+        prev_to = now - timedelta(days=1)
+        prev_from = prev_to - window
+
+        total, reach, lat = await self.probe_repository.stats_for_window(
+            from_ts=cur_from, to_ts=now,
+        )
+        ptotal, preach, plat = await self.probe_repository.stats_for_window(
+            from_ts=prev_from, to_ts=prev_to,
+        )
+        return ProbeStatsOut(
+            success_rate=round(reach / total * 100, 1) if total else None,
+            avg_latency_ms=round(lat, 1) if lat is not None else None,
+            success_rate_24h_ago=round(preach / ptotal * 100, 1) if ptotal else None,
+            avg_latency_ms_24h_ago=round(plat, 1) if plat is not None else None,
+            window_hours=window_hours,
+        )
 
     async def _maybe_send_probe_alert(
             self,

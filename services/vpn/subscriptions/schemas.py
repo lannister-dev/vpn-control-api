@@ -50,6 +50,9 @@ class SubscriptionCountersOut(BaseModel):
     total: int
     active: int
     expired: int
+    total_24h_ago: int = 0
+    active_24h_ago: int = 0
+    expired_24h_ago: int = 0
 
 
 class SubscriptionListOut(BaseModel):

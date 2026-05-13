@@ -147,8 +147,11 @@ async def list_subscriptions(
 async def get_subscription_stats(
         service: SubscriptionService = Depends(get_subscription_service),
 ):
-    total, active, expired = await service.get_stats()
-    return SubscriptionCountersOut(total=total, active=active, expired=expired)
+    (total, active, expired), (total_y, active_y, expired_y) = await service.get_stats_with_history()
+    return SubscriptionCountersOut(
+        total=total, active=active, expired=expired,
+        total_24h_ago=total_y, active_24h_ago=active_y, expired_24h_ago=expired_y,
+    )
 
 
 @router.post(

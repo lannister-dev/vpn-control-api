@@ -113,6 +113,14 @@ class ProbeTargetOut(BaseModel):
     flow: str | None = None
 
 
+class ProbeStatsOut(BaseModel):
+    success_rate: float | None = None
+    avg_latency_ms: float | None = None
+    success_rate_24h_ago: float | None = None
+    avg_latency_ms_24h_ago: float | None = None
+    window_hours: int = 1
+
+
 class ProbeSyntheticClientIds(BaseModel):
     reality: str | None = None
     ws: str | None = None
