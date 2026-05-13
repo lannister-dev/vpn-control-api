@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/client.js";
 import { useQuery } from "../../hooks/useQuery.js";
 import { ConfirmModal } from "../ConfirmModal.jsx";
@@ -153,108 +153,107 @@ export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
   };
 
   const head = (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0 }}>
+    <div className="tk-head">
       <UserAvatar name={user.username || `tg${user.telegram_id}`} size="md" />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div className="slideover-title" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", margin: 0 }}>
-          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            #{String(ticket.id).slice(0, 8)} · {live.subject || "Без темы"}
+      <div className="tk-head-main">
+        <div className="tk-head-title">
+          <span className="tk-head-id mono">#{String(ticket.id).slice(0, 8)}</span>
+          <span className="tk-head-subject" title={live.subject || ""}>
+            {live.subject || "Без темы"}
           </span>
           <TicketStatusPill status={live.status} />
         </div>
-        <div className="slideover-sub" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span style={{ cursor: "pointer" }} onClick={() => setOpenUser(user)} title="Открыть профиль">
+        <div className="tk-head-sub">
+          <button
+            type="button"
+            className="tk-head-user"
+            onClick={() => setOpenUser(user)}
+            title="Открыть профиль"
+          >
             {user.username ? `@${user.username}` : `tg:${user.telegram_id}`}
-          </span>
-          <span className="muted">·</span>
-          <span className="mono">tg:{user.telegram_id}</span>
-          {live.assignee && (<><span className="muted">·</span><span className="muted">{live.assignee === "me" ? "вы" : live.assignee}</span></>)}
+          </button>
           <span className="muted">·</span>
           <PriorityDot priority={live.priority} withLabel />
           <span className="muted">·</span>
           <CategoryTag category={live.category} />
+          {live.assignee && (
+            <>
+              <span className="muted">·</span>
+              <span className="muted small">{live.assignee === "me" ? "на вас" : live.assignee}</span>
+            </>
+          )}
+          <span className="muted">·</span>
+          <span className="muted small" title={fmtDateTime(live.created_at)}>
+            создан {relTime(live.created_at)}
+          </span>
         </div>
       </div>
     </div>
   );
 
   const actions = (
-    <>
-      <button className="btn btn-ghost" onClick={() => setOpenUser(user)} title="Профиль пользователя">
-        <Icon name="user" size={13} /> Профиль
-      </button>
-      <button className="btn btn-ghost btn-icon" title="Меню">
-        <Icon name="more-vertical" size={15} />
-      </button>
-    </>
+    <button className="btn btn-ghost btn-icon" onClick={() => setOpenUser(user)} title="Профиль пользователя">
+      <Icon name="user" size={15} />
+    </button>
   );
 
   return (
     <>
-      <Drawer head={head} onClose={onClose} actions={actions}>
-        {/* KPI ribbon */}
-        <div className="tk-kpi-ribbon">
-          <div className="tk-kpi-cell">
-            <div className="tk-kpi-label">Подписка</div>
-            <div className="tk-kpi-val">
-              {user.plan_name ? <span>{user.plan_name}</span> : <span className="muted">нет</span>}
+      <Drawer head={head} onClose={onClose} actions={actions} width={760} className="tk-drawer">
+        {/* User summary card: KPIs + quick actions */}
+        <div className="tk-summary">
+          <div className="tk-summary-kpis">
+            <div className="tk-kpi-cell">
+              <div className="tk-kpi-label">Подписка</div>
+              <div className="tk-kpi-val">
+                {user.plan_name ? <span>{user.plan_name}</span> : <span className="muted">нет</span>}
+              </div>
+            </div>
+            <div className="tk-kpi-cell">
+              <div className="tk-kpi-label">Баланс</div>
+              <div className="tk-kpi-val"><BalancePill amount={user.balance} /></div>
+            </div>
+            <div className="tk-kpi-cell">
+              <div className="tk-kpi-label">Истекает</div>
+              <div className="tk-kpi-val">
+                <DaysCountdown days={daysLeft(user.expires_at)} />
+              </div>
+            </div>
+            <div className="tk-kpi-cell">
+              <div className="tk-kpi-label">Lifetime</div>
+              <div className="tk-kpi-val mono">
+                {user.lifetime_spend != null ? `${Number(user.lifetime_spend).toLocaleString("ru-RU")} ₽` : "—"}
+              </div>
             </div>
           </div>
-          <div className="tk-kpi-cell">
-            <div className="tk-kpi-label">Баланс</div>
-            <div className="tk-kpi-val"><BalancePill amount={user.balance} /></div>
-          </div>
-          <div className="tk-kpi-cell">
-            <div className="tk-kpi-label">Истекает</div>
-            <div className="tk-kpi-val">
-              <DaysCountdown days={daysLeft(user.expires_at)} />
-            </div>
-          </div>
-          <div className="tk-kpi-cell">
-            <div className="tk-kpi-label">Lifetime spend</div>
-            <div className="tk-kpi-val mono">
-              {user.lifetime_spend != null ? `${Number(user.lifetime_spend).toLocaleString("ru-RU")} ₽` : "—"}
-            </div>
-          </div>
-        </div>
-
-        {/* Quick actions */}
-        <div className="tk-quick-actions">
-          <button className="btn" onClick={grantDay} title="Активировать дополнительный день подписки">
-            <Icon name="plus" size={13} /> Дать день бесплатно
-          </button>
-          <button className="btn" onClick={refund}>
-            <Icon name="rotate-cw" size={13} /> Возврат
-          </button>
-          <div style={{ flex: 1 }} />
-          {live.status !== "closed" ? (
-            <>
-              {live.status !== "in_progress" && (
-                <button className="btn btn-ghost" onClick={() => updateTicket({ status: "in_progress" })}>
-                  В работу
-                </button>
-              )}
-              <button className="btn btn-primary" onClick={closeTicket}>
-                <Icon name="check" size={13} /> Закрыть тикет
-              </button>
-            </>
-          ) : (
-            <button className="btn" onClick={() => updateTicket({ status: "in_progress" })}>
-              <Icon name="rotate-cw" size={13} /> Переоткрыть
+          <div className="tk-summary-actions">
+            <button className="btn btn-sm" onClick={grantDay} title="Активировать дополнительный день подписки">
+              <Icon name="plus" size={12} /> День бесплатно
             </button>
-          )}
+            <button className="btn btn-sm" onClick={refund}>
+              <Icon name="rotate-cw" size={12} /> Возврат
+            </button>
+            {live.status !== "closed" ? (
+              <>
+                {live.status !== "in_progress" && (
+                  <button className="btn btn-sm btn-ghost" onClick={() => updateTicket({ status: "in_progress" })}>
+                    В работу
+                  </button>
+                )}
+                <button className="btn btn-sm btn-primary" onClick={closeTicket}>
+                  <Icon name="check" size={12} /> Закрыть тикет
+                </button>
+              </>
+            ) : (
+              <button className="btn btn-sm" onClick={() => updateTicket({ status: "in_progress" })}>
+                <Icon name="rotate-cw" size={12} /> Переоткрыть
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Context strip — collapsible */}
-        <button className="tk-context-toggle" onClick={() => setCtxOpen((v) => !v)} type="button">
-          <Icon name={ctxOpen ? "chevron-down" : "chevron-right"} size={12} />
-          <span>Контекст пользователя</span>
-          <span className="muted small">· устройства, тариф, нода входа</span>
-        </button>
-        {ctxOpen && <ContextPanel user={user} />}
-
-        {/* Meta dropdowns: status / priority / category / assignee */}
-        <div className="tk-meta-grid">
+        {/* Meta strip: status / priority / category */}
+        <div className="tk-meta-strip">
           <MetaDropdown
             label="Статус"
             value={live.status}
@@ -273,11 +272,12 @@ export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
             options={categoryOptions()}
             onChange={(v) => updateTicket({ category: v })}
           />
-          <div className="tk-meta-cell">
-            <div className="tk-meta-label">Создан</div>
-            <div className="tk-meta-val mono small">{fmtDateTime(live.created_at)}</div>
-          </div>
+          <button className="tk-context-toggle" onClick={() => setCtxOpen((v) => !v)} type="button">
+            <Icon name={ctxOpen ? "chevron-down" : "chevron-right"} size={12} />
+            <span>Контекст</span>
+          </button>
         </div>
+        {ctxOpen && <ContextPanel user={user} />}
 
         {/* Chat scroller */}
         <div className="tk-chat-scroller" ref={scrollerRef}>

@@ -2,6 +2,7 @@
 // template popover. All consume only design tokens from styles.css.
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Icon } from "../Icon.jsx";
+import { TgTicks } from "../TgTicks.jsx";
 
 /* ──────────────────────────────────────────────────────────
    STATUS PILL — ticket status
@@ -130,10 +131,10 @@ export function MessageBubble({
         <div className="tk-msg-meta">
           <span>{new Date(created_at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</span>
           {isOperator && (
-            <span className="tk-msg-status" title={read ? "Прочитано" : delivered ? "Доставлено" : "Отправляется"}>
-              <Icon name="check" size={11} />
-              {(delivered || read) && <Icon name="check" size={11} style={{ marginLeft: -7, color: read ? "var(--accent)" : "currentColor" }} />}
-            </span>
+            <TgTicks
+              status={read ? "read" : delivered ? "delivered" : "sent"}
+              size={11}
+            />
           )}
         </div>
       </div>
@@ -340,9 +341,21 @@ export function Composer({
     setTimeout(() => taRef.current?.focus(), 0);
   };
 
+  const canSend = !disabled && !!text.trim();
+
   return (
     <div className="tk-composer">
-      <div className="tk-composer-row">
+      <textarea
+        ref={taRef}
+        className="tk-composer-textarea"
+        placeholder="Напишите ответ юзеру или внутреннюю заметку…    (⌘+Enter — отправить)"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={onKey}
+        rows={1}
+        disabled={disabled}
+      />
+      <div className="tk-composer-bar">
         <div className="tk-composer-icons">
           <button
             type="button"
@@ -380,34 +393,25 @@ export function Composer({
           )}
         </div>
 
-        <textarea
-          ref={taRef}
-          className="tk-composer-textarea"
-          placeholder="Напишите ответ юзеру или внутреннюю заметку…    (⌘+Enter — отправить)"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={onKey}
-          rows={1}
-          disabled={disabled}
-        />
+        <span className="tk-composer-hint muted small">⌘+Enter — отправить</span>
 
         <div className="tk-composer-actions">
           <button
             type="button"
-            className="btn"
+            className="btn btn-sm btn-ghost"
             title="Внутренняя заметка — видна только админам, юзеру не уходит"
-            disabled={disabled || !text.trim()}
+            disabled={!canSend}
             onClick={() => send(true)}
           >
-            <Icon name="lock" size={13} /> Заметка
+            <Icon name="lock" size={12} /> Заметка
           </button>
           <button
             type="button"
-            className="btn btn-primary"
-            disabled={disabled || !text.trim()}
+            className="btn btn-sm btn-primary"
+            disabled={!canSend}
             onClick={() => send(false)}
           >
-            <Icon name="send" size={13} /> Отправить
+            <Icon name="send" size={12} /> Отправить
           </button>
         </div>
       </div>

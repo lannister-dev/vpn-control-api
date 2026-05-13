@@ -62,7 +62,9 @@ class NatsConfig:
     js_support_stream: str = "vpn_support"
     support_inbound_subject: str = "support.message.in"
     support_outbound_subject: str = "support.message.out"
+    support_sent_subject: str = "support.message.sent"
     support_inbound_queue: str = "vpn-control-api-support-inbound"
+    support_sent_queue: str = "vpn-control-api-support-sent"
     js_support_max_msgs_per_subject: int = 100_000
     js_support_max_age_s: int = 86400
     js_support_duplicate_window_s: int = 600
@@ -382,7 +384,9 @@ def get_settings() -> Settings:
         js_support_stream=env.str("NATS_JS_SUPPORT_STREAM", default="vpn_support"),
         support_inbound_subject=env.str("NATS_SUPPORT_INBOUND_SUBJECT", default="support.message.in"),
         support_outbound_subject=env.str("NATS_SUPPORT_OUTBOUND_SUBJECT", default="support.message.out"),
+        support_sent_subject=env.str("NATS_SUPPORT_SENT_SUBJECT", default="support.message.sent"),
         support_inbound_queue=env.str("NATS_SUPPORT_INBOUND_QUEUE", default="vpn-control-api-support-inbound"),
+        support_sent_queue=env.str("NATS_SUPPORT_SENT_QUEUE", default="vpn-control-api-support-sent"),
         js_support_max_msgs_per_subject=max(1, env.int("NATS_JS_SUPPORT_MAX_MSGS_PER_SUBJECT", default=100_000)),
         js_support_max_age_s=max(60, env.int("NATS_JS_SUPPORT_MAX_AGE_S", default=86400)),
         js_support_duplicate_window_s=max(0, env.int("NATS_JS_SUPPORT_DUPLICATE_WINDOW_S", default=600)),

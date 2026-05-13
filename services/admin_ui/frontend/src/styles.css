@@ -5,6 +5,7 @@
 
 /* Design tokens — Light */
 :root[data-theme="light"] {
+  color-scheme: light;
   --bg: #fafafa;
   --bg-elevated: #ffffff;
   --surface: #ffffff;
@@ -40,6 +41,7 @@
 }
 
 :root[data-theme="dark"] {
+  color-scheme: dark;
   /* Cool, slightly blue-tinted neutrals — not flat black */
   --bg: #0b0d10;
   --bg-elevated: #111418;

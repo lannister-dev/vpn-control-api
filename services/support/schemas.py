@@ -290,3 +290,10 @@ class SupportOutboundPayload(BaseModel):
     telegram_id: int
     text: str = ""
     media: list[SupportOutboundAttachmentMsg] = Field(default_factory=list)
+
+
+class SupportSentAck(BaseModel):
+    message_id: UUID
+    tg_message_id: int | None = None
+    ok: bool = True
+    error: str | None = None

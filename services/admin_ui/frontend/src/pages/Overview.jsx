@@ -605,7 +605,9 @@ function KpiCell({ label, value, unit, delta, deltaTone, icon, sparkSeed, sparkC
       <div className={`kpi-delta ${deltaTone || ""}`}>
         <Icon name={deltaTone === "up" ? "trending-up" : deltaTone === "down" ? "trending-down" : "arrow-right"} size={12} />
         <span>{delta}</span>
-        <span className="muted" style={{ marginLeft: 4 }}>vs вчера</span>
+        {delta && delta !== "—" && (
+          <span className="muted" style={{ marginLeft: 4 }}>vs вчера</span>
+        )}
       </div>
     </div>
   );

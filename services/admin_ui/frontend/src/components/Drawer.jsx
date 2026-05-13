@@ -1,16 +1,22 @@
 import { useEffect } from "react";
 import { Icon } from "./Icon.jsx";
 
-export function Drawer({ title, subtitle, head, onClose, tabs, activeTab, onTab, actions, children }) {
+export function Drawer({ title, subtitle, head, onClose, tabs, activeTab, onTab, actions, children, width, className }) {
   useEffect(() => {
     const onEsc = (e) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", onEsc);
     return () => document.removeEventListener("keydown", onEsc);
   }, [onClose]);
 
+  const widthStyle = width ? { width: typeof width === "number" ? `${width}px` : width } : undefined;
+
   return (
     <div className="slideover-backdrop" onClick={onClose}>
-      <aside className="slideover" onClick={(e) => e.stopPropagation()}>
+      <aside
+        className={`slideover ${className || ""}`.trim()}
+        style={widthStyle}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="slideover-head">
           {head || (
             <div className="slideover-title-main">
