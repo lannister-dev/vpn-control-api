@@ -1,0 +1,57 @@
+.tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-body);
+}
+.tbl thead th {
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.01em;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  position: sticky;
+  top: 0;
+  white-space: nowrap;
+}
+.tbl tbody td {
+  padding: var(--pad-y) var(--pad-x);
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  height: var(--row-h);
+  vertical-align: middle;
+}
+.tbl tbody tr { transition: background 80ms ease; }
+.tbl tbody tr:hover { background: var(--surface-hover); }
+.tbl tbody tr[data-selected="true"] { background: var(--accent-soft); }
+.tbl tbody tr[data-selected="true"] td:first-child { box-shadow: inset 2px 0 0 var(--accent); }
+.tbl-num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+.tbl .row-actions { opacity: 0; transition: opacity 80ms ease; text-align: right; }
+.tbl tbody tr:hover .row-actions { opacity: 1; }
+
+/* Compact data table (alt style — used in some pages) */
+.data-table { width: 100%; border-collapse: separate; border-spacing: 0; }
+.data-table th,
+.data-table td {
+  text-align: left;
+  padding: 10px 14px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+}
+.data-table th {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: var(--surface-2);
+}
+.data-table tbody tr:hover { background: var(--surface-hover); }
+.data-table .small { font-size: 11px; color: var(--text-muted); }

@@ -4,6 +4,7 @@ import { Modal } from "./Modal.jsx";
 import { Field } from "./Field.jsx";
 import { Icon } from "./Icon.jsx";
 import { toast } from "./Toast.jsx";
+import { DatePicker } from "./DatePicker.jsx";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -125,7 +126,7 @@ export function SubscriptionCreateModal({ userId, userLabel, plans, onClose, onC
         </Field>
 
         <Field label="Истекает" hint="опционально, локальное время">
-          <input type="datetime-local" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
+          <DatePicker mode="datetime" value={expiresAt} onChange={setExpiresAt} placeholder="Не указано" />
         </Field>
 
         <Field label="Profile key" hint="опционально, для разделения профилей">

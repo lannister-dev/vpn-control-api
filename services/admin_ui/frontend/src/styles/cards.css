@@ -1,0 +1,177 @@
+/* ─── Card ─── */
+.card {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.card-head {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px;
+  flex-wrap: wrap;
+}
+.card-head .sec-title { white-space: nowrap; }
+.card-head .btn { white-space: nowrap; }
+.card-body { padding: 14px; }
+.card-bad { border-color: var(--bad); color: var(--bad); background: var(--bad-soft); padding: 12px 14px; }
+
+/* ─── KPI Hero ─── */
+.kpi-hero {
+  display: grid;
+  grid-template-columns: 1.6fr repeat(4, 1fr);
+  gap: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.kpi-hero[data-cells="6"] { grid-template-columns: 1.4fr repeat(5, 1fr); }
+@media (max-width: 1380px) {
+  .kpi-hero[data-cells="6"] { grid-template-columns: 1fr 1fr 1fr; }
+  .kpi-hero[data-cells="6"] .kpi-cell.primary { grid-column: 1 / -1; border-bottom: 1px solid var(--border); }
+}
+@media (max-width: 1200px) {
+  .kpi-hero { grid-template-columns: 1fr 1fr; }
+  .kpi-hero .kpi-cell.primary { grid-column: 1 / -1; border-bottom: 1px solid var(--border); }
+}
+@media (max-width: 640px) {
+  .kpi-hero { grid-template-columns: 1fr; }
+  .kpi-hero .kpi-cell { border-right: 0 !important; border-bottom: 1px solid var(--border); }
+}
+.kpi-cell {
+  padding: 16px 18px;
+  border-right: 1px solid var(--border);
+  position: relative;
+  min-width: 0;
+}
+.kpi-cell:last-child { border-right: 0; }
+.kpi-cell.primary { background: linear-gradient(135deg, var(--surface), var(--surface-2)); }
+.kpi-label {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  display: flex; align-items: center; gap: 6px;
+  margin-bottom: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.kpi-label > span { overflow: hidden; text-overflow: ellipsis; }
+.kpi-value {
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  line-height: 1;
+  white-space: nowrap;
+}
+.kpi-value-row {
+  display: grid !important;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  position: static !important;
+}
+.kpi-value-row > .kpi-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.kpi-value-row > .kpi-spark { position: static !important; }
+.kpi-cell.primary .kpi-value { font-size: 36px; }
+.kpi-unit { font-size: 14px; color: var(--text-muted); margin-left: 4px; font-weight: 500; }
+.kpi-delta {
+  margin-top: 8px;
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11.5px;
+  font-family: var(--font-mono);
+}
+.kpi-delta.up   { color: var(--ok); }
+.kpi-delta.down { color: var(--bad); }
+.kpi-delta.flat { color: var(--text-muted); }
+.kpi-spark { opacity: 0.9; flex-shrink: 0; }
+
+/* Health ring */
+.health-ring {
+  display: flex; align-items: center; gap: 14px;
+}
+.ring-svg { width: 68px; height: 68px; flex-shrink: 0; }
+.ring-bg { stroke: var(--border); }
+.ring-fg { stroke: var(--ok); transition: stroke-dashoffset 400ms ease; }
+.ring-fg.warn { stroke: var(--warn); }
+.ring-fg.bad  { stroke: var(--bad); }
+.health-main .kpi-value { font-size: 32px; }
+.health-sub {
+  font-size: 11.5px; color: var(--text-muted); margin-top: 4px;
+  display: flex; gap: 10px; flex-wrap: wrap;
+}
+.health-sub span { white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
+
+/* ─── Status dot / pill / chip ─── */
+.status-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  display: inline-block; flex-shrink: 0;
+  position: relative;
+}
+.status-dot.ok    { background: var(--ok); }
+.status-dot.warn  { background: var(--warn); }
+.status-dot.bad   { background: var(--bad); }
+.status-dot.muted { background: var(--text-faint); }
+.status-dot.pulse::after {
+  content: ''; position: absolute; inset: -3px;
+  border-radius: 50%;
+  background: inherit;
+  opacity: 0.4;
+  animation: pulse 1.8s ease-out infinite;
+}
+@keyframes pulse {
+  0%   { transform: scale(0.8); opacity: 0.5; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+.pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11.5px;
+  font-weight: 500;
+  border: 1px solid transparent;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.pill.ok     { background: var(--ok-soft);    color: var(--ok);    border-color: color-mix(in oklch, var(--ok)    30%, transparent); }
+.pill.warn   { background: var(--warn-soft);  color: var(--warn);  border-color: color-mix(in oklch, var(--warn)  30%, transparent); }
+.pill.bad    { background: var(--bad-soft);   color: var(--bad);   border-color: color-mix(in oklch, var(--bad)   30%, transparent); }
+.pill.info   { background: var(--info-soft);  color: var(--info);  border-color: color-mix(in oklch, var(--info)  30%, transparent); }
+.pill.accent { background: var(--accent-soft); color: var(--accent-text); border-color: var(--accent-border); }
+.pill.muted  { background: var(--surface-2); color: var(--text-muted); border-color: var(--border); }
+
+.chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid transparent;
+}
+.chip-ok    { background: var(--ok-soft);    color: var(--ok);   }
+.chip-warn  { background: var(--warn-soft);  color: var(--warn); }
+.chip-bad   { background: var(--bad-soft);   color: var(--bad);  }
+.chip-muted { background: var(--surface-2); color: var(--text-muted); }
+
+/* ─── Detail fields ─── */
+.kv {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 8px 12px;
+  font-size: 12.5px;
+}
+.kv dt { color: var(--text-muted); }
+.kv dd { margin: 0; color: var(--text); }
+
+/* Sparkline */
+.spark { display: block; }
+.spark path { fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.spark .fill { stroke: none; opacity: 0.18; }

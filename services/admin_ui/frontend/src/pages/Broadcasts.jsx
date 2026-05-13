@@ -5,6 +5,8 @@ import { useQuery } from "../hooks/useQuery.js";
 import { Icon } from "../components/Icon.jsx";
 import { Modal } from "../components/Modal.jsx";
 import { Field } from "../components/Field.jsx";
+import { DatePicker } from "../components/DatePicker.jsx";
+import { TgTicks } from "../components/TgTicks.jsx";
 import { Empty, SkeletonRows } from "../components/Empty.jsx";
 import { toast } from "../components/Toast.jsx";
 import { FilterChip } from "../components/users/FilterChip.jsx";
@@ -224,7 +226,7 @@ function BroadcastComposer() {
           {schedule === "schedule" && (
             <div style={{ marginTop: 10 }}>
               <Field label="Дата и время">
-                <input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} />
+                <DatePicker mode="datetime" value={scheduledAt} onChange={setScheduledAt} />
               </Field>
             </div>
           )}
@@ -276,7 +278,13 @@ function BroadcastComposer() {
                 </div>
               )}
               <div className="br-bubble-meta">
-                12:34 <Icon name="check" size={10} /><Icon name="check" size={10} style={{ marginLeft: -6 }} />
+                <span className="mono">
+                  {(scheduledAt && schedule === "schedule"
+                    ? new Date(scheduledAt)
+                    : new Date()
+                  ).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
+                </span>
+                <TgTicks status={schedule === "schedule" ? "pending" : "delivered"} size={11} />
               </div>
             </div>
             <div className="br-bot-note">от @vpn_bot · бот</div>

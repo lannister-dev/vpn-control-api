@@ -241,6 +241,17 @@ class SupportMessageRepository(BaseRepository[SupportMessage]):
         )
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
+    async def mark_delivered(
+        self, *, message_id: UUID, tg_message_id: int | None
+    ) -> SupportMessage | None:
+        msg = await self.get_by_id(message_id)
+        if msg is None:
+            return None
+        msg.delivered = True
+        if tg_message_id is not None:
+            msg.tg_message_id = tg_message_id
+        return msg
+
 
 class SupportAttachmentRepository(BaseRepository[SupportAttachment]):
     def __init__(self, session: AsyncSession):
