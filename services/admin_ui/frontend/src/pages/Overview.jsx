@@ -50,6 +50,7 @@ export function OverviewPage({ onOpenNode, onGoto }) {
     { interval: 60000, deps: [period] },
   );
   const subsStats = useQuery(() => api.get("/subscriptions/stats").catch(() => null), { interval: 60000 });
+  const probeStatsApi = useQuery(() => api.get("/probe/stats?window_hours=1").catch(() => null), { interval: 30000 });
 
   const nodes = status.data?.nodes || [];
   const totals = status.data?.totals || {};
@@ -284,6 +285,11 @@ export function OverviewPage({ onOpenNode, onGoto }) {
     if (!items.length) return null;
     return items.reduce((a, t) => a + (t.bytes_in || 0) + (t.bytes_out || 0), 0);
   }, [traffic.data]);
+  const trafficPrev = traffic.data?.previous_total_bytes ?? null;
+  const trafficDeltaPct = useMemo(() => {
+    if (trafficTotal == null || trafficPrev == null || trafficPrev === 0) return null;
+    return ((trafficTotal - trafficPrev) / trafficPrev) * 100;
+  }, [trafficTotal, trafficPrev]);
   const trafficFmt = (b) => {
     if (b == null) return { v: "—", u: "" };
     const units = ["B", "KB", "MB", "GB", "TB", "PB"];
@@ -361,66 +367,109 @@ export function OverviewPage({ onOpenNode, onGoto }) {
             </div>
           </div>
 
-          <KpiCell
-            label="Активные подписки"
-            value={subsStats.data?.active != null ? subsStats.data.active.toLocaleString("ru-RU") : "—"}
-            delta={subsStats.data?.expired ? `${subsStats.data.expired} истекли` : subsStats.data?.active != null ? `${subsStats.data.total} всего` : "—"}
-            deltaTone={subsStats.data?.expired ? "down" : "up"}
-            icon="key"
-            sparkSeed={13}
-            sparkColor="var(--accent)"
-          />
+          {(() => {
+            const a = subsStats.data;
+            const activeDiff = a?.active != null && a?.active_24h_ago != null ? a.active - a.active_24h_ago : null;
+            return (
+              <KpiCell
+                label="Активные подписки"
+                value={a?.active != null ? a.active.toLocaleString("ru-RU") : "—"}
+                delta={
+                  activeDiff != null
+                    ? `${activeDiff > 0 ? "+" : ""}${activeDiff}`
+                    : a?.expired
+                      ? `${a.expired} истекли`
+                      : null
+                }
+                deltaSub={activeDiff != null ? "vs вчера" : null}
+                deltaTone={
+                  activeDiff == null
+                    ? (a?.expired ? "down" : "up")
+                    : activeDiff > 0 ? "up" : activeDiff < 0 ? "down" : "flat"
+                }
+                icon="key"
+                sparkSeed={13}
+                sparkColor="var(--accent)"
+              />
+            );
+          })()}
           <KpiCell
             label={period === "1h" ? "Трафик за час" : period === "24h" ? "Трафик сегодня" : period === "7d" ? "Трафик за 7д" : "Трафик за 30д"}
             value={tf.v}
             unit={tf.u}
-            delta="—"
+            delta={
+              trafficDeltaPct != null
+                ? `${trafficDeltaPct > 0 ? "+" : ""}${trafficDeltaPct.toFixed(1)}%`
+                : null
+            }
+            deltaSub={trafficDeltaPct != null ? "vs прошлый период" : null}
+            deltaTone={
+              trafficDeltaPct == null
+                ? ""
+                : trafficDeltaPct > 1 ? "up"
+                : trafficDeltaPct < -1 ? "down" : "flat"
+            }
             icon="activity"
             sparkSeed={42}
             sparkColor="var(--ok)"
           />
-          <KpiCell
-            label="Средняя latency"
-            value={latestLat != null ? String(latestLat) : "—"}
-            unit={latestLat != null ? "ms" : ""}
-            delta={
-              probeStats.latencyDelta != null
-                ? `${probeStats.latencyDelta > 0 ? "+" : ""}${Math.round(probeStats.latencyDelta)} ms`
-                : null
-            }
-            deltaSub="за период"
-            deltaTone={
-              probeStats.latencyDelta == null
-                ? ""
-                : probeStats.latencyDelta > 5 ? "down"
-                : probeStats.latencyDelta < -5 ? "up" : "flat"
-            }
-            icon="zap"
-            sparkSeed={91}
-            sparkColor="var(--warn)"
-            realSpark={probeStats.latencySpark}
-          />
-          <KpiCell
-            label="Probe success"
-            value={probeStats.successRate != null ? String(probeStats.successRate) : "—"}
-            unit={probeStats.successRate != null ? "%" : ""}
-            delta={
-              probeStats.successDelta != null
-                ? `${probeStats.successDelta > 0 ? "+" : ""}${probeStats.successDelta.toFixed(1)}%`
-                : null
-            }
-            deltaSub="за период"
-            deltaTone={
-              probeStats.successDelta == null
-                ? ""
-                : probeStats.successDelta > 0.2 ? "up"
-                : probeStats.successDelta < -0.2 ? "down" : "flat"
-            }
-            icon="radar"
-            sparkSeed={27}
-            sparkColor="var(--info)"
-            realSpark={probeStats.successSpark}
-          />
+          {(() => {
+            const ps = probeStatsApi.data;
+            const latDiff = ps?.avg_latency_ms != null && ps?.avg_latency_ms_24h_ago != null
+              ? ps.avg_latency_ms - ps.avg_latency_ms_24h_ago : null;
+            return (
+              <KpiCell
+                label="Средняя latency"
+                value={ps?.avg_latency_ms != null ? Math.round(ps.avg_latency_ms).toString() : latestLat != null ? String(latestLat) : "—"}
+                unit={ps?.avg_latency_ms != null || latestLat != null ? "ms" : ""}
+                delta={
+                  latDiff != null
+                    ? `${latDiff > 0 ? "+" : ""}${Math.round(latDiff)} ms`
+                    : null
+                }
+                deltaSub={latDiff != null ? "vs вчера" : null}
+                deltaTone={
+                  latDiff == null
+                    ? ""
+                    : latDiff > 5 ? "down"
+                    : latDiff < -5 ? "up" : "flat"
+                }
+                icon="zap"
+                sparkSeed={91}
+                sparkColor="var(--warn)"
+                realSpark={probeStats.latencySpark}
+              />
+            );
+          })()}
+          {(() => {
+            const ps = probeStatsApi.data;
+            const sDiff = ps?.success_rate != null && ps?.success_rate_24h_ago != null
+              ? ps.success_rate - ps.success_rate_24h_ago : null;
+            const rate = ps?.success_rate ?? probeStats.successRate;
+            return (
+              <KpiCell
+                label="Probe success"
+                value={rate != null ? String(rate) : "—"}
+                unit={rate != null ? "%" : ""}
+                delta={
+                  sDiff != null
+                    ? `${sDiff > 0 ? "+" : ""}${sDiff.toFixed(1)}%`
+                    : null
+                }
+                deltaSub={sDiff != null ? "vs вчера" : null}
+                deltaTone={
+                  sDiff == null
+                    ? ""
+                    : sDiff > 0.2 ? "up"
+                    : sDiff < -0.2 ? "down" : "flat"
+                }
+                icon="radar"
+                sparkSeed={27}
+                sparkColor="var(--info)"
+                realSpark={probeStats.successSpark}
+              />
+            );
+          })()}
         </div>
       </div>
 

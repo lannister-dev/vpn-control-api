@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import and_, case, func, or_, select, update
@@ -120,6 +121,41 @@ class SubscriptionRepository(BaseRepository[Subscription]):
         )
         stmt = select(
             func.count().label("total"),
+            func.coalesce(func.sum(active_int), 0).label("active"),
+            func.coalesce(func.sum(expired_int), 0).label("expired"),
+        ).select_from(self.model)
+        row = (await self.session.execute(stmt)).one()
+        return int(row.total), int(row.active), int(row.expired)
+
+    async def count_stats_at(self, ts: datetime) -> tuple[int, int, int]:
+        """Same counts as count_stats(), but as of timestamp `ts`."""
+        existed = self.model.created_at <= ts
+        active_int = case(
+            (
+                and_(
+                    existed,
+                    self.model.is_active.is_(True),
+                    or_(self.model.expires_at.is_(None), self.model.expires_at > ts),
+                ),
+                1,
+            ),
+            else_=0,
+        )
+        expired_int = case(
+            (
+                and_(
+                    existed,
+                    self.model.is_active.is_(True),
+                    self.model.expires_at.isnot(None),
+                    self.model.expires_at < ts,
+                ),
+                1,
+            ),
+            else_=0,
+        )
+        total_int = case((existed, 1), else_=0)
+        stmt = select(
+            func.coalesce(func.sum(total_int), 0).label("total"),
             func.coalesce(func.sum(active_int), 0).label("active"),
             func.coalesce(func.sum(expired_int), 0).label("expired"),
         ).select_from(self.model)
