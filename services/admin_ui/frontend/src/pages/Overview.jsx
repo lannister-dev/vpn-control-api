@@ -85,11 +85,23 @@ export function OverviewPage({ onOpenNode, onGoto }) {
       if (p.is_reachable) b.ok++;
       if (p.is_reachable && p.latency_ms != null) { b.lat += p.latency_ms; b.latN++; }
     }
+    const latencySpark = buckets.map((b) => (b.latN ? b.lat / b.latN : null)).filter((v) => v != null);
+    const successSpark = buckets.map((b) => (b.total ? (b.ok / b.total) * 100 : null)).filter((v) => v != null);
+    const halfTrend = (arr) => {
+      if (arr.length < 4) return null;
+      const mid = Math.floor(arr.length / 2);
+      const avgOf = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
+      const prev = avgOf(arr.slice(0, mid));
+      const curr = avgOf(arr.slice(mid));
+      return curr - prev;
+    };
     return {
       successRate: rate,
       avgLatency: avg,
-      latencySpark: buckets.map((b) => (b.latN ? b.lat / b.latN : null)).filter((v) => v != null),
-      successSpark: buckets.map((b) => (b.total ? (b.ok / b.total) * 100 : null)).filter((v) => v != null),
+      latencySpark,
+      successSpark,
+      latencyDelta: halfTrend(latencySpark),
+      successDelta: halfTrend(successSpark),
     };
   }, [probeList]);
 
@@ -324,7 +336,7 @@ export function OverviewPage({ onOpenNode, onGoto }) {
       {status.error && <div className="card card-bad">Ошибка: {status.error.message}</div>}
 
       <div className="sec">
-        <div className="kpi-hero" data-cells="6">
+        <div className="kpi-hero">
           <div className="kpi-cell primary">
             <div className="kpi-label"><Icon name="shield-check" size={12} /> Здоровье флота</div>
             <div className="health-ring">
@@ -371,8 +383,18 @@ export function OverviewPage({ onOpenNode, onGoto }) {
             label="Средняя latency"
             value={latestLat != null ? String(latestLat) : "—"}
             unit={latestLat != null ? "ms" : ""}
-            delta="—"
-            deltaTone={latestLat != null && latestLat > 60 ? "down" : ""}
+            delta={
+              probeStats.latencyDelta != null
+                ? `${probeStats.latencyDelta > 0 ? "+" : ""}${Math.round(probeStats.latencyDelta)} ms`
+                : null
+            }
+            deltaSub="за период"
+            deltaTone={
+              probeStats.latencyDelta == null
+                ? ""
+                : probeStats.latencyDelta > 5 ? "down"
+                : probeStats.latencyDelta < -5 ? "up" : "flat"
+            }
             icon="zap"
             sparkSeed={91}
             sparkColor="var(--warn)"
@@ -382,8 +404,18 @@ export function OverviewPage({ onOpenNode, onGoto }) {
             label="Probe success"
             value={probeStats.successRate != null ? String(probeStats.successRate) : "—"}
             unit={probeStats.successRate != null ? "%" : ""}
-            delta="—"
-            deltaTone={probeStats.successRate != null && probeStats.successRate < 98 ? "down" : ""}
+            delta={
+              probeStats.successDelta != null
+                ? `${probeStats.successDelta > 0 ? "+" : ""}${probeStats.successDelta.toFixed(1)}%`
+                : null
+            }
+            deltaSub="за период"
+            deltaTone={
+              probeStats.successDelta == null
+                ? ""
+                : probeStats.successDelta > 0.2 ? "up"
+                : probeStats.successDelta < -0.2 ? "down" : "flat"
+            }
             icon="radar"
             sparkSeed={27}
             sparkColor="var(--info)"
@@ -538,8 +570,9 @@ export function OverviewPage({ onOpenNode, onGoto }) {
   );
 }
 
-function KpiCell({ label, value, unit, delta, deltaTone, icon, sparkSeed, sparkColor, realSpark }) {
+function KpiCell({ label, value, unit, delta, deltaSub, deltaTone, icon, sparkSeed, sparkColor, realSpark }) {
   const data = realSpark && realSpark.length > 2 ? realSpark : spark(sparkSeed, 22, 50, 25);
+  const hasDelta = delta != null && delta !== "" && delta !== "—";
   return (
     <div className="kpi-cell">
       <div className="kpi-label">
@@ -551,13 +584,13 @@ function KpiCell({ label, value, unit, delta, deltaTone, icon, sparkSeed, sparkC
           <Spark data={data} color={sparkColor} w={54} h={20} />
         </div>
       </div>
-      <div className={`kpi-delta ${deltaTone || ""}`}>
-        <Icon name={deltaTone === "up" ? "trending-up" : deltaTone === "down" ? "trending-down" : "arrow-right"} size={12} />
-        <span>{delta}</span>
-        {delta && delta !== "—" && (
-          <span className="muted" style={{ marginLeft: 4 }}>vs вчера</span>
-        )}
-      </div>
+      {hasDelta && (
+        <div className={`kpi-delta ${deltaTone || ""}`}>
+          <Icon name={deltaTone === "up" ? "trending-up" : deltaTone === "down" ? "trending-down" : "arrow-right"} size={12} />
+          <span>{delta}</span>
+          {deltaSub && <span className="muted" style={{ marginLeft: 4 }}>{deltaSub}</span>}
+        </div>
+      )}
     </div>
   );
 }
