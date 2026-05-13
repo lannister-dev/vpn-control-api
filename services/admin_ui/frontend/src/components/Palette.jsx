@@ -1,3 +1,5 @@
+// REPLACE frontend/src/components/Palette.jsx with this file.
+// Adds support quick-action commands that emit non-navigation events.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "./Icon.jsx";
 
@@ -13,9 +15,17 @@ const COMMANDS = [
     { id: "users", label: "Пользователи", icon: "users" },
     { id: "plans", label: "Тарифы", icon: "wallet" },
     { id: "subscriptions", label: "Подписки", icon: "key" },
+    { id: "tickets", label: "Тикеты", icon: "message-square" },
+    { id: "support-templates", label: "Шаблоны ответов", icon: "file-text" },
+    { id: "broadcasts", label: "Рассылки", icon: "send" },
     { id: "zones", label: "Зоны", icon: "globe" },
     { id: "admin-users", label: "Админы", icon: "settings" },
     { id: "ops", label: "Операции", icon: "shield-check" },
+  ]},
+  { group: "Поддержка — действия", items: [
+    { id: "tickets", action: "new-ticket", label: "Открыть новый тикет", icon: "plus", hint: "T N" },
+    { id: "broadcasts", action: "new-broadcast", label: "Создать рассылку", icon: "megaphone", hint: "B N" },
+    { id: "support-templates", action: "new-template", label: "Создать шаблон ответа", icon: "file-text", hint: "S N" },
   ]},
 ];
 
@@ -73,7 +83,7 @@ export function Palette({ open, onClose, onSelect }) {
                 idx++; const thisIdx = idx;
                 return (
                   <div
-                    key={it.id}
+                    key={`${it.id}-${it.action || "nav"}`}
                     className="palette-item"
                     data-active={thisIdx === active}
                     onMouseEnter={() => setActive(thisIdx)}
@@ -83,6 +93,11 @@ export function Palette({ open, onClose, onSelect }) {
                     <div className="palette-item-main">
                       <div className="palette-item-label">{it.label}</div>
                     </div>
+                    {it.hint && (
+                      <div className="palette-item-kbd">
+                        {it.hint.split(" ").map((k, i) => <span key={i} className="kbd">{k}</span>)}
+                      </div>
+                    )}
                   </div>
                 );
               })}

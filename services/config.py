@@ -59,6 +59,15 @@ class NatsConfig:
     js_traffic_duplicate_window_s: int = 120
     js_traffic_ack_wait_s: float = 30.0
     js_traffic_max_deliver: int = 10
+    js_support_stream: str = "vpn_support"
+    support_inbound_subject: str = "support.message.in"
+    support_outbound_subject: str = "support.message.out"
+    support_inbound_queue: str = "vpn-control-api-support-inbound"
+    js_support_max_msgs_per_subject: int = 100_000
+    js_support_max_age_s: int = 86400
+    js_support_duplicate_window_s: int = 600
+    js_support_ack_wait_s: float = 30.0
+    js_support_max_deliver: int = 5
 
 
 @dataclass
@@ -363,6 +372,15 @@ def get_settings() -> Settings:
         js_traffic_duplicate_window_s=max(0, env.int("NATS_JS_TRAFFIC_DUPLICATE_WINDOW_S", default=120)),
         js_traffic_ack_wait_s=max(1.0, env.float("NATS_JS_TRAFFIC_ACK_WAIT_S", default=30.0)),
         js_traffic_max_deliver=max(1, env.int("NATS_JS_TRAFFIC_MAX_DELIVER", default=10)),
+        js_support_stream=env.str("NATS_JS_SUPPORT_STREAM", default="vpn_support"),
+        support_inbound_subject=env.str("NATS_SUPPORT_INBOUND_SUBJECT", default="support.message.in"),
+        support_outbound_subject=env.str("NATS_SUPPORT_OUTBOUND_SUBJECT", default="support.message.out"),
+        support_inbound_queue=env.str("NATS_SUPPORT_INBOUND_QUEUE", default="vpn-control-api-support-inbound"),
+        js_support_max_msgs_per_subject=max(1, env.int("NATS_JS_SUPPORT_MAX_MSGS_PER_SUBJECT", default=100_000)),
+        js_support_max_age_s=max(60, env.int("NATS_JS_SUPPORT_MAX_AGE_S", default=86400)),
+        js_support_duplicate_window_s=max(0, env.int("NATS_JS_SUPPORT_DUPLICATE_WINDOW_S", default=600)),
+        js_support_ack_wait_s=max(1.0, env.float("NATS_JS_SUPPORT_ACK_WAIT_S", default=30.0)),
+        js_support_max_deliver=max(1, env.int("NATS_JS_SUPPORT_MAX_DELIVER", default=5)),
     )
 
     admin = AdminConfig(

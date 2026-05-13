@@ -43,6 +43,14 @@ from services.nodes.models import NodeAgentIdentity, NodeAgentState, VpnNode
 from services.placements.model import UserPlacement
 from services.probe.model import ProbeSignal
 from services.routes.model import Route, TransportProfile
+from services.support.models import (
+    Broadcast,
+    BroadcastLog,
+    SupportAttachment,
+    SupportMessage,
+    SupportTemplate,
+    SupportTicket,
+)
 from services.traffic.nodes.model import NodeTrafficUsage
 from services.traffic.users.model import TrafficUsage
 from services.users.models import User
