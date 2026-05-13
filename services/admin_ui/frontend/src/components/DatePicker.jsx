@@ -1,5 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Icon } from "./Icon.jsx";
+
+const POP_W = 296;
+const POP_H = 360;
 
 const MONTHS = [
   "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
@@ -64,7 +68,7 @@ export function DatePicker({
   const wrapRef = useRef(null);
   const popRef = useRef(null);
   const [open, setOpen] = useState(false);
-  const [popAbove, setPopAbove] = useState(false);
+  const [popPos, setPopPos] = useState({ top: 0, left: 0, above: false });
 
   const parsed = useMemo(() => parseValue(value, mode), [value, mode]);
   const minD = useMemo(() => parseValue(min, mode), [min, mode]);
@@ -92,11 +96,30 @@ export function DatePicker({
     };
   }, [open]);
 
-  useEffect(() => {
-    if (!open || !wrapRef.current) return;
-    const rect = wrapRef.current.getBoundingClientRect();
-    const room = window.innerHeight - rect.bottom;
-    setPopAbove(room < 360 && rect.top > 360);
+  const computePos = () => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const margin = 8;
+    const roomBelow = window.innerHeight - rect.bottom;
+    const above = roomBelow < POP_H + margin && rect.top > POP_H + margin;
+    const top = above ? rect.top - POP_H - 6 : rect.bottom + 6;
+    let left = rect.left;
+    const maxLeft = window.innerWidth - POP_W - margin;
+    if (left > maxLeft) left = Math.max(margin, maxLeft);
+    setPopPos({ top, left, above });
+  };
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    computePos();
+    const onScroll = () => computePos();
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onScroll);
+    };
   }, [open]);
 
   const grid = useMemo(() => buildGrid(view), [view]);
@@ -185,8 +208,12 @@ export function DatePicker({
         )}
       </button>
 
-      {open && (
-        <div className={`dp-pop ${popAbove ? "is-above" : ""}`} ref={popRef}>
+      {open && createPortal(
+        <div
+          className="dp-pop"
+          ref={popRef}
+          style={{ position: "fixed", top: popPos.top, left: popPos.left, width: POP_W }}
+        >
           <div className="dp-pop-head">
             <button type="button" className="dp-nav" onClick={() => setView(addMonths(view, -1))} title="Предыдущий">
               <Icon name="chevron-left" size={14} />
@@ -268,7 +295,8 @@ export function DatePicker({
             <div style={{ flex: 1 }} />
             <button type="button" className="dp-apply" onClick={() => setOpen(false)}>Готово</button>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
