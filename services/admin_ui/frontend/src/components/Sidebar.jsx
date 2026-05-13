@@ -1,3 +1,4 @@
+// REPLACE frontend/src/components/Sidebar.jsx with this file.
 import { Icon } from "./Icon.jsx";
 
 const GROUPS = [
@@ -16,6 +17,11 @@ const GROUPS = [
     { id: "users", label: "Пользователи", icon: "users" },
     { id: "plans", label: "Тарифы", icon: "wallet" },
     { id: "subscriptions", label: "Подписки", icon: "key" },
+  ]},
+  { title: "Поддержка", items: [
+    { id: "tickets", label: "Тикеты", icon: "message-square", attentionKey: "unanswered" },
+    { id: "support-templates", label: "Шаблоны", icon: "file-text" },
+    { id: "broadcasts", label: "Рассылки", icon: "send" },
   ]},
   { title: "Система", items: [
     { id: "zones", label: "Зоны", icon: "globe" },
@@ -52,6 +58,7 @@ export function Sidebar({ activeTab, onTab, collapsed, onToggle, onOpenPalette, 
             <div className="side-group-title">{g.title}</div>
             {g.items.map((it) => {
               const count = counts[it.id];
+              const isAttention = it.attentionKey && count != null && count > 0;
               return (
                 <button
                   key={it.id}
@@ -61,8 +68,14 @@ export function Sidebar({ activeTab, onTab, collapsed, onToggle, onOpenPalette, 
                 >
                   <Icon name={it.icon} size={15} />
                   <span className="side-label">{it.label}</span>
-                  {count != null && (
-                    <span className="side-count">{count > 999 ? `${(count / 1000).toFixed(1)}k` : count}</span>
+                  {count != null && count > 0 && (
+                    <span
+                      className="side-count"
+                      data-attention={isAttention || undefined}
+                      title={isAttention ? "Без ответа" : undefined}
+                    >
+                      {count > 999 ? `${(count / 1000).toFixed(1)}k` : count}
+                    </span>
                   )}
                 </button>
               );

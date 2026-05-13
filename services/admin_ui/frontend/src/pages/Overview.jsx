@@ -50,6 +50,10 @@ export function OverviewPage({ onOpenNode, onGoto }) {
     { interval: 60000, deps: [period] },
   );
   const subsStats = useQuery(() => api.get("/subscriptions/stats").catch(() => null), { interval: 60000 });
+  const ticketsStats = useQuery(
+    () => api.get("/support/tickets/stats").catch(() => null),
+    { interval: 30000 },
+  );
 
   const nodes = status.data?.nodes || [];
   const totals = status.data?.totals || {};
@@ -324,7 +328,7 @@ export function OverviewPage({ onOpenNode, onGoto }) {
       {status.error && <div className="card card-bad">Ошибка: {status.error.message}</div>}
 
       <div className="sec">
-        <div className="kpi-hero">
+        <div className="kpi-hero" data-cells="6">
           <div className="kpi-cell primary">
             <div className="kpi-label"><Icon name="shield-check" size={12} /> Здоровье флота</div>
             <div className="health-ring">
@@ -389,6 +393,52 @@ export function OverviewPage({ onOpenNode, onGoto }) {
             sparkSeed={27}
             sparkColor="var(--info)"
             realSpark={probeStats.successSpark}
+          />
+          <KpiCell
+            label="Открытых тикетов"
+            value={ticketsStats.data?.open ?? "—"}
+            unit=""
+            delta={
+              ticketsStats.data?.unanswered != null
+                ? `${ticketsStats.data.unanswered} без ответа`
+                : "—"
+            }
+            deltaTone={(ticketsStats.data?.open || 0) > 10 ? "down" : "up"}
+            icon="message-square"
+            sparkSeed={71}
+            sparkColor={
+              (ticketsStats.data?.open || 0) > 10
+                ? "var(--bad)"
+                : "var(--accent)"
+            }
+            realSpark={ticketsStats.data?.open_spark_24h}
+          />
+          <KpiCell
+            label="Avg время ответа"
+            value={
+              ticketsStats.data?.avg_reply_minutes != null
+                ? String(ticketsStats.data.avg_reply_minutes)
+                : "—"
+            }
+            unit={ticketsStats.data?.avg_reply_minutes != null ? "мин" : ""}
+            delta={
+              ticketsStats.data?.avg_reply_change != null
+                ? `${ticketsStats.data.avg_reply_change > 0 ? "+" : ""}${ticketsStats.data.avg_reply_change}м vs вчера`
+                : "—"
+            }
+            deltaTone={
+              (ticketsStats.data?.avg_reply_minutes || 0) > 30
+                ? "down"
+                : "up"
+            }
+            icon="clock"
+            sparkSeed={53}
+            sparkColor={
+              (ticketsStats.data?.avg_reply_minutes || 0) > 30
+                ? "var(--warn)"
+                : "var(--ok)"
+            }
+            realSpark={ticketsStats.data?.reply_spark_24h}
           />
         </div>
       </div>
