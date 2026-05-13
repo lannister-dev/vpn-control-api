@@ -77,6 +77,15 @@ class OrderRepository(BaseRepository[PaymentOrder]):
         )
         return (result.scalar() or 0) > 0
 
+    async def get_last_paid_for_user(self, user_id: UUID) -> PaymentOrder | None:
+        result = await self.session.execute(
+            select(PaymentOrder)
+            .where(PaymentOrder.user_id == user_id, PaymentOrder.status == "paid")
+            .order_by(PaymentOrder.created_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
     async def list_by_status(self, status: str) -> list[PaymentOrder]:
         result = await self.session.execute(
             select(PaymentOrder).where(PaymentOrder.status == status)

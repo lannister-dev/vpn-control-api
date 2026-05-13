@@ -94,6 +94,51 @@ class TicketStatsRaw(BaseModel):
     avg_reply_minutes: int | None = None
 
 
+class SupportTicketCreate(BaseModel):
+    user_id: UUID
+    subject: str = ""
+    status: TicketStatus = TicketStatus.NEW
+    category: TicketCategory = TicketCategory.OTHER
+    priority: TicketPriority = TicketPriority.NORMAL
+    last_activity_at: datetime
+    first_user_msg_at: datetime | None = None
+
+
+class SupportMessageCreate(BaseModel):
+    ticket_id: UUID
+    sender_kind: MessageSenderKind
+    sender_admin_id: UUID | None = None
+    body: str = ""
+    is_note: bool = False
+    delivered: bool = False
+    tg_message_id: int | None = None
+
+
+class SupportAttachmentCreate(BaseModel):
+    message_id: UUID
+    kind: str
+    tg_file_id: str | None = None
+    tg_file_unique_id: str | None = None
+    file_name: str | None = None
+    file_size: int | None = None
+    mime_type: str | None = None
+    duration: int | None = None
+
+
+class BroadcastCreate(BaseModel):
+    audience: BroadcastAudience
+    audience_label: str | None = None
+    plan_id: UUID | None = None
+    text_body: str
+    media_kind: str | None = None
+    media_url: str | None = None
+    inline_buttons: list[dict] | None = None
+    status: BroadcastStatus = BroadcastStatus.DRAFT
+    scheduled_at: datetime | None = None
+    target_count: int = 0
+    created_by_admin_id: UUID | None = None
+
+
 class TicketStatsOut(BaseModel):
     open: int = 0
     unanswered: int = 0
@@ -231,3 +276,17 @@ class SupportInboundMessage(BaseModel):
     text: str = ""
     attachments: list[SupportInboundAttachmentMsg] = Field(default_factory=list)
     tg_message_id: int | None = None
+
+
+class SupportOutboundAttachmentMsg(BaseModel):
+    kind: str
+    tg_file_id: str | None = None
+    file_name: str | None = None
+
+
+class SupportOutboundPayload(BaseModel):
+    ticket_id: str
+    message_id: str
+    telegram_id: int
+    text: str = ""
+    media: list[SupportOutboundAttachmentMsg] = Field(default_factory=list)

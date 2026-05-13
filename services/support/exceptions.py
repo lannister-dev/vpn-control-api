@@ -2,6 +2,14 @@ class TicketNotFound(Exception):
     pass
 
 
+class EmptyMessage(Exception):
+    pass
+
+
+class SupportActionFailed(Exception):
+    pass
+
+
 class TemplateNotFound(Exception):
     pass
 

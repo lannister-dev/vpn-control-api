@@ -1,11 +1,25 @@
+import json
 from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+    status,
+)
+from fastapi.responses import StreamingResponse
 
-from services.auth.dependencies import admin_auth, current_admin_actor
+from services.auth.dependencies import admin_auth, current_admin_user_id
+from services.config import get_settings
 from services.support.exceptions import (
+    EmptyMessage,
+    SupportActionFailed,
     TemplateAlreadyExists,
     TemplateNotFound,
     TicketNotFound,
@@ -33,6 +47,7 @@ from services.support.schemas import (
     TicketStatus,
 )
 from services.support.service import SupportService, get_support_service
+from shared.telegram.file_proxy import resolve_file_path, stream_file
 
 router = APIRouter(prefix="/support", tags=["Support"], dependencies=[Depends(admin_auth)])
 
@@ -53,13 +68,19 @@ async def list_tickets(
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     service: SupportService = Depends(get_support_service),
+    actor_admin_id: UUID | None = Depends(current_admin_user_id),
 ):
     assignee_id: UUID | None = None
-    if assignee and assignee not in ("me", "unassigned"):
-        try:
-            assignee_id = UUID(assignee)
-        except ValueError:
-            assignee_id = await service._resolve_admin_id(assignee)
+    if assignee:
+        if assignee == "me" and actor_admin_id is not None:
+            assignee_id = actor_admin_id
+        elif assignee == "unassigned":
+            assignee_id = None
+        else:
+            try:
+                assignee_id = UUID(assignee)
+            except ValueError:
+                assignee_id = await service._resolve_admin_id(assignee)
     return await service.list_tickets(
         search=search,
         status=status_,
@@ -96,10 +117,10 @@ async def patch_ticket(
     ticket_id: UUID,
     data: TicketPatchIn,
     service: SupportService = Depends(get_support_service),
-    actor: str = Depends(current_admin_actor),
+    actor_admin_id: UUID | None = Depends(current_admin_user_id),
 ):
     try:
-        return await service.patch_ticket(ticket_id, data, actor_admin_id=None)
+        return await service.patch_ticket(ticket_id, data, actor_admin_id=actor_admin_id)
     except TicketNotFound:
         raise HTTPException(status_code=404, detail="Ticket not found")
 
@@ -108,9 +129,9 @@ async def patch_ticket(
 async def bulk_update(
     data: TicketBulkUpdateIn,
     service: SupportService = Depends(get_support_service),
-    actor: str = Depends(current_admin_actor),
+    actor_admin_id: UUID | None = Depends(current_admin_user_id),
 ):
-    n = await service.bulk_update(data, actor_admin_id=None)
+    n = await service.bulk_update(data, actor_admin_id=actor_admin_id)
     return {"updated": n}
 
 
@@ -132,28 +153,38 @@ async def post_message(
     is_note: Annotated[bool, Form()] = False,
     files: Annotated[list[UploadFile] | None, File()] = None,
     service: SupportService = Depends(get_support_service),
-    actor: str = Depends(current_admin_actor),
+    actor_admin_id: UUID | None = Depends(current_admin_user_id),
 ):
+    if files:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Загрузка файлов оператором пока не поддерживается",
+        )
     try:
         return await service.post_operator_message(
             ticket_id,
             text=text,
             is_note=is_note,
-            actor_admin_id=None,
+            actor_admin_id=actor_admin_id,
         )
     except TicketNotFound:
         raise HTTPException(status_code=404, detail="Ticket not found")
+    except EmptyMessage:
+        raise HTTPException(status_code=422, detail="Сообщение не может быть пустым")
 
 
 @router.post("/tickets/{ticket_id}/grant-day")
 async def grant_day(
     ticket_id: UUID,
     service: SupportService = Depends(get_support_service),
+    actor_admin_id: UUID | None = Depends(current_admin_user_id),
 ):
     try:
-        await service.get_ticket(ticket_id)
+        await service.grant_day(ticket_id, actor_admin_id=actor_admin_id)
     except TicketNotFound:
         raise HTTPException(status_code=404, detail="Ticket not found")
+    except SupportActionFailed as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     return {"ok": True}
 
 
@@ -161,12 +192,39 @@ async def grant_day(
 async def refund(
     ticket_id: UUID,
     service: SupportService = Depends(get_support_service),
+    actor_admin_id: UUID | None = Depends(current_admin_user_id),
 ):
     try:
-        await service.get_ticket(ticket_id)
+        await service.refund_last_order(ticket_id, actor_admin_id=actor_admin_id)
     except TicketNotFound:
         raise HTTPException(status_code=404, detail="Ticket not found")
+    except SupportActionFailed as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     return {"ok": True}
+
+
+@router.get("/media/{file_id}")
+async def get_media(file_id: str):
+    settings = get_settings()
+    if not settings.support.bot_token:
+        raise HTTPException(status_code=503, detail="Support bot token not configured")
+    file_path, mime = await resolve_file_path(
+        bot_token=settings.support.bot_token,
+        file_id=file_id,
+        timeout_sec=settings.support.media_proxy_timeout_sec,
+    )
+    return StreamingResponse(
+        stream_file(
+            bot_token=settings.support.bot_token,
+            file_path=file_path,
+            timeout_sec=settings.support.media_proxy_timeout_sec,
+        ),
+        media_type=mime or "application/octet-stream",
+        headers={
+            "Cache-Control": "private, max-age=3600",
+            "Content-Disposition": f'inline; filename="{file_path.split("/")[-1]}"',
+        },
+    )
 
 
 @router.get("/templates", response_model=TemplateListOut)
@@ -233,9 +291,8 @@ async def create_broadcast(
     scheduled_at: Annotated[datetime | None, Form()] = None,
     media: UploadFile | None = File(None),
     service: SupportService = Depends(get_support_service),
+    actor_admin_id: UUID | None = Depends(current_admin_user_id),
 ):
-    import json
-
     parsed_buttons: list[dict] | None = None
     if buttons:
         try:
@@ -256,5 +313,5 @@ async def create_broadcast(
         media_url=media_url,
         status=status_,
         scheduled_at=scheduled_at,
-        actor_admin_id=None,
+        actor_admin_id=actor_admin_id,
     )

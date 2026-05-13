@@ -194,6 +194,12 @@ class BotNotificationsConfig:
 
 
 @dataclass
+class SupportConfig:
+    bot_token: str = ""
+    media_proxy_timeout_sec: int = 10
+
+
+@dataclass
 class ProbeConfig:
     target_port: int = 443
     synthetic_reality_client_id: str | None = None
@@ -303,6 +309,7 @@ class Settings:
     node_agent: NodeAgentConfig
     alerts: AlertsConfig
     bot_notifications: BotNotificationsConfig
+    support: SupportConfig
     probe: ProbeConfig
     routes: RoutesConfig
     edge: EdgeConfig
@@ -448,6 +455,11 @@ def get_settings() -> Settings:
         enabled=env.bool("BOT_NOTIFICATIONS_ENABLED", default=bool(bot_notifications_token)),
         bot_token=bot_notifications_token,
         timeout_sec=env.int("BOT_NOTIFICATIONS_TIMEOUT_SEC", default=5),
+    )
+
+    support = SupportConfig(
+        bot_token=env.str("SUPPORT_BOT_TOKEN", default=""),
+        media_proxy_timeout_sec=env.int("SUPPORT_MEDIA_PROXY_TIMEOUT_SEC", default=10),
     )
 
     probe = ProbeConfig(
@@ -604,6 +616,7 @@ def get_settings() -> Settings:
         node_agent=node_agent,
         alerts=alerts,
         bot_notifications=bot_notifications,
+        support=support,
         probe=probe,
         routes=routes,
         edge=edge,

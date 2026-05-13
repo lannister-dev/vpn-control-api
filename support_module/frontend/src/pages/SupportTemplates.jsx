@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import { api } from "../api/client.js";
 import { useQuery } from "../hooks/useQuery.js";
 import { Icon } from "../components/Icon.jsx";
-import { ConfirmModal } from "../components/ConfirmModal.jsx";
 import { Modal } from "../components/Modal.jsx";
 import { Field } from "../components/Field.jsx";
 import { toast } from "../components/Toast.jsx";
@@ -14,7 +13,6 @@ import "../components/support/support.css";
 export function SupportTemplatesPage({ initialAction, onActionConsumed }) {
   const [editing, setEditing] = useState(null);
   const [creating, setCreating] = useState(false);
-  const [deleting, setDeleting] = useState(null);
 
   useEffect(() => {
     if (initialAction === "new-template") {
@@ -29,16 +27,13 @@ export function SupportTemplatesPage({ initialAction, onActionConsumed }) {
   );
   const items = q.data?.items || [];
 
-  const remove = (tpl) => setDeleting(tpl);
-  const confirmRemove = async () => {
-    const tpl = deleting;
-    if (!tpl) return;
+  const remove = async (tpl) => {
+    if (!confirm(`Удалить шаблон «${tpl.title}»?`)) return;
     try {
       await api.del(`/support/templates/${tpl.id}`).catch(() => null);
       toast.ok("Шаблон удалён");
       q.refetch();
     } catch (e) { toast.bad(e.message); }
-    setDeleting(null);
   };
 
   return (
@@ -110,17 +105,6 @@ export function SupportTemplatesPage({ initialAction, onActionConsumed }) {
           template={editing}
           onClose={() => { setCreating(false); setEditing(null); }}
           onSaved={() => { setCreating(false); setEditing(null); q.refetch(); }}
-        />
-      )}
-      {deleting && (
-        <ConfirmModal
-          title="Удалить шаблон"
-          body={`Шаблон «${deleting.title}» будет удалён. Это действие необратимо.`}
-          confirmLabel="Удалить"
-          tone="danger"
-          icon="trash-2"
-          onConfirm={confirmRemove}
-          onClose={() => setDeleting(null)}
         />
       )}
     </div>

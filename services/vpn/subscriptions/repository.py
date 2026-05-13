@@ -126,6 +126,18 @@ class SubscriptionRepository(BaseRepository[Subscription]):
         row = (await self.session.execute(stmt)).one()
         return int(row.total), int(row.active), int(row.expired)
 
+    async def get_latest_for_user(self, user_id: UUID) -> Subscription | None:
+        result = await self.session.execute(
+            select(self.model)
+            .where(
+                self.model.user_id == user_id,
+                self.model.expires_at.is_not(None),
+            )
+            .order_by(self.model.expires_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
     async def find_active_subscription(self, user_id: UUID, plan_id: UUID):
         result = await self.session.execute(
             select(self.model).where(

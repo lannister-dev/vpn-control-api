@@ -296,8 +296,10 @@ export function Composer({
   disabled = false,
 }) {
   const [text, setText] = useState("");
+  const [files, setFiles] = useState([]);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showEmoji, setShowEmoji] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const taRef = useRef(null);
 
   const interpolate = (raw) => {
@@ -319,18 +321,30 @@ export function Composer({
 
   const send = useCallback((asNote = false) => {
     const t = text.trim();
-    if (!t) return;
-    const payload = { text: t, files: [], is_note: asNote };
+    if (!t && files.length === 0) return;
+    const payload = { text: t, files, is_note: asNote };
     if (asNote) onAddNote?.(payload);
     else onSend?.(payload);
-    setText("");
-  }, [text, onSend, onAddNote]);
+    setText(""); setFiles([]);
+  }, [text, files, onSend, onAddNote]);
 
   const onKey = (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
       e.preventDefault();
       send(false);
     }
+  };
+
+  const onDrop = (e) => {
+    e.preventDefault(); setDragOver(false);
+    const dropped = Array.from(e.dataTransfer.files || []);
+    if (dropped.length) setFiles((f) => [...f, ...dropped]);
+  };
+
+  const onPickFile = (e) => {
+    const list = Array.from(e.target.files || []);
+    if (list.length) setFiles((f) => [...f, ...list]);
+    e.target.value = "";
   };
 
   const pickTemplate = (tpl) => {
@@ -341,9 +355,43 @@ export function Composer({
   };
 
   return (
-    <div className="tk-composer">
+    <div
+      className={"tk-composer " + (dragOver ? "tk-composer-drag" : "")}
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={onDrop}
+    >
+      {dragOver && (
+        <div className="tk-composer-dropmask">
+          <Icon name="paperclip" size={24} />
+          <span>Отпустите, чтобы прикрепить файл</span>
+        </div>
+      )}
+
+      {files.length > 0 && (
+        <div className="tk-composer-files">
+          {files.map((f, i) => (
+            <span key={i} className="tk-file-chip">
+              <Icon name={f.type?.startsWith("image/") ? "image" : f.type?.startsWith("video/") ? "video" : "file"} size={11} />
+              <span className="name">{f.name}</span>
+              <span className="size muted">{fmtBytes(f.size)}</span>
+              <button
+                type="button"
+                className="rm"
+                onClick={() => setFiles((arr) => arr.filter((_, idx) => idx !== i))}
+                title="Убрать"
+              ><Icon name="x" size={10} /></button>
+            </span>
+          ))}
+        </div>
+      )}
+
       <div className="tk-composer-row">
         <div className="tk-composer-icons">
+          <label className="tk-comp-btn" title="Прикрепить файл">
+            <Icon name="paperclip" size={14} />
+            <input type="file" multiple style={{ display: "none" }} onChange={onPickFile} />
+          </label>
           <button
             type="button"
             className="tk-comp-btn"
@@ -395,8 +443,8 @@ export function Composer({
           <button
             type="button"
             className="btn"
-            title="Внутренняя заметка — видна только админам, юзеру не уходит"
-            disabled={disabled || !text.trim()}
+            title="Внутренняя заметка (не уходит юзеру)"
+            disabled={disabled || (!text.trim() && files.length === 0)}
             onClick={() => send(true)}
           >
             <Icon name="lock" size={13} /> Заметка
@@ -404,7 +452,7 @@ export function Composer({
           <button
             type="button"
             className="btn btn-primary"
-            disabled={disabled || !text.trim()}
+            disabled={disabled || (!text.trim() && files.length === 0)}
             onClick={() => send(false)}
           >
             <Icon name="send" size={13} /> Отправить
