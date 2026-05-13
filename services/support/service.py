@@ -12,12 +12,7 @@ from services.plans.models import Plan
 from services.support.constants import (
     REOPEN_WINDOW_MIN,
     SUBJECT_PREVIEW_LEN,
-    BroadcastAudience,
-    BroadcastStatus,
-    MessageSenderKind,
-    TicketCategory,
-    TicketPriority,
-    TicketStatus,
+    SUPPORT_OUTBOUND_SUBJECT,
 )
 from services.support.exceptions import (
     TemplateAlreadyExists,
@@ -38,22 +33,28 @@ from services.support.repository import (
 )
 from services.support.schemas import (
     AttachmentOut,
+    BroadcastAudience,
     BroadcastAudienceCount,
     BroadcastListOut,
     BroadcastOut,
+    BroadcastStatus,
     MessageAuthorRef,
     MessageListOut,
     MessageOut,
+    MessageSenderKind,
     TemplateCreateIn,
     TemplateListOut,
     TemplateOut,
     TemplateUpdateIn,
     TicketBulkUpdateIn,
+    TicketCategory,
     TicketCreateIn,
     TicketListOut,
     TicketOut,
     TicketPatchIn,
+    TicketPriority,
     TicketStatsOut,
+    TicketStatus,
     TicketUserRef,
 )
 from services.users.models import User
@@ -128,11 +129,11 @@ class SupportService:
     async def stats(self) -> TicketStatsOut:
         s = await self.tickets.stats()
         return TicketStatsOut(
-            open=s["open"],
-            unanswered=s["unanswered"],
-            avg_reply_minutes=s["avg_reply_minutes"],
+            open=s.open,
+            unanswered=s.unanswered,
+            avg_reply_minutes=s.avg_reply_minutes,
             avg_reply_change=None,
-            closed_today=s["closed_today"],
+            closed_today=s.closed_today,
             open_spark_24h=[],
             reply_spark_24h=[],
         )
@@ -519,7 +520,6 @@ class SupportService:
     async def _publish_outbound(self, ticket: SupportTicket, msg: SupportMessage, *, text: str) -> None:
         if self._nats is None:
             return
-        from services.support.constants import SUPPORT_OUTBOUND_SUBJECT
 
         user = (await self.session.execute(select(User).where(User.id == ticket.user_id))).scalar_one_or_none()
         if not user:

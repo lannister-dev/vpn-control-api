@@ -3,10 +3,11 @@ from __future__ import annotations
 import json
 import logging
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import ValidationError
 
 from services.admin_transport.repository import NatsMessageDedupRepository
 from services.config import NatsConfig
+from services.support.schemas import SupportInboundMessage
 from services.support.service import SupportService
 from services.users.repository import UserRepository
 from shared.database.session import AsyncDatabase
@@ -14,23 +15,6 @@ from shared.nats.client import NatsClient
 from shared.utils.logger import StructuredLogger
 
 logger = StructuredLogger(logging.getLogger("support-nats-consumer"))
-
-
-class SupportInboundAttachmentMsg(BaseModel):
-    kind: str
-    tg_file_id: str
-    tg_file_unique_id: str | None = None
-    file_name: str | None = None
-    file_size: int | None = None
-    mime_type: str | None = None
-    duration: int | None = None
-
-
-class SupportInboundMessage(BaseModel):
-    telegram_id: int
-    text: str = ""
-    attachments: list[SupportInboundAttachmentMsg] = Field(default_factory=list)
-    tg_message_id: int | None = None
 
 
 class SupportInboundConsumer:

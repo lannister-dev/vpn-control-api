@@ -5,22 +5,17 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 
 from services.auth.dependencies import admin_auth, current_admin_actor
-from services.support.constants import (
-    BroadcastAudience,
-    BroadcastStatus,
-    TicketCategory,
-    TicketPriority,
-    TicketStatus,
-)
 from services.support.exceptions import (
     TemplateAlreadyExists,
     TemplateNotFound,
     TicketNotFound,
 )
 from services.support.schemas import (
+    BroadcastAudience,
     BroadcastAudienceCount,
     BroadcastListOut,
     BroadcastOut,
+    BroadcastStatus,
     MessageListOut,
     MessageOut,
     TemplateCreateIn,
@@ -28,11 +23,14 @@ from services.support.schemas import (
     TemplateOut,
     TemplateUpdateIn,
     TicketBulkUpdateIn,
+    TicketCategory,
     TicketCreateIn,
     TicketListOut,
     TicketOut,
     TicketPatchIn,
+    TicketPriority,
     TicketStatsOut,
+    TicketStatus,
 )
 from services.support.service import SupportService, get_support_service
 

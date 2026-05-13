@@ -6,15 +6,13 @@ from uuid import uuid4
 
 import pytest
 
-from services.support.constants import (
+from services.support.schemas import (
     MessageSenderKind,
     TicketCategory,
-    TicketPriority,
-    TicketStatus,
-)
-from services.support.schemas import (
     TicketCreateIn,
     TicketPatchIn,
+    TicketPriority,
+    TicketStatus,
 )
 
 

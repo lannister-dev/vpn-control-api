@@ -1,17 +1,56 @@
 from datetime import datetime
 from decimal import Decimal
+from enum import Enum
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from services.support.constants import (
-    BroadcastAudience,
-    BroadcastStatus,
-    MessageSenderKind,
-    TicketCategory,
-    TicketPriority,
-    TicketStatus,
-)
+
+class TicketStatus(str, Enum):
+    NEW = "new"
+    IN_PROGRESS = "in_progress"
+    WAITING_USER = "waiting_user"
+    CLOSED = "closed"
+
+
+class TicketPriority(str, Enum):
+    LOW = "low"
+    NORMAL = "normal"
+    HIGH = "high"
+    URGENT = "urgent"
+
+
+class TicketCategory(str, Enum):
+    PAYMENT = "payment"
+    TECHNICAL = "technical"
+    ACCOUNT = "account"
+    SPEED = "speed"
+    CONNECTION = "connection"
+    REFUND = "refund"
+    OTHER = "other"
+
+
+class MessageSenderKind(str, Enum):
+    USER = "user"
+    OPERATOR = "operator"
+    SYSTEM = "system"
+
+
+class BroadcastAudience(str, Enum):
+    ALL = "all"
+    ACTIVE = "active"
+    EXPIRING = "expiring"
+    BY_PLAN = "by_plan"
+    TRIAL = "trial"
+    NO_SUB = "no_sub"
+
+
+class BroadcastStatus(str, Enum):
+    DRAFT = "draft"
+    SCHEDULED = "scheduled"
+    SENDING = "sending"
+    SENT = "sent"
+    FAILED = "failed"
 
 
 class TicketUserRef(BaseModel):
@@ -46,6 +85,13 @@ class TicketOut(BaseModel):
 class TicketListOut(BaseModel):
     items: list[TicketOut]
     total: int
+
+
+class TicketStatsRaw(BaseModel):
+    open: int = 0
+    unanswered: int = 0
+    closed_today: int = 0
+    avg_reply_minutes: int | None = None
 
 
 class TicketStatsOut(BaseModel):
@@ -168,3 +214,20 @@ class BroadcastListOut(BaseModel):
 
 class BroadcastAudienceCount(BaseModel):
     count: int
+
+
+class SupportInboundAttachmentMsg(BaseModel):
+    kind: str
+    tg_file_id: str
+    tg_file_unique_id: str | None = None
+    file_name: str | None = None
+    file_size: int | None = None
+    mime_type: str | None = None
+    duration: int | None = None
+
+
+class SupportInboundMessage(BaseModel):
+    telegram_id: int
+    text: str = ""
+    attachments: list[SupportInboundAttachmentMsg] = Field(default_factory=list)
+    tg_message_id: int | None = None

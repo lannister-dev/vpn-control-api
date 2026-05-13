@@ -4,10 +4,6 @@ from uuid import UUID
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.support.constants import (
-    MessageSenderKind,
-    TicketStatus,
-)
 from services.support.models import (
     Broadcast,
     BroadcastLog,
@@ -15,6 +11,11 @@ from services.support.models import (
     SupportMessage,
     SupportTemplate,
     SupportTicket,
+)
+from services.support.schemas import (
+    MessageSenderKind,
+    TicketStatsRaw,
+    TicketStatus,
 )
 from shared.database.base_repository import BaseRepository
 
@@ -73,7 +74,7 @@ class SupportTicketRepository(BaseRepository[SupportTicket]):
         total = (await self.session.execute(cstmt)).scalar_one()
         return list(rows), int(total or 0)
 
-    async def stats(self) -> dict:
+    async def stats(self) -> TicketStatsRaw:
         open_q = select(func.count(SupportTicket.id)).where(
             SupportTicket.status.in_([TicketStatus.NEW.value, TicketStatus.IN_PROGRESS.value, TicketStatus.WAITING_USER.value])
         )
@@ -105,12 +106,12 @@ class SupportTicketRepository(BaseRepository[SupportTicket]):
         avg_minutes = (await self.session.execute(reply_q)).scalar_one_or_none()
         avg_minutes_int = int(avg_minutes) if avg_minutes is not None else None
 
-        return {
-            "open": open_count,
-            "unanswered": unanswered,
-            "closed_today": closed_today,
-            "avg_reply_minutes": avg_minutes_int,
-        }
+        return TicketStatsRaw(
+            open=open_count,
+            unanswered=unanswered,
+            closed_today=closed_today,
+            avg_reply_minutes=avg_minutes_int,
+        )
 
     async def find_open_by_user(self, user_id: UUID) -> SupportTicket | None:
         stmt = (
