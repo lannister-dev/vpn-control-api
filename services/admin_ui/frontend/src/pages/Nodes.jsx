@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client.js";
 import { useQuery } from "../hooks/useQuery.js";
 import { Icon } from "../components/Icon.jsx";
@@ -336,6 +336,14 @@ function LoadBar({ v }) {
 
 function RowMenu({ node, onRefresh }) {
   const [open, setOpen] = useState(false);
+  const btnRef = useRef(null);
+  const [above, setAbove] = useState(false);
+  useEffect(() => {
+    if (!open || !btnRef.current) return;
+    const rect = btnRef.current.getBoundingClientRect();
+    const menuH = 180;
+    setAbove(window.innerHeight - rect.bottom < menuH + 8 && rect.top > menuH + 8);
+  }, [open]);
 
   const wrap = async (label, fn) => {
     setOpen(false);
@@ -391,14 +399,16 @@ function RowMenu({ node, onRefresh }) {
 
   return (
     <div style={{ position: "relative", display: "inline-block" }} onClick={(e) => e.stopPropagation()}>
-      <button className="btn btn-ghost btn-icon" onClick={() => setOpen((v) => !v)} style={{ width: 24, height: 24 }}>
+      <button ref={btnRef} className="btn btn-ghost btn-icon" onClick={() => setOpen((v) => !v)} style={{ width: 24, height: 24 }}>
         <Icon name="more-horizontal" size={13} />
       </button>
       {open && (
         <>
           <div style={{ position: "fixed", inset: 0, zIndex: 50 }} onClick={() => setOpen(false)} />
           <div style={{
-            position: "absolute", top: "100%", right: 0, marginTop: 4, minWidth: 200, zIndex: 51,
+            position: "absolute",
+            ...(above ? { bottom: "100%", marginBottom: 4 } : { top: "100%", marginTop: 4 }),
+            right: 0, minWidth: 200, zIndex: 51,
             background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8,
             boxShadow: "var(--shadow-lg)", padding: 4,
           }}>

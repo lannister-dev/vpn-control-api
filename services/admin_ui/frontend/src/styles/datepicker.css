@@ -32,9 +32,7 @@
 .dp-trigger-clear:hover { background: var(--surface-hover); color: var(--text); }
 
 .dp-pop {
-  position: absolute; top: calc(100% + 6px); left: 0;
-  z-index: 50;
-  width: 296px;
+  z-index: 200;
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
   border-radius: 8px;
@@ -42,7 +40,6 @@
   padding: 10px;
   animation: dp-fade 120ms ease;
 }
-.dp-pop.is-above { top: auto; bottom: calc(100% + 6px); }
 @keyframes dp-fade {
   from { opacity: 0; transform: translateY(-4px); }
   to   { opacity: 1; transform: translateY(0); }

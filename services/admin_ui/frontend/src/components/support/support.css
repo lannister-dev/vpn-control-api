@@ -110,106 +110,53 @@
 }
 .tk-bulk-menu-popup button:hover { background: var(--surface-hover); }
 
-/* compact button used inside Support drawer */
-.btn.btn-sm {
-  height: 26px; padding: 0 8px; font-size: 12px; gap: 5px;
-}
-
-/* ─────────── Drawer: header ─────────── */
+/* ─────────── Drawer: body layout ─────────── */
 .tk-drawer .slideover-body {
   display: flex; flex-direction: column;
-  padding: 14px 20px 0;
-  gap: 10px;
+  padding: 18px 20px 0;
   overflow: hidden;
 }
-.tk-head {
-  display: flex; align-items: center; gap: 12px;
-  flex: 1; min-width: 0;
-}
-.tk-head-main { flex: 1; min-width: 0; }
-.tk-head-title {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 15px; font-weight: 600; letter-spacing: -0.01em;
-  margin: 0;
-}
-.tk-head-id { color: var(--text-muted); font-weight: 500; font-size: 13px; }
-.tk-head-subject {
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  flex: 1; min-width: 0;
-}
-.tk-head-sub {
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-  margin-top: 3px;
-  font-size: 12px; color: var(--text-muted);
-}
-.tk-head-user {
-  background: transparent; border: 0; padding: 0; cursor: pointer;
-  color: var(--accent-text); font-size: 12px; font-family: inherit;
-}
-.tk-head-user:hover { text-decoration: underline; }
 
-/* ─────────── Summary card: KPIs + actions ─────────── */
-.tk-summary {
-  display: flex; align-items: stretch; gap: 12px;
+/* KPI ribbon */
+.tk-kpi-ribbon {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 0;
+  border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+  margin-bottom: 12px;
+}
+.tk-kpi-cell {
   padding: 10px 12px;
-  border: 1px solid var(--border); border-radius: 8px;
-  background: var(--surface);
+  border-right: 1px solid var(--border);
+  min-width: 0;
 }
-.tk-summary-kpis {
-  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px; flex: 1; min-width: 0;
-}
-.tk-kpi-cell { min-width: 0; }
+.tk-kpi-cell:last-child { border-right: 0; }
 .tk-kpi-label {
-  font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
-  color: var(--text-muted); margin-bottom: 3px;
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-muted); margin-bottom: 4px;
 }
-.tk-kpi-val {
-  font-weight: 600; font-size: 13px;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.tk-summary-actions {
-  display: flex; flex-direction: column; gap: 6px;
-  align-items: stretch; flex-shrink: 0;
-  padding-left: 12px; border-left: 1px solid var(--border);
-  min-width: 160px;
-}
-.tk-summary-actions .btn { justify-content: flex-start; }
+.tk-kpi-val { font-weight: 600; font-size: 13.5px; }
 
-/* ─────────── Meta strip + context toggle ─────────── */
-.tk-meta-strip {
-  display: flex; align-items: center; gap: 8px;
-  padding: 4px 0;
+/* Quick actions row */
+.tk-quick-actions {
+  display: flex; gap: 6px; align-items: center;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
 }
-.tk-meta-strip .tk-meta-cell { flex: 1; min-width: 0; }
-.tk-meta-cell {
-  display: flex; flex-direction: column; gap: 3px; min-width: 0;
-}
-.tk-meta-label {
-  font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+
+/* Context toggle (chevron) */
+.tk-context-toggle {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 0; width: 100%;
+  background: transparent; border: 0; cursor: pointer;
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
   color: var(--text-muted);
 }
-.tk-meta-val { font-size: 12.5px; color: var(--text); }
-.tk-meta-select {
-  height: 28px; padding: 0 8px;
-  background: var(--surface); border: 1px solid var(--border-strong);
-  border-radius: 4px; color: var(--text); font-size: 12px; font-family: inherit;
-  width: 100%;
-}
-.tk-context-toggle {
-  display: inline-flex; align-items: center; gap: 6px;
-  height: 28px; padding: 0 10px;
-  background: transparent; border: 1px solid var(--border);
-  border-radius: 4px; cursor: pointer;
-  font-size: 11.5px; color: var(--text-secondary);
-  align-self: flex-end;
-}
-.tk-context-toggle:hover { background: var(--surface-hover); color: var(--text); }
+.tk-context-toggle:hover { color: var(--text); }
 .tk-context-panel {
   display: grid; grid-template-columns: 120px 1fr; gap: 6px 12px;
   padding: 10px 12px;
   background: var(--surface);
   border: 1px solid var(--border); border-radius: 6px;
+  margin-bottom: 10px;
   font-size: 12.5px;
 }
 .tk-context-panel .tk-ctx-label { color: var(--text-muted); font-size: 11.5px; }
@@ -222,6 +169,27 @@
   background: var(--surface-2);
   border: 1px solid var(--border);
   color: var(--text-secondary);
+}
+
+/* Meta grid (status/priority/category/created) */
+.tk-meta-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+  margin-bottom: 10px;
+}
+.tk-meta-cell {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 6px 8px; min-width: 0;
+}
+.tk-meta-label {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.tk-meta-val { font-size: 12.5px; color: var(--text); }
+.tk-meta-select {
+  height: 28px; padding: 0 8px;
+  background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: 4px; color: var(--text); font-size: 12px; font-family: inherit;
+  width: 100%;
 }
 
 /* ─────────── Chat scroller ─────────── */

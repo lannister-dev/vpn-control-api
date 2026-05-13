@@ -50,10 +50,6 @@ export function OverviewPage({ onOpenNode, onGoto }) {
     { interval: 60000, deps: [period] },
   );
   const subsStats = useQuery(() => api.get("/subscriptions/stats").catch(() => null), { interval: 60000 });
-  const ticketsStats = useQuery(
-    () => api.get("/support/tickets/stats").catch(() => null),
-    { interval: 30000 },
-  );
 
   const nodes = status.data?.nodes || [];
   const totals = status.data?.totals || {};
@@ -366,8 +362,7 @@ export function OverviewPage({ onOpenNode, onGoto }) {
             label={period === "1h" ? "Трафик за час" : period === "24h" ? "Трафик сегодня" : period === "7d" ? "Трафик за 7д" : "Трафик за 30д"}
             value={tf.v}
             unit={tf.u}
-            delta={trafficTotal != null ? "+8.2%" : "нет данных"}
-            deltaTone="up"
+            delta="—"
             icon="activity"
             sparkSeed={42}
             sparkColor="var(--ok)"
@@ -376,8 +371,8 @@ export function OverviewPage({ onOpenNode, onGoto }) {
             label="Средняя latency"
             value={latestLat != null ? String(latestLat) : "—"}
             unit={latestLat != null ? "ms" : ""}
-            delta={latestLat != null ? (latestLat > 60 ? `+${Math.round(latestLat - 40)}ms` : "−2ms") : "—"}
-            deltaTone={latestLat != null && latestLat > 60 ? "down" : "up"}
+            delta="—"
+            deltaTone={latestLat != null && latestLat > 60 ? "down" : ""}
             icon="zap"
             sparkSeed={91}
             sparkColor="var(--warn)"
@@ -387,58 +382,12 @@ export function OverviewPage({ onOpenNode, onGoto }) {
             label="Probe success"
             value={probeStats.successRate != null ? String(probeStats.successRate) : "—"}
             unit={probeStats.successRate != null ? "%" : ""}
-            delta={probeStats.successRate != null ? (probeStats.successRate >= 99 ? "+0.1%" : probeStats.successRate >= 95 ? "−0.2%" : "−1.4%") : "—"}
-            deltaTone={probeStats.successRate == null ? "up" : probeStats.successRate >= 98 ? "up" : "down"}
+            delta="—"
+            deltaTone={probeStats.successRate != null && probeStats.successRate < 98 ? "down" : ""}
             icon="radar"
             sparkSeed={27}
             sparkColor="var(--info)"
             realSpark={probeStats.successSpark}
-          />
-          <KpiCell
-            label="Открытых тикетов"
-            value={ticketsStats.data?.open ?? "—"}
-            unit=""
-            delta={
-              ticketsStats.data?.unanswered != null
-                ? `${ticketsStats.data.unanswered} без ответа`
-                : "—"
-            }
-            deltaTone={(ticketsStats.data?.open || 0) > 10 ? "down" : "up"}
-            icon="message-square"
-            sparkSeed={71}
-            sparkColor={
-              (ticketsStats.data?.open || 0) > 10
-                ? "var(--bad)"
-                : "var(--accent)"
-            }
-            realSpark={ticketsStats.data?.open_spark_24h}
-          />
-          <KpiCell
-            label="Avg время ответа"
-            value={
-              ticketsStats.data?.avg_reply_minutes != null
-                ? String(ticketsStats.data.avg_reply_minutes)
-                : "—"
-            }
-            unit={ticketsStats.data?.avg_reply_minutes != null ? "мин" : ""}
-            delta={
-              ticketsStats.data?.avg_reply_change != null
-                ? `${ticketsStats.data.avg_reply_change > 0 ? "+" : ""}${ticketsStats.data.avg_reply_change}м vs вчера`
-                : "—"
-            }
-            deltaTone={
-              (ticketsStats.data?.avg_reply_minutes || 0) > 30
-                ? "down"
-                : "up"
-            }
-            icon="clock"
-            sparkSeed={53}
-            sparkColor={
-              (ticketsStats.data?.avg_reply_minutes || 0) > 30
-                ? "var(--warn)"
-                : "var(--ok)"
-            }
-            realSpark={ticketsStats.data?.reply_spark_24h}
           />
         </div>
       </div>
