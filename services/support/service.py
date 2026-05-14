@@ -1,9 +1,14 @@
+import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import UUID
 
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from shared.utils.logger import StructuredLogger
+
+logger_support = StructuredLogger(logging.getLogger("support-service"))
 
 from services.auth.admin.repository import AdminUserRepository
 from services.billing.models import BalanceTransaction
@@ -75,7 +80,13 @@ from shared.nats.client import NatsClient
 
 
 class SupportService:
-    def __init__(self, session: AsyncSession, *, nats_client: NatsClient | None = None):
+    def __init__(
+        self,
+        session: AsyncSession,
+        *,
+        nats_client: NatsClient | None = None,
+        outbound_subject: str = SUPPORT_OUTBOUND_SUBJECT,
+    ):
         self.session = session
         self.tickets = SupportTicketRepository(session)
         self.messages = SupportMessageRepository(session)
@@ -88,6 +99,7 @@ class SupportService:
         self.subscriptions = SubscriptionRepository(session)
         self.orders = OrderRepository(session)
         self._nats = nats_client
+        self._outbound_subject = outbound_subject
 
     async def list_tickets(
         self,
@@ -579,14 +591,18 @@ class SupportService:
             text=text or "",
             media=[],
         )
-        try:  # noqa: SIM105
+        try:
             await self._nats.publish_jetstream(
-                subject=SUPPORT_OUTBOUND_SUBJECT,
+                subject=self._outbound_subject,
                 payload=payload.model_dump(),
                 msg_id=str(msg.id),
             )
         except Exception:
-            pass
+            logger_support.exception(
+                "support_outbound_publish_failed",
+                subject=self._outbound_subject,
+                message_id=str(msg.id),
+            )
 
     async def _fetch_users_with_meta(self, user_ids: list[UUID]) -> dict[UUID, TicketUserRef]:
         ids = [u for u in user_ids if u]
@@ -632,4 +648,10 @@ def get_support_service(
     session: AsyncSession = Depends(AsyncDatabase.get_session),
 ) -> SupportService:
     nats_client = getattr(request.app.state, "nats_client", None)
-    return SupportService(session, nats_client=nats_client)
+    nats_config = getattr(request.app.state, "nats_config", None)
+    outbound_subject = (
+        nats_config.support_outbound_subject
+        if nats_config is not None
+        else SUPPORT_OUTBOUND_SUBJECT
+    )
+    return SupportService(session, nats_client=nats_client, outbound_subject=outbound_subject)
