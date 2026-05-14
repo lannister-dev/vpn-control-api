@@ -611,6 +611,7 @@ class SupportService:
                 telegram_id=tg_id,
                 text=text,
                 media=[],
+                kind="broadcast",
             )
             async with sem:
                 try:
