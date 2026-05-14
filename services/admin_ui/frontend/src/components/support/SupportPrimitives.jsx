@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Icon } from "../Icon.jsx";
 import { TgTicks } from "../TgTicks.jsx";
+import { TextEditor, htmlForTelegram } from "../TextEditor.jsx";
 
 /* ──────────────────────────────────────────────────────────
    STATUS PILL — ticket status
@@ -127,7 +128,11 @@ export function MessageBubble({
             ))}
           </div>
         )}
-        {text && <div className="tk-msg-text">{text}</div>}
+        {text && (
+          /<[a-z][\s\S]*>/i.test(text)
+            ? <div className="tk-msg-text txed-preview" dangerouslySetInnerHTML={{ __html: text }} />
+            : <div className="tk-msg-text" style={{ whiteSpace: "pre-wrap" }}>{text}</div>
+        )}
         <div className="tk-msg-meta">
           <span>{new Date(created_at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</span>
           {isOperator && (
@@ -296,10 +301,11 @@ export function Composer({
   user,        // for variable interpolation
   disabled = false,
 }) {
-  const [text, setText] = useState("");
+  const [html, setHtml] = useState("");
   const [showTemplates, setShowTemplates] = useState(false);
   const [showEmoji, setShowEmoji] = useState(false);
-  const taRef = useRef(null);
+
+  const stripTags = (s) => (s || "").replace(/<[^>]+>/g, "").trim();
 
   const interpolate = (raw) => {
     if (!user) return raw;
@@ -310,50 +316,30 @@ export function Composer({
       .replace(/\{balance\}/g, user.balance != null ? `${user.balance} ₽` : "—");
   };
 
-  // auto-resize
-  useEffect(() => {
-    if (!taRef.current) return;
-    taRef.current.style.height = "auto";
-    const h = Math.min(180, taRef.current.scrollHeight);
-    taRef.current.style.height = h + "px";
-  }, [text]);
-
   const send = useCallback((asNote = false) => {
-    const t = text.trim();
-    if (!t) return;
-    const payload = { text: t, files: [], is_note: asNote };
+    const cleaned = htmlForTelegram(html);
+    if (!stripTags(cleaned)) return;
+    const payload = { text: cleaned, files: [], is_note: asNote };
     if (asNote) onAddNote?.(payload);
     else onSend?.(payload);
-    setText("");
-  }, [text, onSend, onAddNote]);
-
-  const onKey = (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-      e.preventDefault();
-      send(false);
-    }
-  };
+    setHtml("");
+  }, [html, onSend, onAddNote]);
 
   const pickTemplate = (tpl) => {
     const next = interpolate(tpl.body);
-    setText((cur) => (cur ? cur + "\n\n" + next : next));
+    setHtml((cur) => (cur ? cur + "<p></p>" + next : next));
     setShowTemplates(false);
-    setTimeout(() => taRef.current?.focus(), 0);
   };
 
-  const canSend = !disabled && !!text.trim();
+  const canSend = !disabled && !!stripTags(html);
 
   return (
     <div className="tk-composer">
-      <textarea
-        ref={taRef}
-        className="tk-composer-textarea"
-        placeholder="Напишите ответ юзеру или внутреннюю заметку…    (⌘+Enter — отправить)"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={onKey}
-        rows={1}
-        disabled={disabled}
+      <TextEditor
+        value={html}
+        onChange={setHtml}
+        placeholder="Напишите ответ юзеру или внутреннюю заметку…"
+        minHeight={70}
       />
       <div className="tk-composer-bar">
         <div className="tk-composer-icons">
@@ -384,16 +370,15 @@ export function Composer({
           {showEmoji && (
             <EmojiPopover
               onPick={(e) => {
-                setText((t) => t + e);
+                setHtml((h) => (h || "") + e);
                 setShowEmoji(false);
-                setTimeout(() => taRef.current?.focus(), 0);
               }}
               onClose={() => setShowEmoji(false)}
             />
           )}
         </div>
 
-        <span className="tk-composer-hint muted small">⌘+Enter — отправить</span>
+        <span className="tk-composer-hint muted small">форматирование в тулбаре редактора</span>
 
         <div className="tk-composer-actions">
           <button
