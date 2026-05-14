@@ -81,7 +81,8 @@ class SubscriptionPublicAdapter:
             user_info: SubscriptionUserInfo | None = None,
             user_agent: str | None = None,
     ) -> SubscriptionPublicSuccessResponse:
-        headers = self._build_headers(etag=etag, user_info=user_info)
+        is_json = self._is_json_payload(payload)
+        headers = self._build_headers(etag=etag, user_info=user_info, is_json=is_json)
         if not_modified:
             return SubscriptionPublicSuccessResponse(
                 metric_result="not_modified",
@@ -92,9 +93,16 @@ class SubscriptionPublicAdapter:
         return SubscriptionPublicSuccessResponse(
             metric_result="success",
             status_code=status.HTTP_200_OK,
-            payload=self._build_payload_body(payload=payload, user_agent=user_agent),
+            payload=self._build_payload_body(payload=payload, user_agent=user_agent, is_json=is_json),
             headers=headers,
         )
+
+    @staticmethod
+    def _is_json_payload(payload: str) -> bool:
+        if not payload:
+            return False
+        stripped = payload.lstrip()
+        return stripped.startswith("{") or stripped.startswith("[")
 
     def map_error(self, exc: Exception) -> SubscriptionPublicErrorResponse:
         if isinstance(exc, SubscriptionNotFound):
@@ -170,6 +178,7 @@ class SubscriptionPublicAdapter:
             *,
             etag: str,
             user_info: SubscriptionUserInfo | None = None,
+            is_json: bool = False,
     ) -> dict[str, str]:
         vary_parts = ["If-None-Match", "User-Agent"]
         if self._hwid_header:
@@ -177,7 +186,9 @@ class SubscriptionPublicAdapter:
 
         headers = {
             "ETag": etag,
-            "Cache-Control": "private, no-cache, must-revalidate",
+            "Cache-Control": "no-store",
+            "Pragma": "no-cache",
+            "Content-Type": "application/json; charset=utf-8" if is_json else "text/plain; charset=utf-8",
             "profile-title": self._happ_profile_title,
             "profile-update-interval": str(self._happ_profile_update_interval_hours),
             "Vary": ", ".join(vary_parts),
@@ -205,19 +216,44 @@ class SubscriptionPublicAdapter:
             headers["subscription-ping-onopen-enabled"] = "true"
         return headers
 
-    def _build_payload_body(self, *, payload: str, user_agent: str | None) -> str:
+    def _build_payload_body(self, *, payload: str, user_agent: str | None, is_json: bool = False) -> str:
+        if is_json:
+            return payload
         if not self._is_happ_user_agent(user_agent):
             return payload
-        directives: list[str] = []
-        if self._happ_hide_settings:
-            directives.append("#hide-settings: 1")
-        if self._happ_always_hwid_enable:
-            directives.append("#subscription-always-hwid-enable: 1")
+        directives = self._happ_body_directives()
         if not directives:
             return payload
         if not payload:
             return "\n".join(directives)
         return "\n".join([*directives, payload])
+
+    def _happ_body_directives(self) -> list[str]:
+        directives: list[str] = []
+        if self._happ_profile_title:
+            directives.append(f"#profile-title: {self._happ_profile_title}")
+        if self._happ_profile_update_interval_hours:
+            directives.append(f"#profile-update-interval: {self._happ_profile_update_interval_hours}")
+        if self._happ_support_url:
+            directives.append(f"#support-url: {self._happ_support_url}")
+        if self._happ_profile_web_page_url:
+            directives.append(f"#profile-web-page-url: {self._happ_profile_web_page_url}")
+        if self._happ_provider_id:
+            directives.append(f"#providerid: {self._happ_provider_id}")
+        if self._happ_routing:
+            directives.append(f"#routing: {self._happ_routing}")
+        if self._happ_hide_settings:
+            directives.append("#hide-settings: 1")
+        if self._happ_always_hwid_enable:
+            directives.append("#subscription-always-hwid-enable: 1")
+        if self._happ_color_profile:
+            directives.append(f"#color-profile: {self._happ_color_profile}")
+        if self._happ_autoconnect:
+            directives.append("#subscription-autoconnect: true")
+            directives.append(f"#subscription-autoconnect-type: {self._happ_autoconnect_type}")
+        if self._happ_ping_onopen:
+            directives.append("#subscription-ping-onopen-enabled: true")
+        return directives
 
     @staticmethod
     def _is_happ_user_agent(user_agent: str | None) -> bool:
