@@ -302,8 +302,10 @@ export function Composer({
   disabled = false,
 }) {
   const [html, setHtml] = useState("");
+  const [files, setFiles] = useState([]);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showEmoji, setShowEmoji] = useState(false);
+  const fileInputRef = useRef(null);
 
   const stripTags = (s) => (s || "").replace(/<[^>]+>/g, "").trim();
 
@@ -318,12 +320,14 @@ export function Composer({
 
   const send = useCallback((asNote = false) => {
     const cleaned = htmlForTelegram(html);
-    if (!stripTags(cleaned)) return;
-    const payload = { text: cleaned, files: [], is_note: asNote };
+    if (!stripTags(cleaned) && files.length === 0) return;
+    const payload = { text: cleaned, files: [...files], is_note: asNote };
     if (asNote) onAddNote?.(payload);
     else onSend?.(payload);
     setHtml("");
-  }, [html, onSend, onAddNote]);
+    setFiles([]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, [html, files, onSend, onAddNote]);
 
   const pickTemplate = (tpl) => {
     const next = interpolate(tpl.body);
@@ -331,7 +335,14 @@ export function Composer({
     setShowTemplates(false);
   };
 
-  const canSend = !disabled && !!stripTags(html);
+  const canSend = !disabled && (!!stripTags(html) || files.length > 0);
+
+  const onPickFiles = (e) => {
+    const picked = Array.from(e.target.files || []);
+    if (!picked.length) return;
+    setFiles((cur) => [...cur, ...picked]);
+  };
+  const removeFile = (idx) => setFiles((cur) => cur.filter((_, i) => i !== idx));
 
   return (
     <div className="tk-composer">
@@ -341,8 +352,35 @@ export function Composer({
         placeholder="Напишите ответ юзеру или внутреннюю заметку…"
         minHeight={70}
       />
+      {files.length > 0 && (
+        <div className="tk-composer-files">
+          {files.map((f, i) => (
+            <div key={i} className="tk-composer-file">
+              <Icon name={f.type.startsWith("image/") ? "image" : f.type.startsWith("video/") ? "video" : "paperclip"} size={12} />
+              <span className="tk-composer-file-name">{f.name}</span>
+              <span className="muted small">{Math.round(f.size / 1024)} KB</span>
+              <button type="button" className="tk-composer-file-x" onClick={() => removeFile(i)} title="Убрать">×</button>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="tk-composer-bar">
         <div className="tk-composer-icons">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            style={{ display: "none" }}
+            onChange={onPickFiles}
+          />
+          <button
+            type="button"
+            className="tk-comp-btn"
+            title="Прикрепить файлы"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Icon name="paperclip" size={14} />
+          </button>
           <button
             type="button"
             className="tk-comp-btn"
