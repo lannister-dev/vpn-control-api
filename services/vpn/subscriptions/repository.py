@@ -162,6 +162,36 @@ class SubscriptionRepository(BaseRepository[Subscription]):
         row = (await self.session.execute(stmt)).one()
         return int(row.total), int(row.active), int(row.expired)
 
+    async def bulk_set_traffic_warning_threshold(
+        self, pairs: list[tuple[UUID, int]],
+    ) -> int:
+        """Single UPDATE for many (subscription_id, threshold_pct) pairs.
+
+        Only raises the watermark — never lowers it.
+        Returns affected row count.
+        """
+        if not pairs:
+            return 0
+        stmt = text(
+            """
+            UPDATE subscription AS s
+            SET traffic_warning_threshold_pct = v.threshold_pct
+            FROM (
+                SELECT unnest(CAST(:ids AS uuid[])) AS id,
+                       unnest(CAST(:pcts AS int[])) AS threshold_pct
+            ) AS v
+            WHERE s.id = v.id
+              AND v.threshold_pct > COALESCE(s.traffic_warning_threshold_pct, 0)
+            """
+        )
+        ids = [str(p[0]) for p in pairs]
+        pcts = [int(p[1]) for p in pairs]
+        result = await self.session.execute(stmt, {"ids": ids, "pcts": pcts})
+        rowcount = result.rowcount
+        if callable(rowcount):
+            rowcount = rowcount()
+        return int(rowcount or 0)
+
     async def traffic_check_by_telegram_ids(
         self, telegram_ids: list[int],
     ) -> list[tuple[int, UUID | None, int, int, int]]:

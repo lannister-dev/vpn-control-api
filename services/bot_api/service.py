@@ -492,6 +492,13 @@ class BotApiService:
         ]
         return BotSubscriptionTrafficListOut(items=items)
 
+    async def bulk_mark_traffic_warnings(
+        self, entries: list[tuple[UUID, int]],
+    ) -> int:
+        affected = await self.subscription_repository.bulk_set_traffic_warning_threshold(entries)
+        await self.session.commit()
+        return affected
+
     async def mark_traffic_warning(
         self,
         *,

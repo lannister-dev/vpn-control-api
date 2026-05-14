@@ -216,6 +216,15 @@ class BotSubscriptionTrafficListOut(BaseModel):
     items: list[BotSubscriptionTrafficItem]
 
 
+class BotTrafficWarningBulkEntry(BaseModel):
+    subscription_id: UUID
+    threshold_pct: int = Field(ge=1, le=100)
+
+
+class BotTrafficWarningBulkIn(BaseModel):
+    entries: list[BotTrafficWarningBulkEntry] = Field(min_length=1, max_length=2000)
+
+
 class BotSessionOut(BaseModel):
     user: BotUserOut
     state: BotDashboardState
