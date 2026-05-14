@@ -2,6 +2,7 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
 import Underline from "@tiptap/extension-underline";
+import Placeholder from "@tiptap/extension-placeholder";
 import { Icon } from "./Icon.jsx";
 import "./TextEditor.css";
 
@@ -96,6 +97,7 @@ export function TextEditor({ value, onChange, placeholder, minHeight = 80, autoF
       }),
       Underline,
       Link.configure({ openOnClick: false, autolink: true, HTMLAttributes: { rel: "noopener" } }),
+      Placeholder.configure({ placeholder: placeholder || "" }),
     ],
     content: value || "",
     autofocus: autoFocus,
