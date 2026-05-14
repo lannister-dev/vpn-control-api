@@ -65,6 +65,9 @@ class SubscriptionDevice(Base):
     hwid_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    device_model: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    platform: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    os_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     subscription: Mapped["Subscription"] = relationship(back_populates="devices")
     device_keys: Mapped[list["SubscriptionDeviceKey"]] = relationship(

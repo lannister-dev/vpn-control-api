@@ -11,6 +11,7 @@ import { BalancePill } from "./users/BalancePill.jsx";
 import { StatusPill, deriveSubStatus } from "./users/StatusPill.jsx";
 import { DaysCountdown, daysLeft } from "./users/DaysCountdown.jsx";
 import { SubscriptionCard } from "./users/SubscriptionCard.jsx";
+import { SubscriptionSummaryRow } from "./users/SubscriptionSummaryRow.jsx";
 import { DeviceCard } from "./users/DeviceCard.jsx";
 import "./users/users.css";
 
@@ -116,8 +117,6 @@ function UserHero({ d, subsCount }) {
 }
 
 function Overview({ user, subs, plansById, expiringSub, onCreateSub, onOpenSub }) {
-  const totalUsed = subs.reduce((a, s) => a + (s.used_traffic_bytes || 0), 0);
-
   return (
     <div>
       {expiringSub && (
@@ -144,14 +143,19 @@ function Overview({ user, subs, plansById, expiringSub, onCreateSub, onOpenSub }
           </button>
         </div>
         {!subs.length && <div className="muted small">Нет подписок</div>}
-        {subs.slice(0, 3).map((s) => (
-          <SubscriptionCard
+        {subs.slice(0, 5).map((s) => (
+          <SubscriptionSummaryRow
             key={s.id}
             sub={s}
             plan={plansById[s.plan_id]}
             onOpen={onOpenSub}
           />
         ))}
+        {subs.length > 5 && (
+          <div className="muted small" style={{ marginTop: 6 }}>
+            +{subs.length - 5} ещё · во вкладке «Подписки»
+          </div>
+        )}
       </div>
 
       <div className="u-section">

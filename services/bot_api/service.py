@@ -383,7 +383,7 @@ class BotApiService:
 
         devices = await self.subscription_service.list_devices(
             session.subscription.id,
-            active_only=False,
+            active_only=True,
         )
         items = self._to_bot_devices(devices)
         active_total = sum(1 for item in items if item.is_active)
@@ -845,9 +845,18 @@ class BotApiService:
             items.append(
                 BotDeviceOut(
                     id=device.id,
-                    display_name=get_device_display_name(device.user_agent, index),
+                    display_name=get_device_display_name(
+                        device.user_agent,
+                        index,
+                        device_model=device.device_model,
+                        platform=device.platform,
+                        os_version=device.os_version,
+                    ),
                     hwid_hash=device.hwid_hash,
                     user_agent=device.user_agent,
+                    device_model=device.device_model,
+                    platform=device.platform,
+                    os_version=device.os_version,
                     last_seen_at=device.last_seen_at,
                     is_active=device.is_active,
                     created_at=device.created_at,

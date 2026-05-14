@@ -87,6 +87,7 @@ class SubscriptionOut(BaseModel):
     used_traffic_bytes: int = 0
     lifetime_used_traffic_bytes: int = 0
     last_traffic_reset_at: datetime | None = None
+    device_count: int | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -116,6 +117,9 @@ class SubscriptionDeviceCreate(BaseModel):
     hwid_hash: str
     last_seen_at: datetime | None
     user_agent: str | None
+    device_model: str | None = None
+    platform: str | None = None
+    os_version: str | None = None
 
 
 class SubscriptionDeviceKeyCreate(BaseModel):
@@ -129,7 +133,18 @@ class SubscriptionDeviceInternalUpdate(BaseModel):
     is_active: bool | None = None
     last_seen_at: datetime | None = None
     user_agent: str | None = None
+    device_model: str | None = None
+    platform: str | None = None
+    os_version: str | None = None
     updated_at: datetime | None = None
+
+
+class DeviceClientHeaders(BaseModel):
+    hwid: str = Field(min_length=1, max_length=128)
+    user_agent: str | None = Field(default=None, max_length=255)
+    device_model: str | None = Field(default=None, max_length=64)
+    platform: str | None = Field(default=None, max_length=32)
+    os_version: str | None = Field(default=None, max_length=32)
 
 
 class SubscriptionDeviceKeyOut(BaseModel):
@@ -153,6 +168,9 @@ class SubscriptionDeviceOut(BaseModel):
     hwid_hash: str
     last_seen_at: datetime | None
     user_agent: str | None
+    device_model: str | None = None
+    platform: str | None = None
+    os_version: str | None = None
     is_active: bool
     created_at: datetime
     updated_at: datetime

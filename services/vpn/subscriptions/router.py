@@ -72,6 +72,9 @@ async def get_subscription_config(
     try:
         hwid = request.headers.get(adapter.hwid_header)
         user_agent = request.headers.get("user-agent")
+        device_model = request.headers.get("x-device-model")
+        platform = request.headers.get("x-device-os")
+        os_version = request.headers.get("x-ver-os")
         if_none_match = request.headers.get("if-none-match")
         if adapter.should_disable_not_modified(user_agent=user_agent):
             if_none_match = None
@@ -80,6 +83,9 @@ async def get_subscription_config(
             raw_token=token,
             hwid=hwid,
             user_agent=user_agent,
+            device_model=device_model,
+            platform=platform,
+            os_version=os_version,
             if_none_match=if_none_match,
         )
         public_response = adapter.build_success_response(
