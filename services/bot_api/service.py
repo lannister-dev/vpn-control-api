@@ -52,6 +52,8 @@ from .schemas import (
     BotStarsConfirmIn,
     BotSubscriptionLinkOut,
     BotSubscriptionSummaryOut,
+    BotSubscriptionTrafficItem,
+    BotSubscriptionTrafficListOut,
     BotTopUpCreateIn,
     BotUserOut,
 )
@@ -467,6 +469,28 @@ class BotApiService:
         user = await self._require_user_by_telegram_id(telegram_id)
         orders = await self._list_orders(user.id)
         return await self._build_subscription_summary(user.id, orders=orders)
+
+    async def list_subscriptions_traffic(
+        self,
+        *,
+        telegram_ids: list[int],
+    ) -> BotSubscriptionTrafficListOut:
+        rows = await self.subscription_repository.traffic_check_by_telegram_ids(telegram_ids)
+        by_tid: dict[int, BotSubscriptionTrafficItem] = {
+            tid: BotSubscriptionTrafficItem(
+                telegram_id=tid,
+                subscription_id=sub_id,
+                traffic_limit_bytes=lim,
+                used_traffic_bytes=used,
+                traffic_warning_threshold_pct=warned,
+            )
+            for (tid, sub_id, lim, used, warned) in rows
+        }
+        items = [
+            by_tid.get(tid, BotSubscriptionTrafficItem(telegram_id=tid))
+            for tid in telegram_ids
+        ]
+        return BotSubscriptionTrafficListOut(items=items)
 
     async def mark_traffic_warning(
         self,

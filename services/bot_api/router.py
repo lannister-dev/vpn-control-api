@@ -22,6 +22,8 @@ from .schemas import (
     BotStarsConfirmIn,
     BotSubscriptionLinkOut,
     BotSubscriptionSummaryOut,
+    BotSubscriptionTrafficIn,
+    BotSubscriptionTrafficListOut,
     BotTopUpCreateIn,
     BotTrafficWarningMarkIn,
 )
@@ -281,6 +283,18 @@ async def bot_get_subscription_summary(
     service: BotApiService = Depends(get_bot_api_service),
 ):
     return await service.get_subscription_summary(telegram_id=telegram_id)
+
+
+@router.post(
+    "/subscriptions/traffic-check",
+    response_model=BotSubscriptionTrafficListOut,
+    summary="Batch traffic-check for many telegram_ids in one query (no ORM hydration)",
+)
+async def bot_subscriptions_traffic_check(
+    payload: BotSubscriptionTrafficIn,
+    service: BotApiService = Depends(get_bot_api_service),
+):
+    return await service.list_subscriptions_traffic(telegram_ids=payload.telegram_ids)
 
 
 @router.post(
