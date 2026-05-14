@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from services.nodes.constants import ROLE_ENTRY, ROLE_WHITELIST_ENTRY
+from services.nodes.constants import ROLE_BACKEND, ROLE_ENTRY, ROLE_WHITELIST_ENTRY
 from services.nodes.models import NodeAgentIdentity, NodeAgentState, VpnNode
 from shared.database.base_repository import BaseRepository
 
@@ -102,6 +102,46 @@ class VpnNodeRepository(BaseRepository[VpnNode]):
             )
             grouped.setdefault(zone, []).append(node)
         return grouped
+
+    async def list_entries_with_dead_upstream(self) -> list[VpnNode]:
+        """Entry/whitelist nodes pointing at an upstream that's disabled or draining."""
+        upstream_alias = VpnNode.__table__.alias("upstream_node")
+        stmt = (
+            select(self.model)
+            .join(
+                upstream_alias,
+                upstream_alias.c.id == self.model.upstream_node_id,
+            )
+            .where(
+                self.model.role.in_((ROLE_ENTRY, ROLE_WHITELIST_ENTRY)),
+                self.model.is_active.is_(True),
+                self.model.is_enabled.is_(True),
+                self.model.upstream_node_id.isnot(None),
+                or_(
+                    upstream_alias.c.is_enabled.is_(False),
+                    upstream_alias.c.is_draining.is_(True),
+                    upstream_alias.c.is_active.is_(False),
+                ),
+            )
+            .order_by(self.model.name.asc())
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def list_live_backends(self) -> list[VpnNode]:
+        """Backends fit to be picked as upstream: enabled, not draining, active."""
+        stmt = (
+            select(self.model)
+            .where(
+                self.model.role == ROLE_BACKEND,
+                self.model.is_active.is_(True),
+                self.model.is_enabled.is_(True),
+                self.model.is_draining.is_(False),
+            )
+            .order_by(self.model.name.asc())
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
 
     async def list_active_with_agent_state(self) -> list[tuple[VpnNode, NodeAgentState | None]]:
         stmt = (

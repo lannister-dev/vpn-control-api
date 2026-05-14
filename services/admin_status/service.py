@@ -48,6 +48,8 @@ class AdminStatusService:
         nodes_draining = 0
         nodes_healthy = 0
 
+        node_name_by_id = {node.id: node.name for node, _ in node_rows}
+
         for node, agent_state in node_rows:
             healthy = self._is_recent_healthy(agent_state, now=now)
             routing_reason = self._routing_reason(node=node, agent_state=agent_state, now=now)
@@ -76,6 +78,7 @@ class AdminStatusService:
                     public_domain=node.public_domain,
                     reality_ip=reality_ip,
                     upstream_node_id=upstream_node_id,
+                    upstream_name=node_name_by_id.get(upstream_node_id) if upstream_node_id else None,
                     is_enabled=node.is_enabled,
                     is_draining=node.is_draining,
                     drain_reason=drain_reason if node.is_draining else None,
