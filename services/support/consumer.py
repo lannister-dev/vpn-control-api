@@ -85,7 +85,11 @@ class SupportInboundConsumer:
                 await msg.ack()
                 return
 
-            svc = SupportService(session, nats_client=self._nats)
+            svc = SupportService(
+                session,
+                nats_client=self._nats,
+                outbound_subject=self._config.support_outbound_subject,
+            )
             attachments_payload = [
                 {
                     "kind": a.kind,

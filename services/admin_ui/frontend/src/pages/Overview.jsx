@@ -415,8 +415,10 @@ export function OverviewPage({ onOpenNode, onGoto }) {
           />
           {(() => {
             const ps = probeStatsApi.data;
-            const latDiff = ps?.avg_latency_ms != null && ps?.avg_latency_ms_24h_ago != null
+            const latDiff24h = ps?.avg_latency_ms != null && ps?.avg_latency_ms_24h_ago != null
               ? ps.avg_latency_ms - ps.avg_latency_ms_24h_ago : null;
+            const latDiff = latDiff24h ?? probeStats.latencyDelta;
+            const sub = latDiff24h != null ? "vs вчера" : latDiff != null ? "за час" : null;
             return (
               <KpiCell
                 label="Средняя latency"
@@ -427,7 +429,7 @@ export function OverviewPage({ onOpenNode, onGoto }) {
                     ? `${latDiff > 0 ? "+" : ""}${Math.round(latDiff)} ms`
                     : null
                 }
-                deltaSub={latDiff != null ? "vs вчера" : null}
+                deltaSub={sub}
                 deltaTone={
                   latDiff == null
                     ? ""
@@ -443,9 +445,11 @@ export function OverviewPage({ onOpenNode, onGoto }) {
           })()}
           {(() => {
             const ps = probeStatsApi.data;
-            const sDiff = ps?.success_rate != null && ps?.success_rate_24h_ago != null
+            const sDiff24h = ps?.success_rate != null && ps?.success_rate_24h_ago != null
               ? ps.success_rate - ps.success_rate_24h_ago : null;
+            const sDiff = sDiff24h ?? probeStats.successDelta;
             const rate = ps?.success_rate ?? probeStats.successRate;
+            const sub = sDiff24h != null ? "vs вчера" : sDiff != null ? "за час" : null;
             return (
               <KpiCell
                 label="Probe success"
@@ -456,7 +460,7 @@ export function OverviewPage({ onOpenNode, onGoto }) {
                     ? `${sDiff > 0 ? "+" : ""}${sDiff.toFixed(1)}%`
                     : null
                 }
-                deltaSub={sDiff != null ? "vs вчера" : null}
+                deltaSub={sub}
                 deltaTone={
                   sDiff == null
                     ? ""
