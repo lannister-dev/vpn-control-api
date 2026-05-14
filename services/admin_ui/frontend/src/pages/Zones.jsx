@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client.js";
 import { useQuery } from "../hooks/useQuery.js";
 import { Modal } from "../components/Modal.jsx";
@@ -27,6 +27,58 @@ export function ZonesPage() {
     (a, b) => (a.sort_order - b.sort_order) || a.code.localeCompare(b.code),
   );
 
+  // ── Drag-and-drop ordering ─────────────────────────────────
+  const [reordering, setReordering] = useState(false);
+  const [draft, setDraft] = useState(null);       // local override during DnD
+  const [dragIdx, setDragIdx] = useState(null);
+  const [overIdx, setOverIdx] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  const view = reordering && draft ? draft : items;
+
+  useEffect(() => {
+    if (reordering && !draft) setDraft(items);
+  }, [reordering, items, draft]);
+
+  const onDragStart = (idx) => (e) => {
+    setDragIdx(idx);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", String(idx));
+  };
+  const onDragOver = (idx) => (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (overIdx !== idx) setOverIdx(idx);
+  };
+  const onDrop = (idx) => (e) => {
+    e.preventDefault();
+    if (dragIdx === null || dragIdx === idx) {
+      setDragIdx(null); setOverIdx(null);
+      return;
+    }
+    const next = (draft || items).slice();
+    const [moved] = next.splice(dragIdx, 1);
+    next.splice(idx, 0, moved);
+    setDraft(next);
+    setDragIdx(null); setOverIdx(null);
+  };
+  const onDragEnd = () => { setDragIdx(null); setOverIdx(null); };
+
+  const cancelReorder = () => { setReordering(false); setDraft(null); };
+  const saveReorder = async () => {
+    if (!draft) { setReordering(false); return; }
+    setSaving(true);
+    try {
+      await api.post("/zones/reorder", { codes: draft.map((z) => z.code) });
+      toast.ok("Порядок зон сохранён");
+      setReordering(false); setDraft(null);
+      refetch();
+    } catch (e) {
+      toast.bad(e?.message || "Не удалось сохранить порядок");
+    }
+    finally { setSaving(false); }
+  };
+
   return (
     <div className="page">
       <div className="page-head">
@@ -35,9 +87,25 @@ export function ZonesPage() {
           <div className="page-subtitle">Регионы для отображения entry-нод в Happ (код + эмодзи + название)</div>
         </div>
         <div className="page-head-actions">
-          <button className="btn btn-primary" onClick={() => setCreating(true)}>
-            <Icon name="plus" size={13} /> Создать зону
-          </button>
+          {reordering ? (
+            <>
+              <button className="btn btn-ghost" onClick={cancelReorder} disabled={saving}>
+                Отмена
+              </button>
+              <button className="btn btn-primary" onClick={saveReorder} disabled={saving}>
+                <Icon name="check" size={13} /> Сохранить порядок
+              </button>
+            </>
+          ) : (
+            <>
+              <button className="btn" onClick={() => setReordering(true)} disabled={items.length < 2}>
+                <Icon name="menu" size={13} /> Изменить порядок
+              </button>
+              <button className="btn btn-primary" onClick={() => setCreating(true)}>
+                <Icon name="plus" size={13} /> Создать зону
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -47,6 +115,7 @@ export function ZonesPage() {
         <table className="tbl">
           <thead>
             <tr>
+              {reordering && <th style={{ width: 28 }}></th>}
               <th>Код</th>
               <th>Эмодзи</th>
               <th>Название</th>
@@ -57,15 +126,35 @@ export function ZonesPage() {
             </tr>
           </thead>
           <tbody>
-            {(loading && !items.length) && <SkeletonRows count={3} cols={7} />}
-            {items.map((z) => {
+            {(loading && !items.length) && <SkeletonRows count={3} cols={reordering ? 8 : 7} />}
+            {view.map((z, idx) => {
               const fb = z.fallback_entry_node_id ? nodeById[z.fallback_entry_node_id] : null;
+              const isDragging = reordering && dragIdx === idx;
+              const isOver = reordering && overIdx === idx && dragIdx !== idx;
               return (
-                <tr key={z.id}>
+                <tr
+                  key={z.id}
+                  draggable={reordering}
+                  onDragStart={reordering ? onDragStart(idx) : undefined}
+                  onDragOver={reordering ? onDragOver(idx) : undefined}
+                  onDrop={reordering ? onDrop(idx) : undefined}
+                  onDragEnd={reordering ? onDragEnd : undefined}
+                  style={{
+                    cursor: reordering ? "grab" : undefined,
+                    opacity: isDragging ? 0.4 : 1,
+                    boxShadow: isOver ? "inset 0 2px 0 var(--accent)" : undefined,
+                    background: isOver ? "var(--accent-soft)" : undefined,
+                  }}
+                >
+                  {reordering && (
+                    <td style={{ color: "var(--text-muted)", cursor: "grab", textAlign: "center" }}>
+                      <Icon name="menu" size={14} />
+                    </td>
+                  )}
                   <td className="mono">{z.code}</td>
                   <td style={{ fontSize: 20 }}>{z.emoji || "—"}</td>
                   <td style={{ fontWeight: 500 }}>{z.name}</td>
-                  <td className="tbl-num mono">{z.sort_order}</td>
+                  <td className="tbl-num mono">{reordering ? (idx + 1) * 10 : z.sort_order}</td>
                   <td>{z.is_active ? <span className="pill ok">active</span> : <span className="pill">inactive</span>}</td>
                   <td>
                     {fb
@@ -74,7 +163,9 @@ export function ZonesPage() {
                         ? <span className="mono small muted">{String(z.fallback_entry_node_id).slice(0, 8)}…</span>
                         : <span className="muted">—</span>}
                   </td>
-                  <td className="row-actions"><button className="row-btn" onClick={() => setEditing(z)}>Edit</button></td>
+                  <td className="row-actions">
+                    {!reordering && <button className="row-btn" onClick={() => setEditing(z)}>Edit</button>}
+                  </td>
                 </tr>
               );
             })}

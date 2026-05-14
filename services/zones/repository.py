@@ -1,4 +1,4 @@
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.zones.models import Zone
@@ -18,6 +18,23 @@ class ZoneRepository(BaseRepository[Zone]):
             return []
         result = await self.session.execute(select(Zone).where(Zone.code.in_(codes)))
         return list(result.scalars().all())
+
+    async def reorder_by_codes(self, codes: list[str]) -> int:
+        """Set sort_order = (index + 1) * 10 for each code in order; returns rows affected."""
+        if not codes:
+            return 0
+        # Build CASE WHEN code='europe' THEN 10 WHEN code='asia' THEN 20 ... ELSE sort_order END
+        whens = {code: (i + 1) * 10 for i, code in enumerate(codes)}
+        stmt = (
+            update(Zone)
+            .where(Zone.code.in_(list(whens.keys())))
+            .values(sort_order=case(whens, value=Zone.code, else_=Zone.sort_order))
+        )
+        result = await self.session.execute(stmt)
+        rowcount = result.rowcount
+        if callable(rowcount):
+            rowcount = rowcount()
+        return int(rowcount or 0)
 
     async def list_all(self, active_only: bool = False) -> tuple[list[Zone], int]:
         stmt = select(Zone)
