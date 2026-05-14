@@ -298,19 +298,32 @@ export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
           })}
         </div>
 
-        {/* Composer */}
-        <Composer
-          templates={templates}
-          user={{
-            username: user.username,
-            telegram_id: user.telegram_id,
-            plan_name: user.plan_name,
-            days_left: daysLeft(user.expires_at),
-            balance: user.balance,
-          }}
-          onSend={sendMessage}
-          onAddNote={sendMessage}
-        />
+        {/* Composer (hidden when closed; reopen brings it back) */}
+        {live.status !== "closed" ? (
+          <Composer
+            templates={templates}
+            user={{
+              username: user.username,
+              telegram_id: user.telegram_id,
+              plan_name: user.plan_name,
+              days_left: daysLeft(user.expires_at),
+              balance: user.balance,
+            }}
+            onSend={sendMessage}
+            onAddNote={sendMessage}
+          />
+        ) : (
+          <div className="tk-closed-banner">
+            <Icon name="lock" size={13} />
+            <span>Тикет закрыт. Чтобы продолжить — переоткройте его.</span>
+            <button
+              className="btn btn-sm"
+              onClick={() => updateTicket({ status: "in_progress" })}
+            >
+              <Icon name="rotate-cw" size={12} /> Переоткрыть
+            </button>
+          </div>
+        )}
       </Drawer>
 
       {openUser && <UserDrawer user={openUser} onClose={() => setOpenUser(null)} />}

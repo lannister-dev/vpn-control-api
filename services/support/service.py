@@ -238,7 +238,7 @@ class SupportService:
         if just_closed:
             sys_msg = await self._add_system_message(ticket_id, TICKET_CLOSED_SYSTEM, actor_admin_id)
             await self.session.commit()
-            await self._publish_outbound(ticket, sys_msg, text=TICKET_CLOSED_USER_NOTIFY)
+            await self._publish_outbound(ticket, sys_msg, text=TICKET_CLOSED_USER_NOTIFY, kind="close")
         return await self.get_ticket(ticket_id)
 
     async def bulk_update(self, data: TicketBulkUpdateIn, *, actor_admin_id: UUID | None = None) -> int:
@@ -611,6 +611,7 @@ class SupportService:
                 telegram_id=tg_id,
                 text=text,
                 media=[],
+                kind="broadcast",
             )
             async with sem:
                 try:
@@ -638,7 +639,14 @@ class SupportService:
             audience, plan_id=plan_id, now=datetime.now(timezone.utc)
         )
 
-    async def _publish_outbound(self, ticket: SupportTicket, msg: SupportMessage, *, text: str) -> None:
+    async def _publish_outbound(
+        self,
+        ticket: SupportTicket,
+        msg: SupportMessage,
+        *,
+        text: str,
+        kind: str = "reply",
+    ) -> None:
         if self._nats is None:
             return
 
@@ -651,6 +659,7 @@ class SupportService:
             telegram_id=user.telegram_id,
             text=text or "",
             media=[],
+            kind=kind,
         )
         try:
             await self._nats.publish_jetstream(
