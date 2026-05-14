@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "./Icon.jsx";
 import { nodeGeo } from "../lib/geo.js";
+import { nodeLoad } from "../lib/nodeLoad.js";
 
 function edgeStatusClass(s) {
   if (s === "healthy") return "active";
@@ -225,7 +226,14 @@ export function Topology({ routes = [], nodes = [], probes = [], userCountByBack
                   )}
                 </div>
                 <div className="topo-v2-node-meta">
-                  <span className="mono">{Math.min(100, Math.round(((n.placements_backend || 0) / Math.max(n.capacity || 50, 1)) * 100))}%</span>
+                  {(() => {
+                    const ld = nodeLoad(n);
+                    return (
+                      <span className="mono" title={ld.tooltip} style={{ color: `var(--${ld.tone})` }}>
+                        {ld.pct != null ? `${ld.pct}%` : ld.label}
+                      </span>
+                    );
+                  })()}
                   <span className="topo-v2-node-routes">
                     {stats.total} <Icon name="route" size={10} />
                     {stats.problems > 0 && <span className="topo-v2-node-prob">{stats.problems}</span>}
@@ -276,7 +284,14 @@ export function Topology({ routes = [], nodes = [], probes = [], userCountByBack
                   </span>
                 </div>
                 <div className="topo-v2-node-meta">
-                  <span className="mono">{Math.min(100, Math.round(((n.placements_backend || 0) / Math.max(n.capacity || 50, 1)) * 100))}%</span>
+                  {(() => {
+                    const ld = nodeLoad(n);
+                    return (
+                      <span className="mono" title={ld.tooltip} style={{ color: `var(--${ld.tone})` }}>
+                        {ld.pct != null ? `${ld.pct}%` : ld.label}
+                      </span>
+                    );
+                  })()}
                   <span className="topo-v2-node-routes">
                     {stats.total} <Icon name="route" size={10} />
                     {stats.problems > 0 && <span className="topo-v2-node-prob">{stats.problems}</span>}
