@@ -74,14 +74,16 @@ export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
 
   const sendMessage = async (payload) => {
     const text = (payload?.text || "").trim();
-    if (!text) {
-      toast.bad("Сообщение не может быть пустым");
+    const filesArr = Array.isArray(payload?.files) ? payload.files : [];
+    if (!text && filesArr.length === 0) {
+      toast.bad("Сообщение пусто");
       return;
     }
     try {
       const fd = new FormData();
       fd.append("text", text);
       if (payload.is_note) fd.append("is_note", "true");
+      for (const f of filesArr) fd.append("files", f, f.name);
       await api.raw(`/support/tickets/${ticket.id}/messages`, {
         method: "POST",
         headers: {},

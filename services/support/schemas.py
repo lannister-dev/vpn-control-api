@@ -281,6 +281,7 @@ class SupportInboundMessage(BaseModel):
 class SupportOutboundAttachmentMsg(BaseModel):
     kind: str
     tg_file_id: str | None = None
+    url: str | None = None
     file_name: str | None = None
 
 

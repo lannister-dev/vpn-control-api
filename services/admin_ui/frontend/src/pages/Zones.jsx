@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../api/client.js";
 import { useQuery } from "../hooks/useQuery.js";
 import { Modal } from "../components/Modal.jsx";
@@ -9,19 +9,8 @@ import { Empty, SkeletonRows } from "../components/Empty.jsx";
 
 export function ZonesPage() {
   const { data, loading, error, refetch } = useQuery(() => api.get("/zones"), { interval: 30000 });
-  const status = useQuery(() => api.get("/admin/status").catch(() => null), { interval: 60000 });
   const [editing, setEditing] = useState(null);
   const [creating, setCreating] = useState(false);
-
-  const allNodes = status.data?.nodes || [];
-  const whitelistEntries = useMemo(
-    () => allNodes.filter((n) => n.role === "whitelist_entry"),
-    [allNodes],
-  );
-  const nodeById = useMemo(
-    () => Object.fromEntries(allNodes.map((n) => [n.id, n])),
-    [allNodes],
-  );
 
   const items = (data?.items || []).slice().sort(
     (a, b) => (a.sort_order - b.sort_order) || a.code.localeCompare(b.code),
@@ -121,14 +110,12 @@ export function ZonesPage() {
               <th>Название</th>
               <th style={{ textAlign: "right" }}>Sort</th>
               <th>Статус</th>
-              <th>Fallback entry</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            {(loading && !items.length) && <SkeletonRows count={3} cols={reordering ? 8 : 7} />}
+            {(loading && !items.length) && <SkeletonRows count={3} cols={reordering ? 7 : 6} />}
             {view.map((z, idx) => {
-              const fb = z.fallback_entry_node_id ? nodeById[z.fallback_entry_node_id] : null;
               const isDragging = reordering && dragIdx === idx;
               const isOver = reordering && overIdx === idx && dragIdx !== idx;
               return (
@@ -156,13 +143,6 @@ export function ZonesPage() {
                   <td style={{ fontWeight: 500 }}>{z.name}</td>
                   <td className="tbl-num mono">{reordering ? (idx + 1) * 10 : z.sort_order}</td>
                   <td>{z.is_active ? <span className="pill ok">active</span> : <span className="pill">inactive</span>}</td>
-                  <td>
-                    {fb
-                      ? <span className="pill accent">{fb.name}</span>
-                      : z.fallback_entry_node_id
-                        ? <span className="mono small muted">{String(z.fallback_entry_node_id).slice(0, 8)}…</span>
-                        : <span className="muted">—</span>}
-                  </td>
                   <td className="row-actions">
                     {!reordering && <button className="row-btn" onClick={() => setEditing(z)}>Edit</button>}
                   </td>
@@ -174,20 +154,19 @@ export function ZonesPage() {
         {(!loading && !items.length) && <Empty icon="globe" title="Зон нет" hint="Создайте первую зону, чтобы привязывать к ней entry-ноды." />}
       </div>
 
-      {creating && <ZoneForm whitelistEntries={whitelistEntries} onClose={() => { setCreating(false); refetch(); }} />}
-      {editing && <ZoneForm zone={editing} whitelistEntries={whitelistEntries} onClose={() => { setEditing(null); refetch(); }} />}
+      {creating && <ZoneForm onClose={() => { setCreating(false); refetch(); }} />}
+      {editing && <ZoneForm zone={editing} onClose={() => { setEditing(null); refetch(); }} />}
     </div>
   );
 }
 
-function ZoneForm({ zone, whitelistEntries = [], onClose }) {
+function ZoneForm({ zone, onClose }) {
   const isEdit = !!zone;
   const [code, setCode] = useState(zone?.code || "");
   const [name, setName] = useState(zone?.name || "");
   const [emoji, setEmoji] = useState(zone?.emoji || "");
   const [sortOrder, setSortOrder] = useState(zone?.sort_order ?? 0);
   const [isActive, setIsActive] = useState(zone ? zone.is_active : true);
-  const [fallbackEntryId, setFallbackEntryId] = useState(zone?.fallback_entry_node_id || "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
@@ -198,7 +177,6 @@ function ZoneForm({ zone, whitelistEntries = [], onClose }) {
         name: name.trim(),
         emoji: emoji.trim(),
         sort_order: Number(sortOrder) || 0,
-        fallback_entry_node_id: fallbackEntryId || null,
       };
       if (isEdit) {
         payload.is_active = isActive;
@@ -245,19 +223,6 @@ function ZoneForm({ zone, whitelistEntries = [], onClose }) {
       </Field>
       <Field label="Порядок сортировки">
         <input type="number" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} />
-      </Field>
-      <Field
-        label="Fallback entry-нода"
-        hint="когда основной entry не пингуется — клиент перейдёт сюда (whitelist)"
-      >
-        <select value={fallbackEntryId || ""} onChange={(e) => setFallbackEntryId(e.target.value)}>
-          <option value="">— нет (без fallback) —</option>
-          {whitelistEntries.map((n) => (
-            <option key={n.id} value={n.id}>
-              {n.name} ({n.region || "?"})
-            </option>
-          ))}
-        </select>
       </Field>
       {isEdit && (
         <label className="form-check">

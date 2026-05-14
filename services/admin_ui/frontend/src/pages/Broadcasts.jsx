@@ -11,6 +11,7 @@ import { Empty, SkeletonRows } from "../components/Empty.jsx";
 import { toast } from "../components/Toast.jsx";
 import { FilterChip } from "../components/users/FilterChip.jsx";
 import { relTime } from "../components/support/SupportPrimitives.jsx";
+import { TextEditor, htmlForTelegram } from "../components/TextEditor.jsx";
 import "../components/support/support.css";
 
 const AUDIENCE_PRESETS = [
@@ -103,7 +104,7 @@ function BroadcastComposer() {
       const fd = new FormData();
       fd.append("audience", audience);
       if (audience === "by_plan" && planId) fd.append("plan_id", planId);
-      fd.append("text", text);
+      fd.append("text", htmlForTelegram(text));
       fd.append("buttons", JSON.stringify(buttons.filter((b) => b.text && b.url)));
       if (file) fd.append("media", file);
       fd.append("status", isDraft ? "draft" : (schedule === "now" ? "sending" : "scheduled"));
@@ -157,14 +158,13 @@ function BroadcastComposer() {
         <section className="card br-section">
           <div className="br-section-head">
             <Icon name="message-square" size={14} /> Текст сообщения
-            <span className="muted small">MarkdownV2 · {text.length} симв.</span>
+            <span className="muted small">HTML · {text.replace(/<[^>]+>/g, "").length} симв.</span>
           </div>
-          <textarea
-            className="br-textarea"
-            rows={10}
-            placeholder="Привет, {user_name}! Мы добавили новые регионы для тарифа Pro: …"
+          <TextEditor
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={setText}
+            placeholder="Привет, {user_name}! Мы добавили новые регионы для тарифа Pro: …"
+            minHeight={160}
           />
         </section>
 
