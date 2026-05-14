@@ -8,6 +8,7 @@ import { Modal } from "../components/Modal.jsx";
 import { Field } from "../components/Field.jsx";
 import { toast } from "../components/Toast.jsx";
 import { nodeGeo, zoneFlag } from "../lib/geo.js";
+import { nodeLoad } from "../lib/nodeLoad.js";
 
 function spark(seed, len = 20, base = 50, vol = 30) {
   let x = seed || 7;
@@ -51,10 +52,6 @@ const DRAIN_REASON_LABELS = {
 function drainReasonLabel(reason) {
   if (!reason) return "";
   return DRAIN_REASON_LABELS[reason] || reason;
-}
-
-function loadOf(n) {
-  return Math.min(1, (n.placements_backend || 0) / Math.max(n.capacity || 50, 1));
 }
 
 export function NodesPage({ onOpenNode, initialAction, onActionConsumed }) {
@@ -150,7 +147,7 @@ export function NodesPage({ onOpenNode, initialAction, onActionConsumed }) {
             {list.map((n) => {
               const h = healthOf(n);
               const st = stateOf(n);
-              const load = loadOf(n);
+              const load = nodeLoad(n);
               const seed = parseInt(String(n.id).replace(/-/g, "").slice(0, 6), 16) || 7;
               const flag = zoneFlag(zoneByCode, n.zone, n.region);
               const geo = nodeGeo(n.region);
@@ -181,8 +178,8 @@ export function NodesPage({ onOpenNode, initialAction, onActionConsumed }) {
                       </div>
                     )}
                   </td>
-                  <td><LoadBar v={load} /></td>
-                  <td className="tbl-num">{n.capacity ?? "—"}</td>
+                  <td><LoadBar load={load} /></td>
+                  <td className="tbl-num">{n.capacity ?? <span className="muted">—</span>}</td>
                   <td className="tbl-num">{n.placements_backend ?? 0}</td>
                   <td className="mono" style={{ color: hbBad ? "var(--bad)" : "var(--text-secondary)" }}>{hb}</td>
                   <td><Spark data={spark(seed, 20, 50, 30)} color="var(--accent)" w={90} h={22} /></td>
@@ -322,15 +319,17 @@ function CreateNodeModal({ zones, onClose }) {
   );
 }
 
-function LoadBar({ v }) {
-  const pct = Math.round(v * 100);
-  const tone = pct > 80 ? "bad" : pct > 65 ? "warn" : "ok";
+function LoadBar({ load }) {
+  const { pct, tone, label, tooltip } = load;
+  const barWidth = pct == null ? 0 : Math.min(100, pct);
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+    <div title={tooltip} style={{ display: "flex", alignItems: "center", gap: 8 }}>
       <div style={{ flex: 1, height: 6, background: "var(--surface-2)", borderRadius: 4, overflow: "hidden", maxWidth: 140 }}>
-        <div style={{ width: `${pct}%`, height: "100%", background: `var(--${tone})` }} />
+        <div style={{ width: `${barWidth}%`, height: "100%", background: `var(--${tone})` }} />
       </div>
-      <span className="mono" style={{ color: `var(--${tone})`, fontWeight: 500 }}>{pct}%</span>
+      <span className="mono" style={{ color: `var(--${tone})`, fontWeight: 500, whiteSpace: "nowrap" }}>
+        {label}{pct != null ? ` · ${pct}%` : ""}
+      </span>
     </div>
   );
 }

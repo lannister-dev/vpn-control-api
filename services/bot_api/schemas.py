@@ -259,6 +259,9 @@ class BotDeviceOut(BaseModel):
     display_name: str
     hwid_hash: str
     user_agent: str | None = None
+    device_model: str | None = None
+    platform: str | None = None
+    os_version: str | None = None
     last_seen_at: datetime | None = None
     is_active: bool
     created_at: datetime

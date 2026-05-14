@@ -5,6 +5,7 @@ import { Field } from "../components/Field.jsx";
 import { Icon } from "../components/Icon.jsx";
 import { toast } from "../components/Toast.jsx";
 import { nodeGeo } from "../lib/geo.js";
+import { nodeLoad } from "../lib/nodeLoad.js";
 
 const ACTION_META = {
   set_healthy:   { label: "Вернуть healthy",  icon: "check",            tone: "ok"   },
@@ -132,7 +133,10 @@ function MigrateForm({ backends, onDone }) {
 
   const sourceNode = backends.find((n) => n.id === source);
   const targetNode = target ? backends.find((n) => n.id === target) : null;
-  const capacityUsagePct = (n) => Math.min(100, Math.round(((n?.placements_backend || 0) / Math.max(n?.capacity || 50, 1)) * 100));
+  const usageLabel = (n) => {
+    const ld = nodeLoad(n);
+    return ld.pct != null ? `${ld.pct}%` : "—";
+  };
 
   const go = async () => {
     setBusy(true); setErr(""); setResult(null);
@@ -163,24 +167,31 @@ function MigrateForm({ backends, onDone }) {
             {backends.map((n) => <option key={n.id} value={n.id}>{n.name} · {n.region}</option>)}
           </select>
         </Field>
-        {sourceNode && (
-          <div className="muted small" style={{ marginTop: -8, marginBottom: 12 }}>
-            <Icon name="info" size={11} /> {sourceNode.placements_backend || 0} активных · {capacityUsagePct(sourceNode)}% capacity · {sourceNode.is_draining ? "draining" : "active"}
-          </div>
-        )}
+        {sourceNode && (() => {
+          const ld = nodeLoad(sourceNode);
+          return (
+            <div className="muted small" style={{ marginTop: -8, marginBottom: 12 }} title={ld.tooltip}>
+              <Icon name="info" size={11} /> {ld.used} активных · {ld.pct != null ? `${ld.pct}% capacity` : "capacity не задан"} · {sourceNode.is_draining ? "draining" : "active"}
+            </div>
+          );
+        })()}
         <Field label="Целевая нода" hint="пусто = автоматический выбор">
           <select value={target} onChange={(e) => setTarget(e.target.value)}>
             <option value="">Авто</option>
             {backends.filter((n) => n.id !== source && n.is_enabled && !n.is_draining).map((n) => (
-              <option key={n.id} value={n.id}>{n.name} · {n.region} · {capacityUsagePct(n)}%</option>
+              <option key={n.id} value={n.id}>{n.name} · {n.region} · {usageLabel(n)}</option>
             ))}
           </select>
         </Field>
-        {targetNode && (
-          <div className="muted small" style={{ marginTop: -8, marginBottom: 12 }}>
-            <Icon name="info" size={11} /> Текущая загрузка: {capacityUsagePct(targetNode)}% · свободно capacity: {(targetNode.capacity || 0) - (targetNode.placements_backend || 0)}
-          </div>
-        )}
+        {targetNode && (() => {
+          const ld = nodeLoad(targetNode);
+          const free = ld.capacity != null ? ld.capacity - ld.used : null;
+          return (
+            <div className="muted small" style={{ marginTop: -8, marginBottom: 12 }} title={ld.tooltip}>
+              <Icon name="info" size={11} /> Текущая загрузка: {ld.pct != null ? `${ld.pct}%` : "—"} · свободно capacity: {free ?? "—"}
+            </div>
+          );
+        })()}
         <Field label="Причина" hint="метка для логов">
           <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} />
         </Field>

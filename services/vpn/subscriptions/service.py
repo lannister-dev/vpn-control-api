@@ -207,7 +207,7 @@ class SubscriptionService:
         return self._sub_to_out(sub)
 
     @staticmethod
-    def _sub_to_out(sub) -> SubscriptionOut:
+    def _sub_to_out(sub, *, device_count: int | None = None) -> SubscriptionOut:
         plan = getattr(sub, "plan", None)
         return SubscriptionOut(
             id=sub.id,
@@ -225,6 +225,7 @@ class SubscriptionService:
             used_traffic_bytes=getattr(sub, "used_traffic_bytes", 0),
             lifetime_used_traffic_bytes=getattr(sub, "lifetime_used_traffic_bytes", 0),
             last_traffic_reset_at=getattr(sub, "last_traffic_reset_at", None),
+            device_count=device_count,
             created_at=sub.created_at,
             updated_at=sub.updated_at,
         )
@@ -253,7 +254,10 @@ class SubscriptionService:
             user_id=user_id,
             active_only=active_only,
         )
-        return [self._sub_to_out(row) for row in rows]
+        counts = await self.device_repository.count_active_by_subscription_ids(
+            [row.id for row in rows]
+        )
+        return [self._sub_to_out(row, device_count=counts.get(row.id, 0)) for row in rows]
 
     async def get_stats(self) -> tuple[int, int, int]:
         return await self.subscription_repository.count_stats()
@@ -419,6 +423,9 @@ class SubscriptionService:
                     hwid_hash=device.hwid_hash,
                     last_seen_at=device.last_seen_at,
                     user_agent=device.user_agent,
+                    device_model=getattr(device, "device_model", None),
+                    platform=getattr(device, "platform", None),
+                    os_version=getattr(device, "os_version", None),
                     is_active=device.is_active,
                     created_at=device.created_at,
                     updated_at=device.updated_at,
@@ -475,6 +482,9 @@ class SubscriptionService:
             *,
             hwid: str | None = None,
             user_agent: str | None = None,
+            device_model: str | None = None,
+            platform: str | None = None,
+            os_version: str | None = None,
             if_none_match: str | None = None,
     ) -> tuple[str, str, bool, SubscriptionUserInfo | None]:
         t0 = time.perf_counter()
@@ -525,6 +535,9 @@ class SubscriptionService:
                 subscription=subscription,
                 hwid=hwid,
                 user_agent=user_agent,
+                device_model=device_model,
+                platform=platform,
+                os_version=os_version,
                 now=now,
             )
 
@@ -1871,6 +1884,9 @@ class SubscriptionService:
             subscription,
             hwid: str | None,
             user_agent: str | None,
+            device_model: str | None = None,
+            platform: str | None = None,
+            os_version: str | None = None,
             now: datetime,
     ) -> ResolvedDeviceBundle:
         if not hwid:
@@ -1886,6 +1902,9 @@ class SubscriptionService:
                 device_id=device.id,
                 last_seen_at=now,
                 user_agent=user_agent,
+                device_model=device_model,
+                platform=platform,
+                os_version=os_version,
             )
             return await self._ensure_device_key_bundle(
                 subscription=subscription,
@@ -1903,6 +1922,9 @@ class SubscriptionService:
                 device_id=device.id,
                 last_seen_at=now,
                 user_agent=user_agent,
+                device_model=device_model,
+                platform=platform,
+                os_version=os_version,
             )
             return await self._ensure_device_key_bundle(
                 subscription=subscription,
@@ -1943,6 +1965,9 @@ class SubscriptionService:
                     hwid_hash=hwid_hash,
                     last_seen_at=now,
                     user_agent=user_agent,
+                    device_model=device_model,
+                    platform=platform,
+                    os_version=os_version,
                 ).model_dump()
             )
         except IntegrityError:

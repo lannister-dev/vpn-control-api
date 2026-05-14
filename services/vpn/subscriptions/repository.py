@@ -307,6 +307,26 @@ class SubscriptionDeviceRepository(BaseRepository[SubscriptionDevice]):
         )
         return int(res.scalar_one())
 
+    async def count_active_by_subscription_ids(
+            self, subscription_ids: list[UUID],
+    ) -> dict[UUID, int]:
+        if not subscription_ids:
+            return {}
+        ids = list(dict.fromkeys(subscription_ids))
+        stmt = (
+            select(self.model.subscription_id, func.count(self.model.id))
+            .where(
+                self.model.subscription_id.in_(ids),
+                self.model.is_active.is_(True),
+            )
+            .group_by(self.model.subscription_id)
+        )
+        res = await self.session.execute(stmt)
+        counts = {row[0]: int(row[1]) for row in res.all()}
+        for sub_id in ids:
+            counts.setdefault(sub_id, 0)
+        return counts
+
     async def list_by_subscription(
             self,
             subscription_id: UUID,
@@ -365,11 +385,21 @@ class SubscriptionDeviceRepository(BaseRepository[SubscriptionDevice]):
             device_id: UUID,
             last_seen_at,
             user_agent: str | None,
+            device_model: str | None = None,
+            platform: str | None = None,
+            os_version: str | None = None,
     ) -> None:
+        values = {"last_seen_at": last_seen_at, "user_agent": user_agent}
+        if device_model is not None:
+            values["device_model"] = device_model
+        if platform is not None:
+            values["platform"] = platform
+        if os_version is not None:
+            values["os_version"] = os_version
         await self.session.execute(
             update(self.model)
             .where(self.model.id == device_id)
-            .values(last_seen_at=last_seen_at, user_agent=user_agent)
+            .values(**values)
         )
 
 
