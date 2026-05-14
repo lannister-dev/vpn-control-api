@@ -104,12 +104,14 @@ function BroadcastComposer() {
       fd.append("status", isDraft ? "draft" : (schedule === "now" ? "sending" : "scheduled"));
       if (schedule === "schedule" && scheduledAt) fd.append("scheduled_at", new Date(scheduledAt).toISOString());
 
-      await api.raw("/support/broadcasts", { method: "POST", headers: {}, body: fd }).catch(() => null);
+      await api.raw("/support/broadcasts", { method: "POST", headers: {}, body: fd });
       toast.ok(isDraft ? "Черновик сохранён" : (schedule === "now" ? "Рассылка отправлена" : "Рассылка запланирована"));
       if (!isDraft) {
         setText(""); setFile(null); setButtons([]); setSchedule("now"); setScheduledAt("");
       }
-    } catch (e) { toast.bad(e.message || "Ошибка"); }
+    } catch (e) {
+      toast.bad(e?.message || "Не удалось сохранить рассылку");
+    }
     finally { setBusy(false); setConfirmOpen(false); }
   };
 
