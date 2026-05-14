@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { api } from "../api/client.js";
 import { useQuery } from "../hooks/useQuery.js";
 import { Icon } from "../components/Icon.jsx";
@@ -337,12 +338,42 @@ function LoadBar({ v }) {
 function RowMenu({ node, onRefresh }) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef(null);
-  const [above, setAbove] = useState(false);
-  useEffect(() => {
-    if (!open || !btnRef.current) return;
-    const rect = btnRef.current.getBoundingClientRect();
-    const menuH = 180;
-    setAbove(window.innerHeight - rect.bottom < menuH + 8 && rect.top > menuH + 8);
+  const menuRef = useRef(null);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+
+  const computePos = () => {
+    const btn = btnRef.current;
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const margin = 8;
+    const menuW = (menuRef.current && menuRef.current.offsetWidth) || 200;
+    const menuH = (menuRef.current && menuRef.current.offsetHeight) || 180;
+    const roomBelow = window.innerHeight - rect.bottom - margin;
+    const roomAbove = rect.top - margin;
+    const wantBelow = roomBelow >= menuH || roomBelow >= roomAbove;
+    let top = wantBelow ? rect.bottom + 4 : rect.top - menuH - 4;
+    if (top + menuH + margin > window.innerHeight) {
+      top = Math.max(margin, window.innerHeight - menuH - margin);
+    }
+    if (top < margin) top = margin;
+    // anchor to button's right edge
+    let left = rect.right - menuW;
+    const maxLeft = window.innerWidth - menuW - margin;
+    if (left > maxLeft) left = maxLeft;
+    if (left < margin) left = margin;
+    setPos({ top, left });
+  };
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    computePos();
+    const onScroll = () => computePos();
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onScroll);
+    };
   }, [open]);
 
   const wrap = async (label, fn) => {
@@ -398,20 +429,22 @@ function RowMenu({ node, onRefresh }) {
   ];
 
   return (
-    <div style={{ position: "relative", display: "inline-block" }} onClick={(e) => e.stopPropagation()}>
+    <div style={{ display: "inline-block" }} onClick={(e) => e.stopPropagation()}>
       <button ref={btnRef} className="btn btn-ghost btn-icon" onClick={() => setOpen((v) => !v)} style={{ width: 24, height: 24 }}>
         <Icon name="more-horizontal" size={13} />
       </button>
-      {open && (
+      {open && createPortal(
         <>
-          <div style={{ position: "fixed", inset: 0, zIndex: 50 }} onClick={() => setOpen(false)} />
-          <div style={{
-            position: "absolute",
-            ...(above ? { bottom: "100%", marginBottom: 4 } : { top: "100%", marginTop: 4 }),
-            right: 0, minWidth: 200, zIndex: 51,
-            background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8,
-            boxShadow: "var(--shadow-lg)", padding: 4,
-          }}>
+          <div style={{ position: "fixed", inset: 0, zIndex: 200 }} onClick={() => setOpen(false)} />
+          <div
+            ref={menuRef}
+            style={{
+              position: "fixed", top: pos.top, left: pos.left,
+              minWidth: 200, zIndex: 201,
+              background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8,
+              boxShadow: "var(--shadow-lg)", padding: 4,
+            }}
+          >
             {items.map((it, i) => (
               <button key={i} onClick={it.run}
                 style={{
@@ -426,7 +459,8 @@ function RowMenu({ node, onRefresh }) {
               </button>
             ))}
           </div>
-        </>
+        </>,
+        document.body,
       )}
     </div>
   );
