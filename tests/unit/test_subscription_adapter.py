@@ -40,8 +40,16 @@ def test_build_success_response_contains_contract_fields():
     assert response.headers["routing"] == "happ://routing/custom"
     assert response.headers["subscription-always-hwid-enable"] == "1"
     assert response.headers["color-profile"] == '{"buttonColor":"#D96C3FFF","backgroundColors":["#07171EFF","#0D2A33FF"]}'
-    assert response.payload == "#hide-settings: 1\n#subscription-always-hwid-enable: 1\nvless://a\n\nvless://b"
+    assert response.payload.endswith("vless://a\n\nvless://b")
+    assert "#hide-settings: 1" in response.payload
+    assert "#subscription-always-hwid-enable: 1" in response.payload
+    assert "#profile-title: My VPN" in response.payload
+    assert "#profile-update-interval: 24" in response.payload
+    assert "#providerid: provider-id-1" in response.payload
+    assert "#color-profile:" in response.payload
     assert response.headers["Vary"] == "If-None-Match, User-Agent, x-hwid"
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.headers["Content-Type"] == "text/plain; charset=utf-8"
 
 
 def test_build_success_response_not_modified_has_no_payload():

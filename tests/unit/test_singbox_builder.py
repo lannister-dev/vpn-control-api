@@ -1,4 +1,3 @@
-"""Unit tests for sing-box subscription generator."""
 from __future__ import annotations
 
 import json
@@ -43,7 +42,6 @@ class TestVlessUriToOutbound:
         assert out["uuid"] == "11111111-2222-3333-4444-555555555555"
         assert out["flow"] == "xtls-rprx-vision"
         assert out["packet_encoding"] == "xudp"
-        # tcp → no transport block
         assert "transport" not in out
         tls = out["tls"]
         assert tls["enabled"] is True
@@ -76,38 +74,62 @@ class TestVlessUriToOutbound:
             _vless_uri_to_outbound("vless://@host:443?", tag="x")
 
 
-class TestSingboxConfig:
-    def test_zone_without_fallback_emits_single_outbound_named_after_zone(self):
+class TestSingboxConfigTopLevel:
+    def test_full_config_has_required_sections(self):
+        cfg = SingboxConfig(grouped_zones=[ZoneOutbounds(tag="Europe", primary_uri=REALITY_URI)])
+        d = cfg.to_dict()
+        assert set(d.keys()) >= {"log", "dns", "inbounds", "outbounds", "route"}
+
+    def test_route_final_points_to_selector(self):
+        cfg = SingboxConfig(grouped_zones=[ZoneOutbounds(tag="Europe", primary_uri=REALITY_URI)])
+        d = cfg.to_dict()
+        assert d["route"]["final"] == "proxy"
+        rules = d["route"]["rules"]
+        assert {"protocol": "dns", "outbound": "dns-out"} in rules
+        assert {"ip_is_private": True, "outbound": "direct"} in rules
+
+    def test_inbounds_has_tun(self):
+        cfg = SingboxConfig(grouped_zones=[ZoneOutbounds(tag="Europe", primary_uri=REALITY_URI)])
+        d = cfg.to_dict()
+        tun = next((i for i in d["inbounds"] if i["type"] == "tun"), None)
+        assert tun is not None
+        assert tun["auto_route"] is True
+
+    def test_dns_has_servers_and_rules(self):
+        cfg = SingboxConfig(grouped_zones=[ZoneOutbounds(tag="Europe", primary_uri=REALITY_URI)])
+        d = cfg.to_dict()
+        assert any(s["tag"] == "cf-dns" for s in d["dns"]["servers"])
+
+
+class TestSingboxConfigOutbounds:
+    def _by_tag(self, outbounds):
+        return {o["tag"]: o for o in outbounds}
+
+    def test_zone_without_fallback_emits_single_vless(self):
         cfg = SingboxConfig(grouped_zones=[
             ZoneOutbounds(tag="Europe", primary_uri=REALITY_URI),
         ])
-        d = cfg.to_dict()
-        outs = d["outbounds"]
-        # 1 vless + direct + block
-        assert [o["tag"] for o in outs] == ["Europe", "direct", "block"]
-        assert outs[0]["type"] == "vless"
+        outs = self._by_tag(cfg.to_dict()["outbounds"])
+        assert outs["proxy"]["type"] == "selector"
+        assert outs["proxy"]["outbounds"] == ["Europe"]
+        assert outs["Europe"]["type"] == "vless"
+        assert "direct" in outs and "block" in outs and "dns-out" in outs
 
-    def test_zone_with_fallback_emits_urltest_group(self):
+    def test_zone_with_fallback_emits_urltest_in_selector(self):
         cfg = SingboxConfig(grouped_zones=[
-            ZoneOutbounds(
-                tag="Europe",
-                primary_uri=REALITY_URI,
-                fallback_uri=WHITELIST_URI,
-            ),
+            ZoneOutbounds(tag="Europe", primary_uri=REALITY_URI, fallback_uri=WHITELIST_URI),
         ])
-        d = cfg.to_dict()
-        outs = {o["tag"]: o for o in d["outbounds"]}
-        assert "Europe · primary" in outs
-        assert "Europe · fallback" in outs
-        assert "Europe" in outs
+        outs = self._by_tag(cfg.to_dict()["outbounds"])
+        assert outs["proxy"]["outbounds"] == ["Europe"]
+        assert outs["Europe · primary"]["type"] == "vless"
+        assert outs["Europe · fallback"]["type"] == "vless"
         group = outs["Europe"]
         assert group["type"] == "urltest"
         assert group["outbounds"] == ["Europe · primary", "Europe · fallback"]
         assert group["tolerance"] == 10000
         assert group["interrupt_exist_connections"] is False
-        assert group["interval"] == "30s"
 
-    def test_multiple_zones_and_extras(self):
+    def test_multi_zone_selector_lists_all_user_visible(self):
         cfg = SingboxConfig(
             grouped_zones=[
                 ZoneOutbounds(tag="Europe", primary_uri=REALITY_URI, fallback_uri=WHITELIST_URI),
@@ -115,25 +137,15 @@ class TestSingboxConfig:
             ],
             extra_outbounds=[("FR", GRPC_URI)],
         )
-        d = cfg.to_dict()
-        tags = [o["tag"] for o in d["outbounds"]]
-        # Europe has primary + fallback + urltest group; NL plain; FR plain; +direct +block
-        assert tags == [
-            "Europe · primary",
-            "Europe · fallback",
-            "Europe",
-            "NL",
-            "FR",
-            "direct",
-            "block",
-        ]
+        outs = self._by_tag(cfg.to_dict()["outbounds"])
+        assert outs["proxy"]["outbounds"] == ["Europe", "NL", "FR"]
+        assert outs["proxy"]["default"] == "Europe"
 
     def test_to_json_is_compact_and_valid(self):
         cfg = SingboxConfig(grouped_zones=[
             ZoneOutbounds(tag="Europe", primary_uri=REALITY_URI, fallback_uri=WHITELIST_URI),
         ])
         body = cfg.to_json()
-        # Compact separators — no whitespace between JSON tokens.
         assert ": " not in body and ", " not in body
         parsed = json.loads(body)
-        assert "outbounds" in parsed
+        assert "outbounds" in parsed and "route" in parsed

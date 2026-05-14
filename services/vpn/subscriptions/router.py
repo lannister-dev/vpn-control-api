@@ -8,7 +8,6 @@ from fastapi import (
     Response,
     status,
 )
-from fastapi.responses import PlainTextResponse
 
 from services.auth.dependencies import admin_auth
 from services.vpn.subscriptions.adapter import SubscriptionPublicAdapter
@@ -43,18 +42,21 @@ router = APIRouter(prefix="/subscriptions", tags=["Subscriptions"])
 
 @router.get(
     "/sub/{token}",
-    response_class=PlainTextResponse,
+    response_class=Response,
     summary="Get VPN subscription config",
     description=(
             "Public endpoint for VPN clients.\n\n"
-            "Returns a plain-text list of VLESS URIs (newline separated).\n"
+            "Returns either a plain-text list of VLESS URIs (newline-separated) for\n"
+            "zones without fallback, or a full sing-box JSON config when at least one\n"
+            "zone defines a fallback entry (urltest group for primary + fallback).\n"
+            "Content-Type is set accordingly.\n\n"
             "Supports ETag / If-None-Match for efficient polling.\n\n"
             "**HWID:** required via configured header.\n"
             "**Authentication:** none (token is the secret).\n"
             "**Rate limit:** enforced per subscription."
     ),
     responses={
-        200: {"description": "Subscription config (text/plain)"},
+        200: {"description": "Subscription config (text/plain or application/json)"},
         304: {"description": "Not modified (ETag match)"},
         403: {"description": "Subscription inactive / expired / token expired"},
         404: {"description": "Subscription not found"},
@@ -99,10 +101,11 @@ async def get_subscription_config(
         if public_response.payload is None:
             return Response(status_code=public_response.status_code, headers=public_response.headers)
 
-        return PlainTextResponse(
+        return Response(
             content=public_response.payload,
             status_code=public_response.status_code,
             headers=public_response.headers,
+            media_type=public_response.headers.get("Content-Type", "text/plain; charset=utf-8"),
         )
     except (
             SubscriptionNotFound,
