@@ -6,6 +6,8 @@ from services.zones.schemas import (
     ZoneCreateIn,
     ZoneListOut,
     ZoneOut,
+    ZoneReorderIn,
+    ZoneReorderOut,
     ZoneUpdateIn,
 )
 from services.zones.service import ZoneService, get_zone_service
@@ -58,6 +60,19 @@ async def update_zone(
         return await service.update_zone(code, data)
     except ZoneNotFound:
         raise HTTPException(status_code=404, detail="Zone not found")
+
+
+@router.post(
+    "/reorder",
+    response_model=ZoneReorderOut,
+    summary="Reorder zones — body.codes order becomes new sort_order",
+)
+async def reorder_zones(
+    data: ZoneReorderIn,
+    service: ZoneService = Depends(get_zone_service),
+):
+    updated = await service.reorder(data.codes)
+    return ZoneReorderOut(updated=updated)
 
 
 @router.delete("/{code}", response_model=ZoneOut, summary="Deactivate zone (soft-delete)")

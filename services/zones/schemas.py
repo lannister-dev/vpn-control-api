@@ -37,3 +37,11 @@ class ZoneOut(BaseModel):
 class ZoneListOut(BaseModel):
     items: list[ZoneOut]
     total: int
+
+
+class ZoneReorderIn(BaseModel):
+    codes: list[str] = Field(min_length=1, max_length=200)
+
+
+class ZoneReorderOut(BaseModel):
+    updated: int

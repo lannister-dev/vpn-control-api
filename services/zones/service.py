@@ -52,6 +52,11 @@ class ZoneService:
         updated = await self.repo.update_by_id(zone.id, {"is_active": False})
         return ZoneOut.model_validate(updated)
 
+    async def reorder(self, codes: list[str]) -> int:
+        if not codes:
+            return 0
+        return await self.repo.reorder_by_codes(codes)
+
 
 def get_zone_service(session: AsyncSession = Depends(AsyncDatabase.get_session)) -> ZoneService:
     return ZoneService(session)
