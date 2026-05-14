@@ -1,7 +1,8 @@
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -72,6 +73,8 @@ from services.support.texts import (
     GRANT_DAY_SYSTEM,
     REFUND_DESCRIPTION,
     REFUND_SYSTEM,
+    TICKET_CLOSED_SYSTEM,
+    TICKET_CLOSED_USER_NOTIFY,
 )
 from services.users.repository import UserRepository
 from services.vpn.subscriptions.repository import SubscriptionRepository
@@ -208,10 +211,12 @@ class SupportService:
             raise TicketNotFound(str(ticket_id))
 
         changed = False
+        just_closed = False
         if data.status is not None and data.status.value != ticket.status:
             ticket.status = data.status.value
             if data.status == TicketStatus.CLOSED:
                 ticket.closed_at = datetime.now(timezone.utc)
+                just_closed = True
             changed = True
         if data.priority is not None and data.priority.value != ticket.priority:
             ticket.priority = data.priority.value
@@ -229,6 +234,11 @@ class SupportService:
             ticket.last_activity_at = datetime.now(timezone.utc)
             await self.session.flush()
             await self.session.commit()
+
+        if just_closed:
+            sys_msg = await self._add_system_message(ticket_id, TICKET_CLOSED_SYSTEM, actor_admin_id)
+            await self.session.commit()
+            await self._publish_outbound(ticket, sys_msg, text=TICKET_CLOSED_USER_NOTIFY)
         return await self.get_ticket(ticket_id)
 
     async def bulk_update(self, data: TicketBulkUpdateIn, *, actor_admin_id: UUID | None = None) -> int:
@@ -555,20 +565,73 @@ class SupportService:
             ).model_dump()
         )
         await self.session.commit()
+
+        delivered = 0
+        sent_at: datetime | None = None
+        final_status = status
+        if status == BroadcastStatus.SENDING and target_ids:
+            delivered = await self._fan_out_broadcast(b.id, target_ids, text)
+            sent_at = datetime.now(timezone.utc)
+            final_status = BroadcastStatus.SENT
+            b.delivered = delivered
+            b.sent_at = sent_at
+            b.status = final_status.value
+            await self.session.flush()
+            await self.session.commit()
+
         return BroadcastOut(
             id=b.id,
             audience=audience,
             audience_label=None,
             preview=(text or "")[:160],
-            status=status,
-            delivered=0,
-            errors=0,
+            status=final_status,
+            delivered=delivered,
+            errors=max(0, len(target_ids) - delivered) if status == BroadcastStatus.SENDING else 0,
             clicks=0,
             target_count=len(target_ids),
-            sent_at=None,
+            sent_at=sent_at,
             scheduled_at=scheduled_at,
             created_at=b.created_at,
         )
+
+    async def _fan_out_broadcast(
+        self, broadcast_id: UUID, user_ids: list[UUID], text: str,
+    ) -> int:
+        if self._nats is None or not user_ids:
+            return 0
+        users = await self.users.list_by_ids(user_ids)
+        targets = [(str(u.id), int(u.telegram_id)) for u in users if u.telegram_id]
+        if not targets:
+            return 0
+
+        sem = asyncio.Semaphore(20)
+
+        async def _one(_user_id: str, tg_id: int) -> bool:
+            payload = SupportOutboundPayload(
+                ticket_id=str(broadcast_id),
+                message_id=str(uuid4()),
+                telegram_id=tg_id,
+                text=text,
+                media=[],
+            )
+            async with sem:
+                try:
+                    await self._nats.publish_jetstream(
+                        subject=self._outbound_subject,
+                        payload=payload.model_dump(),
+                        msg_id=payload.message_id,
+                    )
+                    return True
+                except Exception:
+                    logger_support.exception(
+                        "broadcast_publish_failed",
+                        broadcast_id=str(broadcast_id),
+                        telegram_id=tg_id,
+                    )
+                    return False
+
+        results = await asyncio.gather(*(_one(uid, tg) for uid, tg in targets))
+        return sum(1 for ok in results if ok)
 
     async def _resolve_audience(
         self, audience: BroadcastAudience, plan_id: UUID | None

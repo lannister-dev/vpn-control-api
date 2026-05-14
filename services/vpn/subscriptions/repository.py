@@ -209,17 +209,18 @@ class SubscriptionRepository(BaseRepository[Subscription]):
             SELECT
                 u.telegram_id,
                 s.id                                          AS subscription_id,
-                COALESCE(s.traffic_limit_bytes, 0)            AS lim,
+                COALESCE(p.traffic_limit_bytes, 0)            AS lim,
                 COALESCE(s.used_traffic_bytes, 0)             AS used,
                 COALESCE(s.traffic_warning_threshold_pct, 0)  AS warned
             FROM "user" u
             LEFT JOIN LATERAL (
-                SELECT id, traffic_limit_bytes, used_traffic_bytes, traffic_warning_threshold_pct
+                SELECT id, plan_id, used_traffic_bytes, traffic_warning_threshold_pct
                 FROM subscription
                 WHERE user_id = u.id AND expires_at IS NOT NULL
                 ORDER BY expires_at DESC
                 LIMIT 1
             ) s ON TRUE
+            LEFT JOIN plan p ON p.id = s.plan_id
             WHERE u.telegram_id = ANY(:tids)
             """
         )
