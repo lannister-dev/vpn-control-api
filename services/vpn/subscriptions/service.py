@@ -83,11 +83,11 @@ from services.vpn.subscriptions.schemas import (
     SubscriptionUserInfo,
     TransportBuildResult,
 )
-from services.vpn.subscriptions.singbox_builder import (
-    SingboxConfig,
+from services.vpn.subscriptions.utils import SubscriptionUtils
+from services.vpn.subscriptions.xray_json_builder import (
+    XrayJsonConfig,
     ZoneOutbounds,
 )
-from services.vpn.subscriptions.utils import SubscriptionUtils
 from services.zones.repository import ZoneRepository
 from shared.database.session import AsyncDatabase
 from shared.monitoring.metrics import (
@@ -1674,7 +1674,7 @@ class SubscriptionService:
         if not grouped:
             return "\n".join(item.uri for item in selected_routes)
 
-        cfg = SingboxConfig(grouped_zones=grouped, extra_outbounds=extras)
+        cfg = XrayJsonConfig(grouped_zones=grouped, extra_outbounds=extras)
         return cfg.to_json()
 
     def _route_signature(self, *, route, node, transport_profile) -> str:
