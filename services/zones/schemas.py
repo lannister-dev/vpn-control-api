@@ -9,7 +9,6 @@ class ZoneCreateIn(BaseModel):
     name: str = Field(min_length=1, max_length=64)
     emoji: str = Field(default="", max_length=16)
     sort_order: int = Field(default=0, ge=0)
-    fallback_entry_node_id: UUID | None = None
 
 
 class ZoneUpdateIn(BaseModel):
@@ -17,7 +16,6 @@ class ZoneUpdateIn(BaseModel):
     emoji: str | None = Field(default=None, max_length=16)
     sort_order: int | None = Field(default=None, ge=0)
     is_active: bool | None = None
-    fallback_entry_node_id: UUID | None = None
 
 
 class ZoneOut(BaseModel):
@@ -27,7 +25,6 @@ class ZoneOut(BaseModel):
     emoji: str
     sort_order: int
     is_active: bool
-    fallback_entry_node_id: UUID | None = None
     created_at: datetime
     updated_at: datetime
 
