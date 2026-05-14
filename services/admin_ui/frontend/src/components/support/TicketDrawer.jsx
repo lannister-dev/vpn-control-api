@@ -82,20 +82,11 @@ export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
       const fd = new FormData();
       fd.append("text", text);
       if (payload.is_note) fd.append("is_note", "true");
-      const resp = await api.raw(`/support/tickets/${ticket.id}/messages`, {
+      await api.raw(`/support/tickets/${ticket.id}/messages`, {
         method: "POST",
         headers: {},
         body: fd,
       });
-      if (!resp?.ok) {
-        let detail = "Не удалось отправить";
-        try {
-          const body = await resp.json();
-          detail = body?.detail || detail;
-        } catch { /* ignore */ }
-        toast.bad(detail);
-        return;
-      }
       toast.ok(payload.is_note ? "Заметка сохранена" : "Сообщение отправлено");
       messagesQ.refetch();
       onChanged?.();
