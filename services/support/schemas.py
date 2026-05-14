@@ -290,6 +290,7 @@ class SupportOutboundPayload(BaseModel):
     telegram_id: int
     text: str = ""
     media: list[SupportOutboundAttachmentMsg] = Field(default_factory=list)
+    kind: str = "reply"  # "reply" — operator → user; "broadcast" — mass message
 
 
 class SupportSentAck(BaseModel):

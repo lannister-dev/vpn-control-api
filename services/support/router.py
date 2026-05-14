@@ -22,6 +22,7 @@ from services.support.exceptions import (
     SupportActionFailed,
     TemplateAlreadyExists,
     TemplateNotFound,
+    TicketClosed,
     TicketNotFound,
 )
 from services.support.schemas import (
@@ -171,6 +172,8 @@ async def post_message(
         raise HTTPException(status_code=404, detail="Ticket not found")
     except EmptyMessage:
         raise HTTPException(status_code=422, detail="Сообщение не может быть пустым")
+    except TicketClosed:
+        raise HTTPException(status_code=409, detail="Тикет закрыт. Переоткройте его, чтобы продолжить переписку.")
 
 
 @router.post("/tickets/{ticket_id}/grant-day")
