@@ -26,6 +26,16 @@ class AdminUserRepository(BaseRepository[AdminUser]):
         )
         return result.scalar_one_or_none()
 
+    async def list_usernames_by_ids(self, ids: list[UUID]) -> dict[UUID, str]:
+        if not ids:
+            return {}
+        rows = (
+            await self.session.execute(
+                select(self.model.id, self.model.username).where(self.model.id.in_(ids))
+            )
+        ).all()
+        return dict(rows)
+
     async def list_users(
         self,
         *,

@@ -1,0 +1,7 @@
+.tg-ticks {
+  display: inline-flex; align-items: center;
+  flex-shrink: 0;
+  color: currentColor;
+  line-height: 1;
+}
+.tg-ticks.tg-ticks-double svg + svg { margin-left: -7px; }

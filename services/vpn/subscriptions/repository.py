@@ -1,6 +1,7 @@
+from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import and_, case, func, or_, select, update
+from sqlalchemy import and_, case, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -125,6 +126,120 @@ class SubscriptionRepository(BaseRepository[Subscription]):
         ).select_from(self.model)
         row = (await self.session.execute(stmt)).one()
         return int(row.total), int(row.active), int(row.expired)
+
+    async def count_stats_at(self, ts: datetime) -> tuple[int, int, int]:
+        """Same counts as count_stats(), but as of timestamp `ts`."""
+        existed = self.model.created_at <= ts
+        active_int = case(
+            (
+                and_(
+                    existed,
+                    self.model.is_active.is_(True),
+                    or_(self.model.expires_at.is_(None), self.model.expires_at > ts),
+                ),
+                1,
+            ),
+            else_=0,
+        )
+        expired_int = case(
+            (
+                and_(
+                    existed,
+                    self.model.is_active.is_(True),
+                    self.model.expires_at.isnot(None),
+                    self.model.expires_at < ts,
+                ),
+                1,
+            ),
+            else_=0,
+        )
+        total_int = case((existed, 1), else_=0)
+        stmt = select(
+            func.coalesce(func.sum(total_int), 0).label("total"),
+            func.coalesce(func.sum(active_int), 0).label("active"),
+            func.coalesce(func.sum(expired_int), 0).label("expired"),
+        ).select_from(self.model)
+        row = (await self.session.execute(stmt)).one()
+        return int(row.total), int(row.active), int(row.expired)
+
+    async def bulk_set_traffic_warning_threshold(
+        self, pairs: list[tuple[UUID, int]],
+    ) -> int:
+        """Single UPDATE for many (subscription_id, threshold_pct) pairs.
+
+        Only raises the watermark — never lowers it.
+        Returns affected row count.
+        """
+        if not pairs:
+            return 0
+        stmt = text(
+            """
+            UPDATE subscription AS s
+            SET traffic_warning_threshold_pct = v.threshold_pct
+            FROM (
+                SELECT unnest(CAST(:ids AS uuid[])) AS id,
+                       unnest(CAST(:pcts AS int[])) AS threshold_pct
+            ) AS v
+            WHERE s.id = v.id
+              AND v.threshold_pct > COALESCE(s.traffic_warning_threshold_pct, 0)
+            """
+        )
+        ids = [str(p[0]) for p in pairs]
+        pcts = [int(p[1]) for p in pairs]
+        result = await self.session.execute(stmt, {"ids": ids, "pcts": pcts})
+        rowcount = result.rowcount
+        if callable(rowcount):
+            rowcount = rowcount()
+        return int(rowcount or 0)
+
+    async def traffic_check_by_telegram_ids(
+        self, telegram_ids: list[int],
+    ) -> list[tuple[int, UUID | None, int, int, int]]:
+        """Core single-shot batch fetch for bot traffic-warning scheduler.
+
+        Returns (telegram_id, subscription_id, traffic_limit_bytes,
+        used_traffic_bytes, traffic_warning_threshold_pct) per input id.
+        Users without a subscription get (tid, None, 0, 0, 0).
+        Uses LATERAL → one row per user, no ORM hydration.
+        """
+        if not telegram_ids:
+            return []
+        stmt = text(
+            """
+            SELECT
+                u.telegram_id,
+                s.id                                          AS subscription_id,
+                COALESCE(s.traffic_limit_bytes, 0)            AS lim,
+                COALESCE(s.used_traffic_bytes, 0)             AS used,
+                COALESCE(s.traffic_warning_threshold_pct, 0)  AS warned
+            FROM "user" u
+            LEFT JOIN LATERAL (
+                SELECT id, traffic_limit_bytes, used_traffic_bytes, traffic_warning_threshold_pct
+                FROM subscription
+                WHERE user_id = u.id AND expires_at IS NOT NULL
+                ORDER BY expires_at DESC
+                LIMIT 1
+            ) s ON TRUE
+            WHERE u.telegram_id = ANY(:tids)
+            """
+        )
+        result = await self.session.execute(stmt, {"tids": telegram_ids})
+        return [
+            (int(r.telegram_id), r.subscription_id, int(r.lim), int(r.used), int(r.warned))
+            for r in result
+        ]
+
+    async def get_latest_for_user(self, user_id: UUID) -> Subscription | None:
+        result = await self.session.execute(
+            select(self.model)
+            .where(
+                self.model.user_id == user_id,
+                self.model.expires_at.is_not(None),
+            )
+            .order_by(self.model.expires_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
 
     async def find_active_subscription(self, user_id: UUID, plan_id: UUID):
         result = await self.session.execute(

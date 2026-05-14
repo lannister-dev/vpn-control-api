@@ -4,6 +4,7 @@ import { useQuery } from "../hooks/useQuery.js";
 import { Icon } from "../components/Icon.jsx";
 import { Spark } from "../components/Spark.jsx";
 import { nodeGeo } from "../lib/geo.js";
+import "./Traffic.css";
 
 function fmtBytes(b, digits = 1) {
   if (b == null || !isFinite(b)) return "—";

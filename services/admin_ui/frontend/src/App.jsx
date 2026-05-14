@@ -1,3 +1,6 @@
+// REPLACE frontend/src/App.jsx with this file.
+// Adds tickets / support-templates / broadcasts routing, palette quick-actions,
+// and exposes `ticketsCount` to Sidebar (unanswered count).
 import { useState, useEffect, useMemo } from "react";
 import { api } from "./api/client.js";
 import { useQuery } from "./hooks/useQuery.js";
@@ -21,6 +24,9 @@ import { ZonesPage } from "./pages/Zones.jsx";
 import { AdminUsersPage } from "./pages/AdminUsers.jsx";
 import { OpsPage } from "./pages/Ops.jsx";
 import { SettingsPage } from "./pages/Settings.jsx";
+import { TicketsPage } from "./pages/Tickets.jsx";
+import { SupportTemplatesPage } from "./pages/SupportTemplates.jsx";
+import { BroadcastsPage } from "./pages/Broadcasts.jsx";
 
 const PAGES = {
   overview: OverviewPage,
@@ -37,6 +43,9 @@ const PAGES = {
   "admin-users": AdminUsersPage,
   ops: OpsPage,
   settings: SettingsPage,
+  tickets: TicketsPage,
+  "support-templates": SupportTemplatesPage,
+  broadcasts: BroadcastsPage,
 };
 
 const CRUMBS = {
@@ -50,6 +59,9 @@ const CRUMBS = {
   users: ["Workspace", "Бизнес", "Пользователи"],
   plans: ["Workspace", "Бизнес", "Тарифы"],
   subscriptions: ["Workspace", "Бизнес", "Подписки"],
+  tickets: ["Workspace", "Поддержка", "Тикеты"],
+  "support-templates": ["Workspace", "Поддержка", "Шаблоны"],
+  broadcasts: ["Workspace", "Поддержка", "Рассылки"],
   zones: ["Workspace", "Система", "Зоны"],
   "admin-users": ["Workspace", "Система", "Админы"],
   ops: ["Workspace", "Система", "Операции"],
@@ -157,6 +169,11 @@ function AuthedApp({ theme, setTheme, me, onLogout }) {
   const usersData = useQuery(() => api.get("/users?limit=1").catch(() => null), { interval: 60000 });
   const subsStats = useQuery(() => api.get("/subscriptions/stats").catch(() => null), { interval: 60000 });
   const alertsCount = useQuery(() => api.get("/admin/alerts/unread-count").catch(() => null), { interval: 15000 });
+  // Tickets unanswered count (graceful 404 if endpoint not deployed)
+  const ticketsStats = useQuery(
+    () => api.get("/support/tickets/stats").catch(() => null),
+    { interval: 30000 },
+  );
 
   const counts = useMemo(() => {
     const out = {};
@@ -164,8 +181,9 @@ function AuthedApp({ theme, setTheme, me, onLogout }) {
     if (routesData.data) out.routes = routesData.data.length;
     if (usersData.data?.total != null) out.users = usersData.data.total;
     if (subsStats.data?.active != null) out.subscriptions = subsStats.data.active;
+    if (ticketsStats.data?.open != null) out.tickets = ticketsStats.data.open;
     return out;
-  }, [status.data, routesData.data, usersData.data, subsStats.data]);
+  }, [status.data, routesData.data, usersData.data, subsStats.data, ticketsStats.data]);
 
   const lastSync = relSync(status.data?.generated_at);
   const Page = PAGES[tab] || PAGES.overview;
@@ -174,6 +192,16 @@ function AuthedApp({ theme, setTheme, me, onLogout }) {
   const logout = async () => {
     try { await api.post("/auth/admin/logout"); } catch { /* ignore */ }
     onLogout();
+  };
+
+  const onPaletteSelect = (item) => {
+    setPaletteOpen(false);
+    if (item.action) {
+      setTab(item.id);
+      setPendingAction(item.action);
+    } else {
+      setTab(item.id);
+    }
   };
 
   return (
@@ -211,7 +239,7 @@ function AuthedApp({ theme, setTheme, me, onLogout }) {
       <Palette
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
-        onSelect={(item) => { setTab(item.id); setPaletteOpen(false); }}
+        onSelect={onPaletteSelect}
       />
       {drawerNode && (
         <NodeDrawer

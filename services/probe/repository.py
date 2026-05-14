@@ -3,7 +3,7 @@ from typing import cast
 from uuid import UUID
 
 from fastapi import Depends
-from sqlalchemy import delete, or_, select
+from sqlalchemy import case, delete, func, or_, select
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -173,6 +173,28 @@ class ProbeSignalRepository(BaseRepository[ProbeSignal]):
                 break
             count += 1
         return count
+
+    async def stats_for_window(
+        self, *, from_ts: datetime, to_ts: datetime,
+    ) -> tuple[int, int, float | None]:
+        """Return (total, reachable_count, avg_latency_ms) over the window."""
+        reachable_int = case((self.model.is_reachable.is_(True), 1), else_=0)
+        all_stmt = select(
+            func.count().label("total"),
+            func.coalesce(func.sum(reachable_int), 0).label("reachable"),
+        ).where(
+            self.model.checked_at >= from_ts,
+            self.model.checked_at < to_ts,
+        )
+        lat_stmt = select(func.avg(self.model.latency_ms)).where(
+            self.model.checked_at >= from_ts,
+            self.model.checked_at < to_ts,
+            self.model.is_reachable.is_(True),
+            self.model.latency_ms.isnot(None),
+        )
+        row = (await self.session.execute(all_stmt)).one()
+        lat = (await self.session.execute(lat_stmt)).scalar_one_or_none()
+        return int(row.total), int(row.reachable), float(lat) if lat is not None else None
 
     async def delete_older_than(self, *, cutoff: datetime) -> int:
         stmt = delete(self.model).where(

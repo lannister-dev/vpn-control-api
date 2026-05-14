@@ -200,6 +200,31 @@ class BotTrafficWarningMarkIn(BaseModel):
     threshold_pct: int = Field(ge=1, le=100)
 
 
+class BotSubscriptionTrafficIn(BaseModel):
+    telegram_ids: list[int] = Field(min_length=1, max_length=2000)
+
+
+class BotSubscriptionTrafficItem(BaseModel):
+    telegram_id: int
+    subscription_id: UUID | None = None
+    traffic_limit_bytes: int = 0
+    used_traffic_bytes: int = 0
+    traffic_warning_threshold_pct: int = 0
+
+
+class BotSubscriptionTrafficListOut(BaseModel):
+    items: list[BotSubscriptionTrafficItem]
+
+
+class BotTrafficWarningBulkEntry(BaseModel):
+    subscription_id: UUID
+    threshold_pct: int = Field(ge=1, le=100)
+
+
+class BotTrafficWarningBulkIn(BaseModel):
+    entries: list[BotTrafficWarningBulkEntry] = Field(min_length=1, max_length=2000)
+
+
 class BotSessionOut(BaseModel):
     user: BotUserOut
     state: BotDashboardState

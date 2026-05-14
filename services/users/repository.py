@@ -17,6 +17,13 @@ class UserRepository(BaseRepository[User]):
         )
         return result.scalar_one_or_none()
 
+    async def list_by_ids(self, ids: list) -> list[User]:
+        if not ids:
+            return []
+        result = await self.session.execute(select(User).where(User.id.in_(ids)))
+        return list(result.scalars().all())
+
+
     async def list_paginated(
         self,
         search: str | None = None,

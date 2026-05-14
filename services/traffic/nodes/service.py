@@ -61,6 +61,7 @@ class NodeTrafficService:
         role: str | None = None,
     ) -> NodeTrafficSummaryListOut:
         from_ts, to_ts = _window(period)
+        prev_from_ts, prev_to_ts = (from_ts - (to_ts - from_ts), from_ts)
         nodes = await self.node_repo.list()
         if role:
             nodes = [n for n in nodes if n.role == role]
@@ -69,6 +70,17 @@ class NodeTrafficService:
         backend_aggs = await self.usage_repo.sum_backend_self(from_ts=from_ts, to_ts=to_ts)
         entry_map = {a.node_id: a for a in entry_aggs}
         backend_map = {a.node_id: a for a in backend_aggs}
+
+        prev_entry_aggs = await self.usage_repo.sum_entry_self(from_ts=prev_from_ts, to_ts=prev_to_ts)
+        prev_backend_aggs = await self.usage_repo.sum_backend_self(from_ts=prev_from_ts, to_ts=prev_to_ts)
+        node_role_by_id = {n.id: n.role for n in nodes}
+        previous_total_bytes = 0
+        for agg in prev_entry_aggs:
+            if node_role_by_id.get(agg.node_id) != ROLE_BACKEND:
+                previous_total_bytes += agg.bytes_in + agg.bytes_out
+        for agg in prev_backend_aggs:
+            if node_role_by_id.get(agg.node_id) == ROLE_BACKEND:
+                previous_total_bytes += agg.bytes_in + agg.bytes_out
 
         items: list[NodeTrafficSummaryOut] = []
         for node in nodes:
@@ -98,6 +110,7 @@ class NodeTrafficService:
             from_ts=from_ts,
             to_ts=to_ts,
             items=items,
+            previous_total_bytes=previous_total_bytes,
         )
 
     async def node_timeseries(

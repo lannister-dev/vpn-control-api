@@ -15,14 +15,16 @@ async function request(path, { method = "GET", body, headers } = {}) {
     const csrf = getCookie("admin_csrf");
     if (csrf) extra["x-csrf-token"] = csrf;
   }
+  const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
+  const isBlob = typeof Blob !== "undefined" && body instanceof Blob;
+  const isString = typeof body === "string";
+  const rawBody = isFormData || isBlob || isString;
+  const baseHeaders = rawBody ? {} : { "content-type": "application/json" };
   const res = await fetch(BASE + path, {
     method,
     credentials: "include",
-    headers: {
-      "content-type": "application/json",
-      ...extra,
-    },
-    body: body ? JSON.stringify(body) : undefined,
+    headers: { ...baseHeaders, ...extra },
+    body: body == null ? undefined : (rawBody ? body : JSON.stringify(body)),
   });
   if (res.status === 401) {
     const err = new Error("unauthenticated");

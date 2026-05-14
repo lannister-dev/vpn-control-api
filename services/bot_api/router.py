@@ -22,7 +22,10 @@ from .schemas import (
     BotStarsConfirmIn,
     BotSubscriptionLinkOut,
     BotSubscriptionSummaryOut,
+    BotSubscriptionTrafficIn,
+    BotSubscriptionTrafficListOut,
     BotTopUpCreateIn,
+    BotTrafficWarningBulkIn,
     BotTrafficWarningMarkIn,
 )
 from .service import BotApiService, get_bot_api_service
@@ -281,6 +284,31 @@ async def bot_get_subscription_summary(
     service: BotApiService = Depends(get_bot_api_service),
 ):
     return await service.get_subscription_summary(telegram_id=telegram_id)
+
+
+@router.post(
+    "/subscriptions/traffic-check",
+    response_model=BotSubscriptionTrafficListOut,
+    summary="Batch traffic-check for many telegram_ids in one query (no ORM hydration)",
+)
+async def bot_subscriptions_traffic_check(
+    payload: BotSubscriptionTrafficIn,
+    service: BotApiService = Depends(get_bot_api_service),
+):
+    return await service.list_subscriptions_traffic(telegram_ids=payload.telegram_ids)
+
+
+@router.post(
+    "/subscriptions/mark-traffic-warnings",
+    summary="Bulk-bookmark sent traffic-warning thresholds (single UPDATE on the DB)",
+)
+async def bot_subscriptions_mark_traffic_warnings(
+    payload: BotTrafficWarningBulkIn,
+    service: BotApiService = Depends(get_bot_api_service),
+):
+    pairs = [(e.subscription_id, e.threshold_pct) for e in payload.entries]
+    affected = await service.bulk_mark_traffic_warnings(pairs)
+    return {"affected": affected}
 
 
 @router.post(

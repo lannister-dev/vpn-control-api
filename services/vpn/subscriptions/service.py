@@ -252,6 +252,13 @@ class SubscriptionService:
     async def get_stats(self) -> tuple[int, int, int]:
         return await self.subscription_repository.count_stats()
 
+    async def get_stats_with_history(self) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
+        now = await self.subscription_repository.count_stats()
+        yesterday = await self.subscription_repository.count_stats_at(
+            datetime.now(timezone.utc) - timedelta(days=1)
+        )
+        return now, yesterday
+
     async def list_paginated(
             self,
             *,
