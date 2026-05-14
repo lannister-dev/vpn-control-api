@@ -75,6 +75,8 @@ from services.support.texts import (
     REFUND_SYSTEM,
     TICKET_CLOSED_SYSTEM,
     TICKET_CLOSED_USER_NOTIFY,
+    TICKET_REOPENED_SYSTEM,
+    TICKET_REOPENED_USER_NOTIFY,
 )
 from services.users.repository import UserRepository
 from services.vpn.subscriptions.repository import SubscriptionRepository
@@ -212,11 +214,17 @@ class SupportService:
 
         changed = False
         just_closed = False
+        just_reopened = False
+        was_closed = ticket.status == TicketStatus.CLOSED.value
         if data.status is not None and data.status.value != ticket.status:
             ticket.status = data.status.value
             if data.status == TicketStatus.CLOSED:
                 ticket.closed_at = datetime.now(timezone.utc)
                 just_closed = True
+            elif was_closed:
+                # Re-open: drop closed_at so future stats treat it as live again.
+                ticket.closed_at = None
+                just_reopened = True
             changed = True
         if data.priority is not None and data.priority.value != ticket.priority:
             ticket.priority = data.priority.value
@@ -239,6 +247,10 @@ class SupportService:
             sys_msg = await self._add_system_message(ticket_id, TICKET_CLOSED_SYSTEM, actor_admin_id)
             await self.session.commit()
             await self._publish_outbound(ticket, sys_msg, text=TICKET_CLOSED_USER_NOTIFY, kind="close")
+        elif just_reopened:
+            sys_msg = await self._add_system_message(ticket_id, TICKET_REOPENED_SYSTEM, actor_admin_id)
+            await self.session.commit()
+            await self._publish_outbound(ticket, sys_msg, text=TICKET_REOPENED_USER_NOTIFY, kind="reopen")
         return await self.get_ticket(ticket_id)
 
     async def bulk_update(self, data: TicketBulkUpdateIn, *, actor_admin_id: UUID | None = None) -> int:
