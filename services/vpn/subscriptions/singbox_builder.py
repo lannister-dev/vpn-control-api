@@ -1,24 +1,12 @@
-"""Sing-box client config generator for Happ subscriptions.
-
-Translates `vless://...` URIs into sing-box outbound dicts and bundles a
-primary + fallback pair into an `urltest` group so the Happ client transparently
-fails over (e.g. DPI-blocked primary → whitelist entry).
-
-The whole module is pure: no DB, no I/O, no globals — easy to unit-test.
-"""
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
 from urllib.parse import parse_qs, unquote, urlsplit
 
-# ── value objects ───────────────────────────────────────────────────────────
-
 
 @dataclass(slots=True)
 class SingboxBuildError(Exception):
-    """Raised when a URI cannot be translated to a sing-box outbound."""
-
     reason: str
 
     def __str__(self) -> str:
@@ -27,67 +15,106 @@ class SingboxBuildError(Exception):
 
 @dataclass(slots=True, frozen=True)
 class ZoneOutbounds:
-    """A user-visible zone in the Happ UI and its primary + optional fallback.
-
-    `tag` is what the user sees ("Europe"). `primary_uri` must be present;
-    `fallback_uri` is optional — when set, the two are wrapped in an `urltest`
-    group with high tolerance (always prefer primary unless dead).
-    """
-
     tag: str
     primary_uri: str
     fallback_uri: str | None = None
 
 
+_SELECTOR_TAG = "proxy"
+_DIRECT_TAG = "direct"
+_BLOCK_TAG = "block"
+_DNS_OUT_TAG = "dns-out"
+
+
 @dataclass(slots=True)
 class SingboxConfig:
-    """Sing-box client config: outbounds + a minimal `route`.
-
-    `extra_outbounds` is a list of plain vless outbounds (without fallback)
-    that should appear as-is.
-    """
-
     grouped_zones: list[ZoneOutbounds] = field(default_factory=list)
-    extra_outbounds: list[tuple[str, str]] = field(default_factory=list)  # (tag, uri)
+    extra_outbounds: list[tuple[str, str]] = field(default_factory=list)
 
     def to_dict(self) -> dict:
-        outbounds: list[dict] = []
+        proxy_outbounds: list[dict] = []
+        user_visible_tags: list[str] = []
 
         for zone in self.grouped_zones:
-            primary_tag = f"{zone.tag} · primary"
-            outbounds.append(_vless_uri_to_outbound(zone.primary_uri, tag=primary_tag))
             if zone.fallback_uri:
+                primary_tag = f"{zone.tag} · primary"
                 fallback_tag = f"{zone.tag} · fallback"
-                outbounds.append(_vless_uri_to_outbound(zone.fallback_uri, tag=fallback_tag))
-                outbounds.append({
+                proxy_outbounds.append(_vless_uri_to_outbound(zone.primary_uri, tag=primary_tag))
+                proxy_outbounds.append(_vless_uri_to_outbound(zone.fallback_uri, tag=fallback_tag))
+                proxy_outbounds.append({
                     "type": "urltest",
                     "tag": zone.tag,
                     "outbounds": [primary_tag, fallback_tag],
                     "url": "https://www.gstatic.com/generate_204",
                     "interval": "30s",
-                    # Very high tolerance: only switch when the primary actually fails.
-                    # If both respond, keep the first one (which is the primary).
                     "tolerance": 10000,
                     "interrupt_exist_connections": False,
                 })
-            # If no fallback — primary itself acts as the user-visible outbound.
-            # Rename it to the zone tag for a clean Happ UI.
+                user_visible_tags.append(zone.tag)
             else:
-                outbounds[-1]["tag"] = zone.tag
+                proxy_outbounds.append(_vless_uri_to_outbound(zone.primary_uri, tag=zone.tag))
+                user_visible_tags.append(zone.tag)
 
         for tag, uri in self.extra_outbounds:
-            outbounds.append(_vless_uri_to_outbound(uri, tag=tag))
+            proxy_outbounds.append(_vless_uri_to_outbound(uri, tag=tag))
+            user_visible_tags.append(tag)
 
-        outbounds.append({"type": "direct", "tag": "direct"})
-        outbounds.append({"type": "block", "tag": "block"})
+        selector = {
+            "type": "selector",
+            "tag": _SELECTOR_TAG,
+            "outbounds": user_visible_tags,
+            "default": user_visible_tags[0] if user_visible_tags else None,
+            "interrupt_exist_connections": True,
+        }
+        if selector["default"] is None:
+            selector.pop("default")
 
-        return {"outbounds": outbounds}
+        outbounds: list[dict] = [selector]
+        outbounds.extend(proxy_outbounds)
+        outbounds.append({"type": "direct", "tag": _DIRECT_TAG})
+        outbounds.append({"type": "block", "tag": _BLOCK_TAG})
+        outbounds.append({"type": "dns", "tag": _DNS_OUT_TAG})
+
+        return {
+            "log": {"level": "warn", "timestamp": True},
+            "dns": {
+                "servers": [
+                    {"tag": "cf-dns", "address": "tls://1.1.1.1", "detour": _SELECTOR_TAG},
+                    {"tag": "local", "address": "local", "detour": _DIRECT_TAG},
+                ],
+                "rules": [
+                    {"outbound": "any", "server": "local"},
+                ],
+                "independent_cache": True,
+            },
+            "inbounds": [
+                {
+                    "type": "tun",
+                    "tag": "tun-in",
+                    "interface_name": "tun0",
+                    "mtu": 9000,
+                    "inet4_address": "172.19.0.1/30",
+                    "auto_route": True,
+                    "strict_route": True,
+                    "stack": "mixed",
+                    "sniff": True,
+                },
+            ],
+            "outbounds": outbounds,
+            "route": {
+                "rules": [
+                    {"protocol": "dns", "outbound": _DNS_OUT_TAG},
+                    {"port": 53, "outbound": _DNS_OUT_TAG},
+                    {"ip_is_private": True, "outbound": _DIRECT_TAG},
+                ],
+                "final": _SELECTOR_TAG,
+                "auto_detect_interface": True,
+                "override_android_vpn": True,
+            },
+        }
 
     def to_json(self) -> str:
         return json.dumps(self.to_dict(), separators=(",", ":"), ensure_ascii=False)
-
-
-# ── URI → outbound translation ──────────────────────────────────────────────
 
 
 def _vless_uri_to_outbound(uri: str, *, tag: str) -> dict:
