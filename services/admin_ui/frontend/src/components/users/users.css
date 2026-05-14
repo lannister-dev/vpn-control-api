@@ -175,7 +175,15 @@
   background: rgba(248, 113, 113, 0.1); color: var(--bad, #f87171);
   text-transform: uppercase; letter-spacing: 0.05em;
 }
-.u-devcard-sub { display: flex; align-items: center; gap: 6px; margin-top: 2px; overflow: hidden; }
+.u-devcard-sub {
+  display: flex; align-items: center; gap: 6px; margin-top: 2px;
+  overflow: hidden; min-width: 0; font-size: 11.5px;
+}
+.u-devcard-sub > * { flex-shrink: 0; }
+.u-devcard-sub > .u-devcard-ua {
+  flex: 1; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .u-devcard-sep { color: var(--text-faint, #525866); font-size: 10px; }
 .u-devcard-actions { display: flex; gap: 4px; flex-shrink: 0; }
 
@@ -334,6 +342,21 @@
 }
 .u-subtile-foot > span { display: inline-flex; align-items: center; gap: 5px; }
 .u-subtile-foot-open { margin-left: auto; }
+
+/* Device group (devices tab, grouped by subscription) */
+.u-devgroup {
+  margin-bottom: 18px;
+}
+.u-devgroup-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 6px 2px 8px;
+  border-bottom: 1px dashed var(--border, #2a2f3a);
+  margin-bottom: 8px;
+}
+.u-devgroup-head-main { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.u-devgroup-plan { font-size: 13px; font-weight: 600; color: var(--text, #e5e7eb); }
+.u-devgroup-id { font-size: 11px; color: var(--text-faint, #525866); }
+.u-devgroup-count { font-size: 11.5px; }
 
 /* Empty state */
 .u-empty {

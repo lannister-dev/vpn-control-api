@@ -48,12 +48,12 @@ export function DeviceCard({ device, onCopy, onRevoke }) {
           {!device.is_active && <span className="u-devcard-revoked" style={{ marginLeft: 6 }}>отозвано</span>}
         </div>
         <div className="u-devcard-sub" title={device.user_agent || ""}>
-          <span className="mono small muted">{String(device.hwid_hash || device.id).slice(0, 12)}…</span>
+          <span className="mono muted">{String(device.hwid_hash || device.id).slice(0, 12)}…</span>
           <span className="u-devcard-sep">·</span>
           <span className="muted">{fmtSeen(device.last_seen_at)}</span>
           {device.user_agent && <>
             <span className="u-devcard-sep">·</span>
-            <span className="muted">{shortenUA(device.user_agent)}</span>
+            <span className="u-devcard-ua muted">{shortenUA(device.user_agent)}</span>
           </>}
         </div>
       </div>
