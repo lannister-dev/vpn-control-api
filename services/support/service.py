@@ -15,7 +15,6 @@ from services.auth.admin.repository import AdminUserRepository
 from services.billing.models import BalanceTransaction
 from services.billing.repository import OrderRepository
 from services.support.constants import (
-    REOPEN_WINDOW_MIN,
     SUBJECT_PREVIEW_LEN,
     SUPPORT_OUTBOUND_SUBJECT,
 )
@@ -24,6 +23,7 @@ from services.support.exceptions import (
     SupportActionFailed,
     TemplateAlreadyExists,
     TemplateNotFound,
+    TicketClosed,
     TicketNotFound,
 )
 from services.support.models import (
@@ -330,6 +330,9 @@ class SupportService:
         if not clean_text:
             raise EmptyMessage("Message must contain text")
 
+        if ticket.status == TicketStatus.CLOSED.value and not is_note:
+            raise TicketClosed(str(ticket_id))
+
         msg = await self.messages.create(
             SupportMessageCreate(
                 ticket_id=ticket_id,
@@ -437,23 +440,18 @@ class SupportService:
         now = datetime.now(timezone.utc)
         ticket = await self.tickets.find_open_by_user(user_id)
         if ticket is None:
-            recent = await self.tickets.find_recent_closed_by_user(user_id, within_minutes=REOPEN_WINDOW_MIN)
-            if recent is not None:
-                recent.status = TicketStatus.NEW.value
-                recent.closed_at = None
-                ticket = recent
-            else:
-                ticket = await self.tickets.create(
-                    SupportTicketCreate(
-                        user_id=user_id,
-                        subject=(text or "")[:SUBJECT_PREVIEW_LEN],
-                        status=TicketStatus.NEW,
-                        category=TicketCategory.OTHER,
-                        priority=TicketPriority.NORMAL,
-                        last_activity_at=now,
-                        first_user_msg_at=now,
-                    ).model_dump()
-                )
+            # Closed tickets stay closed. New user message always opens a fresh ticket.
+            ticket = await self.tickets.create(
+                SupportTicketCreate(
+                    user_id=user_id,
+                    subject=(text or "")[:SUBJECT_PREVIEW_LEN],
+                    status=TicketStatus.NEW,
+                    category=TicketCategory.OTHER,
+                    priority=TicketPriority.NORMAL,
+                    last_activity_at=now,
+                    first_user_msg_at=now,
+                ).model_dump()
+            )
 
         if not ticket.subject:
             ticket.subject = (text or "")[:SUBJECT_PREVIEW_LEN]

@@ -6,6 +6,10 @@ class EmptyMessage(Exception):
     pass
 
 
+class TicketClosed(Exception):
+    pass
+
+
 class SupportActionFailed(Exception):
     pass
 
