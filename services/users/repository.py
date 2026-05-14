@@ -23,6 +23,7 @@ class UserRepository(BaseRepository[User]):
         result = await self.session.execute(select(User).where(User.id.in_(ids)))
         return list(result.scalars().all())
 
+
     async def list_paginated(
         self,
         search: str | None = None,
