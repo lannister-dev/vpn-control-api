@@ -40,7 +40,11 @@ class VpnNode(Base):
         nullable=True,
         index=True,
     )
-    zone_ref: Mapped["Zone | None"] = relationship(lazy="joined")
+    zone_ref: Mapped["Zone | None"] = relationship(
+        lazy="joined",
+        foreign_keys="VpnNode.zone",
+        primaryjoin="VpnNode.zone == Zone.code",
+    )
     upstream_node_id: Mapped[UUID | None] = mapped_column(ForeignKey("vpn_node.id"), nullable=True, index=True)
     bootstrap_token_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
