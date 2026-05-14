@@ -4,6 +4,7 @@ import { useQuery } from "../hooks/useQuery.js";
 import { Icon } from "../components/Icon.jsx";
 import { Spark } from "../components/Spark.jsx";
 import { nodeGeo } from "../lib/geo.js";
+import { regionLoad } from "../lib/nodeLoad.js";
 
 function spark(seed, len = 24, base = 50, vol = 25) {
   let x = seed;
@@ -253,9 +254,7 @@ export function OverviewPage({ onOpenNode, onGoto }) {
     }
     const zoneByCode = Object.fromEntries((zonesList || []).map((z) => [z.code, z]));
     const rows = Object.values(byRegion).map((r, i) => {
-      const avgLoad = r.nodes.length
-        ? Math.min(1, r.nodes.reduce((a, n) => a + (n.placements_backend || 0), 0) / (r.nodes.length * 50))
-        : 0;
+      const load = regionLoad(r.nodes);
       const seed = (r.region.charCodeAt(0) + i) * 7 + 11;
       const zoneNode = r.nodes[0];
       const zone = zoneByCode[zoneNode?.zone];
@@ -266,7 +265,7 @@ export function OverviewPage({ onOpenNode, onGoto }) {
         label: `${emoji} ${r.region} · ${name}`,
         cnt: r.nodes.length,
         h: r.h,
-        load: avgLoad,
+        load,
         trafficBytes: trafficByRegion[r.region],
         keys: r.keys,
         seed,
@@ -580,7 +579,7 @@ export function OverviewPage({ onOpenNode, onGoto }) {
                         {r.h[2] > 0 && <span className="pill bad" style={{ padding: "0 6px" }}>{r.h[2]}</span>}
                       </div>
                     </td>
-                    <td><LoadBar v={r.load} /></td>
+                    <td><LoadBar load={r.load} /></td>
                     <td className="tbl-num">{r.trafficBytes != null ? `${t.v} ${t.u}` : "—"}</td>
                     <td className="tbl-num">{r.keys}</td>
                     <td>
@@ -648,15 +647,17 @@ function KpiCell({ label, value, unit, delta, deltaSub, deltaTone, icon, sparkSe
   );
 }
 
-function LoadBar({ v }) {
-  const pct = Math.round(v * 100);
-  const tone = pct > 80 ? "bad" : pct > 65 ? "warn" : "ok";
+function LoadBar({ load }) {
+  const { pct, tone, label, tooltip } = load;
+  const barWidth = pct == null ? 0 : Math.min(100, pct);
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+    <div title={tooltip} style={{ display: "flex", alignItems: "center", gap: 8 }}>
       <div style={{ flex: 1, height: 6, background: "var(--surface-2)", borderRadius: 4, overflow: "hidden", maxWidth: 140 }}>
-        <div style={{ width: `${pct}%`, height: "100%", background: `var(--${tone})` }} />
+        <div style={{ width: `${barWidth}%`, height: "100%", background: `var(--${tone})` }} />
       </div>
-      <span className="mono" style={{ color: `var(--${tone})`, fontWeight: 500 }}>{pct}%</span>
+      <span className="mono" style={{ color: `var(--${tone})`, fontWeight: 500, whiteSpace: "nowrap" }}>
+        {label}{pct != null ? ` · ${pct}%` : ""}
+      </span>
     </div>
   );
 }

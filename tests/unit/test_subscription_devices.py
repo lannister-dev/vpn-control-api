@@ -24,6 +24,9 @@ def _device(subscription_id):
     d.hwid_hash = "a" * 64
     d.last_seen_at = datetime.now(timezone.utc)
     d.user_agent = "happ/1.0"
+    d.device_model = None
+    d.platform = None
+    d.os_version = None
     d.is_active = True
     d.created_at = datetime.now(timezone.utc)
     d.updated_at = datetime.now(timezone.utc)

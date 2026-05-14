@@ -83,7 +83,12 @@ from services.vpn.subscriptions.schemas import (
     SubscriptionUserInfo,
     TransportBuildResult,
 )
+from services.vpn.subscriptions.singbox_builder import (
+    SingboxConfig,
+    ZoneOutbounds,
+)
 from services.vpn.subscriptions.utils import SubscriptionUtils
+from services.zones.repository import ZoneRepository
 from shared.database.session import AsyncDatabase
 from shared.monitoring.metrics import (
     SUBSCRIPTION_BUILD_DURATION,
@@ -126,6 +131,7 @@ class SubscriptionService:
         self.device_repository = SubscriptionDeviceRepository(session)
         self.device_key_repository = SubscriptionDeviceKeyRepository(session)
         self.node_repository = VpnNodeRepository(session)
+        self.zone_repository = ZoneRepository(session)
         self.routing_service = RoutingService(session)
         self.placement_repository = UserPlacementRepository(session)
         self.node_agent_transport = NodeAgentPlacementTransport(session)
@@ -201,7 +207,7 @@ class SubscriptionService:
         return self._sub_to_out(sub)
 
     @staticmethod
-    def _sub_to_out(sub) -> SubscriptionOut:
+    def _sub_to_out(sub, *, device_count: int | None = None) -> SubscriptionOut:
         plan = getattr(sub, "plan", None)
         return SubscriptionOut(
             id=sub.id,
@@ -219,6 +225,7 @@ class SubscriptionService:
             used_traffic_bytes=getattr(sub, "used_traffic_bytes", 0),
             lifetime_used_traffic_bytes=getattr(sub, "lifetime_used_traffic_bytes", 0),
             last_traffic_reset_at=getattr(sub, "last_traffic_reset_at", None),
+            device_count=device_count,
             created_at=sub.created_at,
             updated_at=sub.updated_at,
         )
@@ -247,7 +254,10 @@ class SubscriptionService:
             user_id=user_id,
             active_only=active_only,
         )
-        return [self._sub_to_out(row) for row in rows]
+        counts = await self.device_repository.count_active_by_subscription_ids(
+            [row.id for row in rows]
+        )
+        return [self._sub_to_out(row, device_count=counts.get(row.id, 0)) for row in rows]
 
     async def get_stats(self) -> tuple[int, int, int]:
         return await self.subscription_repository.count_stats()
@@ -413,6 +423,9 @@ class SubscriptionService:
                     hwid_hash=device.hwid_hash,
                     last_seen_at=device.last_seen_at,
                     user_agent=device.user_agent,
+                    device_model=getattr(device, "device_model", None),
+                    platform=getattr(device, "platform", None),
+                    os_version=getattr(device, "os_version", None),
                     is_active=device.is_active,
                     created_at=device.created_at,
                     updated_at=device.updated_at,
@@ -469,6 +482,9 @@ class SubscriptionService:
             *,
             hwid: str | None = None,
             user_agent: str | None = None,
+            device_model: str | None = None,
+            platform: str | None = None,
+            os_version: str | None = None,
             if_none_match: str | None = None,
     ) -> tuple[str, str, bool, SubscriptionUserInfo | None]:
         t0 = time.perf_counter()
@@ -519,6 +535,9 @@ class SubscriptionService:
                 subscription=subscription,
                 hwid=hwid,
                 user_agent=user_agent,
+                device_model=device_model,
+                platform=platform,
+                os_version=os_version,
                 now=now,
             )
 
@@ -557,7 +576,6 @@ class SubscriptionService:
                 SUBSCRIPTION_PAYLOAD_GUARDRAIL_TOTAL.labels(result="rejected").inc()
                 raise SubscriptionBuild("Subscription payload exceeds size limit")
 
-            uris = [item.uri for item in selected_routes]
             route_signatures = [
                 self._route_signature(
                     route=item.route,
@@ -566,7 +584,10 @@ class SubscriptionService:
                 )
                 for item in selected_routes
             ]
-            payload = "\n".join(uris)
+            payload = await self._render_subscription_payload(
+                selected_routes=selected_routes,
+                client_id=bundle.keys[0].client_id if bundle.keys else "",
+            )
             payload_bytes = len(payload.encode())
             if payload_bytes > max_payload_bytes:
                 SUBSCRIPTION_PAYLOAD_GUARDRAIL_TOTAL.labels(result="overflow").inc()
@@ -1561,6 +1582,101 @@ class SubscriptionService:
 
         return None
 
+    async def _render_subscription_payload(
+        self,
+        *,
+        selected_routes,
+        client_id: str,
+    ) -> str:
+        """Pick the right wire format for the subscription body.
+
+        Falls back to the legacy vless-uri list when no involved zone has a
+        `fallback_entry_node_id` configured. As soon as at least one zone
+        defines a fallback whitelist, we emit a sing-box JSON config with an
+        `urltest` group per such zone (primary entry + whitelist as backup,
+        high tolerance so the primary is preferred until it actually dies).
+        """
+        # 1) Find zones that have a fallback configured.
+        zone_codes: set[str] = set()
+        for item in selected_routes:
+            backend = item.node
+            code = getattr(backend, "zone", None)
+            if isinstance(code, str) and code.strip():
+                zone_codes.add(code.strip())
+
+        zones_by_code: dict[str, object] = {}
+        if zone_codes:
+            zone_rows = await self.zone_repository.list_by_codes(sorted(zone_codes))
+            zones_by_code = {z.code: z for z in zone_rows}
+
+        zones_with_fallback = {
+            code: z
+            for code, z in zones_by_code.items()
+            if getattr(z, "fallback_entry_node_id", None)
+        }
+
+        # 2) Legacy path — nothing to override, keep current `vless://` list.
+        if not zones_with_fallback:
+            return "\n".join(item.uri for item in selected_routes)
+
+        # 3) Load fallback whitelist entry-nodes in one query.
+        fallback_node_ids = {
+            z.fallback_entry_node_id for z in zones_with_fallback.values()
+        }
+        fallback_nodes = await self.node_repository.list_by_ids(list(fallback_node_ids))
+        fallback_by_id = {n.id: n for n in fallback_nodes}
+
+        # 4) Group routes by user-visible display (their zone label).
+        #    For each route in a zone-with-fallback, build a fallback vless URI
+        #    using the SAME backend + transport_profile but a DIFFERENT public_node.
+        grouped: list[ZoneOutbounds] = []
+        extras: list[tuple[str, str]] = []
+        seen_tags: set[str] = set()
+
+        for item in selected_routes:
+            backend = item.node
+            zone_code = (getattr(backend, "zone", None) or "").strip()
+            zone = zones_with_fallback.get(zone_code)
+            display = item.display_name or item.country_name or zone_code or "Server"
+
+            # Dedup by display — Happ groups same-tag outbounds anyway.
+            tag = display
+            if tag in seen_tags:
+                continue
+            seen_tags.add(tag)
+
+            if zone is None:
+                extras.append((tag, item.uri))
+                continue
+
+            fallback_node = fallback_by_id.get(zone.fallback_entry_node_id)
+            if fallback_node is None:
+                extras.append((tag, item.uri))
+                continue
+
+            fallback_uri = self._build_route_uri(
+                client_id=client_id,
+                backend_node=backend,
+                public_node=fallback_node,
+                transport_profile=item.transport_profile,
+                remark_override=tag,
+            )
+            if not fallback_uri:
+                extras.append((tag, item.uri))
+                continue
+
+            grouped.append(ZoneOutbounds(
+                tag=tag,
+                primary_uri=item.uri,
+                fallback_uri=fallback_uri,
+            ))
+
+        if not grouped:
+            return "\n".join(item.uri for item in selected_routes)
+
+        cfg = SingboxConfig(grouped_zones=grouped, extra_outbounds=extras)
+        return cfg.to_json()
+
     def _route_signature(self, *, route, node, transport_profile) -> str:
         route_updated = route.updated_at
         transport_updated = transport_profile.updated_at
@@ -1768,6 +1884,9 @@ class SubscriptionService:
             subscription,
             hwid: str | None,
             user_agent: str | None,
+            device_model: str | None = None,
+            platform: str | None = None,
+            os_version: str | None = None,
             now: datetime,
     ) -> ResolvedDeviceBundle:
         if not hwid:
@@ -1783,6 +1902,9 @@ class SubscriptionService:
                 device_id=device.id,
                 last_seen_at=now,
                 user_agent=user_agent,
+                device_model=device_model,
+                platform=platform,
+                os_version=os_version,
             )
             return await self._ensure_device_key_bundle(
                 subscription=subscription,
@@ -1800,6 +1922,9 @@ class SubscriptionService:
                 device_id=device.id,
                 last_seen_at=now,
                 user_agent=user_agent,
+                device_model=device_model,
+                platform=platform,
+                os_version=os_version,
             )
             return await self._ensure_device_key_bundle(
                 subscription=subscription,
@@ -1840,6 +1965,9 @@ class SubscriptionService:
                     hwid_hash=hwid_hash,
                     last_seen_at=now,
                     user_agent=user_agent,
+                    device_model=device_model,
+                    platform=platform,
+                    os_version=os_version,
                 ).model_dump()
             )
         except IntegrityError:

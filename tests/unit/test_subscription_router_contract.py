@@ -65,6 +65,9 @@ async def test_get_subscription_config_success_headers_and_payload():
         raw_token="tok",
         hwid="hwid-1",
         user_agent="Happ/1.0",
+        device_model=None,
+        platform=None,
+        os_version=None,
         if_none_match=None,
     )
 

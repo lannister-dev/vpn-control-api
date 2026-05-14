@@ -11,6 +11,7 @@ import { BalancePill } from "./users/BalancePill.jsx";
 import { StatusPill, deriveSubStatus } from "./users/StatusPill.jsx";
 import { DaysCountdown, daysLeft } from "./users/DaysCountdown.jsx";
 import { SubscriptionCard } from "./users/SubscriptionCard.jsx";
+import { SubscriptionSummaryRow } from "./users/SubscriptionSummaryRow.jsx";
 import { DeviceCard } from "./users/DeviceCard.jsx";
 import "./users/users.css";
 
@@ -69,7 +70,13 @@ export function UserDrawer({ user, onClose }) {
             onCreate={() => setCreatingSub(true)}
           />
         )}
-        {tab === "devices" && <DevicesTab subs={subsList} />}
+        {tab === "devices" && (
+          <DevicesTab
+            subs={subsList}
+            plansById={plansById}
+            onOpenSub={setOpenSub}
+          />
+        )}
       </Drawer>
       {openSub && <SubscriptionDrawer subscription={openSub} onClose={() => setOpenSub(null)} onChanged={subs.refetch} />}
       {creatingSub && (
@@ -116,8 +123,6 @@ function UserHero({ d, subsCount }) {
 }
 
 function Overview({ user, subs, plansById, expiringSub, onCreateSub, onOpenSub }) {
-  const totalUsed = subs.reduce((a, s) => a + (s.used_traffic_bytes || 0), 0);
-
   return (
     <div>
       {expiringSub && (
@@ -144,14 +149,19 @@ function Overview({ user, subs, plansById, expiringSub, onCreateSub, onOpenSub }
           </button>
         </div>
         {!subs.length && <div className="muted small">Нет подписок</div>}
-        {subs.slice(0, 3).map((s) => (
-          <SubscriptionCard
+        {subs.slice(0, 5).map((s) => (
+          <SubscriptionSummaryRow
             key={s.id}
             sub={s}
             plan={plansById[s.plan_id]}
             onOpen={onOpenSub}
           />
         ))}
+        {subs.length > 5 && (
+          <div className="muted small" style={{ marginTop: 6 }}>
+            +{subs.length - 5} ещё · во вкладке «Подписки»
+          </div>
+        )}
       </div>
 
       <div className="u-section">
@@ -199,13 +209,13 @@ function SubsTab({ subs, plansById, loading, onOpen, onCreate }) {
   );
 }
 
-function DevicesTab({ subs }) {
+function DevicesTab({ subs, plansById, onOpenSub }) {
   const subIds = subs.map((s) => s.id).join(",");
   const allDevices = useQuery(async () => {
     if (!subs.length) return [];
     const lists = await Promise.all(subs.map((s) =>
       api.get(`/subscriptions/${s.id}/devices`)
-        .then((d) => (Array.isArray(d) ? d : []))
+        .then((d) => (Array.isArray(d) ? d : []).map((dev) => ({ ...dev, subscription_id: dev.subscription_id || s.id })))
         .catch(() => [])
     ));
     return lists.flat();
@@ -214,7 +224,7 @@ function DevicesTab({ subs }) {
   const onRevoke = async (device) => {
     if (!confirm(`Отозвать устройство ${String(device.hwid_hash || device.id).slice(0,8)}…?`)) return;
     try {
-      await api.del(`/subscriptions/devices/${device.id}`);
+      await api.post(`/subscriptions/${device.subscription_id}/devices/${device.id}/revoke`);
       toast.ok("Устройство отозвано");
       allDevices.refetch();
     } catch (e) {
@@ -234,9 +244,51 @@ function DevicesTab({ subs }) {
     return <div className="muted small u-section">Устройств нет.</div>;
   }
 
+  const subsById = Object.fromEntries(subs.map((s) => [s.id, s]));
+  const groups = subs
+    .map((s) => ({
+      sub: s,
+      items: devices.filter((d) => d.subscription_id === s.id),
+    }))
+    .filter((g) => g.items.length > 0);
+  const orphaned = devices.filter((d) => !subsById[d.subscription_id]);
+  if (orphaned.length) groups.push({ sub: null, items: orphaned });
+
   return (
     <div className="u-section">
       <div className="u-section-head"><span>Все устройства · {devices.length}</span></div>
+      {groups.map(({ sub, items }) => (
+        <DeviceGroup
+          key={sub?.id || "orphan"}
+          sub={sub}
+          plan={sub ? plansById[sub.plan_id] : null}
+          devices={items}
+          onOpenSub={onOpenSub}
+          onCopy={onCopy}
+          onRevoke={onRevoke}
+        />
+      ))}
+    </div>
+  );
+}
+
+function DeviceGroup({ sub, plan, devices, onOpenSub, onCopy, onRevoke }) {
+  const planName = plan?.name || (sub?.plan_id ? `plan ${String(sub.plan_id).slice(0, 6)}…` : "—");
+  const subId = sub ? String(sub.id).slice(0, 8) : "—";
+  return (
+    <div className="u-devgroup">
+      <div className="u-devgroup-head">
+        <div className="u-devgroup-head-main">
+          <span className="u-devgroup-plan">{sub ? planName : "Без подписки"}</span>
+          {sub && <span className="u-devgroup-id mono">{subId}</span>}
+          <span className="u-devgroup-count muted">· {devices.length}</span>
+        </div>
+        {sub && onOpenSub && (
+          <button className="btn btn-ghost btn-sm" onClick={() => onOpenSub(sub)} title="Открыть подписку">
+            <Icon name="external-link" size={12} /> Открыть подписку
+          </button>
+        )}
+      </div>
       {devices.map((d) => (
         <DeviceCard key={d.id} device={d} onCopy={onCopy} onRevoke={onRevoke} />
       ))}

@@ -101,13 +101,23 @@ export function DatePicker({
     if (!el) return;
     const rect = el.getBoundingClientRect();
     const margin = 8;
-    const roomBelow = window.innerHeight - rect.bottom;
-    const above = roomBelow < POP_H + margin && rect.top > POP_H + margin;
-    const top = above ? rect.top - POP_H - 6 : rect.bottom + 6;
+    const popH = (popRef.current && popRef.current.offsetHeight) || POP_H;
+    const popW = (popRef.current && popRef.current.offsetWidth) || POP_W;
+    const roomBelow = window.innerHeight - rect.bottom - margin;
+    const roomAbove = rect.top - margin;
+    // Prefer below; flip up when below cannot fit AND above has more space.
+    const wantBelow = roomBelow >= popH || roomBelow >= roomAbove;
+    let top = wantBelow ? rect.bottom + 6 : rect.top - popH - 6;
+    // Clamp vertically into the viewport.
+    if (top + popH + margin > window.innerHeight) {
+      top = Math.max(margin, window.innerHeight - popH - margin);
+    }
+    if (top < margin) top = margin;
     let left = rect.left;
-    const maxLeft = window.innerWidth - POP_W - margin;
+    const maxLeft = window.innerWidth - popW - margin;
     if (left > maxLeft) left = Math.max(margin, maxLeft);
-    setPopPos({ top, left, above });
+    if (left < margin) left = margin;
+    setPopPos({ top, left, above: !wantBelow });
   };
 
   useLayoutEffect(() => {

@@ -9,6 +9,7 @@ import { Spark } from "./Spark.jsx";
 import { RouteForm } from "./RouteForm.jsx";
 import { toast } from "./Toast.jsx";
 import { nodeGeo } from "../lib/geo.js";
+import { nodeLoad } from "../lib/nodeLoad.js";
 
 const isEntryRole = (n) => ["entry", "whitelist_entry"].includes(String(n?.role || "").toLowerCase());
 
@@ -181,8 +182,10 @@ function SshHintModal({ node, onClose }) {
 }
 
 function NodeOverview({ node, routesCount, transportData, onSshClick, onMigrateClick }) {
-  const loadPct = Math.min(100, Math.round(((node.placements_backend || 0) / Math.max(node.capacity || 50, 1)) * 100));
-  const loadTone = loadPct > 80 ? "bad" : loadPct > 65 ? "warn" : "ok";
+  const load = nodeLoad(node);
+  const loadPct = load.pct;
+  const loadTone = load.tone;
+  const loadBarWidth = loadPct == null ? 0 : Math.min(100, loadPct);
   const tone = healthTone(node);
   const st = stateOf(node);
 
@@ -195,15 +198,20 @@ function NodeOverview({ node, routesCount, transportData, onSshClick, onMigrateC
     <div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 }}>
         <div className="card">
-          <div className="card-body" style={{ padding: 14 }}>
+          <div className="card-body" style={{ padding: 14 }} title={load.tooltip}>
             <div className="kpi-label"><Icon name="activity" size={12} /> Нагрузка</div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div className="kpi-value" style={{ fontSize: 22 }}>{loadPct}<span className="kpi-unit">%</span></div>
+              <div className="kpi-value" style={{ fontSize: 22 }}>
+                {loadPct != null ? <>{loadPct}<span className="kpi-unit">%</span></> : <span className="muted">—</span>}
+              </div>
               <div style={{ flex: 1, height: 6, background: "var(--surface-2)", borderRadius: 4, overflow: "hidden" }}>
-                <div style={{ width: `${loadPct}%`, height: "100%", background: `var(--${loadTone})` }} />
+                <div style={{ width: `${loadBarWidth}%`, height: "100%", background: `var(--${loadTone})` }} />
               </div>
             </div>
-            <div className="muted small" style={{ marginTop: 6 }}>{node.placements_backend || 0} / {node.capacity || "—"} placements</div>
+            <div className="muted small" style={{ marginTop: 6 }}>
+              {load.used} / {load.capacity ?? "—"} placements
+              {load.capacity == null && <span style={{ marginLeft: 6 }}>· capacity не задан</span>}
+            </div>
           </div>
         </div>
         <div className="card">
@@ -234,14 +242,16 @@ function NodeOverview({ node, routesCount, transportData, onSshClick, onMigrateC
         </dd>
         <dt>Здоровье</dt><dd><span className={`pill ${tone}`}><span className={`status-dot ${tone}`} /> {tone === "ok" ? "healthy" : tone === "warn" ? "degraded" : "unhealthy"}</span></dd>
         <dt>Нагрузка</dt><dd>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div title={load.tooltip} style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <div style={{ flex: 1, height: 6, background: "var(--surface-2)", borderRadius: 4, overflow: "hidden", maxWidth: 140 }}>
-              <div style={{ width: `${loadPct}%`, height: "100%", background: `var(--${loadTone})` }} />
+              <div style={{ width: `${loadBarWidth}%`, height: "100%", background: `var(--${loadTone})` }} />
             </div>
-            <span className="mono" style={{ color: `var(--${loadTone})`, fontWeight: 500 }}>{loadPct}%</span>
+            <span className="mono" style={{ color: `var(--${loadTone})`, fontWeight: 500, whiteSpace: "nowrap" }}>
+              {load.label}{loadPct != null ? ` · ${loadPct}%` : ""}
+            </span>
           </div>
         </dd>
-        <dt>Capacity</dt><dd className="mono">{node.capacity ?? "—"}</dd>
+        <dt>Capacity</dt><dd className="mono">{node.capacity ?? <span className="muted">—</span>}</dd>
         <dt>Heartbeat</dt><dd className="mono">{relTime(node.last_seen_at)} назад</dd>
         <dt>Маршрутов</dt><dd className="mono">{routesCount}</dd>
         <dt>Public domain</dt><dd className="mono small">{node.public_domain || "—"}</dd>

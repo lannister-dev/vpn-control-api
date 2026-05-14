@@ -35,6 +35,7 @@ def service(async_session, redis_client):
     svc = SubscriptionService(async_session, redis_client)
     svc.subscription_repository = AsyncMock()
     svc.device_repository = AsyncMock()
+    svc.device_repository.count_active_by_subscription_ids = AsyncMock(return_value={})
     svc.device_key_repository = AsyncMock()
     svc.vpn_key_repository = AsyncMock()
     svc.device_key_repository.list_by_device_ids = AsyncMock(return_value=[])

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { api } from "../api/client.js";
 import { useQuery } from "../hooks/useQuery.js";
 import { Icon } from "../components/Icon.jsx";
@@ -7,6 +8,7 @@ import { Modal } from "../components/Modal.jsx";
 import { Field } from "../components/Field.jsx";
 import { toast } from "../components/Toast.jsx";
 import { nodeGeo, zoneFlag } from "../lib/geo.js";
+import { nodeLoad } from "../lib/nodeLoad.js";
 
 function spark(seed, len = 20, base = 50, vol = 30) {
   let x = seed || 7;
@@ -50,10 +52,6 @@ const DRAIN_REASON_LABELS = {
 function drainReasonLabel(reason) {
   if (!reason) return "";
   return DRAIN_REASON_LABELS[reason] || reason;
-}
-
-function loadOf(n) {
-  return Math.min(1, (n.placements_backend || 0) / Math.max(n.capacity || 50, 1));
 }
 
 export function NodesPage({ onOpenNode, initialAction, onActionConsumed }) {
@@ -149,7 +147,7 @@ export function NodesPage({ onOpenNode, initialAction, onActionConsumed }) {
             {list.map((n) => {
               const h = healthOf(n);
               const st = stateOf(n);
-              const load = loadOf(n);
+              const load = nodeLoad(n);
               const seed = parseInt(String(n.id).replace(/-/g, "").slice(0, 6), 16) || 7;
               const flag = zoneFlag(zoneByCode, n.zone, n.region);
               const geo = nodeGeo(n.region);
@@ -180,8 +178,8 @@ export function NodesPage({ onOpenNode, initialAction, onActionConsumed }) {
                       </div>
                     )}
                   </td>
-                  <td><LoadBar v={load} /></td>
-                  <td className="tbl-num">{n.capacity ?? "—"}</td>
+                  <td><LoadBar load={load} /></td>
+                  <td className="tbl-num">{n.capacity ?? <span className="muted">—</span>}</td>
                   <td className="tbl-num">{n.placements_backend ?? 0}</td>
                   <td className="mono" style={{ color: hbBad ? "var(--bad)" : "var(--text-secondary)" }}>{hb}</td>
                   <td><Spark data={spark(seed, 20, 50, 30)} color="var(--accent)" w={90} h={22} /></td>
@@ -321,15 +319,17 @@ function CreateNodeModal({ zones, onClose }) {
   );
 }
 
-function LoadBar({ v }) {
-  const pct = Math.round(v * 100);
-  const tone = pct > 80 ? "bad" : pct > 65 ? "warn" : "ok";
+function LoadBar({ load }) {
+  const { pct, tone, label, tooltip } = load;
+  const barWidth = pct == null ? 0 : Math.min(100, pct);
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+    <div title={tooltip} style={{ display: "flex", alignItems: "center", gap: 8 }}>
       <div style={{ flex: 1, height: 6, background: "var(--surface-2)", borderRadius: 4, overflow: "hidden", maxWidth: 140 }}>
-        <div style={{ width: `${pct}%`, height: "100%", background: `var(--${tone})` }} />
+        <div style={{ width: `${barWidth}%`, height: "100%", background: `var(--${tone})` }} />
       </div>
-      <span className="mono" style={{ color: `var(--${tone})`, fontWeight: 500 }}>{pct}%</span>
+      <span className="mono" style={{ color: `var(--${tone})`, fontWeight: 500, whiteSpace: "nowrap" }}>
+        {label}{pct != null ? ` · ${pct}%` : ""}
+      </span>
     </div>
   );
 }
@@ -337,12 +337,42 @@ function LoadBar({ v }) {
 function RowMenu({ node, onRefresh }) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef(null);
-  const [above, setAbove] = useState(false);
-  useEffect(() => {
-    if (!open || !btnRef.current) return;
-    const rect = btnRef.current.getBoundingClientRect();
-    const menuH = 180;
-    setAbove(window.innerHeight - rect.bottom < menuH + 8 && rect.top > menuH + 8);
+  const menuRef = useRef(null);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+
+  const computePos = () => {
+    const btn = btnRef.current;
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const margin = 8;
+    const menuW = (menuRef.current && menuRef.current.offsetWidth) || 200;
+    const menuH = (menuRef.current && menuRef.current.offsetHeight) || 180;
+    const roomBelow = window.innerHeight - rect.bottom - margin;
+    const roomAbove = rect.top - margin;
+    const wantBelow = roomBelow >= menuH || roomBelow >= roomAbove;
+    let top = wantBelow ? rect.bottom + 4 : rect.top - menuH - 4;
+    if (top + menuH + margin > window.innerHeight) {
+      top = Math.max(margin, window.innerHeight - menuH - margin);
+    }
+    if (top < margin) top = margin;
+    // anchor to button's right edge
+    let left = rect.right - menuW;
+    const maxLeft = window.innerWidth - menuW - margin;
+    if (left > maxLeft) left = maxLeft;
+    if (left < margin) left = margin;
+    setPos({ top, left });
+  };
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    computePos();
+    const onScroll = () => computePos();
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onScroll);
+    };
   }, [open]);
 
   const wrap = async (label, fn) => {
@@ -398,20 +428,22 @@ function RowMenu({ node, onRefresh }) {
   ];
 
   return (
-    <div style={{ position: "relative", display: "inline-block" }} onClick={(e) => e.stopPropagation()}>
+    <div style={{ display: "inline-block" }} onClick={(e) => e.stopPropagation()}>
       <button ref={btnRef} className="btn btn-ghost btn-icon" onClick={() => setOpen((v) => !v)} style={{ width: 24, height: 24 }}>
         <Icon name="more-horizontal" size={13} />
       </button>
-      {open && (
+      {open && createPortal(
         <>
-          <div style={{ position: "fixed", inset: 0, zIndex: 50 }} onClick={() => setOpen(false)} />
-          <div style={{
-            position: "absolute",
-            ...(above ? { bottom: "100%", marginBottom: 4 } : { top: "100%", marginTop: 4 }),
-            right: 0, minWidth: 200, zIndex: 51,
-            background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8,
-            boxShadow: "var(--shadow-lg)", padding: 4,
-          }}>
+          <div style={{ position: "fixed", inset: 0, zIndex: 200 }} onClick={() => setOpen(false)} />
+          <div
+            ref={menuRef}
+            style={{
+              position: "fixed", top: pos.top, left: pos.left,
+              minWidth: 200, zIndex: 201,
+              background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8,
+              boxShadow: "var(--shadow-lg)", padding: 4,
+            }}
+          >
             {items.map((it, i) => (
               <button key={i} onClick={it.run}
                 style={{
@@ -426,7 +458,8 @@ function RowMenu({ node, onRefresh }) {
               </button>
             ))}
           </div>
-        </>
+        </>,
+        document.body,
       )}
     </div>
   );

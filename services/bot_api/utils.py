@@ -57,9 +57,33 @@ def calculate_plan_order_amount_stars(
     return total
 
 
-def get_device_display_name(user_agent: str | None, index: int) -> str:
+def get_device_display_name(
+    user_agent: str | None,
+    index: int,
+    *,
+    device_model: str | None = None,
+    platform: str | None = None,
+    os_version: str | None = None,
+) -> str:
+    if isinstance(device_model, str):
+        model = device_model.strip()
+        if model:
+            return _enrich_with_os(model, platform, os_version)
+    if isinstance(platform, str):
+        plat = platform.strip()
+        if plat:
+            return _enrich_with_os(plat.capitalize(), None, os_version)
     if isinstance(user_agent, str):
         normalized = user_agent.strip()
         if normalized:
             return normalized[:80]
     return f"Устройство {index}"
+
+
+def _enrich_with_os(label: str, platform: str | None, os_version: str | None) -> str:
+    parts = [label]
+    if platform and platform.strip().lower() not in label.lower():
+        parts.append(platform.strip())
+    if os_version and os_version.strip():
+        parts.append(os_version.strip())
+    return " · ".join(parts)[:80]
