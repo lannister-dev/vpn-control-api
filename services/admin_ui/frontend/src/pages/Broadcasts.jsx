@@ -46,7 +46,12 @@ export function BroadcastsPage({ initialAction, onActionConsumed }) {
         </div>
       </div>
 
-      {!showHistory ? <BroadcastComposer /> : <BroadcastHistory />}
+      <div style={{ display: showHistory ? "none" : "block" }}>
+        <BroadcastComposer />
+      </div>
+      <div style={{ display: showHistory ? "block" : "none" }}>
+        <BroadcastHistory />
+      </div>
     </div>
   );
 }
