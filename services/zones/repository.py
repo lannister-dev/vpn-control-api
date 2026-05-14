@@ -13,6 +13,12 @@ class ZoneRepository(BaseRepository[Zone]):
         result = await self.session.execute(select(Zone).where(Zone.code == code))
         return result.scalar_one_or_none()
 
+    async def list_by_codes(self, codes: list[str]) -> list[Zone]:
+        if not codes:
+            return []
+        result = await self.session.execute(select(Zone).where(Zone.code.in_(codes)))
+        return list(result.scalars().all())
+
     async def list_all(self, active_only: bool = False) -> tuple[list[Zone], int]:
         stmt = select(Zone)
         count_stmt = select(func.count(Zone.id))
