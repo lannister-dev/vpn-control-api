@@ -64,9 +64,18 @@ class S3Client:
                 Body=data,
                 **extra,
             )
+            url = (
+                self.public_url(key)
+                if self._config.public_base_url
+                else await client.generate_presigned_url(
+                    "get_object",
+                    Params={"Bucket": self._config.bucket, "Key": key},
+                    ExpiresIn=self._config.presigned_ttl_sec,
+                )
+            )
         return S3UploadResult(
             key=key,
-            public_url=self.public_url(key),
+            public_url=url,
             content_type=content_type,
             size=len(data),
         )
@@ -85,12 +94,21 @@ class S3Client:
             await client.delete_object(Bucket=self._config.bucket, Key=key)
 
     def public_url(self, key: str) -> str:
+        """Direct URL — only valid if the bucket is public-readable.
+
+        Use upload_bytes() for the standard path: it returns a presigned URL
+        automatically when public_base_url is not configured.
+        """
         base = (self._config.public_base_url or "").rstrip("/")
         if base:
             return f"{base}/{key.lstrip('/')}"
         endpoint = (self._config.endpoint_url or "").rstrip("/")
-        if endpoint:
-            if self._config.addressing_style == "path":
-                return f"{endpoint}/{self._config.bucket}/{key.lstrip('/')}"
-            return f"{endpoint}/{key.lstrip('/')}"
-        return f"s3://{self._config.bucket}/{key.lstrip('/')}"
+        if not endpoint:
+            return f"s3://{self._config.bucket}/{key.lstrip('/')}"
+        if self._config.addressing_style == "path":
+            return f"{endpoint}/{self._config.bucket}/{key.lstrip('/')}"
+        # virtual-hosted: bucket as subdomain
+        scheme, _, rest = endpoint.partition("://")
+        if rest:
+            return f"{scheme}://{self._config.bucket}.{rest}/{key.lstrip('/')}"
+        return f"{endpoint}/{key.lstrip('/')}"
