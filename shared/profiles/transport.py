@@ -2,7 +2,6 @@ import base64
 from dataclasses import dataclass
 from urllib.parse import quote, urlencode
 
-
 # Happ enforces a 30-char limit on serverDescription (decoded UTF-8).
 # Longer values are dropped silently by the client.
 SERVER_DESCRIPTION_MAX_CHARS = 30
