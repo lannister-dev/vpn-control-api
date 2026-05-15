@@ -13,12 +13,10 @@ class VlessUri:
     server_description: str | None = None
 
     def render(self) -> str:
-        q = urlencode(self.query, safe="/")
-        remark_part = quote(self.remark, safe="") if self.remark else ""
-        fragment = ""
-        if remark_part or self.server_description:
-            fragment = f"#{remark_part}"
-            if self.server_description:
-                encoded = base64.b64encode(self.server_description.encode("utf-8")).decode("ascii")
-                fragment = f"{fragment}?serverDescription={encoded}"
+        query = dict(self.query)
+        if self.server_description:
+            encoded = base64.b64encode(self.server_description.encode("utf-8")).decode("ascii")
+            query["serverDescription"] = encoded
+        q = urlencode(query, safe="/")
+        fragment = f"#{quote(self.remark, safe='')}" if self.remark else ""
         return f"vless://{self.client_id}@{self.host}:{self.port}?{q}{fragment}"
