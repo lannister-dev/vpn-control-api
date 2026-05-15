@@ -242,6 +242,10 @@ class BroadcastOut(BaseModel):
     audience: BroadcastAudience
     audience_label: str | None = None
     preview: str = ""
+    text_body: str = ""
+    media_kind: str | None = None
+    media_url: str | None = None
+    inline_buttons: list[dict] | None = None
     status: BroadcastStatus
     delivered: int = 0
     errors: int = 0
