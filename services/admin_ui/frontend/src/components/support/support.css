@@ -776,31 +776,17 @@
 }
 .tk-composer-file-x:hover { color: var(--bad); }
 
-/* Meta-block toggle — visible only on mobile */
-.tk-meta-toggle { display: none; }
-
 @media (max-width: 768px) {
-  /* Phone TicketDrawer: full-bleed chat, collapsible meta, sticky composer */
-  .tk-drawer .slideover-body { padding: 0; display: flex; flex-direction: column; }
+  /* Hide "Профиль" text button in drawer head — kebab now opens BottomSheet with all actions */
   .tk-act-profile { display: none; }
 
-  /* Meta-block (KPI + quick actions + context + meta-grid) collapsed by default */
-  .tk-meta-toggle {
-    display: flex; align-items: center; gap: 6px;
-    width: 100%; padding: 10px 14px;
-    background: var(--bg-elevated); border: 0;
-    border-bottom: 1px solid var(--border);
-    color: var(--text-muted); font-size: 12.5px;
-    cursor: pointer;
-  }
-  .tk-meta-toggle:hover { color: var(--text); }
-  .tk-meta-block { display: none; padding: 10px 12px 0; background: var(--bg-elevated); border-bottom: 1px solid var(--border); }
-  .tk-meta-block.tk-meta-open { display: block; }
+  .tk-drawer .slideover-body { padding: 10px 12px 0; }
   .tk-kpi-ribbon { grid-template-columns: repeat(2, 1fr); margin-bottom: 8px; }
-  .tk-kpi-cell { padding: 8px 10px; }
-  .tk-kpi-cell:nth-child(2n) { border-right: 0; }
-  .tk-kpi-cell:nth-child(-n+2) { border-bottom: 1px solid var(--border); }
-  .tk-kpi-val { font-size: 13px; }
+  .tk-kpi-ribbon .tk-kpi-cell { padding: 8px 10px; }
+  .tk-kpi-ribbon .tk-kpi-cell:nth-child(2n) { border-right: 0; }
+  .tk-kpi-ribbon .tk-kpi-cell:nth-child(-n+2) { border-bottom: 1px solid var(--border); }
+
+  /* Quick actions: horizontal scroll, no wrap */
   .tk-quick-actions {
     flex-wrap: nowrap; overflow-x: auto;
     -webkit-overflow-scrolling: touch;
@@ -808,39 +794,26 @@
     scrollbar-width: none;
   }
   .tk-quick-actions::-webkit-scrollbar { display: none; }
-  .tk-quick-actions .btn {
-    flex-shrink: 0; white-space: nowrap; min-height: 36px;
-  }
+  .tk-quick-actions .btn { flex-shrink: 0; white-space: nowrap; }
   .tk-quick-actions > div[style] { display: none !important; }
 
-  /* Chat takes all remaining height, full-bleed */
+  /* Meta operator UI hidden — accessed via kebab → BottomSheet */
+  .tk-meta-grid, .tk-context-toggle, .tk-context-panel { display: none; }
+
+  /* Chat: take remaining height */
   .tk-chat-scroller {
-    margin: 0; padding: 14px 12px;
+    margin: 4px -12px 0; padding: 12px;
     min-height: 0; flex: 1;
-    border-top: 1px solid var(--border);
   }
-  .tk-msg-bubble { max-width: 82%; font-size: 13.5px; }
-  .tk-msg-avatar { width: 22px; height: 22px; }
+  .tk-msg-bubble { max-width: 84%; font-size: 13.5px; }
   .tk-media-img, .tk-media-vid { max-width: 100%; }
 
-  /* Sticky composer with safe-area, circular accent send */
+  /* Composer: stays in flex flow, safe-area at bottom; no sticky, no circular trick */
   .tk-composer {
-    position: sticky; bottom: 0; z-index: 10;
-    margin: 0;
-    background: var(--bg-elevated);
-    border-top: 1px solid var(--border);
-    padding: 6px 10px calc(6px + env(safe-area-inset-bottom, 0));
+    margin: 0 -12px;
+    padding-bottom: env(safe-area-inset-bottom, 0);
   }
-  .tk-composer-bar { flex-wrap: nowrap; gap: 6px; padding: 6px 0; align-items: center; }
+  .tk-composer-bar { flex-wrap: wrap; gap: 6px; padding: 6px 12px; }
   .tk-composer-hint { display: none; }
-  .tk-composer-icons .tk-comp-btn { width: 36px; height: 36px; }
-  .tk-composer-actions { margin-left: auto; gap: 4px; }
-  .tk-composer-actions .btn-primary {
-    width: 44px; height: 44px;
-    padding: 0; min-height: 44px;
-    border-radius: 50%;
-    justify-content: center;
-  }
-  .tk-composer-actions .btn-primary span { display: none; }
-  .tk-composer-actions .btn-ghost { padding: 0 8px; }
+  .tk-composer-actions { margin-left: auto; flex-shrink: 0; }
 }
