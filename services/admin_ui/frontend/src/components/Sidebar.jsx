@@ -31,9 +31,15 @@ const GROUPS = [
   ]},
 ];
 
-export function Sidebar({ activeTab, onTab, collapsed, onToggle, onOpenPalette, counts = {}, user, onLogout }) {
+export function Sidebar({ activeTab, onTab, collapsed, onToggle, onOpenPalette, counts = {}, user, onLogout, mobileOpen, onMobileClose }) {
+  const pick = (id) => {
+    onTab(id);
+    onMobileClose?.();
+  };
   return (
-    <aside className="sidebar" data-collapsed={collapsed}>
+    <>
+      {mobileOpen && <div className="sidebar-backdrop" onClick={onMobileClose} />}
+      <aside className="sidebar" data-collapsed={collapsed} data-mobile-open={mobileOpen || undefined}>
       <div className="workspace" onClick={onToggle} title={collapsed ? "Развернуть" : "Свернуть"}>
         <div className="workspace-logo">V</div>
         <div className="workspace-text">
@@ -64,7 +70,7 @@ export function Sidebar({ activeTab, onTab, collapsed, onToggle, onOpenPalette, 
                   key={it.id}
                   className="side-btn"
                   data-active={activeTab === it.id}
-                  onClick={() => onTab(it.id)}
+                  onClick={() => pick(it.id)}
                 >
                   <Icon name={it.icon} size={15} />
                   <span className="side-label">{it.label}</span>
@@ -100,6 +106,7 @@ export function Sidebar({ activeTab, onTab, collapsed, onToggle, onOpenPalette, 
           <Icon name="log-out" size={14} />
         </button>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }
