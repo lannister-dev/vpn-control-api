@@ -152,9 +152,40 @@ export function MessageBubble({
 /* ──────────────────────────────────────────────────────────
    MEDIA THUMB — single image/video/document/voice
    ────────────────────────────────────────────────────────── */
+function MediaProgressRing({ progress, size = 40, inline = false }) {
+  const stroke = inline ? 2 : 3;
+  const r = (size - stroke * 2) / 2;
+  const c = 2 * Math.PI * r;
+  const indeterminate = progress == null;
+  const p = Math.max(0, Math.min(1, progress || 0));
+  const dashArr = indeterminate ? `${c * 0.25} ${c}` : c;
+  const dashOff = indeterminate ? 0 : c * (1 - p);
+  return (
+    <span
+      className={`tk-media-progress${inline ? " tk-media-progress-inline" : ""}${indeterminate ? " tk-media-progress-spin" : ""}`}
+      style={{ width: size, height: size }}
+      aria-label={indeterminate ? "Загрузка…" : `${Math.round(p * 100)}%`}
+    >
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <circle cx={size / 2} cy={size / 2} r={r} className="bg" strokeWidth={stroke} />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          className="fg"
+          strokeWidth={stroke}
+          strokeDasharray={dashArr}
+          strokeDashoffset={dashOff}
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        />
+      </svg>
+    </span>
+  );
+}
+
 export function MediaThumb({ media, onClick }) {
-  const { kind, url, thumb_url, file_name, file_size, duration, pending } = media;
-  const overlay = pending ? <span className="tk-media-spinner" aria-label="Загрузка…" /> : null;
+  const { kind, url, thumb_url, file_name, file_size, duration, pending, progress } = media;
+  const overlay = pending ? <MediaProgressRing progress={progress} /> : null;
   if (kind === "image") {
     return (
       <button className="tk-media-img" onClick={pending ? undefined : onClick} type="button" disabled={pending}>
@@ -175,19 +206,23 @@ export function MediaThumb({ media, onClick }) {
   }
   if (kind === "voice" || kind === "audio") {
     if (pending) {
+      const pct = progress == null ? null : Math.round(progress * 100);
       return (
         <div className="tk-media-doc tk-media-doc-pending">
           <span className="tk-media-doc-icon"><Icon name="mic" size={18} /></span>
           <span className="tk-media-doc-meta">
             <span className="tk-media-doc-name">{file_name || "Аудио"}</span>
-            <span className="tk-media-doc-size">{fmtBytes(file_size)} · загрузка…</span>
+            <span className="tk-media-doc-size">
+              {fmtBytes(file_size)} · {pct != null ? `${pct}%` : "загрузка…"}
+            </span>
           </span>
-          <span className="tk-media-spinner tk-media-spinner-inline" />
+          <MediaProgressRing progress={progress} size={22} inline />
         </div>
       );
     }
     return <VoiceMessage media={media} />;
   }
+  const pct = pending && progress != null ? Math.round(progress * 100) : null;
   return (
     <a
       className={"tk-media-doc" + (pending ? " tk-media-doc-pending" : "")}
@@ -199,10 +234,12 @@ export function MediaThumb({ media, onClick }) {
       <span className="tk-media-doc-icon"><Icon name="file-text" size={18} /></span>
       <span className="tk-media-doc-meta">
         <span className="tk-media-doc-name">{file_name || "Документ"}</span>
-        <span className="tk-media-doc-size">{fmtBytes(file_size)}{pending ? " · загрузка…" : ""}</span>
+        <span className="tk-media-doc-size">
+          {fmtBytes(file_size)}{pending ? ` · ${pct != null ? `${pct}%` : "загрузка…"}` : ""}
+        </span>
       </span>
       {pending
-        ? <span className="tk-media-spinner tk-media-spinner-inline" />
+        ? <MediaProgressRing progress={progress} size={22} inline />
         : <Icon name="download" size={13} />}
     </a>
   );

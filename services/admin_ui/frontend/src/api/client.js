@@ -44,10 +44,50 @@ async function request(path, { method = "GET", body, headers } = {}) {
   return payload;
 }
 
+function uploadWithProgress(path, formData, { onProgress, signal, method = "POST" } = {}) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(method, BASE + path, true);
+    xhr.withCredentials = true;
+    const csrf = getCookie("admin_csrf");
+    if (csrf) xhr.setRequestHeader("x-csrf-token", csrf);
+    xhr.upload.addEventListener("progress", (e) => {
+      if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total);
+    });
+    xhr.addEventListener("load", () => {
+      const text = xhr.responseText || "";
+      let payload = null;
+      try { payload = text ? JSON.parse(text) : null; } catch { payload = text; }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        if (onProgress) onProgress(1);
+        resolve(payload);
+      } else {
+        const detail = payload && payload.detail ? payload.detail : `HTTP ${xhr.status}`;
+        const err = new Error(detail);
+        err.status = xhr.status;
+        err.payload = payload;
+        reject(err);
+      }
+    });
+    xhr.addEventListener("error", () => reject(new Error("network error")));
+    xhr.addEventListener("abort", () => {
+      const err = new Error("aborted");
+      err.name = "AbortError";
+      reject(err);
+    });
+    if (signal) {
+      if (signal.aborted) { xhr.abort(); return; }
+      signal.addEventListener("abort", () => xhr.abort());
+    }
+    xhr.send(formData);
+  });
+}
+
 export const api = {
   get: (p, opts) => request(p, { ...opts, method: "GET" }),
   post: (p, body, opts) => request(p, { ...opts, method: "POST", body }),
   patch: (p, body, opts) => request(p, { ...opts, method: "PATCH", body }),
   del: (p, opts) => request(p, { ...opts, method: "DELETE" }),
   raw: request,
+  upload: uploadWithProgress,
 };

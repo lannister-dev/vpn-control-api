@@ -1,0 +1,119 @@
+/* Mobile overrides — keeps existing desktop layout intact, only activates ≤640px.
+   Targets known inline-style patterns and named grids that block phone layouts. */
+
+html, body { max-width: 100vw; overflow-x: hidden; }
+
+@media (max-width: 640px) {
+  /* — Generic guards — */
+  .page, .app-content > .page { padding: 0 12px; }
+  .card, .sec, .data-table-wrap { max-width: 100%; }
+
+  /* Inline-width search-input wrapper (Users, Tickets, etc.) */
+  .input-search-wrap[style*="min-width"] { min-width: 0 !important; max-width: 100% !important; width: 100%; }
+
+  /* Segment toggle buttons (Routes, Broadcasts) */
+  .seg[style*="width"], .seg[style*="min-width"] { width: 100% !important; min-width: 0 !important; }
+  .seg { flex-wrap: wrap; }
+
+  /* — Tables: cells with inline min/max width shouldn't lock total width — */
+  .tbl td[style*="min-width"], .tbl th[style*="width"] {
+    min-width: 0 !important;
+  }
+  .tbl td[style*="max-width"] { max-width: none !important; }
+
+  /* — Floating dropdowns/popovers with inline min-width — */
+  [style*="position: absolute"][style*="min-width"] {
+    min-width: 0 !important;
+    max-width: calc(100vw - 24px);
+  }
+
+  /* — Inline multi-column JSX grids → fewer cols on phone.
+        Note: React renders style={{ gridTemplateColumns: "..." }} as
+        style="grid-template-columns: ..." (no embedded quotes), so the
+        selectors below match raw substrings of that attribute. — */
+  [style*="repeat(4, 1fr)"],
+  [style*="repeat(5, 1fr)"],
+  [style*="repeat(6, 1fr)"],
+  [style*="repeat(3, 1fr)"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+  [style*="1fr 1fr 1fr 1fr"],
+  [style*="1fr 1fr 1fr"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* — Named grids across modules — */
+  .u-kpi-bar { grid-template-columns: repeat(2, 1fr) !important; }
+  .u-subcard-meta { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
+  .tk-kpi-ribbon { grid-template-columns: repeat(2, 1fr) !important; }
+  .tk-meta-grid { grid-template-columns: 1fr 1fr !important; }
+  .route-detail-grid, .matrix-detail-grid { grid-template-columns: repeat(2, 1fr) !important; }
+
+  /* Topology / matrix scrolls horizontally instead of overflowing */
+  .matrix-wrap, .topo-wrap, .topology-canvas {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* — KPI hero / numeric blocks: prevent jumbo numbers spilling out — */
+  .kpi-value { font-size: clamp(18px, 5.5vw, 26px); }
+  .kpi-cell { padding: 12px 14px; }
+
+  /* — Forms: any input with hardcoded max-width should fill width — */
+  input[style*="max-width"], select[style*="max-width"], textarea[style*="max-width"] {
+    max-width: 100% !important;
+  }
+  /* Form rows that lay out side-by-side */
+  .form-row, .field-row, .form-grid { grid-template-columns: 1fr !important; }
+
+  /* — Page header actions row should wrap on phone — */
+  .page-head-actions { flex-wrap: wrap; gap: 6px; }
+  .page-head-actions .btn { flex: 0 1 auto; }
+
+  /* — Toolbars / filter rows — */
+  .toolbar, .filter-bar, .row-toolbar { flex-wrap: wrap; gap: 6px; }
+
+  /* — Pre / code blocks for logs/JSON — */
+  pre, code, .codeblock {
+    max-width: 100%;
+    overflow-x: auto;
+    white-space: pre;
+    -webkit-overflow-scrolling: touch;
+  }
+  textarea { max-width: 100%; }
+
+  /* — Toast / floating widgets — */
+  .toast-stack { left: 8px !important; right: 8px !important; bottom: 8px !important; max-width: calc(100vw - 16px); }
+  .toast { min-width: 0 !important; }
+
+  /* — Emoji popover doesn't need 10 cols on a phone — */
+  .tk-emoji-pop { grid-template-columns: repeat(8, 1fr); max-width: calc(100vw - 24px); }
+
+  /* — Composer file chips — */
+  .tk-composer-file-name { max-width: 50vw; }
+
+  /* — Drawer body / sidebar header padding tighter — */
+  .slideover-body { padding: 12px 14px; }
+  .tk-drawer .slideover-body { padding: 12px 12px 0; }
+
+  /* — Buttons more tappable, but keep label compact — */
+  .btn { min-height: 34px; }
+  .btn-xs { min-height: 28px; }
+  .btn-sm { min-height: 30px; }
+  .btn-icon { width: 34px; height: 34px; }
+
+  /* — Avoid horizontal scroll from sticky topbar children — */
+  .topbar { overflow: hidden; }
+  .topbar .crumbs { flex: 1; min-width: 0; overflow: hidden; }
+  .topbar-actions { gap: 2px; flex-shrink: 0; }
+
+  /* — Datepicker popover: keep within viewport — */
+  .dp-popover { max-width: calc(100vw - 24px); }
+}
+
+/* Tablet ≤ 900: the off-canvas sidebar already kicks in; tighten content */
+@media (max-width: 900px) {
+  .page { padding: 0 16px; }
+  .kpi-hero[data-cells="6"] { grid-template-columns: repeat(2, 1fr); }
+  .matrix-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
