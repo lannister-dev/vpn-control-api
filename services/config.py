@@ -609,13 +609,13 @@ def get_settings() -> Settings:
         int(x.strip()) for x in _tg_allowed_raw.split(",") if x.strip().isdigit()
     )
     s3 = S3Config(
-        endpoint_url=env.str("S3_ENDPOINT_URL", default=""),
-        region=env.str("S3_REGION", default=""),
-        bucket=env.str("S3_BUCKET", default=""),
-        access_key=env.str("S3_ACCESS_KEY", default=""),
-        secret_key=env.str("S3_SECRET_KEY", default=""),
-        public_base_url=env.str("S3_PUBLIC_BASE_URL", default=""),
-        addressing_style=env.str("S3_ADDRESSING_STYLE", default="virtual"),
+        endpoint_url=env.str("S3_ENDPOINT_URL", default="").strip(),
+        region=env.str("S3_REGION", default="").strip(),
+        bucket=env.str("S3_BUCKET", default="").strip(),
+        access_key=env.str("S3_ACCESS_KEY", default="").strip(),
+        secret_key=env.str("S3_SECRET_KEY", default="").strip(),
+        public_base_url=env.str("S3_PUBLIC_BASE_URL", default="").strip(),
+        addressing_style=env.str("S3_ADDRESSING_STYLE", default="virtual").strip(),
         presigned_ttl_sec=env.int("S3_PRESIGNED_TTL_SEC", default=3600),
     )
 
