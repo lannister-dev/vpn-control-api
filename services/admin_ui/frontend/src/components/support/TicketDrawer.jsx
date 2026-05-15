@@ -82,6 +82,39 @@ export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
     if (m.startsWith("audio/")) return "audio";
     return "document";
   };
+  const extractVideoThumb = (file) => new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const v = document.createElement("video");
+    v.preload = "metadata"; v.muted = true; v.playsInline = true; v.src = url;
+    const cleanup = () => { try { URL.revokeObjectURL(url); } catch { /* */ } };
+    v.onloadedmetadata = () => { v.currentTime = Math.min(0.4, (v.duration || 1) * 0.1); };
+    v.onseeked = () => {
+      try {
+        const c = document.createElement("canvas");
+        c.width = v.videoWidth || 320; c.height = v.videoHeight || 180;
+        c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
+        const data = c.toDataURL("image/jpeg", 0.78);
+        cleanup(); resolve({ thumb: data, duration: v.duration });
+      } catch { cleanup(); resolve({ thumb: null, duration: v.duration }); }
+    };
+    v.onerror = () => { cleanup(); resolve({ thumb: null, duration: 0 }); };
+    setTimeout(() => { cleanup(); resolve({ thumb: null, duration: 0 }); }, 3000);
+  });
+  const updatePendingMedia = (tmpId, fileIdx, patch) => setPending((cur) =>
+    cur.map((m) => {
+      if (m.id !== tmpId) return m;
+      const media = (m.media || []).map((mm, i) => i === fileIdx ? { ...mm, ...patch } : mm);
+      return { ...m, media };
+    })
+  );
+  const updatePendingProgress = (tmpId, progress) => setPending((cur) =>
+    cur.map((m) => {
+      if (m.id !== tmpId) return m;
+      const next = { ...m, progress };
+      next.media = (m.media || []).map((mm) => ({ ...mm, progress }));
+      return next;
+    })
+  );
   const removePending = (tmpId) => setPending((cur) => {
     const next = [];
     for (const m of cur) {
@@ -117,14 +150,16 @@ export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
     }
     const tmpId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const tmpMedia = filesArr.map((f) => {
+      const kind = mediaKindOf(f.type);
       const objUrl = URL.createObjectURL(f);
       return {
-        kind: mediaKindOf(f.type),
+        kind,
         url: objUrl,
-        thumb_url: objUrl,
+        thumb_url: kind === "image" ? objUrl : null,
         file_name: f.name,
         file_size: f.size,
         pending: true,
+        progress: 0,
         _objUrl: objUrl,
       };
     });
@@ -137,22 +172,38 @@ export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
       is_note: !!payload.is_note,
       created_at: new Date().toISOString(),
       pending: true,
+      progress: 0,
     };
     setPending((cur) => [...cur, optimistic]);
+
+    filesArr.forEach((f, idx) => {
+      if (mediaKindOf(f.type) !== "video") return;
+      extractVideoThumb(f).then(({ thumb, duration }) => {
+        if (thumb) updatePendingMedia(tmpId, idx, { thumb_url: thumb, duration });
+      });
+    });
 
     try {
       const fd = new FormData();
       fd.append("text", text);
       if (payload.is_note) fd.append("is_note", "true");
       for (const f of filesArr) fd.append("files", f, f.name);
-      await api.raw(`/support/tickets/${ticket.id}/messages`, {
-        method: "POST",
-        headers: {},
-        body: fd,
-      });
-      toast.ok(payload.is_note ? "Заметка сохранена" : "Сообщение отправлено");
+      const hasFiles = filesArr.length > 0;
+      if (hasFiles) {
+        await api.upload(`/support/tickets/${ticket.id}/messages`, fd, {
+          onProgress: (p) => updatePendingProgress(tmpId, p),
+        });
+      } else {
+        await api.raw(`/support/tickets/${ticket.id}/messages`, {
+          method: "POST",
+          headers: {},
+          body: fd,
+        });
+      }
+      updatePendingProgress(tmpId, 1);
       await messagesQ.refetch();
       removePending(tmpId);
+      toast.ok(payload.is_note ? "Заметка сохранена" : "Сообщение отправлено");
       onChanged?.();
     } catch (e) {
       markPendingFailed(tmpId);
