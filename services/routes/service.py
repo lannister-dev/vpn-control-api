@@ -214,7 +214,7 @@ class RouteService:
             result = await self.route_repository.create(create_payload.model_dump())
 
         if payload.entry_node_id is not None:
-            await self._sync_entry_upstream(
+            await self.sync_entry_upstream(
                 entry_node_id=payload.entry_node_id,
                 backend_node_id=payload.node_id,
                 backend_node=node,
@@ -279,7 +279,7 @@ class RouteService:
         resolved_entry = update.entry_node_id if "entry_node_id" in update.model_fields_set else getattr(route, "entry_node_id", None)
         resolved_backend = update.node_id if "node_id" in update.model_fields_set else route.node_id
         if resolved_entry is not None:
-            await self._sync_entry_upstream(
+            await self.sync_entry_upstream(
                 entry_node_id=UUID(str(resolved_entry)),
                 backend_node_id=UUID(str(resolved_backend)),
                 backend_node=loaded_backend_node,
@@ -395,7 +395,7 @@ class RouteService:
             finalized=finalized,
         )
 
-    async def _sync_entry_upstream(
+    async def sync_entry_upstream(
             self,
             *,
             entry_node_id: UUID,

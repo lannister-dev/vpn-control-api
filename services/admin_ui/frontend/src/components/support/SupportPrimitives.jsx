@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Icon } from "../Icon.jsx";
 import { TgTicks } from "../TgTicks.jsx";
+import { TextEditor, htmlForTelegram } from "../TextEditor.jsx";
 
 /* ──────────────────────────────────────────────────────────
    STATUS PILL — ticket status
@@ -95,7 +96,7 @@ export function MessageBubble({
   isOperator,
   onOpenMedia,
 }) {
-  const { kind = "text", text, media, created_at, delivered, read, author, is_note } = message;
+  const { kind = "text", text, media, created_at, delivered, read, author, is_note, pending, failed } = message;
 
   // System events (centered, italic)
   if (kind === "system") {
@@ -114,7 +115,7 @@ export function MessageBubble({
           {(author.label || "?").slice(0, 1).toUpperCase()}
         </div>
       )}
-      <div className={"tk-msg-bubble " + (isOperator ? "tk-bubble-op" : "tk-bubble-user") + (is_note ? " tk-bubble-note" : "")}>
+      <div className={"tk-msg-bubble " + (isOperator ? "tk-bubble-op" : "tk-bubble-user") + (is_note ? " tk-bubble-note" : "") + (pending ? " tk-bubble-pending" : "") + (failed ? " tk-bubble-failed" : "")}>
         {is_note && (
           <div className="tk-bubble-note-tag">
             <Icon name="lock" size={11} /> Внутренняя заметка
@@ -127,15 +128,21 @@ export function MessageBubble({
             ))}
           </div>
         )}
-        {text && <div className="tk-msg-text">{text}</div>}
+        {text && (
+          /<[a-z][\s\S]*>/i.test(text)
+            ? <div className="tk-msg-text txed-preview" dangerouslySetInnerHTML={{ __html: text }} />
+            : <div className="tk-msg-text" style={{ whiteSpace: "pre-wrap" }}>{text}</div>
+        )}
         <div className="tk-msg-meta">
           <span>{new Date(created_at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</span>
-          {isOperator && (
+          {isOperator && !pending && !failed && (
             <TgTicks
               status={read ? "read" : delivered ? "delivered" : "sent"}
               size={11}
             />
           )}
+          {pending && <Icon name="clock" size={11} />}
+          {failed && <span className="tk-msg-failed" title="Не удалось отправить">!</span>}
         </div>
       </div>
     </div>
@@ -145,95 +152,199 @@ export function MessageBubble({
 /* ──────────────────────────────────────────────────────────
    MEDIA THUMB — single image/video/document/voice
    ────────────────────────────────────────────────────────── */
+function MediaProgressRing({ progress, size = 40, inline = false }) {
+  const stroke = inline ? 2 : 3;
+  const r = (size - stroke * 2) / 2;
+  const c = 2 * Math.PI * r;
+  const indeterminate = progress == null;
+  const p = Math.max(0, Math.min(1, progress || 0));
+  const dashArr = indeterminate ? `${c * 0.25} ${c}` : c;
+  const dashOff = indeterminate ? 0 : c * (1 - p);
+  return (
+    <span
+      className={`tk-media-progress${inline ? " tk-media-progress-inline" : ""}${indeterminate ? " tk-media-progress-spin" : ""}`}
+      style={{ width: size, height: size }}
+      aria-label={indeterminate ? "Загрузка…" : `${Math.round(p * 100)}%`}
+    >
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <circle cx={size / 2} cy={size / 2} r={r} className="bg" strokeWidth={stroke} />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          className="fg"
+          strokeWidth={stroke}
+          strokeDasharray={dashArr}
+          strokeDashoffset={dashOff}
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        />
+      </svg>
+    </span>
+  );
+}
+
 export function MediaThumb({ media, onClick }) {
-  const { kind, url, thumb_url, file_name, file_size, duration } = media;
+  const { kind, url, thumb_url, file_name, file_size, duration, pending, progress } = media;
+  const overlay = pending ? <MediaProgressRing progress={progress} /> : null;
   if (kind === "image") {
     return (
-      <button className="tk-media-img" onClick={onClick} type="button">
+      <button className="tk-media-img" onClick={pending ? undefined : onClick} type="button" disabled={pending}>
         <img src={thumb_url || url} alt={file_name || ""} loading="lazy" />
+        {overlay}
       </button>
     );
   }
   if (kind === "video") {
     return (
-      <button className="tk-media-vid" onClick={onClick} type="button">
+      <button className="tk-media-vid" onClick={pending ? undefined : onClick} type="button" disabled={pending}>
         {thumb_url ? <img src={thumb_url} alt="" /> : <div className="tk-media-vid-fallback"><Icon name="video" size={24} /></div>}
-        <span className="tk-media-vid-play"><Icon name="play-circle" size={26} /></span>
+        {!pending && <span className="tk-media-vid-play"><Icon name="play-circle" size={26} /></span>}
         {duration && <span className="tk-media-vid-dur">{fmtDuration(duration)}</span>}
+        {overlay}
       </button>
     );
   }
   if (kind === "voice" || kind === "audio") {
+    if (pending) {
+      const pct = progress == null ? null : Math.round(progress * 100);
+      return (
+        <div className="tk-media-doc tk-media-doc-pending">
+          <span className="tk-media-doc-icon"><Icon name="mic" size={18} /></span>
+          <span className="tk-media-doc-meta">
+            <span className="tk-media-doc-name">{file_name || "Аудио"}</span>
+            <span className="tk-media-doc-size">
+              {fmtBytes(file_size)} · {pct != null ? `${pct}%` : "загрузка…"}
+            </span>
+          </span>
+          <MediaProgressRing progress={progress} size={22} inline />
+        </div>
+      );
+    }
     return <VoiceMessage media={media} />;
   }
-  // document
+  const pct = pending && progress != null ? Math.round(progress * 100) : null;
   return (
-    <a className="tk-media-doc" href={url} target="_blank" rel="noopener noreferrer">
+    <a
+      className={"tk-media-doc" + (pending ? " tk-media-doc-pending" : "")}
+      href={pending ? undefined : url}
+      target={pending ? undefined : "_blank"}
+      rel="noopener noreferrer"
+      onClick={pending ? (e) => e.preventDefault() : undefined}
+    >
       <span className="tk-media-doc-icon"><Icon name="file-text" size={18} /></span>
       <span className="tk-media-doc-meta">
         <span className="tk-media-doc-name">{file_name || "Документ"}</span>
-        <span className="tk-media-doc-size">{fmtBytes(file_size)}</span>
+        <span className="tk-media-doc-size">
+          {fmtBytes(file_size)}{pending ? ` · ${pct != null ? `${pct}%` : "загрузка…"}` : ""}
+        </span>
       </span>
-      <Icon name="download" size={13} />
+      {pending
+        ? <MediaProgressRing progress={progress} size={22} inline />
+        : <Icon name="download" size={13} />}
     </a>
   );
 }
 
 function VoiceMessage({ media }) {
   const { duration, url } = media;
-  // Deterministic waveform from duration so it always re-renders the same
+  const [playing, setPlaying] = useState(false);
+  const [pos, setPos] = useState(0);
+  const [meta, setMeta] = useState({ duration: duration || 0 });
+  const [err, setErr] = useState(null);
+  const audioRef = useRef(null);
+  const waveRef = useRef(null);
+
   const bars = useMemo(() => {
-    const n = 28;
-    const seed = Math.round(duration || 1) * 17;
+    const n = 32;
+    const seed = Math.round((meta.duration || duration || 1) * 17);
     return Array.from({ length: n }).map((_, i) => {
       const v = Math.sin(i * 0.51 + seed) * Math.cos(i * 0.27 + seed * 1.3);
-      return 0.32 + (Math.abs(v) * 0.68);
+      return 0.32 + Math.abs(v) * 0.68;
     });
-  }, [duration]);
-  const [playing, setPlaying] = useState(false);
-  const [pos, setPos] = useState(0); // 0..1
-  const audioRef = useRef(null);
-  useEffect(() => {
-    if (!url) return;
-    const a = new Audio(url);
-    audioRef.current = a;
-    const onTime = () => setPos(a.duration ? a.currentTime / a.duration : 0);
-    const onEnd = () => { setPlaying(false); setPos(0); };
-    a.addEventListener("timeupdate", onTime);
-    a.addEventListener("ended", onEnd);
-    return () => {
-      a.pause();
-      a.removeEventListener("timeupdate", onTime);
-      a.removeEventListener("ended", onEnd);
-    };
-  }, [url]);
-  const toggle = () => {
-    if (!audioRef.current) { setPlaying((p) => !p); setPos((p) => Math.min(1, p + 0.2)); return; }
-    if (playing) { audioRef.current.pause(); setPlaying(false); }
-    else { audioRef.current.play(); setPlaying(true); }
+  }, [meta.duration, duration]);
+
+  const onLoadedMeta = () => {
+    const a = audioRef.current;
+    if (a && Number.isFinite(a.duration)) setMeta({ duration: a.duration });
   };
+  const onTime = () => {
+    const a = audioRef.current;
+    if (!a) return;
+    setPos(a.duration ? a.currentTime / a.duration : 0);
+  };
+  const onEnded = () => { setPlaying(false); setPos(0); };
+  const onErr = () => {
+    const a = audioRef.current;
+    const code = a?.error?.code;
+    const codes = { 1: "ABORTED", 2: "NETWORK", 3: "DECODE", 4: "SRC_NOT_SUPPORTED" };
+    setErr(codes[code] || ("err " + (code || "?")));
+    setPlaying(false);
+  };
+
+  const toggle = async () => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (playing) { a.pause(); setPlaying(false); return; }
+    try {
+      setErr(null);
+      a.load();
+      await a.play();
+      setPlaying(true);
+    } catch (e) {
+      setErr(e?.message?.slice(0, 60) || "play failed");
+      setPlaying(false);
+    }
+  };
+
+  const seekFromClick = (e) => {
+    const a = audioRef.current;
+    const wave = waveRef.current;
+    if (!a || !wave || !a.duration) return;
+    const r = wave.getBoundingClientRect();
+    const f = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    a.currentTime = f * a.duration;
+    setPos(f);
+  };
+
+  if (!url) return <div className="tk-voice muted small">голосовое (нет URL)</div>;
+
+  const totalSec = meta.duration || duration || 0;
+  const playedSec = totalSec * pos;
+  const shownSec = playing || pos > 0 ? playedSec : totalSec;
+
   return (
-    <div className="tk-voice">
-      <button className="tk-voice-play" onClick={toggle} type="button">
-        <Icon name={playing ? "pause" : "play"} size={14} />
-      </button>
-      <div className="tk-voice-wave" onClick={(e) => {
-        const r = e.currentTarget.getBoundingClientRect();
-        const f = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
-        setPos(f);
-        if (audioRef.current?.duration) audioRef.current.currentTime = f * audioRef.current.duration;
-      }}>
-        {bars.map((h, i) => (
-          <span
-            key={i}
-            className="tk-voice-bar"
-            data-played={(i / bars.length) <= pos || undefined}
-            style={{ height: Math.round(h * 18) + 6 }}
-          />
-        ))}
+    <>
+      <div className="tk-voice">
+        <audio
+          ref={audioRef}
+          preload="metadata"
+          onLoadedMetadata={onLoadedMeta}
+          onTimeUpdate={onTime}
+          onEnded={onEnded}
+          onError={onErr}
+          style={{ display: "none" }}
+        >
+          <source src={url} type="audio/ogg; codecs=opus" />
+          <source src={url} type="audio/webm; codecs=opus" />
+          <source src={url} type="audio/mpeg" />
+          <source src={url} />
+        </audio>
+        <button className="tk-voice-play" onClick={toggle} type="button" title={playing ? "Пауза" : "Воспроизвести"}>
+          <Icon name={playing ? "pause" : "play"} size={14} />
+        </button>
+        <div className="tk-voice-wave" ref={waveRef} onClick={seekFromClick}>
+          {bars.map((h, i) => (
+            <span
+              key={i}
+              className="tk-voice-bar"
+              data-played={(i / bars.length) <= pos || undefined}
+              style={{ height: Math.round(h * 18) + 6 }}
+            />
+          ))}
+        </div>
+        <span className="tk-voice-time">{fmtDuration(shownSec)}</span>
       </div>
-      <span className="tk-voice-time">{fmtDuration(duration)}</span>
-    </div>
+    </>
   );
 }
 
@@ -296,10 +407,13 @@ export function Composer({
   user,        // for variable interpolation
   disabled = false,
 }) {
-  const [text, setText] = useState("");
+  const [html, setHtml] = useState("");
+  const [files, setFiles] = useState([]);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showEmoji, setShowEmoji] = useState(false);
-  const taRef = useRef(null);
+  const fileInputRef = useRef(null);
+
+  const stripTags = (s) => (s || "").replace(/<[^>]+>/g, "").trim();
 
   const interpolate = (raw) => {
     if (!user) return raw;
@@ -310,53 +424,69 @@ export function Composer({
       .replace(/\{balance\}/g, user.balance != null ? `${user.balance} ₽` : "—");
   };
 
-  // auto-resize
-  useEffect(() => {
-    if (!taRef.current) return;
-    taRef.current.style.height = "auto";
-    const h = Math.min(180, taRef.current.scrollHeight);
-    taRef.current.style.height = h + "px";
-  }, [text]);
-
   const send = useCallback((asNote = false) => {
-    const t = text.trim();
-    if (!t) return;
-    const payload = { text: t, files: [], is_note: asNote };
+    const cleaned = htmlForTelegram(html);
+    if (!stripTags(cleaned) && files.length === 0) return;
+    const payload = { text: cleaned, files: [...files], is_note: asNote };
     if (asNote) onAddNote?.(payload);
     else onSend?.(payload);
-    setText("");
-  }, [text, onSend, onAddNote]);
-
-  const onKey = (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-      e.preventDefault();
-      send(false);
-    }
-  };
+    setHtml("");
+    setFiles([]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, [html, files, onSend, onAddNote]);
 
   const pickTemplate = (tpl) => {
     const next = interpolate(tpl.body);
-    setText((cur) => (cur ? cur + "\n\n" + next : next));
+    setHtml((cur) => (cur ? cur + "<p></p>" + next : next));
     setShowTemplates(false);
-    setTimeout(() => taRef.current?.focus(), 0);
   };
 
-  const canSend = !disabled && !!text.trim();
+  const canSend = !disabled && (!!stripTags(html) || files.length > 0);
+
+  const onPickFiles = (e) => {
+    const picked = Array.from(e.target.files || []);
+    if (!picked.length) return;
+    setFiles((cur) => [...cur, ...picked]);
+  };
+  const removeFile = (idx) => setFiles((cur) => cur.filter((_, i) => i !== idx));
 
   return (
     <div className="tk-composer">
-      <textarea
-        ref={taRef}
-        className="tk-composer-textarea"
-        placeholder="Напишите ответ юзеру или внутреннюю заметку…    (⌘+Enter — отправить)"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={onKey}
-        rows={1}
-        disabled={disabled}
+      <TextEditor
+        value={html}
+        onChange={setHtml}
+        placeholder="Напишите ответ юзеру или внутреннюю заметку…"
+        minHeight={70}
       />
+      {files.length > 0 && (
+        <div className="tk-composer-files">
+          {files.map((f, i) => (
+            <div key={i} className="tk-composer-file">
+              <Icon name={f.type.startsWith("image/") ? "image" : f.type.startsWith("video/") ? "video" : "paperclip"} size={12} />
+              <span className="tk-composer-file-name">{f.name}</span>
+              <span className="muted small">{Math.round(f.size / 1024)} KB</span>
+              <button type="button" className="tk-composer-file-x" onClick={() => removeFile(i)} title="Убрать">×</button>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="tk-composer-bar">
         <div className="tk-composer-icons">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            style={{ display: "none" }}
+            onChange={onPickFiles}
+          />
+          <button
+            type="button"
+            className="tk-comp-btn"
+            title="Прикрепить файлы"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Icon name="paperclip" size={14} />
+          </button>
           <button
             type="button"
             className="tk-comp-btn"
@@ -384,16 +514,15 @@ export function Composer({
           {showEmoji && (
             <EmojiPopover
               onPick={(e) => {
-                setText((t) => t + e);
+                setHtml((h) => (h || "") + e);
                 setShowEmoji(false);
-                setTimeout(() => taRef.current?.focus(), 0);
               }}
               onClose={() => setShowEmoji(false)}
             />
           )}
         </div>
 
-        <span className="tk-composer-hint muted small">⌘+Enter — отправить</span>
+        <span className="tk-composer-hint muted small">форматирование в тулбаре редактора</span>
 
         <div className="tk-composer-actions">
           <button

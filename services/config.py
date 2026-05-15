@@ -299,6 +299,22 @@ class AdminAuthConfig:
 
 
 @dataclass
+class S3Config:
+    endpoint_url: str = ""
+    region: str = ""
+    bucket: str = ""
+    access_key: str = ""
+    secret_key: str = ""
+    public_base_url: str = ""
+    addressing_style: str = "virtual"
+    presigned_ttl_sec: int = 3600
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.bucket and self.access_key and self.secret_key)
+
+
+@dataclass
 class Settings:
     database: DbConfig
     redis: RedisConfig
@@ -326,6 +342,7 @@ class Settings:
     entry_routing: EntryRoutingConfig
     subscriptions_expiration: SubscriptionsExpirationConfig
     wg_mesh: WgMeshConfig
+    s3: S3Config
 
 
 @lru_cache
@@ -591,6 +608,17 @@ def get_settings() -> Settings:
     _tg_allowed = tuple(
         int(x.strip()) for x in _tg_allowed_raw.split(",") if x.strip().isdigit()
     )
+    s3 = S3Config(
+        endpoint_url=env.str("S3_ENDPOINT_URL", default="").strip(),
+        region=env.str("S3_REGION", default="").strip(),
+        bucket=env.str("S3_BUCKET", default="").strip(),
+        access_key=env.str("S3_ACCESS_KEY", default="").strip(),
+        secret_key=env.str("S3_SECRET_KEY", default="").strip(),
+        public_base_url=env.str("S3_PUBLIC_BASE_URL", default="").strip(),
+        addressing_style=env.str("S3_ADDRESSING_STYLE", default="virtual").strip(),
+        presigned_ttl_sec=env.int("S3_PRESIGNED_TTL_SEC", default=3600),
+    )
+
     admin_auth = AdminAuthConfig(
         enabled=env.bool("ADMIN_AUTH_ENABLED", default=False),
         session_secret=env.str("ADMIN_SESSION_SECRET", default=""),
@@ -635,4 +663,5 @@ def get_settings() -> Settings:
         entry_routing=entry_routing,
         subscriptions_expiration=subscriptions_expiration,
         wg_mesh=wg_mesh,
+        s3=s3,
     )

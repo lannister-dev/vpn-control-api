@@ -23,6 +23,7 @@ from services.nodes.agent.model import (  # noqa: F401
 from services.nodes.agent.runtime import NodeAgentRuntime
 from services.nodes.models import NodeAgentIdentity, NodeAgentState, VpnNode  # noqa: F401
 from services.nodes.reconcilers.placement import NodePlacementReconciler
+from services.nodes.reconcilers.upstream_failover import UpstreamFailoverReconciler
 from services.placements.model import UserPlacement  # noqa: F401
 from services.placements.reconcilers.error_retry import PlacementErrorRetryReconciler
 from services.placements.reconcilers.rebalance import PlacementRebalanceReconciler
@@ -89,6 +90,7 @@ def _build_reconcilers() -> list:
         SubscriptionExpirationReconciler(),
         BillingOrderExpirationReconciler(),
         EntryAutoDrainReconciler(),
+        UpstreamFailoverReconciler(),
         EntryRoutingPublisher(),
         WgMeshPeerPublisher(),
     ]

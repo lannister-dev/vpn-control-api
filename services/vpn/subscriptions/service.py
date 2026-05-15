@@ -83,12 +83,7 @@ from services.vpn.subscriptions.schemas import (
     SubscriptionUserInfo,
     TransportBuildResult,
 )
-from services.vpn.subscriptions.singbox_builder import (
-    SingboxConfig,
-    ZoneOutbounds,
-)
 from services.vpn.subscriptions.utils import SubscriptionUtils
-from services.zones.repository import ZoneRepository
 from shared.database.session import AsyncDatabase
 from shared.monitoring.metrics import (
     SUBSCRIPTION_BUILD_DURATION,
@@ -131,7 +126,6 @@ class SubscriptionService:
         self.device_repository = SubscriptionDeviceRepository(session)
         self.device_key_repository = SubscriptionDeviceKeyRepository(session)
         self.node_repository = VpnNodeRepository(session)
-        self.zone_repository = ZoneRepository(session)
         self.routing_service = RoutingService(session)
         self.placement_repository = UserPlacementRepository(session)
         self.node_agent_transport = NodeAgentPlacementTransport(session)
@@ -1588,94 +1582,7 @@ class SubscriptionService:
         selected_routes,
         client_id: str,
     ) -> str:
-        """Pick the right wire format for the subscription body.
-
-        Falls back to the legacy vless-uri list when no involved zone has a
-        `fallback_entry_node_id` configured. As soon as at least one zone
-        defines a fallback whitelist, we emit a sing-box JSON config with an
-        `urltest` group per such zone (primary entry + whitelist as backup,
-        high tolerance so the primary is preferred until it actually dies).
-        """
-        # 1) Find zones that have a fallback configured.
-        zone_codes: set[str] = set()
-        for item in selected_routes:
-            backend = item.node
-            code = getattr(backend, "zone", None)
-            if isinstance(code, str) and code.strip():
-                zone_codes.add(code.strip())
-
-        zones_by_code: dict[str, object] = {}
-        if zone_codes:
-            zone_rows = await self.zone_repository.list_by_codes(sorted(zone_codes))
-            zones_by_code = {z.code: z for z in zone_rows}
-
-        zones_with_fallback = {
-            code: z
-            for code, z in zones_by_code.items()
-            if getattr(z, "fallback_entry_node_id", None)
-        }
-
-        # 2) Legacy path — nothing to override, keep current `vless://` list.
-        if not zones_with_fallback:
-            return "\n".join(item.uri for item in selected_routes)
-
-        # 3) Load fallback whitelist entry-nodes in one query.
-        fallback_node_ids = {
-            z.fallback_entry_node_id for z in zones_with_fallback.values()
-        }
-        fallback_nodes = await self.node_repository.list_by_ids(list(fallback_node_ids))
-        fallback_by_id = {n.id: n for n in fallback_nodes}
-
-        # 4) Group routes by user-visible display (their zone label).
-        #    For each route in a zone-with-fallback, build a fallback vless URI
-        #    using the SAME backend + transport_profile but a DIFFERENT public_node.
-        grouped: list[ZoneOutbounds] = []
-        extras: list[tuple[str, str]] = []
-        seen_tags: set[str] = set()
-
-        for item in selected_routes:
-            backend = item.node
-            zone_code = (getattr(backend, "zone", None) or "").strip()
-            zone = zones_with_fallback.get(zone_code)
-            display = item.display_name or item.country_name or zone_code or "Server"
-
-            # Dedup by display — Happ groups same-tag outbounds anyway.
-            tag = display
-            if tag in seen_tags:
-                continue
-            seen_tags.add(tag)
-
-            if zone is None:
-                extras.append((tag, item.uri))
-                continue
-
-            fallback_node = fallback_by_id.get(zone.fallback_entry_node_id)
-            if fallback_node is None:
-                extras.append((tag, item.uri))
-                continue
-
-            fallback_uri = self._build_route_uri(
-                client_id=client_id,
-                backend_node=backend,
-                public_node=fallback_node,
-                transport_profile=item.transport_profile,
-                remark_override=tag,
-            )
-            if not fallback_uri:
-                extras.append((tag, item.uri))
-                continue
-
-            grouped.append(ZoneOutbounds(
-                tag=tag,
-                primary_uri=item.uri,
-                fallback_uri=fallback_uri,
-            ))
-
-        if not grouped:
-            return "\n".join(item.uri for item in selected_routes)
-
-        cfg = SingboxConfig(grouped_zones=grouped, extra_outbounds=extras)
-        return cfg.to_json()
+        return "\n".join(item.uri for item in selected_routes)
 
     def _route_signature(self, *, route, node, transport_profile) -> str:
         route_updated = route.updated_at

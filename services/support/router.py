@@ -156,17 +156,42 @@ async def post_message(
     service: SupportService = Depends(get_support_service),
     actor_admin_id: UUID | None = Depends(current_admin_user_id),
 ):
+    attachments: list = []
     if files:
-        raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="Загрузка файлов оператором пока не поддерживается",
-        )
+        settings = get_settings()
+        if not settings.s3.enabled:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="S3 не настроен — загрузка файлов недоступна",
+            )
+        from services.support.schemas import SupportAttachmentCreate as _AttC
+        from shared.s3 import S3Client
+        s3 = S3Client(settings.s3)
+        for f in files:
+            data = await f.read()
+            if not data:
+                continue
+            ct = f.content_type or "application/octet-stream"
+            kind = "image" if ct.startswith("image/") else "video" if ct.startswith("video/") else "audio" if ct.startswith("audio/") else "document"
+            from uuid import uuid4 as _u
+            ext = (f.filename or "").rsplit(".", 1)
+            suffix = f".{ext[1]}" if len(ext) == 2 else ""
+            key = f"support/tickets/{ticket_id}/{_u().hex}{suffix}"
+            up = await s3.upload_bytes(key=key, data=data, content_type=ct, cache_control="public, max-age=2592000")
+            attachments.append(_AttC(
+                kind=kind,
+                file_name=f.filename or "",
+                file_size=up.size,
+                mime_type=ct,
+                storage_url=up.public_url,
+            ))
     try:
         return await service.post_operator_message(
             ticket_id,
             text=text,
             is_note=is_note,
             actor_admin_id=actor_admin_id,
+            attachments=attachments or None,
         )
     except TicketNotFound:
         raise HTTPException(status_code=404, detail="Ticket not found")
@@ -305,8 +330,25 @@ async def create_broadcast(
     media_kind = None
     media_url = None
     if media is not None and media.filename:
-        media_kind = (media.content_type or "").split("/")[0] or "document"
-        media_url = f"/api/v1/support/media/{media.filename}"
+        settings = get_settings()
+        if not settings.s3.enabled:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="S3 не настроен — загрузка медиа недоступна",
+            )
+        from uuid import uuid4 as _u
+
+        from shared.s3 import S3Client
+        data = await media.read()
+        if data:
+            ct = media.content_type or "application/octet-stream"
+            media_kind = "image" if ct.startswith("image/") else "video" if ct.startswith("video/") else "audio" if ct.startswith("audio/") else "document"
+            ext = (media.filename or "").rsplit(".", 1)
+            suffix = f".{ext[1]}" if len(ext) == 2 else ""
+            key = f"support/broadcasts/{_u().hex}{suffix}"
+            s3c = S3Client(settings.s3)
+            up = await s3c.upload_bytes(key=key, data=data, content_type=ct, cache_control="public, max-age=2592000")
+            media_url = up.public_url
     return await service.create_broadcast(
         audience=audience,
         plan_id=plan_id,

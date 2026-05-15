@@ -52,6 +52,8 @@ from services.support.schemas import (
     MessageSenderKind,
     SupportAttachmentCreate,
     SupportMessageCreate,
+    SupportOutboundAttachmentMsg,
+    SupportOutboundInlineButton,
     SupportOutboundPayload,
     SupportTicketCreate,
     TemplateCreateIn,
@@ -333,14 +335,16 @@ class SupportService:
         text: str,
         is_note: bool,
         actor_admin_id: UUID | None,
+        attachments: list[SupportAttachmentCreate] | None = None,
     ) -> MessageOut:
         ticket = await self.tickets.get_by_id(ticket_id)
         if not ticket:
             raise TicketNotFound(str(ticket_id))
 
         clean_text = (text or "").strip()
-        if not clean_text:
-            raise EmptyMessage("Message must contain text")
+        att_list = list(attachments or [])
+        if not clean_text and not att_list:
+            raise EmptyMessage("Message must contain text or attachment")
 
         if ticket.status == TicketStatus.CLOSED.value and not is_note:
             raise TicketClosed(str(ticket_id))
@@ -356,6 +360,21 @@ class SupportService:
             ).model_dump()
         )
 
+        for att in att_list:
+            await self.attachments.create(
+                SupportAttachmentCreate(
+                    message_id=msg.id,
+                    kind=att.kind,
+                    tg_file_id=att.tg_file_id,
+                    tg_file_unique_id=att.tg_file_unique_id,
+                    file_name=att.file_name,
+                    file_size=att.file_size,
+                    mime_type=att.mime_type,
+                    duration=att.duration,
+                    storage_url=att.storage_url,
+                ).model_dump(exclude_none=True)
+            )
+
         if not is_note:
             if ticket.status in (TicketStatus.NEW.value, TicketStatus.IN_PROGRESS.value, TicketStatus.WAITING_USER.value):
                 ticket.status = TicketStatus.WAITING_USER.value
@@ -366,7 +385,7 @@ class SupportService:
         await self.session.commit()
 
         if not is_note:
-            await self._publish_outbound(ticket, msg, text=clean_text)
+            await self._publish_outbound(ticket, msg, text=clean_text, attachments=att_list)
 
         list_msg = await self.list_messages(ticket_id)
         return next((m for m in list_msg.items if m.id == msg.id), list_msg.items[-1])
@@ -528,6 +547,10 @@ class SupportService:
                     audience=BroadcastAudience(b.audience),
                     audience_label=b.audience_label,
                     preview=(b.text_body or "")[:160],
+                    text_body=b.text_body or "",
+                    media_kind=b.media_kind,
+                    media_url=b.media_url,
+                    inline_buttons=b.inline_buttons,
                     status=BroadcastStatus(b.status),
                     delivered=b.delivered,
                     errors=b.errors,
@@ -580,7 +603,10 @@ class SupportService:
         sent_at: datetime | None = None
         final_status = status
         if status == BroadcastStatus.SENDING and target_ids:
-            delivered = await self._fan_out_broadcast(b.id, target_ids, text)
+            delivered = await self._fan_out_broadcast(
+                b.id, target_ids, text,
+                media_kind=media_kind, media_url=media_url, buttons=buttons,
+            )
             sent_at = datetime.now(timezone.utc)
             final_status = BroadcastStatus.SENT
             b.delivered = delivered
@@ -594,6 +620,10 @@ class SupportService:
             audience=audience,
             audience_label=None,
             preview=(text or "")[:160],
+            text_body=text or "",
+            media_kind=media_kind,
+            media_url=media_url,
+            inline_buttons=buttons,
             status=final_status,
             delivered=delivered,
             errors=max(0, len(target_ids) - delivered) if status == BroadcastStatus.SENDING else 0,
@@ -606,6 +636,10 @@ class SupportService:
 
     async def _fan_out_broadcast(
         self, broadcast_id: UUID, user_ids: list[UUID], text: str,
+        *,
+        media_kind: str | None = None,
+        media_url: str | None = None,
+        buttons: list[dict] | None = None,
     ) -> int:
         if self._nats is None or not user_ids:
             return 0
@@ -613,6 +647,17 @@ class SupportService:
         targets = [(str(u.id), int(u.telegram_id)) for u in users if u.telegram_id]
         if not targets:
             return 0
+
+        media_payload: list[SupportOutboundAttachmentMsg] = []
+        if media_url and media_kind:
+            media_payload.append(SupportOutboundAttachmentMsg(kind=media_kind, url=media_url))
+
+        button_payload: list[SupportOutboundInlineButton] = []
+        for b in (buttons or []):
+            t = (b.get("text") or "").strip()
+            u = (b.get("url") or "").strip()
+            if t and u:
+                button_payload.append(SupportOutboundInlineButton(text=t, url=u))
 
         sem = asyncio.Semaphore(20)
 
@@ -622,7 +667,8 @@ class SupportService:
                 message_id=str(uuid4()),
                 telegram_id=tg_id,
                 text=text,
-                media=[],
+                media=list(media_payload),
+                buttons=list(button_payload),
                 kind="broadcast",
             )
             async with sem:
@@ -658,6 +704,7 @@ class SupportService:
         *,
         text: str,
         kind: str = "reply",
+        attachments: list[SupportAttachmentCreate] | None = None,
     ) -> None:
         if self._nats is None:
             return
@@ -665,12 +712,20 @@ class SupportService:
         user = await self.users.get_by_id(ticket.user_id)
         if not user:
             return
+        media: list[SupportOutboundAttachmentMsg] = []
+        for att in (attachments or []):
+            media.append(SupportOutboundAttachmentMsg(
+                kind=att.kind,
+                tg_file_id=att.tg_file_id,
+                url=att.storage_url,
+                file_name=att.file_name,
+            ))
         payload = SupportOutboundPayload(
             ticket_id=str(ticket.id),
             message_id=str(msg.id),
             telegram_id=user.telegram_id,
             text=text or "",
-            media=[],
+            media=media,
             kind=kind,
         )
         try:

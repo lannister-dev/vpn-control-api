@@ -132,6 +132,7 @@ function AuthedApp({ theme, setTheme, me, onLogout }) {
   const [drawerNode, setDrawerNode] = useState(null);
   const [drawerOpts, setDrawerOpts] = useState(null);
   const [alertsOpen, setAlertsOpen] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   const openNode = (node, opts) => {
     setDrawerNode(node || null);
@@ -215,6 +216,8 @@ function AuthedApp({ theme, setTheme, me, onLogout }) {
         counts={counts}
         user={me}
         onLogout={logout}
+        mobileOpen={mobileSidebarOpen}
+        onMobileClose={() => setMobileSidebarOpen(false)}
       />
       <div className="app-main">
         <Topbar
@@ -226,6 +229,7 @@ function AuthedApp({ theme, setTheme, me, onLogout }) {
           lastSync={lastSync}
           notifCount={alertsCount.data?.unread || 0}
           onOpenAlerts={() => setAlertsOpen(true)}
+          onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
         />
         <div className="app-content">
           <Page

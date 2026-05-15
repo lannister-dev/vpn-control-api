@@ -9,9 +9,18 @@ export function Topbar({
   lastSync,
   notifCount = 0,
   onOpenAlerts,
+  onOpenMobileSidebar,
 }) {
   return (
     <header className="topbar">
+      <button
+        className="btn btn-ghost btn-icon topbar-burger"
+        onClick={onOpenMobileSidebar}
+        title="Меню"
+        aria-label="Открыть меню"
+      >
+        <Icon name="menu" size={17} />
+      </button>
       <div className="crumbs">
         {crumbs.map((c, i) => (
           <span key={i} style={{ display: "inline-flex", alignItems: "center" }}>

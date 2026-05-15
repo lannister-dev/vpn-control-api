@@ -115,7 +115,7 @@ class SupportMessageCreate(BaseModel):
 
 
 class SupportAttachmentCreate(BaseModel):
-    message_id: UUID
+    message_id: UUID | None = None
     kind: str
     tg_file_id: str | None = None
     tg_file_unique_id: str | None = None
@@ -123,6 +123,7 @@ class SupportAttachmentCreate(BaseModel):
     file_size: int | None = None
     mime_type: str | None = None
     duration: int | None = None
+    storage_url: str | None = None
 
 
 class BroadcastCreate(BaseModel):
@@ -241,6 +242,10 @@ class BroadcastOut(BaseModel):
     audience: BroadcastAudience
     audience_label: str | None = None
     preview: str = ""
+    text_body: str = ""
+    media_kind: str | None = None
+    media_url: str | None = None
+    inline_buttons: list[dict] | None = None
     status: BroadcastStatus
     delivered: int = 0
     errors: int = 0
@@ -281,7 +286,13 @@ class SupportInboundMessage(BaseModel):
 class SupportOutboundAttachmentMsg(BaseModel):
     kind: str
     tg_file_id: str | None = None
+    url: str | None = None
     file_name: str | None = None
+
+
+class SupportOutboundInlineButton(BaseModel):
+    text: str
+    url: str
 
 
 class SupportOutboundPayload(BaseModel):
@@ -290,6 +301,7 @@ class SupportOutboundPayload(BaseModel):
     telegram_id: int
     text: str = ""
     media: list[SupportOutboundAttachmentMsg] = Field(default_factory=list)
+    buttons: list[SupportOutboundInlineButton] = Field(default_factory=list)
     kind: str = "reply"  # "reply" — operator → user; "broadcast" — mass message
 
 

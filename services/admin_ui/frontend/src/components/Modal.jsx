@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 export function Modal({ title, children, footer, onClose }) {
   useEffect(() => {
@@ -7,9 +7,18 @@ export function Modal({ title, children, footer, onClose }) {
     return () => document.removeEventListener("keydown", onEsc);
   }, [onClose]);
 
+  const mouseDownOnBackdropRef = useRef(false);
+
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="modal-backdrop"
+      onMouseDown={(e) => { mouseDownOnBackdropRef.current = e.target === e.currentTarget; }}
+      onMouseUp={(e) => {
+        if (e.target === e.currentTarget && mouseDownOnBackdropRef.current) onClose();
+        mouseDownOnBackdropRef.current = false;
+      }}
+    >
+      <div className="modal">
         <div className="modal-head">
           <h3 className="modal-title">{title}</h3>
           <button className="modal-close" onClick={onClose}>×</button>

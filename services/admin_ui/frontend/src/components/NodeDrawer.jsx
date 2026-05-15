@@ -254,6 +254,15 @@ function NodeOverview({ node, routesCount, transportData, onSshClick, onMigrateC
         <dt>Capacity</dt><dd className="mono">{node.capacity ?? <span className="muted">—</span>}</dd>
         <dt>Heartbeat</dt><dd className="mono">{relTime(node.last_seen_at)} назад</dd>
         <dt>Маршрутов</dt><dd className="mono">{routesCount}</dd>
+        {(node.upstream_name || node.upstream_node_id) && (
+          <>
+            <dt>Upstream</dt>
+            <dd>
+              <span style={{ fontWeight: 500 }}>{node.upstream_name || String(node.upstream_node_id).slice(0, 8) + "…"}</span>
+              <div className="mono muted small">{node.upstream_node_id}</div>
+            </dd>
+          </>
+        )}
         <dt>Public domain</dt><dd className="mono small">{node.public_domain || "—"}</dd>
         <dt>Reality IP</dt><dd className="mono small">{node.reality_ip || "—"}</dd>
       </dl>
