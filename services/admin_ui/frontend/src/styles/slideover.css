@@ -8,6 +8,8 @@
   position: fixed;
   top: 0; right: 0; bottom: 0;
   width: 560px; max-width: 90vw;
+  height: 100vh;
+  height: 100dvh;
   background: var(--bg);
   border-left: 1px solid var(--border);
   z-index: 91;
@@ -56,9 +58,20 @@
     max-width: 100vw;
     border-left: 0;
   }
-  .slideover-head { padding: 12px 14px; gap: 8px; }
+  .slideover-head {
+    padding: 10px 12px;
+    padding-top: calc(10px + env(safe-area-inset-top, 0));
+    gap: 8px;
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    z-index: 2;
+  }
   .slideover-title { font-size: 15px; }
-  .slideover-body { padding: 14px; }
+  .slideover-body {
+    padding: 12px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0));
+  }
   .slideover-tabs { padding: 0 10px; overflow-x: auto; }
   .slideover-tab { padding: 10px 10px; font-size: 12px; flex-shrink: 0; }
 }
