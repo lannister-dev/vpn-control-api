@@ -197,7 +197,11 @@ export function MediaThumb({ media, onClick }) {
   if (kind === "video") {
     return (
       <button className="tk-media-vid" onClick={pending ? undefined : onClick} type="button" disabled={pending}>
-        {thumb_url ? <img src={thumb_url} alt="" /> : <div className="tk-media-vid-fallback"><Icon name="video" size={24} /></div>}
+        {thumb_url
+          ? <img src={thumb_url} alt="" />
+          : url
+            ? <video src={`${url}#t=0.1`} preload="metadata" playsInline muted />
+            : <div className="tk-media-vid-fallback"><Icon name="video" size={24} /></div>}
         {!pending && <span className="tk-media-vid-play"><Icon name="play-circle" size={26} /></span>}
         {duration && <span className="tk-media-vid-dur">{fmtDuration(duration)}</span>}
         {overlay}
