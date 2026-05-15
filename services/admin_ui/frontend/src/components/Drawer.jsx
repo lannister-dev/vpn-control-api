@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Icon } from "./Icon.jsx";
 
 export function Drawer({ title, subtitle, head, onClose, tabs, activeTab, onTab, actions, children, width, className }) {
@@ -9,13 +9,20 @@ export function Drawer({ title, subtitle, head, onClose, tabs, activeTab, onTab,
   }, [onClose]);
 
   const widthStyle = width ? { width: typeof width === "number" ? `${width}px` : width } : undefined;
+  const mouseDownOnBackdropRef = useRef(false);
 
   return (
-    <div className="slideover-backdrop" onClick={onClose}>
+    <div
+      className="slideover-backdrop"
+      onMouseDown={(e) => { mouseDownOnBackdropRef.current = e.target === e.currentTarget; }}
+      onMouseUp={(e) => {
+        if (e.target === e.currentTarget && mouseDownOnBackdropRef.current) onClose();
+        mouseDownOnBackdropRef.current = false;
+      }}
+    >
       <aside
         className={`slideover ${className || ""}`.trim()}
         style={widthStyle}
-        onClick={(e) => e.stopPropagation()}
       >
         <div className="slideover-head">
           {head || (

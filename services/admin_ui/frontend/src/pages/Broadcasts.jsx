@@ -272,8 +272,10 @@ function BroadcastComposer() {
                       : <div className="br-bubble-doc"><Icon name="file" size={16} /> {file.name}</div>}
                 </div>
               )}
-              <div className="br-bubble-text">
-                {text.trim() ? renderMarkdownV2(text) : <span className="muted">Текст сообщения…</span>}
+              <div className="br-bubble-text txed-preview">
+                {text.trim()
+                  ? <span dangerouslySetInnerHTML={{ __html: htmlForTelegram(text) }} />
+                  : <span className="muted">Текст сообщения…</span>}
               </div>
               {buttons.filter((b) => b.text && b.url).length > 0 && (
                 <div className="br-bubble-buttons">
@@ -308,7 +310,7 @@ function BroadcastComposer() {
             <dt>Получателей</dt>
             <dd className="mono">{audienceCount.toLocaleString("ru-RU")}</dd>
             <dt>Размер сообщения</dt>
-            <dd className="mono">{text.length} симв.{file ? `, +1 файл (${formatBytes(file.size)})` : ""}</dd>
+            <dd className="mono">{text.replace(/<[^>]+>/g, "").length} симв.{file ? `, +1 файл (${formatBytes(file.size)})` : ""}</dd>
             <dt>Когда</dt>
             <dd>{schedule === "now" ? "Сразу" : scheduledAt ? new Date(scheduledAt).toLocaleString("ru-RU") : <span className="muted">—</span>}</dd>
           </dl>
@@ -389,6 +391,7 @@ function BroadcastHistory() {
     { interval: 30000 },
   );
   const items = q.data?.items || [];
+  const [opened, setOpened] = useState(null);
 
   return (
     <div className="card">
@@ -415,7 +418,7 @@ function BroadcastHistory() {
             const total = (b.delivered || 0) + (b.errors || 0);
             const clickRate = total > 0 ? Math.round(((b.clicks || 0) / total) * 1000) / 10 : null;
             return (
-              <tr key={b.id}>
+              <tr key={b.id} onClick={() => setOpened(b)} style={{ cursor: "pointer" }} title="Открыть рассылку">
                 <td className="small">
                   <div>{new Date(b.sent_at || b.created_at).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</div>
                   <div className="muted small">{relTime(b.sent_at || b.created_at)}</div>
@@ -435,7 +438,51 @@ function BroadcastHistory() {
           })}
         </tbody>
       </table>
+      {opened && <BroadcastDetail broadcast={opened} onClose={() => setOpened(null)} />}
     </div>
+  );
+}
+
+function BroadcastDetail({ broadcast: b, onClose }) {
+  const total = (b.delivered || 0) + (b.errors || 0);
+  const clickRate = total > 0 ? Math.round(((b.clicks || 0) / total) * 1000) / 10 : null;
+  return (
+    <Modal title={`Рассылка · ${new Date(b.sent_at || b.created_at).toLocaleString("ru-RU")}`} onClose={onClose}>
+      <div className="kv-table-wrap" style={{ marginBottom: 14 }}>
+        <dl className="kv">
+          <dt>Статус</dt><dd><StatusPill status={b.status} /></dd>
+          <dt>Аудитория</dt><dd>{b.audience_label || b.audience}</dd>
+          <dt>Доставлено</dt><dd className="mono">{b.delivered?.toLocaleString("ru-RU") ?? "—"}</dd>
+          <dt>Ошибок</dt><dd className="mono" style={{ color: b.errors > 0 ? "var(--bad)" : undefined }}>{b.errors?.toLocaleString("ru-RU") ?? "—"}</dd>
+          {clickRate != null && <><dt>Click rate</dt><dd className="mono">{clickRate}%</dd></>}
+          {b.scheduled_at && <><dt>Запланирована</dt><dd>{new Date(b.scheduled_at).toLocaleString("ru-RU")}</dd></>}
+        </dl>
+      </div>
+      {b.media_url && (
+        <div style={{ marginBottom: 12 }}>
+          {b.media_kind === "image"
+            ? <img src={b.media_url} alt="" style={{ maxWidth: "100%", borderRadius: 8, border: "1px solid var(--border)" }} />
+            : <div className="muted small"><Icon name="paperclip" size={11} /> Медиа · {b.media_kind}</div>}
+        </div>
+      )}
+      <div className="card" style={{ padding: 12, background: "var(--surface-2)" }}>
+        <div className="muted small" style={{ marginBottom: 6 }}>Текст сообщения</div>
+        <div
+          className="txed-preview"
+          style={{ whiteSpace: "pre-wrap" }}
+          dangerouslySetInnerHTML={{ __html: b.text_body || b.preview || "<span style='color:var(--text-muted)'>пусто</span>" }}
+        />
+      </div>
+      {Array.isArray(b.inline_buttons) && b.inline_buttons.length > 0 && (
+        <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {b.inline_buttons.map((btn, i) => (
+            <a key={i} href={btn.url} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-ghost">
+              {btn.text}
+            </a>
+          ))}
+        </div>
+      )}
+    </Modal>
   );
 }
 

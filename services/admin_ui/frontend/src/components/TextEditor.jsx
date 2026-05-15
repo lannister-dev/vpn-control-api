@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
@@ -109,6 +110,17 @@ export function TextEditor({ value, onChange, placeholder, minHeight = 80, autoF
       attributes: { class: "txed-content", placeholder: placeholder || "" },
     },
   });
+
+  useEffect(() => {
+    if (!editor) return;
+    const current = editor.getHTML();
+    const incoming = value || "";
+    if (incoming && incoming !== current) {
+      editor.commands.setContent(incoming, { emitUpdate: false });
+    } else if (!incoming && current && current !== "<p></p>") {
+      editor.commands.clearContent();
+    }
+  }, [value, editor]);
 
   if (!editor) return null;
 

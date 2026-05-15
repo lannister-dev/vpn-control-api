@@ -54,12 +54,17 @@ export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
   const user = live.user || {};
   const messages = messagesQ.data?.items || [];
 
-  // Auto-scroll on new message
+  // Auto-scroll on new message; re-scroll after a short delay to catch image-load reflows.
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }, [messages.length]);
+    const toBottom = () => { el.scrollTop = el.scrollHeight; };
+    toBottom();
+    const t1 = setTimeout(toBottom, 250);
+    const t2 = setTimeout(toBottom, 800);
+    const t3 = setTimeout(toBottom, 1800);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+  }, [messages.length, messages[messages.length - 1]?.id]);
 
   // ── Actions
   const updateTicket = async (patch) => {
