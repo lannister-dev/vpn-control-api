@@ -115,7 +115,7 @@ class SupportMessageCreate(BaseModel):
 
 
 class SupportAttachmentCreate(BaseModel):
-    message_id: UUID
+    message_id: UUID | None = None
     kind: str
     tg_file_id: str | None = None
     tg_file_unique_id: str | None = None
@@ -123,6 +123,7 @@ class SupportAttachmentCreate(BaseModel):
     file_size: int | None = None
     mime_type: str | None = None
     duration: int | None = None
+    storage_url: str | None = None
 
 
 class BroadcastCreate(BaseModel):
