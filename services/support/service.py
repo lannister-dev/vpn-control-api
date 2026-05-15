@@ -53,6 +53,7 @@ from services.support.schemas import (
     SupportAttachmentCreate,
     SupportMessageCreate,
     SupportOutboundAttachmentMsg,
+    SupportOutboundInlineButton,
     SupportOutboundPayload,
     SupportTicketCreate,
     TemplateCreateIn,
@@ -604,7 +605,7 @@ class SupportService:
         if status == BroadcastStatus.SENDING and target_ids:
             delivered = await self._fan_out_broadcast(
                 b.id, target_ids, text,
-                media_kind=media_kind, media_url=media_url,
+                media_kind=media_kind, media_url=media_url, buttons=buttons,
             )
             sent_at = datetime.now(timezone.utc)
             final_status = BroadcastStatus.SENT
@@ -638,6 +639,7 @@ class SupportService:
         *,
         media_kind: str | None = None,
         media_url: str | None = None,
+        buttons: list[dict] | None = None,
     ) -> int:
         if self._nats is None or not user_ids:
             return 0
@@ -650,6 +652,13 @@ class SupportService:
         if media_url and media_kind:
             media_payload.append(SupportOutboundAttachmentMsg(kind=media_kind, url=media_url))
 
+        button_payload: list[SupportOutboundInlineButton] = []
+        for b in (buttons or []):
+            t = (b.get("text") or "").strip()
+            u = (b.get("url") or "").strip()
+            if t and u:
+                button_payload.append(SupportOutboundInlineButton(text=t, url=u))
+
         sem = asyncio.Semaphore(20)
 
         async def _one(_user_id: str, tg_id: int) -> bool:
@@ -659,6 +668,7 @@ class SupportService:
                 telegram_id=tg_id,
                 text=text,
                 media=list(media_payload),
+                buttons=list(button_payload),
                 kind="broadcast",
             )
             async with sem:

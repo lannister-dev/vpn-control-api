@@ -290,12 +290,18 @@ class SupportOutboundAttachmentMsg(BaseModel):
     file_name: str | None = None
 
 
+class SupportOutboundInlineButton(BaseModel):
+    text: str
+    url: str
+
+
 class SupportOutboundPayload(BaseModel):
     ticket_id: str
     message_id: str
     telegram_id: int
     text: str = ""
     media: list[SupportOutboundAttachmentMsg] = Field(default_factory=list)
+    buttons: list[SupportOutboundInlineButton] = Field(default_factory=list)
     kind: str = "reply"  # "reply" — operator → user; "broadcast" — mass message
 
 
