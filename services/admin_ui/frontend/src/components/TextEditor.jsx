@@ -7,67 +7,58 @@ import Placeholder from "@tiptap/extension-placeholder";
 import { Icon } from "./Icon.jsx";
 import "./TextEditor.css";
 
-const TG_ALLOWED_TAGS = new Set([
+const TG_INLINE_TAGS = new Set([
   "b", "strong", "i", "em", "u", "s", "strike", "del",
-  "code", "pre", "a", "br",
-  "blockquote", "tg-spoiler",
+  "code", "a", "tg-spoiler",
 ]);
+const TG_BLOCK_TAGS = new Set(["pre", "blockquote"]);
+
+function escapeHtml(s) {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function serializeNode(node, depth = 0) {
+  if (node.nodeType === 3) return escapeHtml(node.textContent || "");
+  if (node.nodeType !== 1) return "";
+  const tag = node.tagName.toLowerCase();
+  if (tag === "br") return "\n";
+
+  const childHtml = [...node.childNodes].map((c) => serializeNode(c, depth + 1)).join("");
+
+  if (tag === "p" || tag === "div") {
+    return childHtml.trim() ? childHtml + "\n\n" : "";
+  }
+  if (tag === "ul" || tag === "ol") {
+    return childHtml;
+  }
+  if (tag === "li") {
+    return "• " + childHtml.replace(/\n{2,}$/, "").trim() + "\n";
+  }
+  if (tag === "a") {
+    const href = node.getAttribute("href") || "";
+    const safeHref = /^(https?:|tg:|mailto:)/i.test(href) ? href : "";
+    if (!safeHref) return childHtml;
+    return `<a href="${escapeHtml(safeHref)}">${childHtml}</a>`;
+  }
+  if (TG_INLINE_TAGS.has(tag)) {
+    return `<${tag}>${childHtml}</${tag}>`;
+  }
+  if (TG_BLOCK_TAGS.has(tag)) {
+    return `<${tag}>${childHtml}</${tag}>`;
+  }
+  return childHtml;
+}
 
 export function htmlForTelegram(html) {
   if (!html) return "";
   const tmp = document.createElement("div");
   tmp.innerHTML = html;
-  const walk = (node) => {
-    if (node.nodeType === 1) {
-      const tag = node.tagName.toLowerCase();
-      if (!TG_ALLOWED_TAGS.has(tag) && tag !== "p" && tag !== "ul" && tag !== "ol" && tag !== "li") {
-        const text = document.createTextNode(node.textContent || "");
-        node.replaceWith(text);
-        return;
-      }
-      if (tag === "p") {
-        const fragment = document.createDocumentFragment();
-        for (const child of [...node.childNodes]) {
-          walk(child);
-          fragment.appendChild(child);
-        }
-        fragment.appendChild(document.createTextNode("\n\n"));
-        node.replaceWith(fragment);
-        return;
-      }
-      if (tag === "li") {
-        const fragment = document.createDocumentFragment();
-        fragment.appendChild(document.createTextNode("• "));
-        for (const child of [...node.childNodes]) {
-          walk(child);
-          fragment.appendChild(child);
-        }
-        fragment.appendChild(document.createTextNode("\n"));
-        node.replaceWith(fragment);
-        return;
-      }
-      if (tag === "ul" || tag === "ol") {
-        const fragment = document.createDocumentFragment();
-        for (const child of [...node.childNodes]) {
-          walk(child);
-          fragment.appendChild(child);
-        }
-        node.replaceWith(fragment);
-        return;
-      }
-      if (tag === "a") {
-        const href = node.getAttribute("href") || "";
-        const safeHref = /^(https?:|tg:|mailto:)/i.test(href) ? href : "";
-        for (const attr of [...node.attributes]) node.removeAttribute(attr.name);
-        if (safeHref) node.setAttribute("href", safeHref);
-      } else {
-        for (const attr of [...node.attributes]) node.removeAttribute(attr.name);
-      }
-      for (const child of [...node.childNodes]) walk(child);
-    }
-  };
-  for (const child of [...tmp.childNodes]) walk(child);
-  return tmp.innerHTML.replace(/\n{3,}/g, "\n\n").trim();
+  const out = [...tmp.childNodes].map((n) => serializeNode(n)).join("");
+  return out.replace(/\n{3,}/g, "\n\n").trim();
 }
 
 function ToolbarButton({ active, disabled, onClick, title, icon, label }) {
