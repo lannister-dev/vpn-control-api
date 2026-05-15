@@ -67,31 +67,30 @@ class TestVlessUriRender:
         )
         assert "#" not in uri.render()
 
-    def test_render_server_description_base64_in_fragment(self):
+    def test_render_server_description_base64_in_query(self):
         import base64
+        from urllib.parse import parse_qs, unquote, urlparse
         uri = VlessUri(
             client_id="id", host="h", port=1, query={"k": "v"},
             remark="🇪🇺 Europe + WL unblock",
             server_description="🔓 глушилки",
         )
         rendered = uri.render()
-        assert "#" in rendered
-        fragment = rendered.split("#", 1)[1]
-        assert "?serverDescription=" in fragment
-        encoded = fragment.split("?serverDescription=", 1)[1]
-        assert base64.b64decode(encoded).decode("utf-8") == "🔓 глушилки"
+        parsed = urlparse(rendered)
+        params = parse_qs(parsed.query)
+        assert "serverDescription" in params
+        assert base64.b64decode(params["serverDescription"][0]).decode("utf-8") == "🔓 глушилки"
+        assert "serverDescription" not in unquote(parsed.fragment)
 
-    def test_render_server_description_without_remark_still_in_fragment(self):
+    def test_render_server_description_without_remark_emits_query_no_fragment(self):
         uri = VlessUri(
             client_id="id", host="h", port=1, query={"k": "v"},
             remark="",
             server_description="🔓 глушилки",
         )
         rendered = uri.render()
-        query_section = rendered.split("?", 1)[1]
-        assert "serverDescription" not in query_section.split("#", 1)[0]
-        assert "#" in rendered
-        assert "?serverDescription=" in rendered.split("#", 1)[1]
+        assert "serverDescription=" in rendered
+        assert "#" not in rendered
 
 
 # ── VlessUriBuilder.build — WS-TLS ──
