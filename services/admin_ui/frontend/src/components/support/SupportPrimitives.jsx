@@ -185,60 +185,16 @@ export function MediaThumb({ media, onClick }) {
 }
 
 function VoiceMessage({ media }) {
-  const { duration, url } = media;
-  // Deterministic waveform from duration so it always re-renders the same
-  const bars = useMemo(() => {
-    const n = 28;
-    const seed = Math.round(duration || 1) * 17;
-    return Array.from({ length: n }).map((_, i) => {
-      const v = Math.sin(i * 0.51 + seed) * Math.cos(i * 0.27 + seed * 1.3);
-      return 0.32 + (Math.abs(v) * 0.68);
-    });
-  }, [duration]);
-  const [playing, setPlaying] = useState(false);
-  const [pos, setPos] = useState(0); // 0..1
-  const audioRef = useRef(null);
-  useEffect(() => {
-    if (!url) return;
-    const a = new Audio(url);
-    audioRef.current = a;
-    const onTime = () => setPos(a.duration ? a.currentTime / a.duration : 0);
-    const onEnd = () => { setPlaying(false); setPos(0); };
-    a.addEventListener("timeupdate", onTime);
-    a.addEventListener("ended", onEnd);
-    return () => {
-      a.pause();
-      a.removeEventListener("timeupdate", onTime);
-      a.removeEventListener("ended", onEnd);
-    };
-  }, [url]);
-  const toggle = () => {
-    if (!audioRef.current) { setPlaying((p) => !p); setPos((p) => Math.min(1, p + 0.2)); return; }
-    if (playing) { audioRef.current.pause(); setPlaying(false); }
-    else { audioRef.current.play(); setPlaying(true); }
-  };
+  const { url } = media;
+  if (!url) return <div className="tk-voice muted small">голосовое (нет URL)</div>;
   return (
-    <div className="tk-voice">
-      <button className="tk-voice-play" onClick={toggle} type="button">
-        <Icon name={playing ? "pause" : "play"} size={14} />
-      </button>
-      <div className="tk-voice-wave" onClick={(e) => {
-        const r = e.currentTarget.getBoundingClientRect();
-        const f = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
-        setPos(f);
-        if (audioRef.current?.duration) audioRef.current.currentTime = f * audioRef.current.duration;
-      }}>
-        {bars.map((h, i) => (
-          <span
-            key={i}
-            className="tk-voice-bar"
-            data-played={(i / bars.length) <= pos || undefined}
-            style={{ height: Math.round(h * 18) + 6 }}
-          />
-        ))}
-      </div>
-      <span className="tk-voice-time">{fmtDuration(duration)}</span>
-    </div>
+    <audio
+      className="tk-voice-native"
+      src={url}
+      controls
+      preload="metadata"
+      style={{ display: "block", maxWidth: "100%" }}
+    />
   );
 }
 
