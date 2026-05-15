@@ -272,8 +272,10 @@ function BroadcastComposer() {
                       : <div className="br-bubble-doc"><Icon name="file" size={16} /> {file.name}</div>}
                 </div>
               )}
-              <div className="br-bubble-text">
-                {text.trim() ? renderMarkdownV2(text) : <span className="muted">Текст сообщения…</span>}
+              <div className="br-bubble-text txed-preview">
+                {text.trim()
+                  ? <span dangerouslySetInnerHTML={{ __html: htmlForTelegram(text) }} />
+                  : <span className="muted">Текст сообщения…</span>}
               </div>
               {buttons.filter((b) => b.text && b.url).length > 0 && (
                 <div className="br-bubble-buttons">
@@ -308,7 +310,7 @@ function BroadcastComposer() {
             <dt>Получателей</dt>
             <dd className="mono">{audienceCount.toLocaleString("ru-RU")}</dd>
             <dt>Размер сообщения</dt>
-            <dd className="mono">{text.length} симв.{file ? `, +1 файл (${formatBytes(file.size)})` : ""}</dd>
+            <dd className="mono">{text.replace(/<[^>]+>/g, "").length} симв.{file ? `, +1 файл (${formatBytes(file.size)})` : ""}</dd>
             <dt>Когда</dt>
             <dd>{schedule === "now" ? "Сразу" : scheduledAt ? new Date(scheduledAt).toLocaleString("ru-RU") : <span className="muted">—</span>}</dd>
           </dl>
