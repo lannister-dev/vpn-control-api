@@ -9,6 +9,7 @@ import { UserAvatar } from "../users/UserAvatar.jsx";
 import { BalancePill } from "../users/BalancePill.jsx";
 import { DaysCountdown, daysLeft } from "../users/DaysCountdown.jsx";
 import { UserDrawer } from "../UserDrawer.jsx";
+import { BottomSheet, BottomSheetItem } from "../BottomSheet.jsx";
 import {
   TicketStatusPill, PriorityDot, CategoryTag,
   MessageBubble, Lightbox, Composer,
@@ -35,6 +36,8 @@ function fmtDateTime(iso) {
 export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
   const [openUser, setOpenUser] = useState(null);
   const [ctxOpen, setCtxOpen] = useState(false);
+  const [metaOpen, setMetaOpen] = useState(false); // mobile meta-block collapsed by default
+  const [actionsSheet, setActionsSheet] = useState(false);
   const [lightbox, setLightbox] = useState(null); // { media, index }
   const [confirmAction, setConfirmAction] = useState(null);
   const [pending, setPending] = useState([]); // optimistic outbound messages
@@ -287,10 +290,10 @@ export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
 
   const actions = (
     <>
-      <button className="btn btn-ghost" onClick={() => setOpenUser(user)} title="Профиль пользователя">
+      <button className="btn btn-ghost tk-act-profile" onClick={() => setOpenUser(user)} title="Профиль пользователя">
         <Icon name="user" size={13} /> Профиль
       </button>
-      <button className="btn btn-ghost btn-icon" title="Меню">
+      <button className="btn btn-ghost btn-icon" title="Действия" onClick={() => setActionsSheet(true)}>
         <Icon name="more-vertical" size={15} />
       </button>
     </>
@@ -299,6 +302,19 @@ export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
   return (
     <>
       <Drawer head={head} onClose={onClose} actions={actions} width={760} className="tk-drawer">
+        {/* Meta-block toggle — visible only on mobile via CSS */}
+        <button
+          type="button"
+          className="tk-meta-toggle"
+          onClick={() => setMetaOpen((v) => !v)}
+          aria-expanded={metaOpen}
+        >
+          <Icon name={metaOpen ? "chevron-up" : "chevron-down"} size={14} />
+          <span>{metaOpen ? "Скрыть детали" : "Показать детали"}</span>
+        </button>
+
+        <div className={"tk-meta-block" + (metaOpen ? " tk-meta-open" : "")}>
+
         {/* KPI ribbon */}
         <div className="tk-kpi-ribbon">
           <div className="tk-kpi-cell">
@@ -386,6 +402,8 @@ export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
           </div>
         </div>
 
+        </div>{/* /.tk-meta-block */}
+
         {/* Chat scroller */}
         <div className="tk-chat-scroller" ref={scrollerRef}>
           {messagesQ.loading && messages.length === 0 && (
@@ -449,6 +467,46 @@ export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
       {confirmAction && (
         <ConfirmAction action={confirmAction} onClose={() => setConfirmAction(null)} />
       )}
+      <BottomSheet open={actionsSheet} onClose={() => setActionsSheet(false)} title="Действия">
+        <BottomSheetItem
+          icon="user"
+          label="Открыть профиль"
+          onClick={() => { setActionsSheet(false); setOpenUser(user); }}
+        />
+        <BottomSheetItem
+          icon="plus"
+          label="Дать день бесплатно"
+          sub="Продлевает подписку на 24ч"
+          onClick={() => { setActionsSheet(false); grantDay(); }}
+        />
+        <BottomSheetItem
+          icon="rotate-cw"
+          label="Возврат"
+          sub="На баланс пользователя"
+          onClick={() => { setActionsSheet(false); refund(); }}
+        />
+        {live.status !== "in_progress" && live.status !== "closed" && (
+          <BottomSheetItem
+            icon="check"
+            label="В работу"
+            onClick={() => { setActionsSheet(false); updateTicket({ status: "in_progress" }); }}
+          />
+        )}
+        {live.status !== "closed" ? (
+          <BottomSheetItem
+            icon="lock"
+            label="Закрыть тикет"
+            danger
+            onClick={() => { setActionsSheet(false); closeTicket(); }}
+          />
+        ) : (
+          <BottomSheetItem
+            icon="rotate-cw"
+            label="Переоткрыть"
+            onClick={() => { setActionsSheet(false); updateTicket({ status: "in_progress" }); }}
+          />
+        )}
+      </BottomSheet>
     </>
   );
 }
