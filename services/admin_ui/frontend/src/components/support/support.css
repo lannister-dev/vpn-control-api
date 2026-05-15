@@ -379,6 +379,34 @@
   min-width: 30px; text-align: right;
 }
 
+/* Pending / failed outbound bubble (optimistic upload) */
+.tk-bubble-pending { opacity: 0.72; }
+.tk-bubble-failed { outline: 1px solid var(--bad, #e74c3c); }
+.tk-msg-failed {
+  display: inline-grid; place-items: center;
+  width: 13px; height: 13px; border-radius: 50%;
+  background: var(--bad, #e74c3c);
+  color: white; font-size: 9.5px; font-weight: 700;
+}
+.tk-media-spinner {
+  position: absolute; top: 50%; left: 50%;
+  width: 30px; height: 30px;
+  margin: -15px 0 0 -15px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  animation: tkSpin 0.85s linear infinite;
+  pointer-events: none;
+}
+.tk-media-spinner-inline {
+  position: static; margin: 0; width: 16px; height: 16px;
+  border-width: 2px;
+  border-color: rgba(0, 0, 0, 0.18);
+  border-top-color: var(--text-secondary);
+}
+.tk-media-doc-pending { opacity: 0.85; cursor: default; }
+@keyframes tkSpin { to { transform: rotate(360deg); } }
+
 /* ─────────── Lightbox ─────────── */
 .tk-lightbox {
   position: fixed; inset: 0; z-index: 200;
@@ -723,3 +751,21 @@
   color: var(--text-muted); font-size: 14px; line-height: 1;
 }
 .tk-composer-file-x:hover { color: var(--bad); }
+
+@media (max-width: 640px) {
+  .tk-drawer .slideover-body { padding: 12px 12px 0; }
+  .tk-kpi-ribbon { grid-template-columns: repeat(2, 1fr); }
+  .tk-kpi-ribbon .tk-kpi-cell:nth-child(2n) { border-right: 0; }
+  .tk-kpi-ribbon .tk-kpi-cell:nth-child(-n+2) { border-bottom: 1px solid var(--border); }
+  .tk-meta-grid { grid-template-columns: 1fr 1fr; }
+  .tk-quick-actions { gap: 4px; }
+  .tk-quick-actions .btn { padding: 6px 8px; font-size: 11.5px; }
+  .tk-chat-scroller { margin: 6px -12px 0; padding: 12px 12px; min-height: 240px; }
+  .tk-msg-bubble { max-width: 88%; font-size: 13.5px; }
+  .tk-media-img, .tk-media-vid { max-width: 100%; }
+  .tk-media-vid-fallback { width: 100%; height: 160px; }
+  .tk-composer-bar { flex-wrap: wrap; gap: 6px; }
+  .tk-composer-hint { display: none; }
+  .tk-composer-actions { margin-left: auto; }
+  .tk-context-panel { grid-template-columns: 90px 1fr; gap: 4px 10px; }
+}

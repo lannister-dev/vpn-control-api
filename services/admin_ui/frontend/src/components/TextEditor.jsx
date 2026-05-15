@@ -1,11 +1,27 @@
 import { useEffect } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
+import { Mark, mergeAttributes } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
 import Underline from "@tiptap/extension-underline";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Icon } from "./Icon.jsx";
 import "./TextEditor.css";
+
+const TgSpoiler = Mark.create({
+  name: "tgSpoiler",
+  parseHTML() {
+    return [{ tag: "tg-spoiler" }, { tag: "span[data-tg-spoiler]" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["tg-spoiler", mergeAttributes(HTMLAttributes), 0];
+  },
+  addCommands() {
+    return {
+      toggleTgSpoiler: () => ({ commands }) => commands.toggleMark(this.name),
+    };
+  },
+});
 
 const TG_INLINE_TAGS = new Set([
   "b", "strong", "i", "em", "u", "s", "strike", "del",
@@ -88,6 +104,7 @@ export function TextEditor({ value, onChange, placeholder, minHeight = 80, autoF
         codeBlock: { HTMLAttributes: { class: "txed-pre" } },
       }),
       Underline,
+      TgSpoiler,
       Link.configure({ openOnClick: false, autolink: true, HTMLAttributes: { rel: "noopener" } }),
       Placeholder.configure({ placeholder: placeholder || "" }),
     ],
@@ -155,13 +172,7 @@ export function TextEditor({ value, onChange, placeholder, minHeight = 80, autoF
         <span className="txed-tb-sep" />
         <ToolbarButton title="Спойлер" icon="eye-off"
           active={editor.isActive("tgSpoiler")}
-          onClick={() => {
-            const html = editor.getHTML();
-            const sel = editor.state.selection;
-            const text = editor.state.doc.textBetween(sel.from, sel.to);
-            if (!text) return;
-            editor.chain().focus().insertContent(`<tg-spoiler>${text}</tg-spoiler>`).run();
-          }} />
+          onClick={() => editor.chain().focus().toggleTgSpoiler().run()} />
         <ToolbarButton title="Ссылка" icon="link"
           active={editor.isActive("link")}
           onClick={setLink} />
