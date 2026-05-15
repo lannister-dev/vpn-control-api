@@ -37,7 +37,15 @@ export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
   const [ctxOpen, setCtxOpen] = useState(false);
   const [lightbox, setLightbox] = useState(null); // { media, index }
   const [confirmAction, setConfirmAction] = useState(null);
+  const [pending, setPending] = useState([]); // optimistic outbound messages
   const scrollerRef = useRef(null);
+
+  useEffect(() => () => {
+    setPending((cur) => {
+      cur.forEach((m) => m.media?.forEach((mm) => mm._objUrl && URL.revokeObjectURL(mm._objUrl)));
+      return [];
+    });
+  }, []);
 
   // Fresh ticket + user data
   const detail = useQuery(
@@ -52,7 +60,8 @@ export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
 
   const live = { ...ticket, ...(detail.data || {}) };
   const user = live.user || {};
-  const messages = messagesQ.data?.items || [];
+  const serverMessages = messagesQ.data?.items || [];
+  const messages = [...serverMessages, ...pending];
 
   // Auto-scroll on new message; re-scroll after a short delay to catch image-load reflows.
   useEffect(() => {
@@ -65,6 +74,28 @@ export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
     const t3 = setTimeout(toBottom, 1800);
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
   }, [messages.length, messages[messages.length - 1]?.id]);
+
+  const mediaKindOf = (mime) => {
+    const m = String(mime || "").toLowerCase();
+    if (m.startsWith("image/")) return "image";
+    if (m.startsWith("video/")) return "video";
+    if (m.startsWith("audio/")) return "audio";
+    return "document";
+  };
+  const removePending = (tmpId) => setPending((cur) => {
+    const next = [];
+    for (const m of cur) {
+      if (m.id === tmpId) {
+        m.media?.forEach((mm) => mm._objUrl && URL.revokeObjectURL(mm._objUrl));
+        continue;
+      }
+      next.push(m);
+    }
+    return next;
+  });
+  const markPendingFailed = (tmpId) => setPending((cur) =>
+    cur.map((m) => m.id === tmpId ? { ...m, pending: false, failed: true } : m)
+  );
 
   // ── Actions
   const updateTicket = async (patch) => {
@@ -84,6 +115,31 @@ export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
       toast.bad("Сообщение пусто");
       return;
     }
+    const tmpId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const tmpMedia = filesArr.map((f) => {
+      const objUrl = URL.createObjectURL(f);
+      return {
+        kind: mediaKindOf(f.type),
+        url: objUrl,
+        thumb_url: objUrl,
+        file_name: f.name,
+        file_size: f.size,
+        pending: true,
+        _objUrl: objUrl,
+      };
+    });
+    const optimistic = {
+      id: tmpId,
+      from: "operator",
+      kind: "text",
+      text,
+      media: tmpMedia,
+      is_note: !!payload.is_note,
+      created_at: new Date().toISOString(),
+      pending: true,
+    };
+    setPending((cur) => [...cur, optimistic]);
+
     try {
       const fd = new FormData();
       fd.append("text", text);
@@ -95,9 +151,11 @@ export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
         body: fd,
       });
       toast.ok(payload.is_note ? "Заметка сохранена" : "Сообщение отправлено");
-      messagesQ.refetch();
+      await messagesQ.refetch();
+      removePending(tmpId);
       onChanged?.();
     } catch (e) {
+      markPendingFailed(tmpId);
       toast.bad(e?.message || "Не удалось отправить");
     }
   };

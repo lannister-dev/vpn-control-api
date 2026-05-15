@@ -96,7 +96,7 @@ export function MessageBubble({
   isOperator,
   onOpenMedia,
 }) {
-  const { kind = "text", text, media, created_at, delivered, read, author, is_note } = message;
+  const { kind = "text", text, media, created_at, delivered, read, author, is_note, pending, failed } = message;
 
   // System events (centered, italic)
   if (kind === "system") {
@@ -115,7 +115,7 @@ export function MessageBubble({
           {(author.label || "?").slice(0, 1).toUpperCase()}
         </div>
       )}
-      <div className={"tk-msg-bubble " + (isOperator ? "tk-bubble-op" : "tk-bubble-user") + (is_note ? " tk-bubble-note" : "")}>
+      <div className={"tk-msg-bubble " + (isOperator ? "tk-bubble-op" : "tk-bubble-user") + (is_note ? " tk-bubble-note" : "") + (pending ? " tk-bubble-pending" : "") + (failed ? " tk-bubble-failed" : "")}>
         {is_note && (
           <div className="tk-bubble-note-tag">
             <Icon name="lock" size={11} /> Внутренняя заметка
@@ -135,12 +135,14 @@ export function MessageBubble({
         )}
         <div className="tk-msg-meta">
           <span>{new Date(created_at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</span>
-          {isOperator && (
+          {isOperator && !pending && !failed && (
             <TgTicks
               status={read ? "read" : delivered ? "delivered" : "sent"}
               size={11}
             />
           )}
+          {pending && <Icon name="clock" size={11} />}
+          {failed && <span className="tk-msg-failed" title="Не удалось отправить">!</span>}
         </div>
       </div>
     </div>
@@ -151,35 +153,57 @@ export function MessageBubble({
    MEDIA THUMB — single image/video/document/voice
    ────────────────────────────────────────────────────────── */
 export function MediaThumb({ media, onClick }) {
-  const { kind, url, thumb_url, file_name, file_size, duration } = media;
+  const { kind, url, thumb_url, file_name, file_size, duration, pending } = media;
+  const overlay = pending ? <span className="tk-media-spinner" aria-label="Загрузка…" /> : null;
   if (kind === "image") {
     return (
-      <button className="tk-media-img" onClick={onClick} type="button">
+      <button className="tk-media-img" onClick={pending ? undefined : onClick} type="button" disabled={pending}>
         <img src={thumb_url || url} alt={file_name || ""} loading="lazy" />
+        {overlay}
       </button>
     );
   }
   if (kind === "video") {
     return (
-      <button className="tk-media-vid" onClick={onClick} type="button">
+      <button className="tk-media-vid" onClick={pending ? undefined : onClick} type="button" disabled={pending}>
         {thumb_url ? <img src={thumb_url} alt="" /> : <div className="tk-media-vid-fallback"><Icon name="video" size={24} /></div>}
-        <span className="tk-media-vid-play"><Icon name="play-circle" size={26} /></span>
+        {!pending && <span className="tk-media-vid-play"><Icon name="play-circle" size={26} /></span>}
         {duration && <span className="tk-media-vid-dur">{fmtDuration(duration)}</span>}
+        {overlay}
       </button>
     );
   }
   if (kind === "voice" || kind === "audio") {
+    if (pending) {
+      return (
+        <div className="tk-media-doc tk-media-doc-pending">
+          <span className="tk-media-doc-icon"><Icon name="mic" size={18} /></span>
+          <span className="tk-media-doc-meta">
+            <span className="tk-media-doc-name">{file_name || "Аудио"}</span>
+            <span className="tk-media-doc-size">{fmtBytes(file_size)} · загрузка…</span>
+          </span>
+          <span className="tk-media-spinner tk-media-spinner-inline" />
+        </div>
+      );
+    }
     return <VoiceMessage media={media} />;
   }
-  // document
   return (
-    <a className="tk-media-doc" href={url} target="_blank" rel="noopener noreferrer">
+    <a
+      className={"tk-media-doc" + (pending ? " tk-media-doc-pending" : "")}
+      href={pending ? undefined : url}
+      target={pending ? undefined : "_blank"}
+      rel="noopener noreferrer"
+      onClick={pending ? (e) => e.preventDefault() : undefined}
+    >
       <span className="tk-media-doc-icon"><Icon name="file-text" size={18} /></span>
       <span className="tk-media-doc-meta">
         <span className="tk-media-doc-name">{file_name || "Документ"}</span>
-        <span className="tk-media-doc-size">{fmtBytes(file_size)}</span>
+        <span className="tk-media-doc-size">{fmtBytes(file_size)}{pending ? " · загрузка…" : ""}</span>
       </span>
-      <Icon name="download" size={13} />
+      {pending
+        ? <span className="tk-media-spinner tk-media-spinner-inline" />
+        : <Icon name="download" size={13} />}
     </a>
   );
 }
