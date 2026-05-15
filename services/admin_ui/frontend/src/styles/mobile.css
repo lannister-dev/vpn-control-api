@@ -1,11 +1,18 @@
-/* Mobile overrides — keeps existing desktop layout intact, only activates ≤640px.
-   Targets known inline-style patterns and named grids that block phone layouts. */
+/* Mobile overrides — keeps existing desktop layout intact, only activates ≤768px
+   (per Claude Design "Mobile Adaptation Spec"). Targets known inline-style patterns
+   and named grids that block phone layouts. */
 
 html, body { max-width: 100vw; overflow-x: hidden; }
 
-@media (max-width: 640px) {
+/* iOS Safari zooms in on focus when input font < 16px — force 16px on phones. */
+@media (max-width: 768px) {
+  input, textarea, select { font-size: 16px; }
+  .input, .select { font-size: 16px !important; }
+}
+
+@media (max-width: 768px) {
   /* — Generic guards — */
-  .page, .app-content > .page { padding: 0 12px; }
+  .page, .app-content > .page { padding: 0 14px env(safe-area-inset-bottom, 0); }
   .card, .sec, .data-table-wrap { max-width: 100%; }
 
   /* Inline-width search-input wrapper (Users, Tickets, etc.) */
@@ -27,10 +34,7 @@ html, body { max-width: 100vw; overflow-x: hidden; }
     max-width: calc(100vw - 24px);
   }
 
-  /* — Inline multi-column JSX grids → fewer cols on phone.
-        Note: React renders style={{ gridTemplateColumns: "..." }} as
-        style="grid-template-columns: ..." (no embedded quotes), so the
-        selectors below match raw substrings of that attribute. — */
+  /* — Inline multi-column JSX grids → fewer cols on phone. — */
   [style*="repeat(4, 1fr)"],
   [style*="repeat(5, 1fr)"],
   [style*="repeat(6, 1fr)"],
@@ -55,25 +59,28 @@ html, body { max-width: 100vw; overflow-x: hidden; }
     -webkit-overflow-scrolling: touch;
   }
 
-  /* — KPI hero / numeric blocks: prevent jumbo numbers spilling out — */
+  /* — KPI numerics: shrink to fit, prevent overflow — */
   .kpi-value { font-size: clamp(18px, 5.5vw, 26px); }
+  .kpi-value.primary { font-size: clamp(22px, 6.5vw, 28px); }
   .kpi-cell { padding: 12px 14px; }
 
   /* — Forms: any input with hardcoded max-width should fill width — */
   input[style*="max-width"], select[style*="max-width"], textarea[style*="max-width"] {
     max-width: 100% !important;
   }
-  /* Form rows that lay out side-by-side */
   .form-row, .field-row, .form-grid { grid-template-columns: 1fr !important; }
 
-  /* — Page header actions row should wrap on phone — */
+  /* — Page header — */
+  .page-title { font-size: 20px; }
+  .page-subtitle { font-size: 11.5px; }
+  .page-head { padding: 14px 0 10px; margin-bottom: 14px; }
   .page-head-actions { flex-wrap: wrap; gap: 6px; }
   .page-head-actions .btn { flex: 0 1 auto; }
 
   /* — Toolbars / filter rows — */
   .toolbar, .filter-bar, .row-toolbar { flex-wrap: wrap; gap: 6px; }
 
-  /* — Pre / code blocks for logs/JSON — */
+  /* — Pre / code blocks — */
   pre, code, .codeblock {
     max-width: 100%;
     overflow-x: auto;
@@ -86,34 +93,112 @@ html, body { max-width: 100vw; overflow-x: hidden; }
   .toast-stack { left: 8px !important; right: 8px !important; bottom: 8px !important; max-width: calc(100vw - 16px); }
   .toast { min-width: 0 !important; }
 
-  /* — Emoji popover doesn't need 10 cols on a phone — */
+  /* — Emoji popover keeps within viewport — */
   .tk-emoji-pop { grid-template-columns: repeat(8, 1fr); max-width: calc(100vw - 24px); }
 
   /* — Composer file chips — */
   .tk-composer-file-name { max-width: 50vw; }
 
-  /* — Drawer body / sidebar header padding tighter — */
+  /* — Drawer body padding — */
   .slideover-body { padding: 12px 14px; }
-  .tk-drawer .slideover-body { padding: 12px 12px 0; }
 
-  /* — Buttons more tappable, but keep label compact — */
-  .btn { min-height: 34px; }
+  /* — Buttons: touch-friendly minimums (spec: 38–44) — */
+  .btn { min-height: 38px; padding: 0 12px; }
+  .btn-primary { min-height: 44px; }
   .btn-xs { min-height: 28px; }
-  .btn-sm { min-height: 30px; }
-  .btn-icon { width: 34px; height: 34px; }
+  .btn-sm { min-height: 32px; }
+  .btn-icon { width: 40px; height: 40px; }
+  .btn-ghost.btn-icon { width: 40px; height: 40px; }
 
-  /* — Avoid horizontal scroll from sticky topbar children — */
-  .topbar { overflow: hidden; }
+  /* — Sidebar items: 44px hit area, 14px text — */
+  .side-btn { min-height: 44px; padding: 10px 12px; font-size: 14px; }
+  .side-btn .side-label { font-size: 14px; }
+
+  /* — Topbar header height bump + tight spacing — */
+  .topbar { padding: 0 12px; gap: 8px; overflow: hidden; }
   .topbar .crumbs { flex: 1; min-width: 0; overflow: hidden; }
   .topbar-actions { gap: 2px; flex-shrink: 0; }
 
-  /* — Datepicker popover: keep within viewport — */
+  /* — Datepicker popover — */
   .dp-popover { max-width: calc(100vw - 24px); }
 }
 
-/* Tablet ≤ 900: the off-canvas sidebar already kicks in; tighten content */
+/* Tablet ≤ 900: matrix etc. scroll horizontally; sidebar already off-canvas */
 @media (max-width: 900px) {
-  .page { padding: 0 16px; }
   .kpi-hero[data-cells="6"] { grid-template-columns: repeat(2, 1fr); }
   .matrix-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 }
+
+/* ─── BottomSheet ─── */
+.bsheet-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 110;
+  display: flex; align-items: flex-end;
+  animation: fadeIn 180ms ease;
+}
+.bsheet {
+  width: 100%;
+  background: var(--bg-elevated);
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
+  display: flex; flex-direction: column;
+  max-height: 86dvh;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+  animation: bsheetIn 240ms cubic-bezier(.22, 1, .36, 1);
+}
+@keyframes bsheetIn { from { transform: translateY(100%); } to { transform: translateY(0); } }
+.bsheet-handle-wrap {
+  display: flex; justify-content: center;
+  padding: 8px 0 4px;
+  cursor: grab;
+  touch-action: none;
+}
+.bsheet-handle {
+  width: 36px; height: 4px;
+  background: var(--text-faint);
+  border-radius: 4px;
+  opacity: 0.6;
+}
+.bsheet-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 4px 16px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.bsheet-title { font-size: 15px; font-weight: 600; }
+.bsheet-close {
+  background: transparent; border: 0; cursor: pointer;
+  padding: 6px; color: var(--text-muted);
+  border-radius: 6px;
+  display: grid; place-items: center;
+}
+.bsheet-close:hover { background: var(--surface-hover); color: var(--text); }
+.bsheet-body {
+  flex: 1; overflow-y: auto;
+  padding: 8px 0;
+}
+.bsheet-item {
+  width: 100%;
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px; min-height: 56px;
+  background: transparent; border: 0; cursor: pointer;
+  text-align: left;
+  color: var(--text);
+  font-size: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.bsheet-item:last-child { border-bottom: 0; }
+.bsheet-item:hover, .bsheet-item:active { background: var(--surface-hover); }
+.bsheet-item:disabled { opacity: 0.45; cursor: not-allowed; }
+.bsheet-item.danger { color: var(--bad); }
+.bsheet-item-icon {
+  display: grid; place-items: center;
+  width: 32px; height: 32px; border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.bsheet-item.danger .bsheet-item-icon { background: var(--bad-soft); color: var(--bad); }
+.bsheet-item-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.bsheet-item-label { font-weight: 500; }
+.bsheet-item-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }

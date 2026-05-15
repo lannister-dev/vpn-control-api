@@ -25,6 +25,9 @@ export function Drawer({ title, subtitle, head, onClose, tabs, activeTab, onTab,
         style={widthStyle}
       >
         <div className="slideover-head">
+          <button className="slideover-back" onClick={onClose} aria-label="Назад" type="button">
+            <Icon name="chevron-left" size={20} />
+          </button>
           {head || (
             <div className="slideover-title-main">
               <div className="slideover-title">{title}</div>
@@ -32,7 +35,7 @@ export function Drawer({ title, subtitle, head, onClose, tabs, activeTab, onTab,
             </div>
           )}
           {actions}
-          <button className="btn btn-ghost btn-icon" onClick={onClose} title="Закрыть">
+          <button className="btn btn-ghost btn-icon slideover-close" onClick={onClose} title="Закрыть">
             <Icon name="x" size={15} />
           </button>
         </div>

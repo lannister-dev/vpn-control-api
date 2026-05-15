@@ -67,30 +67,34 @@ class TestVlessUriRender:
         )
         assert "#" not in uri.render()
 
-    def test_render_server_description_base64_in_query(self):
+    def test_render_server_description_in_fragment_after_remark(self):
         import base64
-        from urllib.parse import parse_qs, unquote, urlparse
         uri = VlessUri(
             client_id="id", host="h", port=1, query={"k": "v"},
-            remark="🇪🇺 Europe + WL unblock",
+            remark="🇪🇺 Europe",
             server_description="🔓 глушилки",
         )
         rendered = uri.render()
-        parsed = urlparse(rendered)
-        params = parse_qs(parsed.query)
-        assert "serverDescription" in params
-        assert base64.b64decode(params["serverDescription"][0]).decode("utf-8") == "🔓 глушилки"
-        assert "serverDescription" not in unquote(parsed.fragment)
+        assert "#" in rendered
+        fragment = rendered.split("#", 1)[1]
+        assert "?serverDescription=" in fragment
+        encoded = fragment.split("?serverDescription=", 1)[1]
+        assert base64.b64decode(encoded).decode("utf-8") == "🔓 глушилки"
+        assert "serverDescription" not in rendered.split("#", 1)[0]
 
-    def test_render_server_description_without_remark_emits_query_no_fragment(self):
+    def test_render_server_description_truncated_to_30_chars(self):
+        import base64
+        long_desc = "Это очень длинное описание для сервера которое будет обрезано"
         uri = VlessUri(
             client_id="id", host="h", port=1, query={"k": "v"},
-            remark="",
-            server_description="🔓 глушилки",
+            remark="R",
+            server_description=long_desc,
         )
         rendered = uri.render()
-        assert "serverDescription=" in rendered
-        assert "#" not in rendered
+        encoded = rendered.split("?serverDescription=", 1)[1]
+        decoded = base64.b64decode(encoded).decode("utf-8")
+        assert len(decoded) <= 30
+        assert decoded == long_desc[:30]
 
 
 # ── VlessUriBuilder.build — WS-TLS ──

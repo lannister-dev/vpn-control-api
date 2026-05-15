@@ -776,56 +776,71 @@
 }
 .tk-composer-file-x:hover { color: var(--bad); }
 
-@media (max-width: 640px) {
-  /* Phone-first ticket drawer: compress everything above the chat scroller. */
-  .tk-drawer .slideover-body { padding: 8px 10px 0; }
-  .tk-kpi-ribbon { grid-template-columns: repeat(4, 1fr); margin-bottom: 8px; }
-  .tk-kpi-ribbon .tk-kpi-cell { padding: 6px 8px; }
-  .tk-kpi-ribbon .tk-kpi-label {
-    font-size: 9.5px; margin-bottom: 2px;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  .tk-kpi-ribbon .tk-kpi-val { font-size: 12px; }
-  .tk-kpi-ribbon .tk-kpi-cell:not(:last-child) { border-right: 1px solid var(--border); }
+/* Meta-block toggle — visible only on mobile */
+.tk-meta-toggle { display: none; }
 
-  /* Quick-actions: compact horizontal scroll, single row */
+@media (max-width: 768px) {
+  /* Phone TicketDrawer: full-bleed chat, collapsible meta, sticky composer */
+  .tk-drawer .slideover-body { padding: 0; display: flex; flex-direction: column; }
+  .tk-act-profile { display: none; }
+
+  /* Meta-block (KPI + quick actions + context + meta-grid) collapsed by default */
+  .tk-meta-toggle {
+    display: flex; align-items: center; gap: 6px;
+    width: 100%; padding: 10px 14px;
+    background: var(--bg-elevated); border: 0;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-muted); font-size: 12.5px;
+    cursor: pointer;
+  }
+  .tk-meta-toggle:hover { color: var(--text); }
+  .tk-meta-block { display: none; padding: 10px 12px 0; background: var(--bg-elevated); border-bottom: 1px solid var(--border); }
+  .tk-meta-block.tk-meta-open { display: block; }
+  .tk-kpi-ribbon { grid-template-columns: repeat(2, 1fr); margin-bottom: 8px; }
+  .tk-kpi-cell { padding: 8px 10px; }
+  .tk-kpi-cell:nth-child(2n) { border-right: 0; }
+  .tk-kpi-cell:nth-child(-n+2) { border-bottom: 1px solid var(--border); }
+  .tk-kpi-val { font-size: 13px; }
   .tk-quick-actions {
     flex-wrap: nowrap; overflow-x: auto;
     -webkit-overflow-scrolling: touch;
-    margin: 0 -10px 8px; padding: 0 10px;
+    margin: 0 -12px 8px; padding: 0 12px;
     scrollbar-width: none;
   }
   .tk-quick-actions::-webkit-scrollbar { display: none; }
   .tk-quick-actions .btn {
-    padding: 6px 10px; font-size: 11.5px;
-    flex-shrink: 0; white-space: nowrap;
+    flex-shrink: 0; white-space: nowrap; min-height: 36px;
   }
-  .tk-quick-actions > div[style] { display: none !important; } /* flex spacer */
+  .tk-quick-actions > div[style] { display: none !important; }
 
-  /* Hide meta grid + context panel + context toggle: they're operator-side ops not needed on phone first paint */
-  .tk-meta-grid, .tk-context-toggle, .tk-context-panel { display: none; }
-
-  /* Chat takes the rest of the screen */
+  /* Chat takes all remaining height, full-bleed */
   .tk-chat-scroller {
-    margin: 4px -10px 0; padding: 10px 10px;
+    margin: 0; padding: 14px 12px;
     min-height: 0; flex: 1;
+    border-top: 1px solid var(--border);
   }
-  .tk-msg-bubble { max-width: 90%; font-size: 13.5px; }
+  .tk-msg-bubble { max-width: 82%; font-size: 13.5px; }
+  .tk-msg-avatar { width: 22px; height: 22px; }
   .tk-media-img, .tk-media-vid { max-width: 100%; }
 
-  /* Composer pinned to bottom safe-area */
+  /* Sticky composer with safe-area, circular accent send */
   .tk-composer {
-    margin: 0 -10px;
-    padding-bottom: env(safe-area-inset-bottom, 0);
+    position: sticky; bottom: 0; z-index: 10;
+    margin: 0;
+    background: var(--bg-elevated);
+    border-top: 1px solid var(--border);
+    padding: 6px 10px calc(6px + env(safe-area-inset-bottom, 0));
   }
-  .tk-composer-bar { flex-wrap: wrap; gap: 6px; padding: 6px 10px; }
+  .tk-composer-bar { flex-wrap: nowrap; gap: 6px; padding: 6px 0; align-items: center; }
   .tk-composer-hint { display: none; }
-  .tk-composer-actions { margin-left: auto; }
-}
-
-/* 2-col phones (very narrow) */
-@media (max-width: 380px) {
-  .tk-kpi-ribbon { grid-template-columns: repeat(2, 1fr); }
-  .tk-kpi-ribbon .tk-kpi-cell:nth-child(2n) { border-right: 0; }
-  .tk-kpi-ribbon .tk-kpi-cell:nth-child(-n+2) { border-bottom: 1px solid var(--border); }
+  .tk-composer-icons .tk-comp-btn { width: 36px; height: 36px; }
+  .tk-composer-actions { margin-left: auto; gap: 4px; }
+  .tk-composer-actions .btn-primary {
+    width: 44px; height: 44px;
+    padding: 0; min-height: 44px;
+    border-radius: 50%;
+    justify-content: center;
+  }
+  .tk-composer-actions .btn-primary span { display: none; }
+  .tk-composer-actions .btn-ghost { padding: 0 8px; }
 }
