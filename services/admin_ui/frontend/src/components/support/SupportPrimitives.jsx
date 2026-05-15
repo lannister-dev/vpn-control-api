@@ -189,6 +189,7 @@ function VoiceMessage({ media }) {
   const [playing, setPlaying] = useState(false);
   const [pos, setPos] = useState(0);
   const [meta, setMeta] = useState({ duration: duration || 0 });
+  const [err, setErr] = useState(null);
   const audioRef = useRef(null);
   const waveRef = useRef(null);
 
@@ -211,13 +212,27 @@ function VoiceMessage({ media }) {
     setPos(a.duration ? a.currentTime / a.duration : 0);
   };
   const onEnded = () => { setPlaying(false); setPos(0); };
-  const onErr = () => { setPlaying(false); };
+  const onErr = () => {
+    const a = audioRef.current;
+    const code = a?.error?.code;
+    const codes = { 1: "ABORTED", 2: "NETWORK", 3: "DECODE", 4: "SRC_NOT_SUPPORTED" };
+    setErr(codes[code] || ("err " + (code || "?")));
+    setPlaying(false);
+  };
 
   const toggle = async () => {
     const a = audioRef.current;
     if (!a) return;
     if (playing) { a.pause(); setPlaying(false); return; }
-    try { await a.play(); setPlaying(true); } catch { setPlaying(false); }
+    try {
+      setErr(null);
+      a.load();
+      await a.play();
+      setPlaying(true);
+    } catch (e) {
+      setErr(e?.message?.slice(0, 60) || "play failed");
+      setPlaying(false);
+    }
   };
 
   const seekFromClick = (e) => {
@@ -237,32 +252,39 @@ function VoiceMessage({ media }) {
   const shownSec = playing || pos > 0 ? playedSec : totalSec;
 
   return (
-    <div className="tk-voice">
-      <audio
-        ref={audioRef}
-        src={url}
-        preload="metadata"
-        onLoadedMetadata={onLoadedMeta}
-        onTimeUpdate={onTime}
-        onEnded={onEnded}
-        onError={onErr}
-        style={{ display: "none" }}
-      />
-      <button className="tk-voice-play" onClick={toggle} type="button" title={playing ? "Пауза" : "Воспроизвести"}>
-        <Icon name={playing ? "pause" : "play"} size={14} />
-      </button>
-      <div className="tk-voice-wave" ref={waveRef} onClick={seekFromClick}>
-        {bars.map((h, i) => (
-          <span
-            key={i}
-            className="tk-voice-bar"
-            data-played={(i / bars.length) <= pos || undefined}
-            style={{ height: Math.round(h * 18) + 6 }}
-          />
-        ))}
+    <>
+      <div className="tk-voice">
+        <audio
+          ref={audioRef}
+          src={url}
+          preload="metadata"
+          onLoadedMetadata={onLoadedMeta}
+          onTimeUpdate={onTime}
+          onEnded={onEnded}
+          onError={onErr}
+          style={{ display: "none" }}
+        />
+        <button className="tk-voice-play" onClick={toggle} type="button" title={playing ? "Пауза" : "Воспроизвести"}>
+          <Icon name={playing ? "pause" : "play"} size={14} />
+        </button>
+        <div className="tk-voice-wave" ref={waveRef} onClick={seekFromClick}>
+          {bars.map((h, i) => (
+            <span
+              key={i}
+              className="tk-voice-bar"
+              data-played={(i / bars.length) <= pos || undefined}
+              style={{ height: Math.round(h * 18) + 6 }}
+            />
+          ))}
+        </div>
+        <span className="tk-voice-time">{fmtDuration(shownSec)}</span>
       </div>
-      <span className="tk-voice-time">{fmtDuration(shownSec)}</span>
-    </div>
+      {err && (
+        <div className="muted small" style={{ marginTop: 4, color: "var(--bad)" }}>
+          Ошибка плеера: {err}. <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>скачать файл</a>
+        </div>
+      )}
+    </>
   );
 }
 
