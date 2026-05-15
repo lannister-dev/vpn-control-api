@@ -36,7 +36,6 @@ function fmtDateTime(iso) {
 export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
   const [openUser, setOpenUser] = useState(null);
   const [ctxOpen, setCtxOpen] = useState(false);
-  const [metaOpen, setMetaOpen] = useState(false); // mobile meta-block collapsed by default
   const [actionsSheet, setActionsSheet] = useState(false);
   const [lightbox, setLightbox] = useState(null); // { media, index }
   const [confirmAction, setConfirmAction] = useState(null);
@@ -302,19 +301,6 @@ export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
   return (
     <>
       <Drawer head={head} onClose={onClose} actions={actions} width={760} className="tk-drawer">
-        {/* Meta-block toggle — visible only on mobile via CSS */}
-        <button
-          type="button"
-          className="tk-meta-toggle"
-          onClick={() => setMetaOpen((v) => !v)}
-          aria-expanded={metaOpen}
-        >
-          <Icon name={metaOpen ? "chevron-up" : "chevron-down"} size={14} />
-          <span>{metaOpen ? "Скрыть детали" : "Показать детали"}</span>
-        </button>
-
-        <div className={"tk-meta-block" + (metaOpen ? " tk-meta-open" : "")}>
-
         {/* KPI ribbon */}
         <div className="tk-kpi-ribbon">
           <div className="tk-kpi-cell">
@@ -401,8 +387,6 @@ export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
             <div className="tk-meta-val mono small">{fmtDateTime(live.created_at)}</div>
           </div>
         </div>
-
-        </div>{/* /.tk-meta-block */}
 
         {/* Chat scroller */}
         <div className="tk-chat-scroller" ref={scrollerRef}>
