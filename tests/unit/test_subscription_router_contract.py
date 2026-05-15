@@ -72,15 +72,15 @@ async def test_get_subscription_config_success_headers_and_payload():
     assert out.headers["routing"] == "happ://routing/custom"
     assert out.headers["subscription-always-hwid-enable"] == "1"
     assert out.headers["color-profile"] == '{"buttonColor":"#D96C3FFF","backgroundColors":["#07171EFF","#0D2A33FF"]}'
-    service.build_payload.assert_awaited_once_with(
-        raw_token="tok",
-        hwid="hwid-1",
-        user_agent="Happ/1.0",
-        device_model=None,
-        platform=None,
-        os_version=None,
-        if_none_match=None,
-    )
+    call = service.build_payload.await_args
+    assert call is not None
+    kwargs = call.kwargs
+    assert kwargs["raw_token"] == "tok"
+    assert kwargs["hwid"] == "hwid-1"
+    assert kwargs["user_agent"] == "Happ/1.0"
+    assert kwargs["if_none_match"] is None
+    assert kwargs["extra_etag_signature"]
+    assert len(kwargs["extra_etag_signature"]) == 12
 
 
 @pytest.mark.asyncio

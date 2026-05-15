@@ -480,13 +480,15 @@ class SubscriptionService:
             platform: str | None = None,
             os_version: str | None = None,
             if_none_match: str | None = None,
+            extra_etag_signature: str = "",
     ) -> tuple[str, str, bool, SubscriptionUserInfo | None]:
         t0 = time.perf_counter()
 
         token_hash = SubscriptionUtils.hash(raw_token)
         cache_ttl = max(0, int(self.settings.subscriptions.response_cache_ttl_sec))
-        cache_key = redis_key.payload_cache(token_hash=token_hash, hwid=hwid)
-        lock_key = redis_key.payload_build_lock(token_hash=token_hash, hwid=hwid)
+        cache_suffix = f":{extra_etag_signature}" if extra_etag_signature else ""
+        cache_key = redis_key.payload_cache(token_hash=token_hash, hwid=hwid) + cache_suffix
+        lock_key = redis_key.payload_build_lock(token_hash=token_hash, hwid=hwid) + cache_suffix
         lock_acquired = False
         if cache_ttl > 0:
             cached_payload, cached_etag, cache_result = await self._read_payload_cache(cache_key)
@@ -592,6 +594,7 @@ class SubscriptionService:
                 route_signatures,
                 client_id=self._bundle_client_signature(bundle),
                 placement_op_version=self._bundle_placement_signature(transport_results),
+                extra_signature=extra_etag_signature,
             )
             if cache_ttl > 0:
                 write_ok = await self._write_payload_cache(
@@ -661,6 +664,7 @@ class SubscriptionService:
             *,
             client_id: str,
             placement_op_version: int | str | None = None,
+            extra_signature: str = "",
     ) -> str:
         sub_updated_at = sub.updated_at
         updated_at = sub_updated_at.isoformat() if sub_updated_at else ""
@@ -672,6 +676,7 @@ class SubscriptionService:
             client_id,
             str(placement_op_version or ""),
             ",".join(route_signatures),
+            extra_signature,
         ])
         return hashlib.sha256(base.encode()).hexdigest()
 
