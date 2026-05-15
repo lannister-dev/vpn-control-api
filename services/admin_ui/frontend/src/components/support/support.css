@@ -304,12 +304,17 @@
   cursor: pointer;
   max-width: 320px;
 }
-.tk-media-img img, .tk-media-vid img {
+.tk-media-img img, .tk-media-vid img, .tk-media-vid video {
   display: block; width: 100%;
-  max-height: 220px; object-fit: cover;
+  max-height: 260px; min-height: 140px;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  background: var(--surface-2);
 }
+.tk-media-vid video { pointer-events: none; }
 .tk-media-vid-fallback {
-  width: 320px; height: 180px; display: grid; place-items: center;
+  width: 100%; max-width: 320px; aspect-ratio: 16 / 10;
+  display: grid; place-items: center;
   background: var(--surface-2); color: var(--text-muted);
 }
 .tk-media-vid-play {
@@ -422,7 +427,7 @@
 @keyframes tkSpin { to { transform: rotate(360deg); } }
 
 /* Smooth image fade-in for blob previews while uploading */
-.tk-media-img img, .tk-media-vid img { transition: opacity 220ms ease, filter 220ms ease; }
+.tk-media-img img, .tk-media-vid img, .tk-media-vid video { transition: opacity 220ms ease, filter 220ms ease; }
 .tk-bubble-pending .tk-media-img img,
 .tk-bubble-pending .tk-media-vid img { filter: brightness(0.8) saturate(0.95); }
 
@@ -772,19 +777,55 @@
 .tk-composer-file-x:hover { color: var(--bad); }
 
 @media (max-width: 640px) {
-  .tk-drawer .slideover-body { padding: 12px 12px 0; }
+  /* Phone-first ticket drawer: compress everything above the chat scroller. */
+  .tk-drawer .slideover-body { padding: 8px 10px 0; }
+  .tk-kpi-ribbon { grid-template-columns: repeat(4, 1fr); margin-bottom: 8px; }
+  .tk-kpi-ribbon .tk-kpi-cell { padding: 6px 8px; }
+  .tk-kpi-ribbon .tk-kpi-label {
+    font-size: 9.5px; margin-bottom: 2px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .tk-kpi-ribbon .tk-kpi-val { font-size: 12px; }
+  .tk-kpi-ribbon .tk-kpi-cell:not(:last-child) { border-right: 1px solid var(--border); }
+
+  /* Quick-actions: compact horizontal scroll, single row */
+  .tk-quick-actions {
+    flex-wrap: nowrap; overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 0 -10px 8px; padding: 0 10px;
+    scrollbar-width: none;
+  }
+  .tk-quick-actions::-webkit-scrollbar { display: none; }
+  .tk-quick-actions .btn {
+    padding: 6px 10px; font-size: 11.5px;
+    flex-shrink: 0; white-space: nowrap;
+  }
+  .tk-quick-actions > div[style] { display: none !important; } /* flex spacer */
+
+  /* Hide meta grid + context panel + context toggle: they're operator-side ops not needed on phone first paint */
+  .tk-meta-grid, .tk-context-toggle, .tk-context-panel { display: none; }
+
+  /* Chat takes the rest of the screen */
+  .tk-chat-scroller {
+    margin: 4px -10px 0; padding: 10px 10px;
+    min-height: 0; flex: 1;
+  }
+  .tk-msg-bubble { max-width: 90%; font-size: 13.5px; }
+  .tk-media-img, .tk-media-vid { max-width: 100%; }
+
+  /* Composer pinned to bottom safe-area */
+  .tk-composer {
+    margin: 0 -10px;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+  .tk-composer-bar { flex-wrap: wrap; gap: 6px; padding: 6px 10px; }
+  .tk-composer-hint { display: none; }
+  .tk-composer-actions { margin-left: auto; }
+}
+
+/* 2-col phones (very narrow) */
+@media (max-width: 380px) {
   .tk-kpi-ribbon { grid-template-columns: repeat(2, 1fr); }
   .tk-kpi-ribbon .tk-kpi-cell:nth-child(2n) { border-right: 0; }
   .tk-kpi-ribbon .tk-kpi-cell:nth-child(-n+2) { border-bottom: 1px solid var(--border); }
-  .tk-meta-grid { grid-template-columns: 1fr 1fr; }
-  .tk-quick-actions { gap: 4px; }
-  .tk-quick-actions .btn { padding: 6px 8px; font-size: 11.5px; }
-  .tk-chat-scroller { margin: 6px -12px 0; padding: 12px 12px; min-height: 240px; }
-  .tk-msg-bubble { max-width: 88%; font-size: 13.5px; }
-  .tk-media-img, .tk-media-vid { max-width: 100%; }
-  .tk-media-vid-fallback { width: 100%; height: 160px; }
-  .tk-composer-bar { flex-wrap: wrap; gap: 6px; }
-  .tk-composer-hint { display: none; }
-  .tk-composer-actions { margin-left: auto; }
-  .tk-context-panel { grid-template-columns: 90px 1fr; gap: 4px 10px; }
 }
