@@ -474,12 +474,32 @@ function BroadcastDetail({ broadcast: b, onClose }) {
         />
       </div>
       {Array.isArray(b.inline_buttons) && b.inline_buttons.length > 0 && (
-        <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {b.inline_buttons.map((btn, i) => (
-            <a key={i} href={btn.url} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-ghost">
-              {btn.text}
-            </a>
-          ))}
+        <div style={{ marginTop: 12 }}>
+          <div className="muted small" style={{ marginBottom: 6 }}>
+            Кнопки <span style={{ color: "var(--text-faint)" }}>({b.inline_buttons.length})</span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {b.inline_buttons.map((btn, i) => (
+              <a
+                key={i}
+                href={btn.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: "flex", flexDirection: "column", gap: 2,
+                  padding: "8px 12px",
+                  background: "var(--accent-soft)",
+                  border: "1px solid var(--accent-border, var(--border))",
+                  borderRadius: 8,
+                  textDecoration: "none",
+                  color: "var(--accent, var(--text))",
+                }}
+              >
+                <span style={{ fontWeight: 500, fontSize: 13 }}>{btn.text}</span>
+                <span className="mono small muted" style={{ wordBreak: "break-all" }}>{btn.url}</span>
+              </a>
+            ))}
+          </div>
         </div>
       )}
     </Modal>
