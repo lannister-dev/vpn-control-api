@@ -65,9 +65,12 @@ def test_build_success_response_not_modified_has_no_payload():
     assert response.payload is None
 
 
-def test_should_disable_not_modified_for_happ_when_app_management_enabled():
-    assert _adapter().should_disable_not_modified(user_agent="Happ/1.0") is True
-    assert _adapter().should_disable_not_modified(user_agent="OtherClient/1.0") is False
+def test_should_disable_not_modified_when_directives_configured_regardless_of_ua():
+    adapter = _adapter()
+    assert adapter.should_disable_not_modified(user_agent="Happ/1.0") is True
+    assert adapter.should_disable_not_modified(user_agent="HappVPN-macOS") is True
+    assert adapter.should_disable_not_modified(user_agent="OtherClient/1.0") is True
+    assert adapter.should_disable_not_modified(user_agent=None) is True
 
 
 def test_map_subscription_error_not_found():

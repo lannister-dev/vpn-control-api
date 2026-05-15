@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 
 from fastapi import status
@@ -62,14 +63,34 @@ class SubscriptionPublicAdapter:
     def hwid_header(self) -> str:
         return self._hwid_header
 
+    @property
+    def directives_signature(self) -> str:
+        parts = [
+            self._happ_profile_title,
+            str(self._happ_profile_update_interval_hours),
+            self._happ_support_url,
+            self._happ_profile_web_page_url,
+            self._happ_provider_id,
+            self._happ_routing,
+            "1" if self._happ_hide_settings else "0",
+            "1" if self._happ_always_hwid_enable else "0",
+            self._happ_color_profile,
+            "1" if self._happ_autoconnect else "0",
+            self._happ_autoconnect_type,
+            "1" if self._happ_ping_onopen else "0",
+        ]
+        return hashlib.sha256("|".join(parts).encode()).hexdigest()[:12]
+
     def should_disable_not_modified(self, *, user_agent: str | None) -> bool:
-        if not self._is_happ_user_agent(user_agent):
-            return False
+        # Independent of UA — many Happ builds (notably macOS) report unexpected
+        # user-agent strings; gating on it caused stale cached profiles to stick.
+        del user_agent
         return (
             self._happ_hide_settings
             or self._happ_always_hwid_enable
             or bool(self._happ_color_profile)
             or bool(self._happ_provider_id)
+            or bool(self._happ_routing)
         )
 
     def build_success_response(
@@ -217,9 +238,8 @@ class SubscriptionPublicAdapter:
         return headers
 
     def _build_payload_body(self, *, payload: str, user_agent: str | None, is_json: bool = False) -> str:
+        del user_agent
         if is_json:
-            return payload
-        if not self._is_happ_user_agent(user_agent):
             return payload
         directives = self._happ_body_directives()
         if not directives:
@@ -255,8 +275,3 @@ class SubscriptionPublicAdapter:
             directives.append("#subscription-ping-onopen-enabled: true")
         return directives
 
-    @staticmethod
-    def _is_happ_user_agent(user_agent: str | None) -> bool:
-        if not user_agent:
-            return False
-        return user_agent.strip().lower().startswith("happ/")

@@ -89,6 +89,7 @@ async def get_subscription_config(
             platform=platform,
             os_version=os_version,
             if_none_match=if_none_match,
+            extra_etag_signature=adapter.directives_signature,
         )
         public_response = adapter.build_success_response(
             etag=etag,
