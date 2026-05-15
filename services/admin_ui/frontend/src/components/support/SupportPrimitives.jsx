@@ -256,14 +256,18 @@ function VoiceMessage({ media }) {
       <div className="tk-voice">
         <audio
           ref={audioRef}
-          src={url}
           preload="metadata"
           onLoadedMetadata={onLoadedMeta}
           onTimeUpdate={onTime}
           onEnded={onEnded}
           onError={onErr}
           style={{ display: "none" }}
-        />
+        >
+          <source src={url} type="audio/ogg; codecs=opus" />
+          <source src={url} type="audio/webm; codecs=opus" />
+          <source src={url} type="audio/mpeg" />
+          <source src={url} />
+        </audio>
         <button className="tk-voice-play" onClick={toggle} type="button" title={playing ? "Пауза" : "Воспроизвести"}>
           <Icon name={playing ? "pause" : "play"} size={14} />
         </button>
@@ -279,11 +283,6 @@ function VoiceMessage({ media }) {
         </div>
         <span className="tk-voice-time">{fmtDuration(shownSec)}</span>
       </div>
-      {err && (
-        <div className="muted small" style={{ marginTop: 4, color: "var(--bad)" }}>
-          Ошибка плеера: {err}. <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>скачать файл</a>
-        </div>
-      )}
     </>
   );
 }

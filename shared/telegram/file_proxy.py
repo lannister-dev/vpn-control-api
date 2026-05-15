@@ -18,6 +18,34 @@ logger = StructuredLogger(logging.getLogger("tg-file-proxy"))
 _TELEGRAM_API = "https://api.telegram.org"
 
 
+_MIME_BY_EXT = {
+    "oga": "audio/ogg; codecs=opus",
+    "ogg": "audio/ogg; codecs=opus",
+    "opus": "audio/ogg; codecs=opus",
+    "mp3": "audio/mpeg",
+    "m4a": "audio/mp4",
+    "wav": "audio/wav",
+    "aac": "audio/aac",
+    "flac": "audio/flac",
+    "webm": "video/webm",
+    "mp4": "video/mp4",
+    "mov": "video/quicktime",
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "png": "image/png",
+    "gif": "image/gif",
+    "webp": "image/webp",
+    "pdf": "application/pdf",
+}
+
+
+def _mime_by_path(file_path: str) -> str | None:
+    if "." not in file_path:
+        return None
+    ext = file_path.rsplit(".", 1)[-1].lower()
+    return _MIME_BY_EXT.get(ext)
+
+
 async def resolve_file_path(*, bot_token: str, file_id: str, timeout_sec: float) -> tuple[str, str | None]:
     """Call Telegram getFile, return (file_path, mime_type_guess).
 
@@ -39,7 +67,7 @@ async def resolve_file_path(*, bot_token: str, file_id: str, timeout_sec: float)
     file_path = data["result"].get("file_path")
     if not file_path:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Telegram returned no file_path")
-    mime = data["result"].get("mime_type")
+    mime = data["result"].get("mime_type") or _mime_by_path(file_path)
     return file_path, mime
 
 
