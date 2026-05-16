@@ -199,7 +199,7 @@ function SshHintModal({ node, onClose }) {
 }
 
 function NodeOverview({ node, routesCount, transportData, liveConnections, onSshClick, onMigrateClick }) {
-  const load = nodeLoad(node, liveConnections);
+  const load = nodeLoad(node, { liveConnections });
   const loadPct = load.pct;
   const loadTone = load.tone;
   const loadBarWidth = loadPct == null ? 0 : Math.min(100, loadPct);

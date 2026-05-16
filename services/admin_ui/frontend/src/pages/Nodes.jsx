@@ -179,9 +179,9 @@ export function NodesPage({ onOpenNode, initialAction, onActionConsumed }) {
             {list.map((n) => {
               const h = healthOf(n);
               const st = stateOf(n);
-              const load = nodeLoad(n);
               const liveConns = liveByNodeId[n.id] || 0;
               const keyCount = userCountByBackendName[n.name] || 0;
+              const load = nodeLoad(n, { liveConnections: liveConns });
               const seed = parseInt(String(n.id).replace(/-/g, "").slice(0, 6), 16) || 7;
               const flag = zoneFlag(zoneByCode, n.zone, n.region);
               const geo = nodeGeo(n.region);
@@ -230,7 +230,7 @@ export function NodesPage({ onOpenNode, initialAction, onActionConsumed }) {
                           title={`${keyCount} ключей назначено на этот backend (effective_backend)`}
                           style={{ padding: "1px 6px", fontSize: 10 }}
                         >
-                          <Icon name="user" size={9} /> {keyCount}
+                          <Icon name="key" size={9} /> {keyCount}
                         </span>
                       )}
                     </div>

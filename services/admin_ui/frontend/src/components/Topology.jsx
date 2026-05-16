@@ -238,7 +238,7 @@ export function Topology({ routes = [], nodes = [], probes = [], userCountByBack
                 </div>
                 <div className="topo-v2-node-meta">
                   {(() => {
-                    const ld = nodeLoad(n, loadByNodeId[n.id]);
+                    const ld = nodeLoad(n, { liveConnections: loadByNodeId[n.id] });
                     return (
                       <span className="mono" title={ld.tooltip} style={{ color: `var(--${ld.tone})` }}>
                         {ld.pct != null ? `${ld.pct}%` : ld.label}
@@ -289,14 +289,14 @@ export function Topology({ routes = [], nodes = [], probes = [], userCountByBack
                         title={`${userCount} ключ(ей) назначено на этот backend (effective_backend)`}
                         style={{ padding: "1px 6px", fontSize: 10, lineHeight: 1.4 }}
                       >
-                        <Icon name="user" size={9} /> {userCount}
+                        <Icon name="key" size={9} /> {userCount}
                       </span>
                     )}
                   </span>
                 </div>
                 <div className="topo-v2-node-meta">
                   {(() => {
-                    const ld = nodeLoad(n, loadByNodeId[n.id]);
+                    const ld = nodeLoad(n, { liveConnections: loadByNodeId[n.id] });
                     return (
                       <span className="mono" title={ld.tooltip} style={{ color: `var(--${ld.tone})` }}>
                         {ld.pct != null ? `${ld.pct}%` : ld.label}
