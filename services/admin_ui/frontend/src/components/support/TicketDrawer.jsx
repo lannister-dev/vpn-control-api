@@ -534,6 +534,15 @@ function ContextPanel({ user }) {
   );
   const nodes = Array.isArray(nodesQ.data) ? nodesQ.data : [];
 
+  // Persisted "current entry" per (device, transport) from last subscription build.
+  const assignQ = useQuery(
+    () => sub
+      ? api.get(`/subscriptions/${sub.id}/route-assignments`).catch(() => [])
+      : Promise.resolve([]),
+    { interval: 10000, deps: [sub?.id] },
+  );
+  const assignments = Array.isArray(assignQ.data) ? assignQ.data : [];
+
   if (subs.loading) {
     return <div className="tk-context-panel muted small">Загрузка…</div>;
   }
@@ -583,7 +592,35 @@ function ContextPanel({ user }) {
         <div className="tk-ctx-val mono small">{subId}</div>
       </div>
       <div className="tk-ctx-row" style={{ gridTemplateColumns: "1fr" }}>
-        <div className="tk-ctx-label" style={{ marginBottom: 6 }}>Маршруты</div>
+        <div className="tk-ctx-label" style={{ marginBottom: 6 }}>Текущая entry-нода</div>
+        <div className="tk-ctx-val">
+          {assignQ.loading && <span className="muted small">Загрузка…</span>}
+          {!assignQ.loading && assignments.length === 0 && (
+            <span className="muted small">Не назначена (подписка ещё не запрашивалась)</span>
+          )}
+          {!assignQ.loading && assignments.length > 0 && (
+            <div className="tk-routes">
+              {assignments.map((a) => (
+                <div key={`${a.device_id}-${a.transport}`} className="tk-route-row">
+                  <div className="tk-route-backend">
+                    <Icon name="log-in" size={12} />
+                    <strong className="small">{a.entry.name}</strong>
+                    <span className="muted small mono">{a.entry.region}</span>
+                    {a.entry.role === "whitelist_entry" && <span className="tk-cat-tag">WL</span>}
+                    <span className="tk-cat-tag">{a.transport}</span>
+                    <span className="muted small">→ {a.backend.name} ({a.backend.region})</span>
+                  </div>
+                  <div className="tk-route-entries" style={{ paddingLeft: 18, fontSize: 11 }}>
+                    <span className="muted">обновлено {relTime(a.last_assigned_at)} · фетчей: {a.assignment_count}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="tk-ctx-row" style={{ gridTemplateColumns: "1fr" }}>
+        <div className="tk-ctx-label" style={{ marginBottom: 6 }}>Маршруты (кандидаты)</div>
         <div className="tk-ctx-val">
           {nodesQ.loading && <span className="muted small">Загрузка маршрутов…</span>}
           {!nodesQ.loading && nodes.length === 0 && <span className="muted">—</span>}

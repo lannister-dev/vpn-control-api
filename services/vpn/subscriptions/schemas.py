@@ -187,6 +187,28 @@ class SubscriptionActiveNodeOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SubscriptionRouteAssignmentOut(BaseModel):
+    device_id: UUID
+    transport: str
+    last_assigned_at: datetime
+    assignment_count: int
+    entry: SubscriptionNodeRef
+    backend: SubscriptionNodeRef
+
+
+class EntryDistributionRowOut(BaseModel):
+    entry_node_id: UUID
+    entry_name: str
+    entry_region: str
+    entry_role: str
+    capacity: int = 0
+    subscription_count: int
+    device_count: int
+    share_pct: float = 0.0
+    load_pct: float | None = None
+    most_recent_at: datetime | None = None
+
+
 class SubscriptionDeviceOut(BaseModel):
     id: UUID
     subscription_id: UUID

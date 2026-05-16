@@ -1,7 +1,17 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, text
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.database.base_model import Base
@@ -78,6 +88,51 @@ class SubscriptionDevice(Base):
     __table_args__ = (
         UniqueConstraint("subscription_id", "hwid_hash", name="uq_subscription_device_hwid"),
         Index("ix_subscription_device_subscription_id", "subscription_id"),
+    )
+
+
+class SubscriptionRouteAssignment(Base):
+    __tablename__ = "subscription_route_assignment"
+
+    subscription_id: Mapped[UUID] = mapped_column(
+        ForeignKey("subscription.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    subscription_device_id: Mapped[UUID] = mapped_column(
+        ForeignKey("subscription_device.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    transport: Mapped[str] = mapped_column(String(16), nullable=False)
+    entry_node_id: Mapped[UUID] = mapped_column(
+        ForeignKey("vpn_node.id"),
+        nullable=False,
+    )
+    backend_node_id: Mapped[UUID] = mapped_column(
+        ForeignKey("vpn_node.id"),
+        nullable=False,
+    )
+    route_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("route.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    last_assigned_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    assignment_count: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=1, server_default=text("1"),
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "subscription_id",
+            "subscription_device_id",
+            "transport",
+            name="uq_route_assignment_sub_device_transport",
+        ),
+        Index("ix_route_assignment_entry_node", "entry_node_id"),
+        Index("ix_route_assignment_backend_node", "backend_node_id"),
+        Index("ix_route_assignment_subscription", "subscription_id"),
     )
 
 

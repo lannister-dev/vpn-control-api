@@ -23,6 +23,7 @@ from services.vpn.subscriptions.exceptions import (
     SubscriptionTokenExpired,
 )
 from services.vpn.subscriptions.schemas import (
+    EntryDistributionRowOut,
     SubscriptionActiveNodeOut,
     SubscriptionCountersOut,
     SubscriptionCreatedOut,
@@ -31,6 +32,7 @@ from services.vpn.subscriptions.schemas import (
     SubscriptionListOut,
     SubscriptionOut,
     SubscriptionRotateOut,
+    SubscriptionRouteAssignmentOut,
     SubscriptionSetMaxDevicesIn,
 )
 from services.vpn.subscriptions.service import SubscriptionService, get_subscription_service
@@ -196,6 +198,42 @@ async def list_subscriptions_by_user(
         service: SubscriptionService = Depends(get_subscription_service),
 ):
     return await service.list_subscriptions_by_user(user_id=user_id, active_only=active_only)
+
+
+@router.get(
+    "/route-assignments/distribution",
+    response_model=list[EntryDistributionRowOut],
+    status_code=status.HTTP_200_OK,
+    summary="Distribution of subscriptions/devices across entry nodes",
+    description=(
+        "Aggregated counts from subscription_route_assignment. "
+        "Optional `since_hours` query param (e.g. 1, 24, 168) to limit to recent activity."
+    ),
+    dependencies=[Depends(admin_auth)],
+)
+async def get_entry_distribution(
+        since_hours: int | None = None,
+        service: SubscriptionService = Depends(get_subscription_service),
+):
+    return await service.entry_distribution(since_hours=since_hours)
+
+
+@router.get(
+    "/{subscription_id}/route-assignments",
+    response_model=list[SubscriptionRouteAssignmentOut],
+    status_code=status.HTTP_200_OK,
+    summary="Current entry assignment for each device + transport",
+    description=(
+        "Returns the actual entry node assigned on the most recent subscription "
+        "fetch — one row per (device, transport)."
+    ),
+    dependencies=[Depends(admin_auth)],
+)
+async def list_subscription_route_assignments(
+        subscription_id: UUID,
+        service: SubscriptionService = Depends(get_subscription_service),
+):
+    return await service.list_route_assignments(subscription_id)
 
 
 @router.get(
