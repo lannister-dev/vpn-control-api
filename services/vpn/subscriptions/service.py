@@ -763,6 +763,22 @@ class SubscriptionService:
                 selected_routes=selected_routes,
                 now=now,
             )
+            # Auto-balance backend per key: pin user to the least-loaded backend
+            # via entry_routing_override_backend_tag. Entry-node sing-box picks
+            # this up via build_spec_for_node, so subsequent connections go
+            # directly to the chosen backend without urltest leastPing.
+            try:
+                backend_live_loads = await self._fetch_live_backend_loads()
+                nodes_by_id = await self._collect_backend_nodes_by_id(transport_results)
+                for tr in transport_results:
+                    await self._rebalance_key_backend_override(
+                        key=tr.key,
+                        allowed_backend_ids=tr.allowed_backend_ids,
+                        backend_live_loads=backend_live_loads,
+                        nodes_by_id=nodes_by_id,
+                    )
+            except Exception:
+                logger_sub.exception("backend_rebalance_failed")
             SUBSCRIPTION_PAYLOAD_SIZE_BYTES.observe(payload_bytes)
             etag = self._calc_etag(
                 subscription,
@@ -1092,6 +1108,7 @@ class SubscriptionService:
                 routes=(),
                 placement_signature=f"{key.transport}:pending=no-routes",
                 diagnostic_reason="transport_no_routes",
+                allowed_backend_ids=tuple(allowed_backend_ids),
             )
 
         return TransportBuildResult(
@@ -1099,6 +1116,7 @@ class SubscriptionService:
             routes=tuple(selected_routes),
             placement_signature=f"{key.transport}:{placement.op_version}",
             diagnostic_reason=None,
+            allowed_backend_ids=tuple(allowed_backend_ids),
         )
 
     def _merge_transport_routes(
@@ -1960,6 +1978,79 @@ class SubscriptionService:
                 self._entry_tiebreak(user_id=user_id, entry_id=c.id, bucket=bucket),
             ),
         )
+
+    async def _collect_backend_nodes_by_id(self, transport_results) -> dict:
+        backend_ids = set()
+        for tr in transport_results:
+            backend_ids.update(getattr(tr, "allowed_backend_ids", ()) or ())
+        if not backend_ids:
+            return {}
+        nodes = await self.node_repository.list_by_ids(list(backend_ids))
+        return {self._as_uuid(n.id): n for n in nodes}
+
+    async def _fetch_live_backend_loads(self) -> dict[str, int]:
+        """Return {backend_tag: live_connection_count} aggregated across all
+        entry-nodes from NATS KV (sing-box clash-API reports). Used to pin
+        each user to the least-loaded backend via key override."""
+        from services.routing.entry.constants import KV_STATS_BUCKET
+
+        out: dict[str, int] = {}
+        if self._nats is None:
+            return out
+        try:
+            entries = await self._nats.kv_list_all(bucket=KV_STATS_BUCKET)
+        except Exception:
+            logger_sub.exception("live_backend_loads_fetch_failed")
+            return out
+        for raw in entries.values():
+            try:
+                payload = json.loads(raw.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                continue
+            for tag, count in (payload.get("by_backend") or {}).items():
+                out[tag] = out.get(tag, 0) + int(count)
+        return out
+
+    async def _rebalance_key_backend_override(
+            self,
+            *,
+            key,
+            allowed_backend_ids,
+            backend_live_loads: dict[str, int],
+            nodes_by_id: dict,
+    ) -> None:
+        """Pin this vpn_key to the least-loaded backend among its allowed
+        placements. Updates entry_routing_override_backend_tag if needed.
+        Mutates `backend_live_loads` so subsequent keys in the same fetch
+        see the updated count and naturally distribute."""
+        if not allowed_backend_ids:
+            return
+        candidates: list[tuple[int, str, str]] = []
+        for bid in allowed_backend_ids:
+            node = nodes_by_id.get(bid)
+            if not node or not getattr(node, "is_enabled", True):
+                continue
+            tag = f"backend-{node.name}"
+            candidates.append((int(backend_live_loads.get(tag, 0)), tag, node.name))
+        if not candidates:
+            return
+        candidates.sort()
+        chosen_tag = candidates[0][1]
+        try:
+            vpn_key = await self.vpn_key_repository.get_by_id(key.vpn_key_id)
+            if vpn_key is None:
+                return
+            if vpn_key.entry_routing_override_backend_tag != chosen_tag:
+                await self.vpn_key_repository.update_by_id(
+                    key.vpn_key_id,
+                    {"entry_routing_override_backend_tag": chosen_tag},
+                )
+        except Exception:
+            logger_sub.exception("backend_override_update_failed", key_id=str(key.vpn_key_id))
+            return
+        # Optimistic local increment so the next key picks a different backend
+        # when this one and another tie on load.
+        backend_live_loads[chosen_tag] = backend_live_loads.get(chosen_tag, 0) + 1
 
     async def _fetch_live_entry_loads(
             self, *, exclude_subscription_id,
