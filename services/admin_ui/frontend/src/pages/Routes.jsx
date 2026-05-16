@@ -24,6 +24,17 @@ export function RoutesPage({ initialAction, onActionConsumed, onOpenNode }) {
   const routes = useQuery(() => api.get("/routes?limit=500"), { interval: 15000 });
   const status = useQuery(() => api.get("/admin/status"), { interval: 15000 });
   const probes = useQuery(() => api.get("/probe/reports/recent?limit=200"), { interval: 15000 });
+  const dist = useQuery(
+    () => api.get("/subscriptions/route-assignments/distribution").catch(() => []),
+    { interval: 30000 },
+  );
+  const loadByEntryId = useMemo(() => {
+    const m = {};
+    for (const r of (Array.isArray(dist.data) ? dist.data : [])) {
+      m[r.entry_node_id] = r;
+    }
+    return m;
+  }, [dist.data]);
   const routingState = useQuery(
     () => api.get("/admin/routing/entry/state").catch(() => null),
     { interval: 30000 },
@@ -99,6 +110,7 @@ export function RoutesPage({ initialAction, onActionConsumed, onOpenNode }) {
         <RoutesList
           routesList={routesList}
           nodesById={nodesById}
+          loadByEntryId={loadByEntryId}
           search={search} setSearch={setSearch}
           statusFilter={statusFilter} setStatusFilter={setStatusFilter}
           loading={routes.loading}
@@ -113,7 +125,7 @@ export function RoutesPage({ initialAction, onActionConsumed, onOpenNode }) {
   );
 }
 
-function RoutesList({ routesList, nodesById, search, setSearch, statusFilter, setStatusFilter, loading, onOpenNode, onEdit }) {
+function RoutesList({ routesList, nodesById, loadByEntryId = {}, search, setSearch, statusFilter, setStatusFilter, loading, onOpenNode, onEdit }) {
   const rows = useMemo(() => {
     let list = routesList;
     if (statusFilter) list = list.filter((r) => r.health_status === statusFilter);
@@ -177,7 +189,7 @@ function RoutesList({ routesList, nodesById, search, setSearch, statusFilter, se
                   </td>
                   <td>
                     {entryNode ? (
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                         <span
                           onClick={openInEntry}
                           style={{ cursor: "pointer" }}
@@ -185,6 +197,21 @@ function RoutesList({ routesList, nodesById, search, setSearch, statusFilter, se
                         >
                           {nodeLabel(entryNode)}
                         </span>
+                        {(() => {
+                          const d = loadByEntryId[entryNode.id];
+                          if (!d) return null;
+                          const tone = d.load_pct > 85 ? "var(--bad)" : d.load_pct > 65 ? "var(--warn)" : "var(--text-muted)";
+                          return (
+                            <span
+                              className="pill small"
+                              title={`${d.subscription_count} подписок · ${d.device_count} устройств · ${d.load_pct != null ? d.load_pct + "%" : "—"} от capacity`}
+                              style={{ color: tone }}
+                            >
+                              👥 {d.subscription_count}
+                              {d.load_pct != null && <span className="muted" style={{ marginLeft: 4 }}>{d.load_pct}%</span>}
+                            </span>
+                          );
+                        })()}
                         <button
                           className="row-btn"
                           onClick={openEntryPool}
