@@ -68,18 +68,26 @@ export function NodesPage({ onOpenNode, initialAction, onActionConsumed }) {
   const zones = useQuery(() => api.get("/zones"), { interval: 60000 });
   const zoneByCode = useMemo(() => Object.fromEntries((zones.data?.items || []).map((z) => [z.code, z])), [zones.data]);
 
-  // Live entry-node load: count of subscriptions/devices currently routed through each entry.
-  const distQ = useQuery(
-    () => api.get("/subscriptions/route-assignments/distribution").catch(() => []),
-    { interval: 30000 },
+  // Live connections from sing-box clash-API via NATS KV (10s cadence) —
+  // single source for both entries and backends.
+  const routingState = useQuery(
+    () => api.get("/admin/routing/entry/state").catch(() => null),
+    { interval: 15000 },
   );
-  const loadByNode = useMemo(() => {
+  const liveByNodeId = useMemo(() => {
     const m = {};
-    for (const r of (Array.isArray(distQ.data) ? distQ.data : [])) {
-      m[r.node_id] = r;
+    for (const it of routingState.data?.live_by_entry || []) {
+      if (it.entry_node_id) m[it.entry_node_id] = (m[it.entry_node_id] || 0) + (it.connections || 0);
+    }
+    // Backend tags come as "backend-<node-name>" — resolve by name from nodes list
+    const byName = Object.fromEntries((status?.nodes || []).map((n) => [n.name, n.id]));
+    for (const it of routingState.data?.live || []) {
+      const name = it.tag?.startsWith("backend-") ? it.tag.slice("backend-".length) : it.tag;
+      const id = byName[name];
+      if (id) m[id] = (m[id] || 0) + (it.connections || 0);
     }
     return m;
-  }, [distQ.data]);
+  }, [routingState.data, status?.nodes]);
 
   const nodes = status?.nodes || [];
   const list = useMemo(() => {
@@ -160,7 +168,7 @@ export function NodesPage({ onOpenNode, initialAction, onActionConsumed }) {
             {list.map((n) => {
               const h = healthOf(n);
               const st = stateOf(n);
-              const load = nodeLoad(n, loadByNode[n.id]);
+              const load = nodeLoad(n, liveByNodeId[n.id]);
               const seed = parseInt(String(n.id).replace(/-/g, "").slice(0, 6), 16) || 7;
               const flag = zoneFlag(zoneByCode, n.zone, n.region);
               const geo = nodeGeo(n.region);

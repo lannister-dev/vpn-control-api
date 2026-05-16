@@ -1,16 +1,13 @@
-export function nodeLoad(node, liveDist) {
-  // Prefer live connection count (sing-box clash-API via NATS KV), fall back
-  // to static placements_backend if live stats unavailable.
-  const slot = liveDist
-    ? (node?.role === "backend" ? liveDist.as_backend : liveDist.as_entry)
-    : null;
-  const liveUsed = slot?.device_count;
+export function nodeLoad(node, liveConnections) {
+  // Single source of truth: live sing-box connections (NATS KV, ~10s cadence).
+  // Falls back to static placements_backend only if live data not yet available.
   const used = Number(
-    liveUsed != null ? liveUsed : (node?.placements_backend || 0),
+    liveConnections != null ? liveConnections : (node?.placements_backend || 0),
   );
   const rawCap = node?.capacity;
   const capacity = Number.isFinite(rawCap) && rawCap > 0 ? Number(rawCap) : null;
-  const liveLabel = liveUsed != null ? " (live)" : "";
+  const isLive = liveConnections != null;
+  const label = isLive ? "Активных коннектов" : "Назначений (плейсменты)";
 
   if (capacity === null) {
     return {
@@ -20,7 +17,7 @@ export function nodeLoad(node, liveDist) {
       tone: "muted",
       label: String(used),
       tooltip:
-        `Активных коннектов${liveLabel}: ${used}. ` +
+        `${label}: ${used}. ` +
         `Лимит не задан (capacity = 0/null) — нет цели для расчёта %.`,
     };
   }
@@ -34,7 +31,7 @@ export function nodeLoad(node, liveDist) {
     tone,
     label: `${used} / ${capacity}`,
     tooltip:
-      `Активных коннектов${liveLabel}: ${used}. ` +
+      `${label}: ${used}. ` +
       `Лимит (capacity): ${capacity}. ` +
       `Использовано ${pct}%.`,
   };
