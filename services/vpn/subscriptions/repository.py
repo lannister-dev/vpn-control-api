@@ -2,15 +2,21 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import and_, case, func, or_, select, text, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import aliased, joinedload
 
+from services.nodes.models import VpnNode
+from services.placements.model import UserPlacement
 from services.plans.models import Plan
+from services.routes.model import Route, TransportProfile
+from services.vpn.keys.models import VpnKey
 from services.vpn.subscriptions.exceptions import SubscriptionNotFound
 from services.vpn.subscriptions.model import (
     Subscription,
     SubscriptionDevice,
     SubscriptionDeviceKey,
+    SubscriptionRouteAssignment,
 )
 from shared.database.base_repository import BaseRepository
 
@@ -64,6 +70,249 @@ class SubscriptionRepository(BaseRepository[Subscription]):
         )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def upsert_route_assignments(
+            self,
+            *,
+            subscription_id: UUID,
+            assignments: list[dict],
+            now: datetime,
+    ) -> None:
+        """Upsert one row per (sub, device, transport) — increments counter on conflict."""
+        if not assignments:
+            return
+        values = [
+            {
+                "subscription_id": subscription_id,
+                "subscription_device_id": a["subscription_device_id"],
+                "transport": a["transport"],
+                "entry_node_id": a["entry_node_id"],
+                "backend_node_id": a["backend_node_id"],
+                "route_id": a.get("route_id"),
+                "last_assigned_at": now,
+                "assignment_count": 1,
+            }
+            for a in assignments
+        ]
+        stmt = pg_insert(SubscriptionRouteAssignment).values(values)
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_route_assignment_sub_device_transport",
+            set_={
+                "entry_node_id": stmt.excluded.entry_node_id,
+                "backend_node_id": stmt.excluded.backend_node_id,
+                "route_id": stmt.excluded.route_id,
+                "last_assigned_at": stmt.excluded.last_assigned_at,
+                "assignment_count": SubscriptionRouteAssignment.assignment_count + 1,
+                "updated_at": now,
+            },
+        )
+        await self.session.execute(stmt)
+
+    async def list_route_assignments(
+            self, subscription_id: UUID,
+    ) -> list[dict]:
+        """Per-device current entry assignment for a subscription.
+        Only active devices, only the latest assignment per (entry, transport)."""
+        entry_node = aliased(VpnNode)
+        backend_node = aliased(VpnNode)
+        stmt = (
+            select(
+                SubscriptionRouteAssignment.id.label("id"),
+                SubscriptionRouteAssignment.subscription_device_id.label("device_id"),
+                SubscriptionRouteAssignment.transport.label("transport"),
+                SubscriptionRouteAssignment.last_assigned_at.label("last_assigned_at"),
+                SubscriptionRouteAssignment.assignment_count.label("assignment_count"),
+                entry_node.id.label("entry_id"),
+                entry_node.name.label("entry_name"),
+                entry_node.region.label("entry_region"),
+                entry_node.role.label("entry_role"),
+                backend_node.id.label("backend_id"),
+                backend_node.name.label("backend_name"),
+                backend_node.region.label("backend_region"),
+                backend_node.role.label("backend_role"),
+            )
+            .join(SubscriptionDevice, SubscriptionDevice.id == SubscriptionRouteAssignment.subscription_device_id)
+            .join(entry_node, entry_node.id == SubscriptionRouteAssignment.entry_node_id)
+            .join(backend_node, backend_node.id == SubscriptionRouteAssignment.backend_node_id)
+            .where(
+                SubscriptionRouteAssignment.subscription_id == subscription_id,
+                SubscriptionDevice.is_active.is_(True),
+            )
+            .order_by(SubscriptionRouteAssignment.last_assigned_at.desc())
+        )
+        rows = (await self.session.execute(stmt)).mappings().all()
+        # Dedupe by (entry_id, transport) — show most recent only (already sorted desc).
+        seen = set()
+        deduped = []
+        for r in rows:
+            key = (r["entry_id"], r["transport"])
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(dict(r))
+        return deduped
+
+    async def count_active_subs_by_entry(
+            self, *, exclude_subscription_id: UUID | None = None,
+    ) -> dict[UUID, int]:
+        """Returns {entry_node_id: distinct_subscriptions_count} over active
+        devices. Used by selector to balance load — excludes current sub so
+        repeat fetches by the same sub stay stable."""
+        stmt = (
+            select(
+                SubscriptionRouteAssignment.entry_node_id,
+                func.count(func.distinct(SubscriptionRouteAssignment.subscription_id)),
+            )
+            .join(SubscriptionDevice, SubscriptionDevice.id == SubscriptionRouteAssignment.subscription_device_id)
+            .where(SubscriptionDevice.is_active.is_(True))
+        )
+        if exclude_subscription_id is not None:
+            stmt = stmt.where(SubscriptionRouteAssignment.subscription_id != exclude_subscription_id)
+        stmt = stmt.group_by(SubscriptionRouteAssignment.entry_node_id)
+        res = await self.session.execute(stmt)
+        return {row[0]: int(row[1]) for row in res.all()}
+
+    async def node_assignment_distribution(
+            self, *, since: datetime | None = None,
+    ) -> list[dict]:
+        """Per-node subscription/device counts, split by role (as_entry / as_backend).
+        Only counts active devices."""
+        # entry side
+        entry_stmt = (
+            select(
+                SubscriptionRouteAssignment.entry_node_id.label("node_id"),
+                func.count(func.distinct(SubscriptionRouteAssignment.subscription_id)).label("subscription_count"),
+                func.count(SubscriptionRouteAssignment.id).label("device_count"),
+                func.max(SubscriptionRouteAssignment.last_assigned_at).label("most_recent_at"),
+            )
+            .join(SubscriptionDevice, SubscriptionDevice.id == SubscriptionRouteAssignment.subscription_device_id)
+            .where(SubscriptionDevice.is_active.is_(True))
+        )
+        # backend side
+        backend_stmt = (
+            select(
+                SubscriptionRouteAssignment.backend_node_id.label("node_id"),
+                func.count(func.distinct(SubscriptionRouteAssignment.subscription_id)).label("subscription_count"),
+                func.count(SubscriptionRouteAssignment.id).label("device_count"),
+                func.max(SubscriptionRouteAssignment.last_assigned_at).label("most_recent_at"),
+            )
+            .join(SubscriptionDevice, SubscriptionDevice.id == SubscriptionRouteAssignment.subscription_device_id)
+            .where(SubscriptionDevice.is_active.is_(True))
+        )
+        if since is not None:
+            entry_stmt = entry_stmt.where(SubscriptionRouteAssignment.last_assigned_at >= since)
+            backend_stmt = backend_stmt.where(SubscriptionRouteAssignment.last_assigned_at >= since)
+        entry_stmt = entry_stmt.group_by(SubscriptionRouteAssignment.entry_node_id)
+        backend_stmt = backend_stmt.group_by(SubscriptionRouteAssignment.backend_node_id)
+        entry_rows = (await self.session.execute(entry_stmt)).mappings().all()
+        backend_rows = (await self.session.execute(backend_stmt)).mappings().all()
+
+        # Resolve node meta in one query
+        all_node_ids = {r["node_id"] for r in entry_rows} | {r["node_id"] for r in backend_rows}
+        if not all_node_ids:
+            return []
+        node_stmt = select(
+            VpnNode.id, VpnNode.name, VpnNode.region, VpnNode.role, VpnNode.capacity,
+        ).where(VpnNode.id.in_(all_node_ids))
+        nodes = {n.id: n for n in (await self.session.execute(node_stmt)).all()}
+
+        merged: dict = {}
+        for r in entry_rows:
+            merged[r["node_id"]] = {
+                "node_id": r["node_id"],
+                "as_entry": {
+                    "subscription_count": int(r["subscription_count"] or 0),
+                    "device_count": int(r["device_count"] or 0),
+                    "most_recent_at": r["most_recent_at"],
+                },
+                "as_backend": None,
+            }
+        for r in backend_rows:
+            slot = merged.setdefault(r["node_id"], {"node_id": r["node_id"], "as_entry": None, "as_backend": None})
+            slot["as_backend"] = {
+                "subscription_count": int(r["subscription_count"] or 0),
+                "device_count": int(r["device_count"] or 0),
+                "most_recent_at": r["most_recent_at"],
+            }
+
+        out = []
+        for nid, slot in merged.items():
+            n = nodes.get(nid)
+            if not n:
+                continue
+            slot["name"] = n.name
+            slot["region"] = n.region
+            slot["role"] = n.role
+            slot["capacity"] = int(n.capacity or 0)
+            out.append(slot)
+        out.sort(key=lambda x: (
+            -(((x.get("as_entry") or {}).get("device_count") or 0)
+              + ((x.get("as_backend") or {}).get("device_count") or 0)),
+            x["name"],
+        ))
+        return out
+
+    async def list_active_backend_placements(
+            self, subscription_id: UUID,
+    ) -> list[dict]:
+        """Per (device, backend) the user is placed on."""
+        stmt = (
+            select(
+                VpnNode.id.label("backend_id"),
+                VpnNode.name.label("backend_name"),
+                VpnNode.region.label("backend_region"),
+                VpnNode.role.label("backend_role"),
+                SubscriptionDeviceKey.transport.label("transport"),
+                SubscriptionDevice.id.label("device_id"),
+                UserPlacement.applied_state.label("placement_state"),
+                UserPlacement.sticky_until.label("sticky_until"),
+            )
+            .join(SubscriptionDeviceKey, SubscriptionDevice.id == SubscriptionDeviceKey.subscription_device_id)
+            .join(VpnKey, VpnKey.id == SubscriptionDeviceKey.vpn_key_id)
+            .join(UserPlacement, UserPlacement.key_id == VpnKey.id)
+            .join(VpnNode, VpnNode.id == UserPlacement.backend_node_id)
+            .where(
+                SubscriptionDevice.subscription_id == subscription_id,
+                SubscriptionDevice.is_active.is_(True),
+                UserPlacement.is_active.is_(True),
+            )
+            .order_by(VpnNode.region, VpnNode.name)
+        )
+        rows = (await self.session.execute(stmt)).mappings().all()
+        return [dict(r) for r in rows]
+
+    async def list_entry_routes_for_backends(
+            self, backend_ids: list[UUID],
+    ) -> list[dict]:
+        """Healthy/warming-up routes that point to the given backend nodes,
+        joined with the entry node and transport profile. Empty list if no IDs."""
+        if not backend_ids:
+            return []
+        entry_node = aliased(VpnNode)
+        stmt = (
+            select(
+                Route.node_id.label("backend_id"),
+                entry_node.id.label("entry_id"),
+                entry_node.name.label("entry_name"),
+                entry_node.region.label("entry_region"),
+                entry_node.role.label("entry_role"),
+                TransportProfile.network.label("network"),
+                TransportProfile.security.label("security"),
+                Route.health_status.label("health"),
+                Route.effective_weight.label("weight"),
+            )
+            .join(entry_node, entry_node.id == Route.entry_node_id)
+            .join(TransportProfile, TransportProfile.id == Route.transport_profile_id)
+            .where(
+                Route.node_id.in_(backend_ids),
+                Route.is_active.is_(True),
+                Route.health_status.in_(("healthy", "warming_up")),
+                entry_node.is_enabled.is_(True),
+            )
+            .order_by(Route.effective_weight.desc(), entry_node.name)
+        )
+        rows = (await self.session.execute(stmt)).mappings().all()
+        return [dict(r) for r in rows]
 
     async def list_by_user_id(
             self,

@@ -75,6 +75,22 @@ export function NodeDrawer({ node, onClose, onGoto, onOpenNode, initialTab, focu
   const routes = useQuery(() => api.get("/routes?limit=500"), { interval: 15000 });
   const transport = useQuery(() => api.get("/admin/transport/nodes"), { interval: 30000 });
   const status = useQuery(() => api.get("/admin/status"), { interval: 30000 });
+  const routingState = useQuery(
+    () => api.get("/admin/routing/entry/state").catch(() => null),
+    { interval: 15000 },
+  );
+  const liveConnections = useMemo(() => {
+    let n = 0;
+    for (const it of routingState.data?.live_by_entry || []) {
+      if (it.entry_node_id === node.id) n += it.connections || 0;
+    }
+    const myName = node.name;
+    for (const it of routingState.data?.live || []) {
+      const name = it.tag?.startsWith("backend-") ? it.tag.slice("backend-".length) : it.tag;
+      if (name === myName) n += it.connections || 0;
+    }
+    return n;
+  }, [routingState.data, node.id, node.name]);
   const routesCount = (routes.data || []).filter((r) => r.node_id === node.id || r.entry_node_id === node.id).length;
 
   const tabs = [
@@ -118,6 +134,7 @@ export function NodeDrawer({ node, onClose, onGoto, onOpenNode, initialTab, focu
           node={node}
           routesCount={routesCount}
           transportData={transport.data}
+          liveConnections={liveConnections}
           onSshClick={() => setSshOpen(true)}
           onMigrateClick={() => { onGoto?.("ops"); onClose(); }}
         />
@@ -181,8 +198,8 @@ function SshHintModal({ node, onClose }) {
   );
 }
 
-function NodeOverview({ node, routesCount, transportData, onSshClick, onMigrateClick }) {
-  const load = nodeLoad(node);
+function NodeOverview({ node, routesCount, transportData, liveConnections, onSshClick, onMigrateClick }) {
+  const load = nodeLoad(node, { liveConnections });
   const loadPct = load.pct;
   const loadTone = load.tone;
   const loadBarWidth = loadPct == null ? 0 : Math.min(100, loadPct);

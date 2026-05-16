@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 
 from fastapi import status
@@ -62,14 +64,34 @@ class SubscriptionPublicAdapter:
     def hwid_header(self) -> str:
         return self._hwid_header
 
+    @property
+    def directives_signature(self) -> str:
+        parts = [
+            self._happ_profile_title,
+            str(self._happ_profile_update_interval_hours),
+            self._happ_support_url,
+            self._happ_profile_web_page_url,
+            self._happ_provider_id,
+            self._happ_routing,
+            "1" if self._happ_hide_settings else "0",
+            "1" if self._happ_always_hwid_enable else "0",
+            self._happ_color_profile,
+            "1" if self._happ_autoconnect else "0",
+            self._happ_autoconnect_type,
+            "1" if self._happ_ping_onopen else "0",
+        ]
+        return hashlib.sha256("|".join(parts).encode()).hexdigest()[:12]
+
     def should_disable_not_modified(self, *, user_agent: str | None) -> bool:
-        if not self._is_happ_user_agent(user_agent):
-            return False
+        # Independent of UA — many Happ builds (notably macOS) report unexpected
+        # user-agent strings; gating on it caused stale cached profiles to stick.
+        del user_agent
         return (
             self._happ_hide_settings
             or self._happ_always_hwid_enable
             or bool(self._happ_color_profile)
             or bool(self._happ_provider_id)
+            or bool(self._happ_routing)
         )
 
     def build_success_response(
@@ -189,7 +211,7 @@ class SubscriptionPublicAdapter:
             "Cache-Control": "no-store",
             "Pragma": "no-cache",
             "Content-Type": "application/json; charset=utf-8" if is_json else "text/plain; charset=utf-8",
-            "profile-title": self._happ_profile_title,
+            "profile-title": self._b64_header_value(self._happ_profile_title),
             "profile-update-interval": str(self._happ_profile_update_interval_hours),
             "Vary": ", ".join(vary_parts),
         }
@@ -208,7 +230,7 @@ class SubscriptionPublicAdapter:
         if self._happ_always_hwid_enable:
             headers["subscription-always-hwid-enable"] = "1"
         if self._happ_color_profile:
-            headers["color-profile"] = self._happ_color_profile
+            headers["color-profile"] = self._b64_header_value(self._happ_color_profile)
         if self._happ_autoconnect:
             headers["subscription-autoconnect"] = "true"
             headers["subscription-autoconnect-type"] = self._happ_autoconnect_type
@@ -217,46 +239,19 @@ class SubscriptionPublicAdapter:
         return headers
 
     def _build_payload_body(self, *, payload: str, user_agent: str | None, is_json: bool = False) -> str:
-        if is_json:
-            return payload
-        if not self._is_happ_user_agent(user_agent):
-            return payload
-        directives = self._happ_body_directives()
-        if not directives:
-            return payload
-        if not payload:
-            return "\n".join(directives)
-        return "\n".join([*directives, payload])
-
-    def _happ_body_directives(self) -> list[str]:
-        directives: list[str] = []
-        if self._happ_profile_title:
-            directives.append(f"#profile-title: {self._happ_profile_title}")
-        if self._happ_profile_update_interval_hours:
-            directives.append(f"#profile-update-interval: {self._happ_profile_update_interval_hours}")
-        if self._happ_support_url:
-            directives.append(f"#support-url: {self._happ_support_url}")
-        if self._happ_profile_web_page_url:
-            directives.append(f"#profile-web-page-url: {self._happ_profile_web_page_url}")
-        if self._happ_provider_id:
-            directives.append(f"#providerid: {self._happ_provider_id}")
-        if self._happ_routing:
-            directives.append(f"#routing: {self._happ_routing}")
-        if self._happ_hide_settings:
-            directives.append("#hide-settings: 1")
-        if self._happ_always_hwid_enable:
-            directives.append("#subscription-always-hwid-enable: 1")
-        if self._happ_color_profile:
-            directives.append(f"#color-profile: {self._happ_color_profile}")
-        if self._happ_autoconnect:
-            directives.append("#subscription-autoconnect: true")
-            directives.append(f"#subscription-autoconnect-type: {self._happ_autoconnect_type}")
-        if self._happ_ping_onopen:
-            directives.append("#subscription-ping-onopen-enabled: true")
-        return directives
+        # Happ reads all directives (color-profile, hide-settings, etc.) from HTTP
+        # response headers only. Body-prefixed "#..." lines confuse some Happ
+        # parsers (each "#" line is treated as a VLESS fragment), so we keep the
+        # body strictly to vless:// lines — matches the Remnawave panel convention.
+        del user_agent, is_json
+        return payload
 
     @staticmethod
-    def _is_happ_user_agent(user_agent: str | None) -> bool:
-        if not user_agent:
-            return False
-        return user_agent.strip().lower().startswith("happ/")
+    def _b64_header_value(value: str) -> str:
+        """Wrap a UTF-8 value in `base64:<base64>` so it survives non-ASCII chars
+        in HTTP headers (Cloudflare/proxies may strip non-latin-1)."""
+        if not value:
+            return ""
+        encoded = base64.b64encode(value.encode("utf-8")).decode("ascii")
+        return f"base64:{encoded}"
+

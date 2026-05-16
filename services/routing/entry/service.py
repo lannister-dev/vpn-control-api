@@ -30,6 +30,7 @@ from services.routing.entry.schemas import (
     RoutingBackendOut,
     RoutingKeyRowOut,
     RoutingLiveStatsByBackend,
+    RoutingLiveStatsByEntry,
     RoutingStateOut,
 )
 from services.vpn.keys.repository import VpnKeyRepository
@@ -290,33 +291,61 @@ class EntryRoutingAdminService:
             )
             for row in rows
         ]
-        live = await self._collect_live_stats()
+        live, live_by_entry = await self._collect_live_stats()
         return RoutingStateOut(
             backends=sorted(backends_by_tag.values(), key=lambda x: x.tag),
             keys=keys,
             live=live,
+            live_by_entry=live_by_entry,
         )
 
-    async def _collect_live_stats(self) -> list[RoutingLiveStatsByBackend]:
+    async def _collect_live_stats(
+            self,
+    ) -> tuple[list[RoutingLiveStatsByBackend], list[RoutingLiveStatsByEntry]]:
         if self._nats is None:
-            return []
+            return [], []
         try:
             entries = await self._nats.kv_list_all(bucket=KV_STATS_BUCKET)
         except Exception:
             logger.exception("entry_routing_live_stats_fetch_failed")
-            return []
-        totals: dict[str, int] = {}
+            return [], []
+        by_backend_totals: dict[str, int] = {}
+        by_entry_totals: dict[str, int] = {}
+        by_entry_unique_users: dict[str, int] = {}
         for raw in entries.values():
             try:
                 payload = json.loads(raw.decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError):
                 continue
             for tag, count in (payload.get("by_backend") or {}).items():
-                totals[tag] = totals.get(tag, 0) + int(count)
-        return [
-            RoutingLiveStatsByBackend(tag=tag, connections=count)
-            for tag, count in sorted(totals.items())
-        ]
+                by_backend_totals[tag] = by_backend_totals.get(tag, 0) + int(count)
+            node_id = payload.get("node_id")
+            total = payload.get("total")
+            if node_id and total is not None:
+                by_entry_totals[str(node_id)] = by_entry_totals.get(str(node_id), 0) + int(total)
+                by_entry_unique_users[str(node_id)] = (
+                    by_entry_unique_users.get(str(node_id), 0) + int(payload.get("unique_users") or 0)
+                )
+        return (
+            [
+                RoutingLiveStatsByBackend(tag=tag, connections=count)
+                for tag, count in sorted(by_backend_totals.items())
+            ],
+            [
+                RoutingLiveStatsByEntry(
+                    entry_node_id=node_id,
+                    connections=count,
+                    unique_users=by_entry_unique_users.get(node_id, 0),
+                )
+                for node_id, count in sorted(by_entry_totals.items())
+            ],
+        )
+
+    async def get_live_entry_loads(self) -> dict[str, int]:
+        """Return {entry_node_id: total_connections} from latest sing-box reports
+        — used by the subscription selector for load-aware entry pick."""
+        _, by_entry = await self._collect_live_stats()
+        return {row.entry_node_id: row.connections for row in by_entry}
 
     @staticmethod
     def _effective_backend(

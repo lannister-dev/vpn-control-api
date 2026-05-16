@@ -160,6 +160,73 @@ class SubscriptionDeviceKeyOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SubscriptionNodeRef(BaseModel):
+    node_id: UUID
+    name: str
+    region: str
+    role: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SubscriptionEntryRouteOut(BaseModel):
+    entry: SubscriptionNodeRef
+    transport_kind: str | None = None
+    health: str
+    weight: int
+
+
+class SubscriptionActiveNodeOut(BaseModel):
+    backend: SubscriptionNodeRef
+    transport: str | None = None
+    device_id: UUID | None = None
+    placement_state: str | None = None
+    sticky_until: datetime | None = None
+    entries: list[SubscriptionEntryRouteOut] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SubscriptionRouteAssignmentOut(BaseModel):
+    device_id: UUID
+    transport: str
+    last_assigned_at: datetime
+    assignment_count: int
+    entry: SubscriptionNodeRef
+    backend: SubscriptionNodeRef
+
+
+class EntryDistributionRowOut(BaseModel):
+    entry_node_id: UUID
+    entry_name: str
+    entry_region: str
+    entry_role: str
+    capacity: int = 0
+    subscription_count: int
+    device_count: int
+    share_pct: float = 0.0
+    load_pct: float | None = None
+    most_recent_at: datetime | None = None
+
+
+class NodeAssignmentSlotOut(BaseModel):
+    subscription_count: int = 0
+    device_count: int = 0
+    most_recent_at: datetime | None = None
+
+
+class NodeAssignmentDistributionOut(BaseModel):
+    node_id: UUID
+    name: str
+    region: str
+    role: str
+    capacity: int = 0
+    as_entry: NodeAssignmentSlotOut | None = None
+    as_backend: NodeAssignmentSlotOut | None = None
+    total_device_count: int = 0
+    load_pct: float | None = None
+
+
 class SubscriptionDeviceOut(BaseModel):
     id: UUID
     subscription_id: UUID
@@ -226,6 +293,7 @@ class TransportBuildResult(BaseModel):
     routes: tuple[ResolvedSubscriptionRoute, ...]
     placement_signature: str | None
     diagnostic_reason: str | None
+    allowed_backend_ids: tuple[UUID, ...] = ()
 
     model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
 

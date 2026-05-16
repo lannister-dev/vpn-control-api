@@ -9,10 +9,12 @@ import { UserAvatar } from "../users/UserAvatar.jsx";
 import { BalancePill } from "../users/BalancePill.jsx";
 import { DaysCountdown, daysLeft } from "../users/DaysCountdown.jsx";
 import { UserDrawer } from "../UserDrawer.jsx";
+import { BottomSheet, BottomSheetItem } from "../BottomSheet.jsx";
 import {
   TicketStatusPill, PriorityDot, CategoryTag,
   MessageBubble, Lightbox, Composer,
   ticketStatusOptions, priorityOptions, categoryOptions,
+  relTime,
 } from "./SupportPrimitives.jsx";
 
 function fmtDateTime(iso) {
@@ -35,6 +37,7 @@ function fmtDateTime(iso) {
 export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
   const [openUser, setOpenUser] = useState(null);
   const [ctxOpen, setCtxOpen] = useState(false);
+  const [actionsSheet, setActionsSheet] = useState(false);
   const [lightbox, setLightbox] = useState(null); // { media, index }
   const [confirmAction, setConfirmAction] = useState(null);
   const [pending, setPending] = useState([]); // optimistic outbound messages
@@ -287,10 +290,10 @@ export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
 
   const actions = (
     <>
-      <button className="btn btn-ghost" onClick={() => setOpenUser(user)} title="Профиль пользователя">
+      <button className="btn btn-ghost tk-act-profile" onClick={() => setOpenUser(user)} title="Профиль пользователя">
         <Icon name="user" size={13} /> Профиль
       </button>
-      <button className="btn btn-ghost btn-icon" title="Меню">
+      <button className="btn btn-ghost btn-icon" title="Действия" onClick={() => setActionsSheet(true)}>
         <Icon name="more-vertical" size={15} />
       </button>
     </>
@@ -449,6 +452,46 @@ export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
       {confirmAction && (
         <ConfirmAction action={confirmAction} onClose={() => setConfirmAction(null)} />
       )}
+      <BottomSheet open={actionsSheet} onClose={() => setActionsSheet(false)} title="Действия">
+        <BottomSheetItem
+          icon="user"
+          label="Открыть профиль"
+          onClick={() => { setActionsSheet(false); setOpenUser(user); }}
+        />
+        <BottomSheetItem
+          icon="plus"
+          label="Дать день бесплатно"
+          sub="Продлевает подписку на 24ч"
+          onClick={() => { setActionsSheet(false); grantDay(); }}
+        />
+        <BottomSheetItem
+          icon="rotate-cw"
+          label="Возврат"
+          sub="На баланс пользователя"
+          onClick={() => { setActionsSheet(false); refund(); }}
+        />
+        {live.status !== "in_progress" && live.status !== "closed" && (
+          <BottomSheetItem
+            icon="check"
+            label="В работу"
+            onClick={() => { setActionsSheet(false); updateTicket({ status: "in_progress" }); }}
+          />
+        )}
+        {live.status !== "closed" ? (
+          <BottomSheetItem
+            icon="lock"
+            label="Закрыть тикет"
+            danger
+            onClick={() => { setActionsSheet(false); closeTicket(); }}
+          />
+        ) : (
+          <BottomSheetItem
+            icon="rotate-cw"
+            label="Переоткрыть"
+            onClick={() => { setActionsSheet(false); updateTicket({ status: "in_progress" }); }}
+          />
+        )}
+      </BottomSheet>
     </>
   );
 }
@@ -467,49 +510,104 @@ function formatDateSep(iso) {
   return d.toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
 }
 
+function fmtBytes(n) {
+  if (n == null) return "—";
+  const u = ["B", "KB", "MB", "GB", "TB"];
+  let i = 0; let v = Number(n);
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return (v >= 100 || i === 0 ? Math.round(v) : v.toFixed(1)) + " " + u[i];
+}
+
 function ContextPanel({ user }) {
   const subs = useQuery(
     () => api.get(`/subscriptions/by-user/${user.id}`).catch(() => []),
     { interval: 0, deps: [user.id] },
   );
   const list = Array.isArray(subs.data) ? subs.data : (subs.data?.items || []);
-  const sub = list[0]; // most recent
+  // Pick the most recently updated active sub, fall back to most recent.
+  const sub = (list.find((s) => s.is_active) || list[0]);
 
-  // Devices on first sub
-  const devices = useQuery(
-    () => sub ? api.get(`/subscriptions/${sub.id}/devices`).catch(() => []) : Promise.resolve([]),
-    { interval: 0, deps: [sub?.id] },
+  // Persisted "current entry" per (device, transport) from last subscription build.
+  const assignQ = useQuery(
+    () => sub
+      ? api.get(`/subscriptions/${sub.id}/route-assignments`).catch(() => [])
+      : Promise.resolve([]),
+    { interval: 10000, deps: [sub?.id] },
   );
-  const devs = Array.isArray(devices.data) ? devices.data : [];
-  const activeDevs = devs.filter((d) => d.is_active);
+  const assignments = Array.isArray(assignQ.data) ? assignQ.data : [];
+
+  if (subs.loading) {
+    return <div className="tk-context-panel muted small">Загрузка…</div>;
+  }
+  if (!sub) {
+    return <div className="tk-context-panel muted small">Подписки не найдены</div>;
+  }
+
+  const days = sub.expires_at ? daysLeft(sub.expires_at) : null;
+  const subId = String(sub.id).slice(0, 8);
 
   return (
     <div className="tk-context-panel">
       <div className="tk-ctx-row">
         <div className="tk-ctx-label">Тариф</div>
-        <div className="tk-ctx-val">{sub?.plan_name || <span className="muted">—</span>}</div>
+        <div className="tk-ctx-val">
+          {sub.plan_name || <span className="muted">—</span>}
+          {!sub.is_active && <span className="tk-cat-tag" style={{ marginLeft: 6 }}>отключена</span>}
+        </div>
+      </div>
+      <div className="tk-ctx-row">
+        <div className="tk-ctx-label">Истекает</div>
+        <div className="tk-ctx-val">
+          {days != null
+            ? <span>{days >= 0 ? `${days} дн.` : `просрочена на ${-days} дн.`}</span>
+            : <span className="muted">—</span>}
+        </div>
       </div>
       <div className="tk-ctx-row">
         <div className="tk-ctx-label">Регион</div>
-        <div className="tk-ctx-val mono">{sub?.preferred_region || <span className="muted">авто</span>}</div>
+        <div className="tk-ctx-val mono">{sub.preferred_region || <span className="muted">авто</span>}</div>
       </div>
       <div className="tk-ctx-row">
-        <div className="tk-ctx-label">Entry-нода</div>
-        <div className="tk-ctx-val mono small">{sub?.entry_node_id ? String(sub.entry_node_id).slice(0, 12) + "…" : "—"}</div>
-      </div>
-      <div className="tk-ctx-row">
-        <div className="tk-ctx-label">Активные устройства</div>
+        <div className="tk-ctx-label">Устройства</div>
         <div className="tk-ctx-val">
-          {activeDevs.length === 0 && <span className="muted">—</span>}
-          {activeDevs.length > 0 && (
-            <div className="tk-ctx-devs">
-              {activeDevs.slice(0, 6).map((d) => (
-                <span key={d.id} className="tk-ctx-dev" title={d.user_agent || ""}>
-                  <Icon name={(d.user_agent || "").toLowerCase().includes("iphone") ? "smartphone" : "monitor"} size={11} />
-                  <span className="mono small">{String(d.hwid_hash || d.id).slice(0, 10)}</span>
-                </span>
+          {(sub.device_count ?? 0)} / {sub.max_devices ?? "∞"}
+          {sub.hwid_enabled && <span className="muted small" style={{ marginLeft: 6 }}>HWID</span>}
+        </div>
+      </div>
+      <div className="tk-ctx-row">
+        <div className="tk-ctx-label">Трафик</div>
+        <div className="tk-ctx-val mono small">
+          {fmtBytes(sub.used_traffic_bytes)} (lifetime {fmtBytes(sub.lifetime_used_traffic_bytes)})
+        </div>
+      </div>
+      <div className="tk-ctx-row">
+        <div className="tk-ctx-label">Sub ID</div>
+        <div className="tk-ctx-val mono small">{subId}</div>
+      </div>
+      <div className="tk-ctx-row" style={{ gridTemplateColumns: "1fr" }}>
+        <div className="tk-ctx-label" style={{ marginBottom: 6 }}>Текущая entry-нода</div>
+        <div className="tk-ctx-val">
+          {assignQ.loading && <span className="muted small">Загрузка…</span>}
+          {!assignQ.loading && assignments.length === 0 && (
+            <span className="muted small">Не назначена (подписка ещё не запрашивалась)</span>
+          )}
+          {!assignQ.loading && assignments.length > 0 && (
+            <div className="tk-routes">
+              {assignments.map((a) => (
+                <div key={`${a.device_id}-${a.transport}`} className="tk-route-row">
+                  <div className="tk-route-backend">
+                    <Icon name="log-in" size={12} />
+                    <strong className="small">{a.entry.name}</strong>
+                    <span className="muted small mono">{a.entry.region}</span>
+                    {a.entry.role === "whitelist_entry" && <span className="tk-cat-tag">WL</span>}
+                    <span className="tk-cat-tag">{a.transport}</span>
+                    <span className="muted small">→ {a.backend.name} ({a.backend.region})</span>
+                  </div>
+                  <div className="tk-route-entries" style={{ paddingLeft: 18, fontSize: 11 }}>
+                    <span className="muted">обновлено {relTime(a.last_assigned_at)} · фетчей: {a.assignment_count}</span>
+                  </div>
+                </div>
               ))}
-              {activeDevs.length > 6 && <span className="muted small">+{activeDevs.length - 6}</span>}
             </div>
           )}
         </div>

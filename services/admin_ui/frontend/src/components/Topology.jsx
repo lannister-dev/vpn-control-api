@@ -11,7 +11,7 @@ function edgeStatusClass(s) {
   return "";
 }
 
-export function Topology({ routes = [], nodes = [], probes = [], userCountByBackendName = {}, liveByBackendName = {}, onOpenNode }) {
+export function Topology({ routes = [], nodes = [], probes = [], userCountByBackendName = {}, liveByBackendName = {}, liveByEntryId = {}, loadByNodeId = {}, onOpenNode }) {
   const canvasRef = useRef(null);
   const [edges, setEdges] = useState([]);
   const [focus, setFocus] = useState(null);
@@ -215,19 +215,30 @@ export function Topology({ routes = [], nodes = [], probes = [], userCountByBack
                   <span className={`status-dot ${healthTone(n)}`} />
                   <span className="flag">{nodeGeo(n.region).flag}</span>
                   <span className="topo-v2-node-name">{n.name}</span>
-                  {n.role === "whitelist_entry" && (
-                    <span
-                      className="pill accent"
-                      title="Whitelist entry"
-                      style={{ marginLeft: "auto", padding: "1px 5px", fontSize: 9.5, letterSpacing: 0.3, lineHeight: 1.4 }}
-                    >
-                      WL
-                    </span>
-                  )}
+                  <span style={{ marginLeft: "auto", display: "inline-flex", gap: 4 }}>
+                    {(liveByEntryId[n.id] || 0) > 0 && (
+                      <span
+                        className="pill ok"
+                        title={`${liveByEntryId[n.id]} активных коннектов через эту entry (sing-box clash-API)`}
+                        style={{ padding: "1px 6px", fontSize: 10, lineHeight: 1.4 }}
+                      >
+                        <Icon name="activity" size={9} /> {liveByEntryId[n.id]}
+                      </span>
+                    )}
+                    {n.role === "whitelist_entry" && (
+                      <span
+                        className="pill accent"
+                        title="Whitelist entry"
+                        style={{ padding: "1px 5px", fontSize: 9.5, letterSpacing: 0.3, lineHeight: 1.4 }}
+                      >
+                        WL
+                      </span>
+                    )}
+                  </span>
                 </div>
                 <div className="topo-v2-node-meta">
                   {(() => {
-                    const ld = nodeLoad(n);
+                    const ld = nodeLoad(n, { liveConnections: loadByNodeId[n.id] });
                     return (
                       <span className="mono" title={ld.tooltip} style={{ color: `var(--${ld.tone})` }}>
                         {ld.pct != null ? `${ld.pct}%` : ld.label}
@@ -278,14 +289,14 @@ export function Topology({ routes = [], nodes = [], probes = [], userCountByBack
                         title={`${userCount} ключ(ей) назначено на этот backend (effective_backend)`}
                         style={{ padding: "1px 6px", fontSize: 10, lineHeight: 1.4 }}
                       >
-                        <Icon name="user" size={9} /> {userCount}
+                        <Icon name="key" size={9} /> {userCount}
                       </span>
                     )}
                   </span>
                 </div>
                 <div className="topo-v2-node-meta">
                   {(() => {
-                    const ld = nodeLoad(n);
+                    const ld = nodeLoad(n, { liveConnections: loadByNodeId[n.id] });
                     return (
                       <span className="mono" title={ld.tooltip} style={{ color: `var(--${ld.tone})` }}>
                         {ld.pct != null ? `${ld.pct}%` : ld.label}

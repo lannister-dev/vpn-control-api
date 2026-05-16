@@ -776,56 +776,61 @@
 }
 .tk-composer-file-x:hover { color: var(--bad); }
 
-@media (max-width: 640px) {
-  /* Phone-first ticket drawer: compress everything above the chat scroller. */
-  .tk-drawer .slideover-body { padding: 8px 10px 0; }
-  .tk-kpi-ribbon { grid-template-columns: repeat(4, 1fr); margin-bottom: 8px; }
-  .tk-kpi-ribbon .tk-kpi-cell { padding: 6px 8px; }
-  .tk-kpi-ribbon .tk-kpi-label {
-    font-size: 9.5px; margin-bottom: 2px;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  .tk-kpi-ribbon .tk-kpi-val { font-size: 12px; }
-  .tk-kpi-ribbon .tk-kpi-cell:not(:last-child) { border-right: 1px solid var(--border); }
+@media (max-width: 768px) {
+  /* Hide "Профиль" text button in drawer head — kebab now opens BottomSheet with all actions */
+  .tk-act-profile { display: none; }
 
-  /* Quick-actions: compact horizontal scroll, single row */
+  .tk-drawer .slideover-body { padding: 10px 12px 0; }
+  .tk-kpi-ribbon { grid-template-columns: repeat(2, 1fr); margin-bottom: 8px; }
+  .tk-kpi-ribbon .tk-kpi-cell { padding: 8px 10px; }
+  .tk-kpi-ribbon .tk-kpi-cell:nth-child(2n) { border-right: 0; }
+  .tk-kpi-ribbon .tk-kpi-cell:nth-child(-n+2) { border-bottom: 1px solid var(--border); }
+
+  /* Quick actions: horizontal scroll, no wrap */
   .tk-quick-actions {
     flex-wrap: nowrap; overflow-x: auto;
     -webkit-overflow-scrolling: touch;
-    margin: 0 -10px 8px; padding: 0 10px;
+    margin: 0 -12px 8px; padding: 0 12px;
     scrollbar-width: none;
   }
   .tk-quick-actions::-webkit-scrollbar { display: none; }
-  .tk-quick-actions .btn {
-    padding: 6px 10px; font-size: 11.5px;
-    flex-shrink: 0; white-space: nowrap;
-  }
-  .tk-quick-actions > div[style] { display: none !important; } /* flex spacer */
+  .tk-quick-actions .btn { flex-shrink: 0; white-space: nowrap; }
+  .tk-quick-actions > div[style] { display: none !important; }
 
-  /* Hide meta grid + context panel + context toggle: they're operator-side ops not needed on phone first paint */
+  /* Meta operator UI hidden — accessed via kebab → BottomSheet */
   .tk-meta-grid, .tk-context-toggle, .tk-context-panel { display: none; }
 
-  /* Chat takes the rest of the screen */
+  /* Chat: take remaining height */
   .tk-chat-scroller {
-    margin: 4px -10px 0; padding: 10px 10px;
+    margin: 4px -12px 0; padding: 12px;
     min-height: 0; flex: 1;
   }
-  .tk-msg-bubble { max-width: 90%; font-size: 13.5px; }
+  .tk-msg-bubble { max-width: 84%; font-size: 13.5px; }
   .tk-media-img, .tk-media-vid { max-width: 100%; }
 
-  /* Composer pinned to bottom safe-area */
+  /* Composer: stays in flex flow, safe-area at bottom; no sticky, no circular trick */
   .tk-composer {
-    margin: 0 -10px;
+    margin: 0 -12px;
     padding-bottom: env(safe-area-inset-bottom, 0);
   }
-  .tk-composer-bar { flex-wrap: wrap; gap: 6px; padding: 6px 10px; }
+  .tk-composer-bar { flex-wrap: wrap; gap: 6px; padding: 6px 12px; }
   .tk-composer-hint { display: none; }
-  .tk-composer-actions { margin-left: auto; }
+  .tk-composer-actions { margin-left: auto; flex-shrink: 0; }
 }
 
-/* 2-col phones (very narrow) */
-@media (max-width: 380px) {
-  .tk-kpi-ribbon { grid-template-columns: repeat(2, 1fr); }
-  .tk-kpi-ribbon .tk-kpi-cell:nth-child(2n) { border-right: 0; }
-  .tk-kpi-ribbon .tk-kpi-cell:nth-child(-n+2) { border-bottom: 1px solid var(--border); }
+/* Route rows in ticket context */
+.tk-routes { display: flex; flex-direction: column; gap: 8px; }
+.tk-route-row {
+  padding: 6px 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.tk-route-backend {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.tk-route-entries {
+  display: flex; gap: 4px; flex-wrap: wrap;
+  padding-left: 18px;
 }

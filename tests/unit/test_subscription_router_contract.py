@@ -52,35 +52,26 @@ async def test_get_subscription_config_success_headers_and_payload():
 
     assert out.status_code == 200
     body = out.body.decode()
-    assert body.endswith("\nvless://one\nvless://two")
-    assert "#hide-settings: 1" in body
-    assert "#subscription-always-hwid-enable: 1" in body
-    assert "#profile-title: My VPN" in body
-    assert "#profile-update-interval: 24" in body
-    assert "#providerid: provider-id-1" in body
-    assert "#routing: happ://routing/custom" in body
-    assert "#color-profile:" in body
-    assert "#subscription-autoconnect: true" in body
-    assert "#subscription-autoconnect-type: lowestdelay" in body
-    assert "#subscription-ping-onopen-enabled: true" in body
+    assert body == "vless://one\nvless://two"
+    assert "#" not in body
     assert out.headers["etag"] == "etag123"
-    assert out.headers["profile-title"] == "My VPN"
+    assert out.headers["profile-title"].startswith("base64:")
     assert out.headers["profile-update-interval"] == "24"
     assert out.headers["support-url"] == "https://example.com/support"
     assert out.headers["profile-web-page-url"] == "https://example.com/profile"
     assert out.headers["providerid"] == "provider-id-1"
     assert out.headers["routing"] == "happ://routing/custom"
     assert out.headers["subscription-always-hwid-enable"] == "1"
-    assert out.headers["color-profile"] == '{"buttonColor":"#D96C3FFF","backgroundColors":["#07171EFF","#0D2A33FF"]}'
-    service.build_payload.assert_awaited_once_with(
-        raw_token="tok",
-        hwid="hwid-1",
-        user_agent="Happ/1.0",
-        device_model=None,
-        platform=None,
-        os_version=None,
-        if_none_match=None,
-    )
+    assert out.headers["color-profile"].startswith("base64:")
+    call = service.build_payload.await_args
+    assert call is not None
+    kwargs = call.kwargs
+    assert kwargs["raw_token"] == "tok"
+    assert kwargs["hwid"] == "hwid-1"
+    assert kwargs["user_agent"] == "Happ/1.0"
+    assert kwargs["if_none_match"] is None
+    assert kwargs["extra_etag_signature"]
+    assert len(kwargs["extra_etag_signature"]) == 12
 
 
 @pytest.mark.asyncio

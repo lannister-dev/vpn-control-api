@@ -22,6 +22,7 @@ def _adapter() -> SubscriptionPublicAdapter:
 
 
 def test_build_success_response_contains_contract_fields():
+    import base64
     response = _adapter().build_success_response(
         etag="abc123",
         payload="vless://a\n\nvless://b",
@@ -32,21 +33,23 @@ def test_build_success_response_contains_contract_fields():
     assert response.metric_result == "success"
     assert response.status_code == 200
     assert response.headers["ETag"] == "abc123"
-    assert response.headers["profile-title"] == "My VPN"
+    # profile-title is base64-wrapped so non-ASCII titles survive HTTP headers.
+    title_header = response.headers["profile-title"]
+    assert title_header.startswith("base64:")
+    assert base64.b64decode(title_header.removeprefix("base64:")).decode("utf-8") == "My VPN"
     assert response.headers["profile-update-interval"] == "24"
     assert response.headers["support-url"] == "https://example.com/support"
     assert response.headers["profile-web-page-url"] == "https://example.com/profile"
     assert response.headers["providerid"] == "provider-id-1"
     assert response.headers["routing"] == "happ://routing/custom"
     assert response.headers["subscription-always-hwid-enable"] == "1"
-    assert response.headers["color-profile"] == '{"buttonColor":"#D96C3FFF","backgroundColors":["#07171EFF","#0D2A33FF"]}'
-    assert response.payload.endswith("vless://a\n\nvless://b")
-    assert "#hide-settings: 1" in response.payload
-    assert "#subscription-always-hwid-enable: 1" in response.payload
-    assert "#profile-title: My VPN" in response.payload
-    assert "#profile-update-interval: 24" in response.payload
-    assert "#providerid: provider-id-1" in response.payload
-    assert "#color-profile:" in response.payload
+    color_header = response.headers["color-profile"]
+    assert color_header.startswith("base64:")
+    assert base64.b64decode(color_header.removeprefix("base64:")).decode("utf-8") == \
+        '{"buttonColor":"#D96C3FFF","backgroundColors":["#07171EFF","#0D2A33FF"]}'
+    # Body is strictly vless:// lines — no #-prefixed directives (Remnawave style).
+    assert response.payload == "vless://a\n\nvless://b"
+    assert "#" not in response.payload
     assert response.headers["Vary"] == "If-None-Match, User-Agent, x-hwid"
     assert response.headers["Cache-Control"] == "no-store"
     assert response.headers["Content-Type"] == "text/plain; charset=utf-8"
@@ -65,9 +68,12 @@ def test_build_success_response_not_modified_has_no_payload():
     assert response.payload is None
 
 
-def test_should_disable_not_modified_for_happ_when_app_management_enabled():
-    assert _adapter().should_disable_not_modified(user_agent="Happ/1.0") is True
-    assert _adapter().should_disable_not_modified(user_agent="OtherClient/1.0") is False
+def test_should_disable_not_modified_when_directives_configured_regardless_of_ua():
+    adapter = _adapter()
+    assert adapter.should_disable_not_modified(user_agent="Happ/1.0") is True
+    assert adapter.should_disable_not_modified(user_agent="HappVPN-macOS") is True
+    assert adapter.should_disable_not_modified(user_agent="OtherClient/1.0") is True
+    assert adapter.should_disable_not_modified(user_agent=None) is True
 
 
 def test_map_subscription_error_not_found():

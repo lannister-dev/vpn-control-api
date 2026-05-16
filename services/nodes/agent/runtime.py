@@ -733,6 +733,8 @@ class NodeAgentRuntime:
                             poll_count=event.poll_count,
                             applied=event.applied,
                             failed=event.failed,
+                            cpu_pct=event.cpu_pct,
+                            mem_pct=event.mem_pct,
                         ),
                         pool=pool_details,
                         upstream=upstream_details,

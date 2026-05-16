@@ -292,10 +292,10 @@
   gap: 16px;
 }
 
-/* ─── Mobile chrome (≤ 900px: sidebar off-canvas, hamburger in topbar) ─── */
+/* ─── Mobile chrome (≤ 768px: sidebar off-canvas, hamburger in topbar) ─── */
 .topbar-burger { display: none; }
 
-@media (max-width: 900px) {
+@media (max-width: 768px) {
   .topbar-burger { display: inline-flex; }
   .sidebar {
     position: fixed;
@@ -334,15 +334,9 @@
   .crumbs .crumb { white-space: nowrap; }
 }
 
-@media (max-width: 640px) {
-  .page { padding: 0 12px; }
-  .page-head { padding: 16px 0 12px; margin-bottom: 16px; gap: 12px; flex-wrap: wrap; }
-  .page-title { font-size: 18px; }
-  .page-subtitle { font-size: 12px; }
-  .page-head-actions { width: 100%; flex-wrap: wrap; }
+@media (max-width: 768px) {
   .sec { margin-bottom: 20px; }
   .split-2 { grid-template-columns: 1fr; gap: 12px; }
-  .topbar { padding: 0 10px; }
   .topbar .env-pill { display: none; }
   .crumbs .crumb:not(.current) { display: none; }
   .crumbs .crumb-sep { display: none; }
