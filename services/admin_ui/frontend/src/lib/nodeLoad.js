@@ -1,7 +1,16 @@
-export function nodeLoad(node) {
-  const used = Number(node?.placements_backend || 0);
+export function nodeLoad(node, liveDist) {
+  // Prefer live connection count (sing-box clash-API via NATS KV), fall back
+  // to static placements_backend if live stats unavailable.
+  const slot = liveDist
+    ? (node?.role === "backend" ? liveDist.as_backend : liveDist.as_entry)
+    : null;
+  const liveUsed = slot?.device_count;
+  const used = Number(
+    liveUsed != null ? liveUsed : (node?.placements_backend || 0),
+  );
   const rawCap = node?.capacity;
   const capacity = Number.isFinite(rawCap) && rawCap > 0 ? Number(rawCap) : null;
+  const liveLabel = liveUsed != null ? " (live)" : "";
 
   if (capacity === null) {
     return {
@@ -11,7 +20,7 @@ export function nodeLoad(node) {
       tone: "muted",
       label: String(used),
       tooltip:
-        `Активных назначений: ${used}. ` +
+        `Активных коннектов${liveLabel}: ${used}. ` +
         `Лимит не задан (capacity = 0/null) — нет цели для расчёта %.`,
     };
   }
@@ -25,9 +34,9 @@ export function nodeLoad(node) {
     tone,
     label: `${used} / ${capacity}`,
     tooltip:
-      `Активных назначений: ${used}. ` +
+      `Активных коннектов${liveLabel}: ${used}. ` +
       `Лимит (capacity): ${capacity}. ` +
-      `Использовано ${pct}% слота.`,
+      `Использовано ${pct}%.`,
   };
 }
 

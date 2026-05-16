@@ -148,8 +148,7 @@ export function NodesPage({ onOpenNode, initialAction, onActionConsumed }) {
               <th>Регион</th>
               <th>Роль</th>
               <th>Статус</th>
-              <th style={{ width: 180 }}>Нагрузка</th>
-              <th style={{ textAlign: "right" }} title="Активных подписчиков (по последним фетчам подписки)">Подписчики</th>
+              <th style={{ width: 200 }}>Нагрузка</th>
               <th style={{ textAlign: "right" }}>Capacity</th>
               <th style={{ textAlign: "right" }}>Маршруты</th>
               <th>Heartbeat</th>
@@ -161,7 +160,7 @@ export function NodesPage({ onOpenNode, initialAction, onActionConsumed }) {
             {list.map((n) => {
               const h = healthOf(n);
               const st = stateOf(n);
-              const load = nodeLoad(n);
+              const load = nodeLoad(n, loadByNode[n.id]);
               const seed = parseInt(String(n.id).replace(/-/g, "").slice(0, 6), 16) || 7;
               const flag = zoneFlag(zoneByCode, n.zone, n.region);
               const geo = nodeGeo(n.region);
@@ -193,32 +192,6 @@ export function NodesPage({ onOpenNode, initialAction, onActionConsumed }) {
                     )}
                   </td>
                   <td><LoadBar load={load} /></td>
-                  <td className="tbl-num">
-                    {(() => {
-                      const d = loadByNode[n.id];
-                      if (!d) return <span className="muted">—</span>;
-                      // Use the slot relevant to the node's role
-                      const slot = n.role === "backend" ? d.as_backend : d.as_entry;
-                      if (!slot || !slot.device_count) return <span className="muted">—</span>;
-                      const subs = slot.subscription_count;
-                      const devs = slot.device_count;
-                      const loadPct = d.load_pct;
-                      return (
-                        <span title={`${subs} подписок · ${devs} устройств · последний фетч ${relTime(slot.most_recent_at)} назад`}>
-                          <span style={{ fontWeight: 600 }}>{subs}</span>
-                          {devs !== subs && <span className="muted small"> /{devs}</span>}
-                          {loadPct != null && (
-                            <span
-                              className="muted small"
-                              style={{ marginLeft: 4, color: loadPct > 85 ? "var(--bad)" : loadPct > 65 ? "var(--warn)" : "var(--text-muted)" }}
-                            >
-                              {loadPct}%
-                            </span>
-                          )}
-                        </span>
-                      );
-                    })()}
-                  </td>
                   <td className="tbl-num">{n.capacity ?? <span className="muted">—</span>}</td>
                   <td className="tbl-num">{n.placements_backend ?? 0}</td>
                   <td className="mono" style={{ color: hbBad ? "var(--bad)" : "var(--text-secondary)" }}>{hb}</td>
