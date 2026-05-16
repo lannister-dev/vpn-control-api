@@ -238,6 +238,163 @@ class SubscriptionService:
         )
         return self._sub_to_out(updated)
 
+    async def list_route_assignments(self, subscription_id) -> list:
+        from services.vpn.subscriptions.schemas import (
+            SubscriptionNodeRef,
+            SubscriptionRouteAssignmentOut,
+        )
+        rows = await self.subscription_repository.list_route_assignments(subscription_id)
+        return [
+            SubscriptionRouteAssignmentOut(
+                device_id=r["device_id"],
+                transport=r["transport"],
+                last_assigned_at=r["last_assigned_at"],
+                assignment_count=int(r["assignment_count"] or 0),
+                entry=SubscriptionNodeRef(
+                    node_id=r["entry_id"], name=r["entry_name"],
+                    region=r["entry_region"], role=r["entry_role"],
+                ),
+                backend=SubscriptionNodeRef(
+                    node_id=r["backend_id"], name=r["backend_name"],
+                    region=r["backend_region"], role=r["backend_role"],
+                ),
+            )
+            for r in rows
+        ]
+
+    async def entry_distribution(self, *, since_hours: int | None = None) -> list:
+        from datetime import datetime, timedelta, timezone
+
+        from services.vpn.subscriptions.schemas import EntryDistributionRowOut
+        since = None
+        if since_hours and since_hours > 0:
+            since = datetime.now(timezone.utc) - timedelta(hours=since_hours)
+        rows = await self.subscription_repository.entry_distribution(since=since)
+        total_devices = sum(int(r["device_count"] or 0) for r in rows)
+        return [
+            EntryDistributionRowOut(
+                entry_node_id=r["entry_id"],
+                entry_name=r["entry_name"],
+                entry_region=r["entry_region"],
+                entry_role=r["entry_role"],
+                capacity=int(r["capacity"] or 0),
+                subscription_count=int(r["subscription_count"] or 0),
+                device_count=int(r["device_count"] or 0),
+                share_pct=round((int(r["device_count"] or 0) / total_devices) * 100, 1) if total_devices else 0.0,
+                load_pct=(
+                    round((int(r["device_count"] or 0) / int(r["capacity"])) * 100, 1)
+                    if int(r["capacity"] or 0) > 0 else None
+                ),
+                most_recent_at=r["most_recent_at"],
+            )
+            for r in rows
+        ]
+
+    async def list_active_nodes(self, subscription_id) -> list:
+        from services.vpn.subscriptions.schemas import (
+            SubscriptionActiveNodeOut,
+            SubscriptionEntryRouteOut,
+            SubscriptionNodeRef,
+        )
+
+        placements = await self.subscription_repository.list_active_backend_placements(subscription_id)
+        if not placements:
+            return []
+
+        backend_ids = list({p["backend_id"] for p in placements})
+        route_rows = await self.subscription_repository.list_entry_routes_for_backends(backend_ids)
+
+        # Group entries by (backend_id, transport_kind) for matching to device-key transport.
+        from collections import defaultdict
+        kind_of = self._transport_kind_from_profile
+        entries_by_backend: dict = defaultdict(list)
+        for r in route_rows:
+            kind = kind_of(network=r["network"], security=r["security"])
+            entries_by_backend[r["backend_id"]].append({
+                "entry": SubscriptionNodeRef(
+                    node_id=r["entry_id"],
+                    name=r["entry_name"],
+                    region=r["entry_region"],
+                    role=r["entry_role"],
+                ),
+                "transport_kind": kind,
+                "health": r["health"],
+                "weight": int(r["weight"] or 0),
+            })
+
+        out = []
+        for p in placements:
+            backend = SubscriptionNodeRef(
+                node_id=p["backend_id"],
+                name=p["backend_name"],
+                region=p["backend_region"],
+                role=p["backend_role"],
+            )
+            transport = p.get("transport")
+            candidates = entries_by_backend.get(p["backend_id"], [])
+            # Prefer entries matching the device-key transport; if none match,
+            # fall back to all healthy candidates so the operator still sees
+            # something useful.
+            matching = [c for c in candidates if not transport or c["transport_kind"] == transport]
+            chosen = matching if matching else candidates
+            entries = [SubscriptionEntryRouteOut.model_validate(c) for c in chosen]
+            out.append(SubscriptionActiveNodeOut(
+                backend=backend,
+                transport=transport,
+                device_id=p["device_id"],
+                placement_state=p.get("placement_state"),
+                sticky_until=p.get("sticky_until"),
+                entries=entries,
+            ))
+        return out
+
+    async def _persist_route_assignments(
+            self, *, subscription_id, device_id, selected_routes, now,
+    ) -> None:
+        """Persist primary (entry, backend, route) per transport for analytics.
+        Picks the first route per transport (highest preference)."""
+        seen: dict[str, dict] = {}
+        for r in selected_routes:
+            transport = getattr(r, "vpn_transport", "") or ""
+            if not transport or transport in seen:
+                continue
+            entry_id = getattr(r, "entry_node_id", None)
+            backend_id = getattr(r, "backend_node_id", None)
+            if entry_id is None or backend_id is None:
+                continue
+            seen[transport] = {
+                "subscription_device_id": device_id,
+                "transport": transport,
+                "entry_node_id": entry_id,
+                "backend_node_id": backend_id,
+                "route_id": getattr(r, "route_id", None),
+            }
+        if not seen:
+            return
+        try:
+            await self.subscription_repository.upsert_route_assignments(
+                subscription_id=subscription_id,
+                assignments=list(seen.values()),
+                now=now,
+            )
+        except Exception:
+            # Never let analytics persistence block the subscription response.
+            logger_sub.exception("route_assignment_upsert_failed")
+
+    @staticmethod
+    def _transport_kind_from_profile(*, network: str | None, security: str | None) -> str:
+        n = (network or "").lower()
+        s = (security or "").lower()
+        if s == "reality" and n == "tcp":
+            return "reality"
+        if s == "tls" and n == "ws":
+            return "ws"
+        if s == "tls" and n == "grpc":
+            return "xhttp"
+        if s == "tls" and n == "tcp":
+            return "tcp"
+        return f"{s}-{n}" if s or n else ""
+
     async def list_subscriptions_by_user(
             self,
             *,
@@ -588,6 +745,12 @@ class SubscriptionService:
             if payload_bytes > max_payload_bytes:
                 SUBSCRIPTION_PAYLOAD_GUARDRAIL_TOTAL.labels(result="overflow").inc()
                 raise SubscriptionBuild("Subscription payload exceeds size limit")
+            await self._persist_route_assignments(
+                subscription_id=self._as_uuid(subscription.id),
+                device_id=self._as_uuid(bundle.device.id),
+                selected_routes=selected_routes,
+                now=now,
+            )
             SUBSCRIPTION_PAYLOAD_SIZE_BYTES.observe(payload_bytes)
             etag = self._calc_etag(
                 subscription,

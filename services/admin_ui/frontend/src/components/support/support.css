@@ -817,3 +817,20 @@
   .tk-composer-hint { display: none; }
   .tk-composer-actions { margin-left: auto; flex-shrink: 0; }
 }
+
+/* Route rows in ticket context */
+.tk-routes { display: flex; flex-direction: column; gap: 8px; }
+.tk-route-row {
+  padding: 6px 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.tk-route-backend {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.tk-route-entries {
+  display: flex; gap: 4px; flex-wrap: wrap;
+  padding-left: 18px;
+}

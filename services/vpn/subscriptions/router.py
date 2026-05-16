@@ -23,6 +23,8 @@ from services.vpn.subscriptions.exceptions import (
     SubscriptionTokenExpired,
 )
 from services.vpn.subscriptions.schemas import (
+    EntryDistributionRowOut,
+    SubscriptionActiveNodeOut,
     SubscriptionCountersOut,
     SubscriptionCreatedOut,
     SubscriptionCreateIn,
@@ -30,6 +32,7 @@ from services.vpn.subscriptions.schemas import (
     SubscriptionListOut,
     SubscriptionOut,
     SubscriptionRotateOut,
+    SubscriptionRouteAssignmentOut,
     SubscriptionSetMaxDevicesIn,
 )
 from services.vpn.subscriptions.service import SubscriptionService, get_subscription_service
@@ -195,6 +198,61 @@ async def list_subscriptions_by_user(
         service: SubscriptionService = Depends(get_subscription_service),
 ):
     return await service.list_subscriptions_by_user(user_id=user_id, active_only=active_only)
+
+
+@router.get(
+    "/route-assignments/distribution",
+    response_model=list[EntryDistributionRowOut],
+    status_code=status.HTTP_200_OK,
+    summary="Distribution of subscriptions/devices across entry nodes",
+    description=(
+        "Aggregated counts from subscription_route_assignment. "
+        "Optional `since_hours` query param (e.g. 1, 24, 168) to limit to recent activity."
+    ),
+    dependencies=[Depends(admin_auth)],
+)
+async def get_entry_distribution(
+        since_hours: int | None = None,
+        service: SubscriptionService = Depends(get_subscription_service),
+):
+    return await service.entry_distribution(since_hours=since_hours)
+
+
+@router.get(
+    "/{subscription_id}/route-assignments",
+    response_model=list[SubscriptionRouteAssignmentOut],
+    status_code=status.HTTP_200_OK,
+    summary="Current entry assignment for each device + transport",
+    description=(
+        "Returns the actual entry node assigned on the most recent subscription "
+        "fetch — one row per (device, transport)."
+    ),
+    dependencies=[Depends(admin_auth)],
+)
+async def list_subscription_route_assignments(
+        subscription_id: UUID,
+        service: SubscriptionService = Depends(get_subscription_service),
+):
+    return await service.list_route_assignments(subscription_id)
+
+
+@router.get(
+    "/{subscription_id}/active-nodes",
+    response_model=list[SubscriptionActiveNodeOut],
+    status_code=status.HTTP_200_OK,
+    summary="List active backend nodes for subscription",
+    description=(
+        "Returns the backend nodes this subscription is currently routed through, "
+        "derived from active user_placement records joined with subscription_device → "
+        "subscription_device_key → vpn_key. Useful for operator support context."
+    ),
+    dependencies=[Depends(admin_auth)],
+)
+async def list_subscription_active_nodes(
+        subscription_id: UUID,
+        service: SubscriptionService = Depends(get_subscription_service),
+):
+    return await service.list_active_nodes(subscription_id)
 
 
 @router.get(

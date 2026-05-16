@@ -68,6 +68,19 @@ export function NodesPage({ onOpenNode, initialAction, onActionConsumed }) {
   const zones = useQuery(() => api.get("/zones"), { interval: 60000 });
   const zoneByCode = useMemo(() => Object.fromEntries((zones.data?.items || []).map((z) => [z.code, z])), [zones.data]);
 
+  // Live entry-node load: count of subscriptions/devices currently routed through each entry.
+  const distQ = useQuery(
+    () => api.get("/subscriptions/route-assignments/distribution").catch(() => []),
+    { interval: 30000 },
+  );
+  const loadByNode = useMemo(() => {
+    const m = {};
+    for (const r of (Array.isArray(distQ.data) ? distQ.data : [])) {
+      m[r.entry_node_id] = r;
+    }
+    return m;
+  }, [distQ.data]);
+
   const nodes = status?.nodes || [];
   const list = useMemo(() => {
     return nodes.filter((n) => {
@@ -136,6 +149,7 @@ export function NodesPage({ onOpenNode, initialAction, onActionConsumed }) {
               <th>Роль</th>
               <th>Статус</th>
               <th style={{ width: 180 }}>Нагрузка</th>
+              <th style={{ textAlign: "right" }} title="Активных подписчиков (по последним фетчам подписки)">Подписчики</th>
               <th style={{ textAlign: "right" }}>Capacity</th>
               <th style={{ textAlign: "right" }}>Маршруты</th>
               <th>Heartbeat</th>
@@ -179,6 +193,29 @@ export function NodesPage({ onOpenNode, initialAction, onActionConsumed }) {
                     )}
                   </td>
                   <td><LoadBar load={load} /></td>
+                  <td className="tbl-num">
+                    {(() => {
+                      const d = loadByNode[n.id];
+                      if (!d) return <span className="muted">—</span>;
+                      const subs = d.subscription_count ?? 0;
+                      const devs = d.device_count ?? 0;
+                      const loadPct = d.load_pct;
+                      return (
+                        <span title={`${subs} подписок · ${devs} устройств · последний фетч ${relTime(d.most_recent_at)} назад`}>
+                          <span style={{ fontWeight: 600 }}>{subs}</span>
+                          {devs !== subs && <span className="muted small"> /{devs}</span>}
+                          {loadPct != null && (
+                            <span
+                              className="muted small"
+                              style={{ marginLeft: 4, color: loadPct > 85 ? "var(--bad)" : loadPct > 65 ? "var(--warn)" : "var(--text-muted)" }}
+                            >
+                              {loadPct}%
+                            </span>
+                          )}
+                        </span>
+                      );
+                    })()}
+                  </td>
                   <td className="tbl-num">{n.capacity ?? <span className="muted">—</span>}</td>
                   <td className="tbl-num">{n.placements_backend ?? 0}</td>
                   <td className="mono" style={{ color: hbBad ? "var(--bad)" : "var(--text-secondary)" }}>{hb}</td>
