@@ -11,7 +11,7 @@ from collections.abc import Iterable
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -118,10 +118,17 @@ logger_sub = StructuredLogger(logging.getLogger("subscription-build"))
 
 
 class SubscriptionService:
-    def __init__(self, session: AsyncSession, redis: RedisClient):
+    def __init__(
+            self,
+            session: AsyncSession,
+            redis: RedisClient,
+            *,
+            nats_client=None,
+    ):
         self.settings = get_settings()
         self.session = session
         self.redis = redis
+        self._nats = nats_client
         self.subscription_repository = SubscriptionRepository(session)
         self.device_repository = SubscriptionDeviceRepository(session)
         self.device_key_repository = SubscriptionDeviceKeyRepository(session)
@@ -928,15 +935,15 @@ class SubscriptionService:
         backend_loads = await self._safe_call_counter(
             self.placement_repository.count_desired_active_by_backend_node
         )
-        entry_loads = await self._safe_call_counter(
-            self.route_repository.count_active_by_entry
+        # Live entry load = actual sing-box connections per entry-node,
+        # reported every ~10s by each node-agent into NATS KV
+        # `entry-routing-stats`. Falls back to persisted assignment counts
+        # when NATS is unavailable (gives reasonable distribution between
+        # subscription polls of the same user).
+        entry_loads = await self._fetch_live_entry_loads(
+            exclude_subscription_id=self._as_uuid(subscription.id),
         )
-        try:
-            entry_user_loads = await self.subscription_repository.count_active_subs_by_entry(
-                exclude_subscription_id=self._as_uuid(subscription.id),
-            )
-        except Exception:
-            entry_user_loads = {}
+        entry_user_loads = entry_loads
 
         resolved_routes: list[ResolvedSubscriptionRoute] = []
         seen_uris: set[str] = set()
@@ -1954,6 +1961,46 @@ class SubscriptionService:
             ),
         )
 
+    async def _fetch_live_entry_loads(
+            self, *, exclude_subscription_id,
+    ) -> dict[UUID, int]:
+        """Return {entry_node_id: live_connection_count} from sing-box
+        clash-api reports cached in NATS KV. Falls back to DB-assignment
+        counts when NATS is unavailable or the bucket is empty."""
+        from services.routing.entry.constants import KV_STATS_BUCKET
+
+        live: dict[UUID, int] = {}
+        if self._nats is not None:
+            try:
+                entries = await self._nats.kv_list_all(bucket=KV_STATS_BUCKET)
+                for raw in entries.values():
+                    try:
+                        payload = json.loads(raw.decode("utf-8"))
+                    except (UnicodeDecodeError, json.JSONDecodeError):
+                        continue
+                    node_id_raw = payload.get("node_id")
+                    total = payload.get("total")
+                    if node_id_raw and total is not None:
+                        try:
+                            node_uuid = UUID(str(node_id_raw))
+                        except ValueError:
+                            continue
+                        live[node_uuid] = live.get(node_uuid, 0) + int(total)
+            except Exception:
+                logger_sub.exception("live_entry_loads_fetch_failed")
+
+        if live:
+            return live
+
+        # Fallback: persisted assignment counts (lower fidelity but always
+        # available; updates only on subscription fetch).
+        try:
+            return await self.subscription_repository.count_active_subs_by_entry(
+                exclude_subscription_id=exclude_subscription_id,
+            )
+        except Exception:
+            return {}
+
     @staticmethod
     def _entry_tiebreak(*, user_id, entry_id, bucket: int | None) -> int:
         seed = f"{user_id}:{bucket}:{entry_id}" if bucket is not None else f"{user_id}:{entry_id}"
@@ -2409,7 +2456,9 @@ class SubscriptionService:
 
 
 def get_subscription_service(
+        request: Request,
         session: AsyncSession = Depends(AsyncDatabase.get_session),
         redis: RedisClient = Depends(get_redis_client),
 ) -> SubscriptionService:
-    return SubscriptionService(session, redis)
+    nats_client = getattr(request.app.state, "nats_client", None)
+    return SubscriptionService(session, redis, nats_client=nats_client)

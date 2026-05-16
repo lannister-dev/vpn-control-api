@@ -127,10 +127,18 @@ class RoutingLiveStatsByBackend(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class RoutingLiveStatsByEntry(BaseModel):
+    entry_node_id: str
+    connections: int
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class RoutingStateOut(BaseModel):
     backends: list[RoutingBackendOut]
     keys: list[RoutingKeyRowOut]
     live: list[RoutingLiveStatsByBackend] = []
+    live_by_entry: list[RoutingLiveStatsByEntry] = []
 
     model_config = ConfigDict(extra="forbid")
 
