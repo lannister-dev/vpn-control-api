@@ -23,7 +23,7 @@ from services.vpn.subscriptions.exceptions import (
     SubscriptionTokenExpired,
 )
 from services.vpn.subscriptions.schemas import (
-    EntryDistributionRowOut,
+    NodeAssignmentDistributionOut,
     SubscriptionActiveNodeOut,
     SubscriptionCountersOut,
     SubscriptionCreatedOut,
@@ -202,20 +202,21 @@ async def list_subscriptions_by_user(
 
 @router.get(
     "/route-assignments/distribution",
-    response_model=list[EntryDistributionRowOut],
+    response_model=list[NodeAssignmentDistributionOut],
     status_code=status.HTTP_200_OK,
-    summary="Distribution of subscriptions/devices across entry nodes",
+    summary="Per-node subscriber distribution (entry + backend slots)",
     description=(
-        "Aggregated counts from subscription_route_assignment. "
-        "Optional `since_hours` query param (e.g. 1, 24, 168) to limit to recent activity."
+        "Returns one row per VPN node that currently participates in routing — "
+        "with separate counters for usage as entry vs backend. "
+        "Optional `since_hours` query param filters to last N hours of activity."
     ),
     dependencies=[Depends(admin_auth)],
 )
-async def get_entry_distribution(
+async def get_node_distribution(
         since_hours: int | None = None,
         service: SubscriptionService = Depends(get_subscription_service),
 ):
-    return await service.entry_distribution(since_hours=since_hours)
+    return await service.node_distribution(since_hours=since_hours)
 
 
 @router.get(

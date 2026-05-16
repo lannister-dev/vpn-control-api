@@ -76,7 +76,7 @@ export function NodesPage({ onOpenNode, initialAction, onActionConsumed }) {
   const loadByNode = useMemo(() => {
     const m = {};
     for (const r of (Array.isArray(distQ.data) ? distQ.data : [])) {
-      m[r.entry_node_id] = r;
+      m[r.node_id] = r;
     }
     return m;
   }, [distQ.data]);
@@ -197,11 +197,14 @@ export function NodesPage({ onOpenNode, initialAction, onActionConsumed }) {
                     {(() => {
                       const d = loadByNode[n.id];
                       if (!d) return <span className="muted">—</span>;
-                      const subs = d.subscription_count ?? 0;
-                      const devs = d.device_count ?? 0;
+                      // Use the slot relevant to the node's role
+                      const slot = n.role === "backend" ? d.as_backend : d.as_entry;
+                      if (!slot || !slot.device_count) return <span className="muted">—</span>;
+                      const subs = slot.subscription_count;
+                      const devs = slot.device_count;
                       const loadPct = d.load_pct;
                       return (
-                        <span title={`${subs} подписок · ${devs} устройств · последний фетч ${relTime(d.most_recent_at)} назад`}>
+                        <span title={`${subs} подписок · ${devs} устройств · последний фетч ${relTime(slot.most_recent_at)} назад`}>
                           <span style={{ fontWeight: 600 }}>{subs}</span>
                           {devs !== subs && <span className="muted small"> /{devs}</span>}
                           {loadPct != null && (

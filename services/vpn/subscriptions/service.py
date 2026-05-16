@@ -262,33 +262,38 @@ class SubscriptionService:
             for r in rows
         ]
 
-    async def entry_distribution(self, *, since_hours: int | None = None) -> list:
+    async def node_distribution(self, *, since_hours: int | None = None) -> list:
         from datetime import datetime, timedelta, timezone
 
-        from services.vpn.subscriptions.schemas import EntryDistributionRowOut
+        from services.vpn.subscriptions.schemas import (
+            NodeAssignmentDistributionOut,
+            NodeAssignmentSlotOut,
+        )
         since = None
         if since_hours and since_hours > 0:
             since = datetime.now(timezone.utc) - timedelta(hours=since_hours)
-        rows = await self.subscription_repository.entry_distribution(since=since)
-        total_devices = sum(int(r["device_count"] or 0) for r in rows)
-        return [
-            EntryDistributionRowOut(
-                entry_node_id=r["entry_id"],
-                entry_name=r["entry_name"],
-                entry_region=r["entry_region"],
-                entry_role=r["entry_role"],
-                capacity=int(r["capacity"] or 0),
-                subscription_count=int(r["subscription_count"] or 0),
-                device_count=int(r["device_count"] or 0),
-                share_pct=round((int(r["device_count"] or 0) / total_devices) * 100, 1) if total_devices else 0.0,
-                load_pct=(
-                    round((int(r["device_count"] or 0) / int(r["capacity"])) * 100, 1)
-                    if int(r["capacity"] or 0) > 0 else None
-                ),
-                most_recent_at=r["most_recent_at"],
+        rows = await self.subscription_repository.node_assignment_distribution(since=since)
+        out = []
+        for r in rows:
+            as_entry = NodeAssignmentSlotOut(**r["as_entry"]) if r.get("as_entry") else None
+            as_backend = NodeAssignmentSlotOut(**r["as_backend"]) if r.get("as_backend") else None
+            total = max(
+                as_entry.device_count if as_entry else 0,
+                as_backend.device_count if as_backend else 0,
             )
-            for r in rows
-        ]
+            cap = int(r.get("capacity") or 0)
+            out.append(NodeAssignmentDistributionOut(
+                node_id=r["node_id"],
+                name=r["name"],
+                region=r["region"],
+                role=r["role"],
+                capacity=cap,
+                as_entry=as_entry,
+                as_backend=as_backend,
+                total_device_count=total,
+                load_pct=round(total / cap * 100, 1) if cap > 0 and total > 0 else None,
+            ))
+        return out
 
     async def list_active_nodes(self, subscription_id) -> list:
         from services.vpn.subscriptions.schemas import (
