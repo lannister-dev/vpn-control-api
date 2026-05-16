@@ -1096,11 +1096,16 @@ class SubscriptionService:
             entry_user_loads=entry_user_loads,
         )
 
+        # No seed — selector reshuffles every fetch by current live entry/backend
+        # load. This is what makes the user actually migrate to a free entry/backend
+        # on subscription refresh (the entry-aware `selection_score` does the
+        # weighted lift). Stickiness comes from VLESS-line ORDER preserved in
+        # Happ's local cache for already-connected sessions.
         selected_routes = self.route_selector.select(
             routes=resolved_routes,
             preferred_backend_id=selected_backend_id,
             max_routes=max_routes,
-            seed=getattr(subscription, "id", None),
+            seed=None,
         )
         if not selected_routes:
             return TransportBuildResult(

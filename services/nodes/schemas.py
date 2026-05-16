@@ -82,6 +82,8 @@ class HeartbeatStats(BaseModel):
     poll_count: int
     applied: int
     failed: int
+    cpu_pct: float | None = None
+    mem_pct: float | None = None
 
 
 class HeartbeatRuntime(BaseModel):

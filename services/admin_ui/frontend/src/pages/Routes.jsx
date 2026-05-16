@@ -24,20 +24,9 @@ export function RoutesPage({ initialAction, onActionConsumed, onOpenNode }) {
   const routes = useQuery(() => api.get("/routes?limit=500"), { interval: 15000 });
   const status = useQuery(() => api.get("/admin/status"), { interval: 15000 });
   const probes = useQuery(() => api.get("/probe/reports/recent?limit=200"), { interval: 15000 });
-  const dist = useQuery(
-    () => api.get("/subscriptions/route-assignments/distribution").catch(() => []),
-    { interval: 30000 },
-  );
-  const loadByNodeId = useMemo(() => {
-    const m = {};
-    for (const r of (Array.isArray(dist.data) ? dist.data : [])) {
-      m[r.node_id] = r;
-    }
-    return m;
-  }, [dist.data]);
   const routingState = useQuery(
     () => api.get("/admin/routing/entry/state").catch(() => null),
-    { interval: 30000 },
+    { interval: 15000 },
   );
 
   const nodes = status.data?.nodes || [];
@@ -62,6 +51,31 @@ export function RoutesPage({ initialAction, onActionConsumed, onOpenNode }) {
       if (name) counts[name] = (counts[name] || 0) + (item.connections || 0);
     }
     return counts;
+  }, [routingState.data]);
+
+  // Unified live count per node id (entries + backends). Single source for
+  // LoadBar and lightning pill — guarantees they show the same number.
+  const liveByNodeId = useMemo(() => {
+    const m = {};
+    for (const it of routingState.data?.live_by_entry || []) {
+      if (it.entry_node_id) m[it.entry_node_id] = (m[it.entry_node_id] || 0) + (it.connections || 0);
+    }
+    const byName = Object.fromEntries(nodes.map((n) => [n.name, n.id]));
+    for (const it of routingState.data?.live || []) {
+      const name = it.tag?.startsWith("backend-") ? it.tag.slice("backend-".length) : it.tag;
+      const id = byName[name];
+      if (id) m[id] = (m[id] || 0) + (it.connections || 0);
+    }
+    return m;
+  }, [routingState.data, nodes]);
+
+  // 👤 unique users per entry (from sing-box clash-API metadata.user)
+  const usersByEntryId = useMemo(() => {
+    const m = {};
+    for (const it of routingState.data?.live_by_entry || []) {
+      if (it.entry_node_id) m[it.entry_node_id] = (m[it.entry_node_id] || 0) + (it.unique_users || 0);
+    }
+    return m;
   }, [routingState.data]);
 
   const liveByEntryId = useMemo(() => {
@@ -208,19 +222,18 @@ function RoutesList({ routesList, nodesById, loadByNodeId = {}, search, setSearc
                           {nodeLabel(entryNode)}
                         </span>
                         {(() => {
-                          const d = loadByNodeId[entryNode.id];
-                          const slot = d?.as_entry;
-                          if (!slot || !slot.device_count) return null;
-                          const loadPct = d.load_pct;
+                          const live = loadByNodeId[entryNode.id];
+                          if (!live) return null;
+                          const cap = entryNode.capacity || 100;
+                          const loadPct = Math.round((live / cap) * 100);
                           const tone = loadPct > 85 ? "var(--bad)" : loadPct > 65 ? "var(--warn)" : "var(--text-muted)";
                           return (
                             <span
                               className="pill small"
-                              title={`${slot.subscription_count} подписок · ${slot.device_count} устройств${loadPct != null ? ` · ${loadPct}% от capacity` : ""}`}
+                              title={`${live} активных коннектов · ${loadPct}% от capacity (${cap})`}
                               style={{ color: tone }}
                             >
-                              👥 {slot.subscription_count}
-                              {loadPct != null && <span className="muted" style={{ marginLeft: 4 }}>{loadPct}%</span>}
+                              ⚡ {live} <span className="muted" style={{ marginLeft: 4 }}>{loadPct}%</span>
                             </span>
                           );
                         })()}

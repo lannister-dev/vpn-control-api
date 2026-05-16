@@ -68,18 +68,37 @@ export function NodesPage({ onOpenNode, initialAction, onActionConsumed }) {
   const zones = useQuery(() => api.get("/zones"), { interval: 60000 });
   const zoneByCode = useMemo(() => Object.fromEntries((zones.data?.items || []).map((z) => [z.code, z])), [zones.data]);
 
-  // Live entry-node load: count of subscriptions/devices currently routed through each entry.
-  const distQ = useQuery(
-    () => api.get("/subscriptions/route-assignments/distribution").catch(() => []),
-    { interval: 30000 },
+  // Live connections from sing-box clash-API via NATS KV (10s cadence) —
+  // single source for both entries and backends.
+  const routingState = useQuery(
+    () => api.get("/admin/routing/entry/state").catch(() => null),
+    { interval: 15000 },
   );
-  const loadByNode = useMemo(() => {
+  const liveByNodeId = useMemo(() => {
     const m = {};
-    for (const r of (Array.isArray(distQ.data) ? distQ.data : [])) {
-      m[r.node_id] = r;
+    for (const it of routingState.data?.live_by_entry || []) {
+      if (it.entry_node_id) m[it.entry_node_id] = (m[it.entry_node_id] || 0) + (it.connections || 0);
+    }
+    const byName = Object.fromEntries((status?.nodes || []).map((n) => [n.name, n.id]));
+    for (const it of routingState.data?.live || []) {
+      const name = it.tag?.startsWith("backend-") ? it.tag.slice("backend-".length) : it.tag;
+      const id = byName[name];
+      if (id) m[id] = (m[id] || 0) + (it.connections || 0);
     }
     return m;
-  }, [distQ.data]);
+  }, [routingState.data, status?.nodes]);
+
+  // 👥 keys assigned per backend (effective_backend from routingState.keys)
+  const userCountByBackendName = useMemo(() => {
+    const counts = {};
+    for (const k of routingState.data?.keys || []) {
+      const tag = k.effective_backend;
+      if (!tag) continue;
+      const name = tag.startsWith("backend-") ? tag.slice("backend-".length) : tag;
+      counts[name] = (counts[name] || 0) + 1;
+    }
+    return counts;
+  }, [routingState.data]);
 
   const nodes = status?.nodes || [];
   const list = useMemo(() => {
@@ -160,7 +179,9 @@ export function NodesPage({ onOpenNode, initialAction, onActionConsumed }) {
             {list.map((n) => {
               const h = healthOf(n);
               const st = stateOf(n);
-              const load = nodeLoad(n, loadByNode[n.id]);
+              const liveConns = liveByNodeId[n.id] || 0;
+              const keyCount = userCountByBackendName[n.name] || 0;
+              const load = nodeLoad(n, { liveConnections: liveConns });
               const seed = parseInt(String(n.id).replace(/-/g, "").slice(0, 6), 16) || 7;
               const flag = zoneFlag(zoneByCode, n.zone, n.region);
               const geo = nodeGeo(n.region);
@@ -191,7 +212,29 @@ export function NodesPage({ onOpenNode, initialAction, onActionConsumed }) {
                       </div>
                     )}
                   </td>
-                  <td><LoadBar load={load} /></td>
+                  <td>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <LoadBar load={load} />
+                      {liveConns > 0 && (
+                        <span
+                          className="pill ok small"
+                          title={`${liveConns} активных TCP-сессий (sing-box clash-API, ~10c cadence)`}
+                          style={{ padding: "1px 6px", fontSize: 10 }}
+                        >
+                          <Icon name="activity" size={9} /> {liveConns}
+                        </span>
+                      )}
+                      {n.role === "backend" && keyCount > 0 && (
+                        <span
+                          className="pill accent small"
+                          title={`${keyCount} ключей назначено на этот backend (effective_backend)`}
+                          style={{ padding: "1px 6px", fontSize: 10 }}
+                        >
+                          <Icon name="key" size={9} /> {keyCount}
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="tbl-num">{n.capacity ?? <span className="muted">—</span>}</td>
                   <td className="tbl-num">{n.placements_backend ?? 0}</td>
                   <td className="mono" style={{ color: hbBad ? "var(--bad)" : "var(--text-secondary)" }}>{hb}</td>

@@ -130,6 +130,7 @@ class RoutingLiveStatsByBackend(BaseModel):
 class RoutingLiveStatsByEntry(BaseModel):
     entry_node_id: str
     connections: int
+    unique_users: int = 0
 
     model_config = ConfigDict(extra="forbid")
 
