@@ -526,14 +526,6 @@ function ContextPanel({ user }) {
   // Pick the most recently updated active sub, fall back to most recent.
   const sub = (list.find((s) => s.is_active) || list[0]);
 
-  const nodesQ = useQuery(
-    () => sub
-      ? api.get(`/subscriptions/${sub.id}/active-nodes`).catch(() => [])
-      : Promise.resolve([]),
-    { interval: 0, deps: [sub?.id] },
-  );
-  const nodes = Array.isArray(nodesQ.data) ? nodesQ.data : [];
-
   // Persisted "current entry" per (device, transport) from last subscription build.
   const assignQ = useQuery(
     () => sub
@@ -612,48 +604,6 @@ function ContextPanel({ user }) {
                   </div>
                   <div className="tk-route-entries" style={{ paddingLeft: 18, fontSize: 11 }}>
                     <span className="muted">обновлено {relTime(a.last_assigned_at)} · фетчей: {a.assignment_count}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-      <div className="tk-ctx-row" style={{ gridTemplateColumns: "1fr" }}>
-        <div className="tk-ctx-label" style={{ marginBottom: 6 }}>Маршруты (кандидаты)</div>
-        <div className="tk-ctx-val">
-          {nodesQ.loading && <span className="muted small">Загрузка маршрутов…</span>}
-          {!nodesQ.loading && nodes.length === 0 && <span className="muted">—</span>}
-          {!nodesQ.loading && nodes.length > 0 && (
-            <div className="tk-routes">
-              {nodes.map((n, idx) => (
-                <div key={`${n.backend.node_id}-${n.transport}-${n.device_id || idx}`} className="tk-route-row">
-                  <div className="tk-route-backend">
-                    <Icon name="server" size={12} />
-                    <span className="small">{n.backend.name}</span>
-                    <span className="muted small mono">{n.backend.region}</span>
-                    {n.transport && <span className="tk-cat-tag">{n.transport}</span>}
-                    {n.placement_state && n.placement_state !== "applied" && (
-                      <span className="muted small">· {n.placement_state}</span>
-                    )}
-                  </div>
-                  <div className="tk-route-entries">
-                    {n.entries && n.entries.length > 0 ? (
-                      n.entries.map((e) => (
-                        <span
-                          key={`${n.backend.node_id}-${e.entry.node_id}-${e.transport_kind || ""}`}
-                          className="tk-ctx-dev"
-                          title={`Entry: ${e.entry.name} · ${e.entry.region} · ${e.health} · weight ${e.weight}`}
-                        >
-                          <Icon name={e.entry.role === "whitelist_entry" ? "shield" : "log-in"} size={11} />
-                          <span className="small">{e.entry.name}</span>
-                          <span className="muted small mono">{e.entry.region}</span>
-                          {e.health !== "healthy" && <span className="muted small">· {e.health}</span>}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="muted small">нет healthy entry-маршрутов</span>
-                    )}
                   </div>
                 </div>
               ))}
