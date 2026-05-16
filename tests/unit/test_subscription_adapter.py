@@ -43,7 +43,10 @@ def test_build_success_response_contains_contract_fields():
     assert response.headers["providerid"] == "provider-id-1"
     assert response.headers["routing"] == "happ://routing/custom"
     assert response.headers["subscription-always-hwid-enable"] == "1"
-    assert response.headers["color-profile"] == '{"buttonColor":"#D96C3FFF","backgroundColors":["#07171EFF","#0D2A33FF"]}'
+    color_header = response.headers["color-profile"]
+    assert color_header.startswith("base64:")
+    assert base64.b64decode(color_header.removeprefix("base64:")).decode("utf-8") == \
+        '{"buttonColor":"#D96C3FFF","backgroundColors":["#07171EFF","#0D2A33FF"]}'
     # Body is strictly vless:// lines — no #-prefixed directives (Remnawave style).
     assert response.payload == "vless://a\n\nvless://b"
     assert "#" not in response.payload
