@@ -293,6 +293,7 @@ class TransportBuildResult(BaseModel):
     routes: tuple[ResolvedSubscriptionRoute, ...]
     placement_signature: str | None
     diagnostic_reason: str | None
+    allowed_backend_ids: tuple[UUID, ...] = ()
 
     model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
 

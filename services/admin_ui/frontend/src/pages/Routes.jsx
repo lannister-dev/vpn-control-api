@@ -113,6 +113,7 @@ export function RoutesPage({ initialAction, onActionConsumed, onOpenNode }) {
           userCountByBackendName={userCountByBackendName}
           liveByBackendName={liveByBackendName}
           liveByEntryId={liveByEntryId}
+          loadByNodeId={loadByNodeId}
           onOpenNode={onOpenNode}
         />
       ) : (

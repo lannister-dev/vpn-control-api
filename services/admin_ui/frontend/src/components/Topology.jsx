@@ -11,7 +11,7 @@ function edgeStatusClass(s) {
   return "";
 }
 
-export function Topology({ routes = [], nodes = [], probes = [], userCountByBackendName = {}, liveByBackendName = {}, liveByEntryId = {}, onOpenNode }) {
+export function Topology({ routes = [], nodes = [], probes = [], userCountByBackendName = {}, liveByBackendName = {}, liveByEntryId = {}, loadByNodeId = {}, onOpenNode }) {
   const canvasRef = useRef(null);
   const [edges, setEdges] = useState([]);
   const [focus, setFocus] = useState(null);
@@ -238,7 +238,7 @@ export function Topology({ routes = [], nodes = [], probes = [], userCountByBack
                 </div>
                 <div className="topo-v2-node-meta">
                   {(() => {
-                    const ld = nodeLoad(n);
+                    const ld = nodeLoad(n, loadByNodeId[n.id]);
                     return (
                       <span className="mono" title={ld.tooltip} style={{ color: `var(--${ld.tone})` }}>
                         {ld.pct != null ? `${ld.pct}%` : ld.label}
@@ -296,7 +296,7 @@ export function Topology({ routes = [], nodes = [], probes = [], userCountByBack
                 </div>
                 <div className="topo-v2-node-meta">
                   {(() => {
-                    const ld = nodeLoad(n);
+                    const ld = nodeLoad(n, loadByNodeId[n.id]);
                     return (
                       <span className="mono" title={ld.tooltip} style={{ color: `var(--${ld.tone})` }}>
                         {ld.pct != null ? `${ld.pct}%` : ld.label}
