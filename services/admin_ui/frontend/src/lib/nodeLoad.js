@@ -1,13 +1,9 @@
-export function nodeLoad(node, liveConnections) {
-  // Single source of truth: live sing-box connections (NATS KV, ~10s cadence).
-  // Falls back to static placements_backend only if live data not yet available.
-  const used = Number(
-    liveConnections != null ? liveConnections : (node?.placements_backend || 0),
-  );
+export function nodeLoad(node) {
+  // "Нагрузка" — placement-based load (assigned keys / capacity slot).
+  // Live connections (⚡) and assigned keys (👥) are SEPARATE pills.
+  const used = Number(node?.placements_backend || 0);
   const rawCap = node?.capacity;
   const capacity = Number.isFinite(rawCap) && rawCap > 0 ? Number(rawCap) : null;
-  const isLive = liveConnections != null;
-  const label = isLive ? "Активных коннектов" : "Назначений (плейсменты)";
 
   if (capacity === null) {
     return {
@@ -17,7 +13,7 @@ export function nodeLoad(node, liveConnections) {
       tone: "muted",
       label: String(used),
       tooltip:
-        `${label}: ${used}. ` +
+        `Активных назначений: ${used}. ` +
         `Лимит не задан (capacity = 0/null) — нет цели для расчёта %.`,
     };
   }
@@ -31,9 +27,9 @@ export function nodeLoad(node, liveConnections) {
     tone,
     label: `${used} / ${capacity}`,
     tooltip:
-      `${label}: ${used}. ` +
+      `Активных назначений: ${used}. ` +
       `Лимит (capacity): ${capacity}. ` +
-      `Использовано ${pct}%.`,
+      `Использовано ${pct}% слота.`,
   };
 }
 

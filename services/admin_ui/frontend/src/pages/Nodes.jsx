@@ -79,7 +79,6 @@ export function NodesPage({ onOpenNode, initialAction, onActionConsumed }) {
     for (const it of routingState.data?.live_by_entry || []) {
       if (it.entry_node_id) m[it.entry_node_id] = (m[it.entry_node_id] || 0) + (it.connections || 0);
     }
-    // Backend tags come as "backend-<node-name>" — resolve by name from nodes list
     const byName = Object.fromEntries((status?.nodes || []).map((n) => [n.name, n.id]));
     for (const it of routingState.data?.live || []) {
       const name = it.tag?.startsWith("backend-") ? it.tag.slice("backend-".length) : it.tag;
@@ -88,6 +87,18 @@ export function NodesPage({ onOpenNode, initialAction, onActionConsumed }) {
     }
     return m;
   }, [routingState.data, status?.nodes]);
+
+  // 👥 keys assigned per backend (effective_backend from routingState.keys)
+  const userCountByBackendName = useMemo(() => {
+    const counts = {};
+    for (const k of routingState.data?.keys || []) {
+      const tag = k.effective_backend;
+      if (!tag) continue;
+      const name = tag.startsWith("backend-") ? tag.slice("backend-".length) : tag;
+      counts[name] = (counts[name] || 0) + 1;
+    }
+    return counts;
+  }, [routingState.data]);
 
   const nodes = status?.nodes || [];
   const list = useMemo(() => {
@@ -168,7 +179,9 @@ export function NodesPage({ onOpenNode, initialAction, onActionConsumed }) {
             {list.map((n) => {
               const h = healthOf(n);
               const st = stateOf(n);
-              const load = nodeLoad(n, liveByNodeId[n.id]);
+              const load = nodeLoad(n);
+              const liveConns = liveByNodeId[n.id] || 0;
+              const keyCount = userCountByBackendName[n.name] || 0;
               const seed = parseInt(String(n.id).replace(/-/g, "").slice(0, 6), 16) || 7;
               const flag = zoneFlag(zoneByCode, n.zone, n.region);
               const geo = nodeGeo(n.region);
@@ -199,7 +212,29 @@ export function NodesPage({ onOpenNode, initialAction, onActionConsumed }) {
                       </div>
                     )}
                   </td>
-                  <td><LoadBar load={load} /></td>
+                  <td>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <LoadBar load={load} />
+                      {liveConns > 0 && (
+                        <span
+                          className="pill ok small"
+                          title={`${liveConns} активных TCP-сессий (sing-box clash-API, ~10c cadence)`}
+                          style={{ padding: "1px 6px", fontSize: 10 }}
+                        >
+                          <Icon name="activity" size={9} /> {liveConns}
+                        </span>
+                      )}
+                      {n.role === "backend" && keyCount > 0 && (
+                        <span
+                          className="pill accent small"
+                          title={`${keyCount} ключей назначено на этот backend (effective_backend)`}
+                          style={{ padding: "1px 6px", fontSize: 10 }}
+                        >
+                          <Icon name="user" size={9} /> {keyCount}
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="tbl-num">{n.capacity ?? <span className="muted">—</span>}</td>
                   <td className="tbl-num">{n.placements_backend ?? 0}</td>
                   <td className="mono" style={{ color: hbBad ? "var(--bad)" : "var(--text-secondary)" }}>{hb}</td>
