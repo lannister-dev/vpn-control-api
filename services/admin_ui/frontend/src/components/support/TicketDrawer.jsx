@@ -14,6 +14,7 @@ import {
   TicketStatusPill, PriorityDot, CategoryTag,
   MessageBubble, Lightbox, Composer,
   ticketStatusOptions, priorityOptions, categoryOptions,
+  relTime,
 } from "./SupportPrimitives.jsx";
 
 function fmtDateTime(iso) {
