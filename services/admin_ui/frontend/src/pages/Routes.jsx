@@ -64,6 +64,14 @@ export function RoutesPage({ initialAction, onActionConsumed, onOpenNode }) {
     return counts;
   }, [routingState.data]);
 
+  const liveByEntryId = useMemo(() => {
+    const counts = {};
+    for (const item of routingState.data?.live_by_entry || []) {
+      if (item.entry_node_id) counts[item.entry_node_id] = (counts[item.entry_node_id] || 0) + (item.connections || 0);
+    }
+    return counts;
+  }, [routingState.data]);
+
   const counts = useMemo(() => {
     const c = { healthy: 0, warn: 0, bad: 0, other: 0 };
     for (const r of routesList) {
@@ -104,6 +112,7 @@ export function RoutesPage({ initialAction, onActionConsumed, onOpenNode }) {
           probes={probes.data || []}
           userCountByBackendName={userCountByBackendName}
           liveByBackendName={liveByBackendName}
+          liveByEntryId={liveByEntryId}
           onOpenNode={onOpenNode}
         />
       ) : (
