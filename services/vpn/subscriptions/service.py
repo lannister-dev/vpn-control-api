@@ -239,9 +239,76 @@ class SubscriptionService:
         return self._sub_to_out(updated)
 
     async def list_active_nodes(self, subscription_id) -> list:
-        from services.vpn.subscriptions.schemas import SubscriptionActiveNodeOut
-        rows = await self.subscription_repository.list_active_nodes_for_subscription(subscription_id)
-        return [SubscriptionActiveNodeOut.model_validate(r) for r in rows]
+        from services.vpn.subscriptions.schemas import (
+            SubscriptionActiveNodeOut,
+            SubscriptionEntryRouteOut,
+            SubscriptionNodeRef,
+        )
+
+        placements = await self.subscription_repository.list_active_backend_placements(subscription_id)
+        if not placements:
+            return []
+
+        backend_ids = list({p["backend_id"] for p in placements})
+        route_rows = await self.subscription_repository.list_entry_routes_for_backends(backend_ids)
+
+        # Group entries by (backend_id, transport_kind) for matching to device-key transport.
+        from collections import defaultdict
+        kind_of = self._transport_kind_from_profile
+        entries_by_backend: dict = defaultdict(list)
+        for r in route_rows:
+            kind = kind_of(network=r["network"], security=r["security"])
+            entries_by_backend[r["backend_id"]].append({
+                "entry": SubscriptionNodeRef(
+                    node_id=r["entry_id"],
+                    name=r["entry_name"],
+                    region=r["entry_region"],
+                    role=r["entry_role"],
+                ),
+                "transport_kind": kind,
+                "health": r["health"],
+                "weight": int(r["weight"] or 0),
+            })
+
+        out = []
+        for p in placements:
+            backend = SubscriptionNodeRef(
+                node_id=p["backend_id"],
+                name=p["backend_name"],
+                region=p["backend_region"],
+                role=p["backend_role"],
+            )
+            transport = p.get("transport")
+            candidates = entries_by_backend.get(p["backend_id"], [])
+            # Prefer entries matching the device-key transport; if none match,
+            # fall back to all healthy candidates so the operator still sees
+            # something useful.
+            matching = [c for c in candidates if not transport or c["transport_kind"] == transport]
+            chosen = matching if matching else candidates
+            entries = [SubscriptionEntryRouteOut.model_validate(c) for c in chosen]
+            out.append(SubscriptionActiveNodeOut(
+                backend=backend,
+                transport=transport,
+                device_id=p["device_id"],
+                placement_state=p.get("placement_state"),
+                sticky_until=p.get("sticky_until"),
+                entries=entries,
+            ))
+        return out
+
+    @staticmethod
+    def _transport_kind_from_profile(*, network: str | None, security: str | None) -> str:
+        n = (network or "").lower()
+        s = (security or "").lower()
+        if s == "reality" and n == "tcp":
+            return "reality"
+        if s == "tls" and n == "ws":
+            return "ws"
+        if s == "tls" and n == "grpc":
+            return "xhttp"
+        if s == "tls" and n == "tcp":
+            return "tcp"
+        return f"{s}-{n}" if s or n else ""
 
     async def list_subscriptions_by_user(
             self,

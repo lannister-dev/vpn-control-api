@@ -160,15 +160,29 @@ class SubscriptionDeviceKeyOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class SubscriptionActiveNodeOut(BaseModel):
+class SubscriptionNodeRef(BaseModel):
     node_id: UUID
     name: str
     region: str
     role: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SubscriptionEntryRouteOut(BaseModel):
+    entry: SubscriptionNodeRef
+    transport_kind: str | None = None
+    health: str
+    weight: int
+
+
+class SubscriptionActiveNodeOut(BaseModel):
+    backend: SubscriptionNodeRef
     transport: str | None = None
     device_id: UUID | None = None
     placement_state: str | None = None
     sticky_until: datetime | None = None
+    entries: list[SubscriptionEntryRouteOut] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 

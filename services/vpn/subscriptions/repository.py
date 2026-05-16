@@ -3,11 +3,12 @@ from uuid import UUID
 
 from sqlalchemy import and_, case, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import aliased, joinedload
 
 from services.nodes.models import VpnNode
 from services.placements.model import UserPlacement
 from services.plans.models import Plan
+from services.routes.model import Route, TransportProfile
 from services.vpn.keys.models import VpnKey
 from services.vpn.subscriptions.exceptions import SubscriptionNotFound
 from services.vpn.subscriptions.model import (
@@ -68,18 +69,16 @@ class SubscriptionRepository(BaseRepository[Subscription]):
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def list_active_nodes_for_subscription(
+    async def list_active_backend_placements(
             self, subscription_id: UUID,
     ) -> list[dict]:
-        """Return rows: (node_id, name, region, role, transport, device_id,
-        placement_state, sticky_until) — currently active backend nodes a
-        subscription is routed through, joined via device → key → placement."""
+        """Per (device, backend) the user is placed on."""
         stmt = (
             select(
-                VpnNode.id.label("node_id"),
-                VpnNode.name.label("name"),
-                VpnNode.region.label("region"),
-                VpnNode.role.label("role"),
+                VpnNode.id.label("backend_id"),
+                VpnNode.name.label("backend_name"),
+                VpnNode.region.label("backend_region"),
+                VpnNode.role.label("backend_role"),
                 SubscriptionDeviceKey.transport.label("transport"),
                 SubscriptionDevice.id.label("device_id"),
                 UserPlacement.applied_state.label("placement_state"),
@@ -95,6 +94,39 @@ class SubscriptionRepository(BaseRepository[Subscription]):
                 UserPlacement.is_active.is_(True),
             )
             .order_by(VpnNode.region, VpnNode.name)
+        )
+        rows = (await self.session.execute(stmt)).mappings().all()
+        return [dict(r) for r in rows]
+
+    async def list_entry_routes_for_backends(
+            self, backend_ids: list[UUID],
+    ) -> list[dict]:
+        """Healthy/warming-up routes that point to the given backend nodes,
+        joined with the entry node and transport profile. Empty list if no IDs."""
+        if not backend_ids:
+            return []
+        entry_node = aliased(VpnNode)
+        stmt = (
+            select(
+                Route.node_id.label("backend_id"),
+                entry_node.id.label("entry_id"),
+                entry_node.name.label("entry_name"),
+                entry_node.region.label("entry_region"),
+                entry_node.role.label("entry_role"),
+                TransportProfile.network.label("network"),
+                TransportProfile.security.label("security"),
+                Route.health_status.label("health"),
+                Route.effective_weight.label("weight"),
+            )
+            .join(entry_node, entry_node.id == Route.entry_node_id)
+            .join(TransportProfile, TransportProfile.id == Route.transport_profile_id)
+            .where(
+                Route.node_id.in_(backend_ids),
+                Route.is_active.is_(True),
+                Route.health_status.in_(("healthy", "warming_up")),
+                entry_node.is_enabled.is_(True),
+            )
+            .order_by(Route.effective_weight.desc(), entry_node.name)
         )
         rows = (await self.session.execute(stmt)).mappings().all()
         return [dict(r) for r in rows]
