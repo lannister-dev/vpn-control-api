@@ -238,6 +238,11 @@ class SubscriptionService:
         )
         return self._sub_to_out(updated)
 
+    async def list_active_nodes(self, subscription_id) -> list:
+        from services.vpn.subscriptions.schemas import SubscriptionActiveNodeOut
+        rows = await self.subscription_repository.list_active_nodes_for_subscription(subscription_id)
+        return [SubscriptionActiveNodeOut.model_validate(r) for r in rows]
+
     async def list_subscriptions_by_user(
             self,
             *,

@@ -160,6 +160,19 @@ class SubscriptionDeviceKeyOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SubscriptionActiveNodeOut(BaseModel):
+    node_id: UUID
+    name: str
+    region: str
+    role: str
+    transport: str | None = None
+    device_id: UUID | None = None
+    placement_state: str | None = None
+    sticky_until: datetime | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class SubscriptionDeviceOut(BaseModel):
     id: UUID
     subscription_id: UUID

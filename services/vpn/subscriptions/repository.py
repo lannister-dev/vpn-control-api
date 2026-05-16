@@ -5,7 +5,10 @@ from sqlalchemy import and_, case, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from services.nodes.models import VpnNode
+from services.placements.model import UserPlacement
 from services.plans.models import Plan
+from services.vpn.keys.models import VpnKey
 from services.vpn.subscriptions.exceptions import SubscriptionNotFound
 from services.vpn.subscriptions.model import (
     Subscription,
@@ -64,6 +67,37 @@ class SubscriptionRepository(BaseRepository[Subscription]):
         )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def list_active_nodes_for_subscription(
+            self, subscription_id: UUID,
+    ) -> list[dict]:
+        """Return rows: (node_id, name, region, role, transport, device_id,
+        placement_state, sticky_until) — currently active backend nodes a
+        subscription is routed through, joined via device → key → placement."""
+        stmt = (
+            select(
+                VpnNode.id.label("node_id"),
+                VpnNode.name.label("name"),
+                VpnNode.region.label("region"),
+                VpnNode.role.label("role"),
+                SubscriptionDeviceKey.transport.label("transport"),
+                SubscriptionDevice.id.label("device_id"),
+                UserPlacement.applied_state.label("placement_state"),
+                UserPlacement.sticky_until.label("sticky_until"),
+            )
+            .join(SubscriptionDeviceKey, SubscriptionDevice.id == SubscriptionDeviceKey.subscription_device_id)
+            .join(VpnKey, VpnKey.id == SubscriptionDeviceKey.vpn_key_id)
+            .join(UserPlacement, UserPlacement.key_id == VpnKey.id)
+            .join(VpnNode, VpnNode.id == UserPlacement.backend_node_id)
+            .where(
+                SubscriptionDevice.subscription_id == subscription_id,
+                SubscriptionDevice.is_active.is_(True),
+                UserPlacement.is_active.is_(True),
+            )
+            .order_by(VpnNode.region, VpnNode.name)
+        )
+        rows = (await self.session.execute(stmt)).mappings().all()
+        return [dict(r) for r in rows]
 
     async def list_by_user_id(
             self,

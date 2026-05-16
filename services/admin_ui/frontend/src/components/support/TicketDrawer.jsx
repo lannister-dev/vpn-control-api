@@ -526,6 +526,14 @@ function ContextPanel({ user }) {
   // Pick the most recently updated active sub, fall back to most recent.
   const sub = (list.find((s) => s.is_active) || list[0]);
 
+  const nodesQ = useQuery(
+    () => sub
+      ? api.get(`/subscriptions/${sub.id}/active-nodes`).catch(() => [])
+      : Promise.resolve([]),
+    { interval: 0, deps: [sub?.id] },
+  );
+  const nodes = Array.isArray(nodesQ.data) ? nodesQ.data : [];
+
   if (subs.loading) {
     return <div className="tk-context-panel muted small">Загрузка…</div>;
   }
@@ -573,6 +581,30 @@ function ContextPanel({ user }) {
       <div className="tk-ctx-row">
         <div className="tk-ctx-label">Sub ID</div>
         <div className="tk-ctx-val mono small">{subId}</div>
+      </div>
+      <div className="tk-ctx-row">
+        <div className="tk-ctx-label">Подключённые ноды</div>
+        <div className="tk-ctx-val">
+          {nodesQ.loading
+            ? <span className="muted">…</span>
+            : nodes.length === 0
+              ? <span className="muted">—</span>
+              : (
+                <div className="tk-ctx-devs">
+                  {nodes.map((n) => (
+                    <span
+                      key={`${n.node_id}-${n.transport}-${n.device_id}`}
+                      className="tk-ctx-dev"
+                      title={`${n.name} · ${n.region} · ${n.role} · ${n.transport || ""}`}
+                    >
+                      <Icon name={n.role === "whitelist_entry" ? "shield" : "server"} size={11} />
+                      <span className="small">{n.name}</span>
+                      <span className="muted small mono">{n.region}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+        </div>
       </div>
     </div>
   );
