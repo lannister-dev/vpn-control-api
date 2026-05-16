@@ -28,10 +28,10 @@ export function RoutesPage({ initialAction, onActionConsumed, onOpenNode }) {
     () => api.get("/subscriptions/route-assignments/distribution").catch(() => []),
     { interval: 30000 },
   );
-  const loadByEntryId = useMemo(() => {
+  const loadByNodeId = useMemo(() => {
     const m = {};
     for (const r of (Array.isArray(dist.data) ? dist.data : [])) {
-      m[r.entry_node_id] = r;
+      m[r.node_id] = r;
     }
     return m;
   }, [dist.data]);
@@ -60,6 +60,14 @@ export function RoutesPage({ initialAction, onActionConsumed, onOpenNode }) {
     for (const item of routingState.data?.live || []) {
       const name = item.tag?.startsWith("backend-") ? item.tag.slice("backend-".length) : item.tag;
       if (name) counts[name] = (counts[name] || 0) + (item.connections || 0);
+    }
+    return counts;
+  }, [routingState.data]);
+
+  const liveByEntryId = useMemo(() => {
+    const counts = {};
+    for (const item of routingState.data?.live_by_entry || []) {
+      if (item.entry_node_id) counts[item.entry_node_id] = (counts[item.entry_node_id] || 0) + (item.connections || 0);
     }
     return counts;
   }, [routingState.data]);
@@ -104,13 +112,14 @@ export function RoutesPage({ initialAction, onActionConsumed, onOpenNode }) {
           probes={probes.data || []}
           userCountByBackendName={userCountByBackendName}
           liveByBackendName={liveByBackendName}
+          liveByEntryId={liveByEntryId}
           onOpenNode={onOpenNode}
         />
       ) : (
         <RoutesList
           routesList={routesList}
           nodesById={nodesById}
-          loadByEntryId={loadByEntryId}
+          loadByNodeId={loadByNodeId}
           search={search} setSearch={setSearch}
           statusFilter={statusFilter} setStatusFilter={setStatusFilter}
           loading={routes.loading}
@@ -125,7 +134,7 @@ export function RoutesPage({ initialAction, onActionConsumed, onOpenNode }) {
   );
 }
 
-function RoutesList({ routesList, nodesById, loadByEntryId = {}, search, setSearch, statusFilter, setStatusFilter, loading, onOpenNode, onEdit }) {
+function RoutesList({ routesList, nodesById, loadByNodeId = {}, search, setSearch, statusFilter, setStatusFilter, loading, onOpenNode, onEdit }) {
   const rows = useMemo(() => {
     let list = routesList;
     if (statusFilter) list = list.filter((r) => r.health_status === statusFilter);
@@ -198,17 +207,19 @@ function RoutesList({ routesList, nodesById, loadByEntryId = {}, search, setSear
                           {nodeLabel(entryNode)}
                         </span>
                         {(() => {
-                          const d = loadByEntryId[entryNode.id];
-                          if (!d) return null;
-                          const tone = d.load_pct > 85 ? "var(--bad)" : d.load_pct > 65 ? "var(--warn)" : "var(--text-muted)";
+                          const d = loadByNodeId[entryNode.id];
+                          const slot = d?.as_entry;
+                          if (!slot || !slot.device_count) return null;
+                          const loadPct = d.load_pct;
+                          const tone = loadPct > 85 ? "var(--bad)" : loadPct > 65 ? "var(--warn)" : "var(--text-muted)";
                           return (
                             <span
                               className="pill small"
-                              title={`${d.subscription_count} подписок · ${d.device_count} устройств · ${d.load_pct != null ? d.load_pct + "%" : "—"} от capacity`}
+                              title={`${slot.subscription_count} подписок · ${slot.device_count} устройств${loadPct != null ? ` · ${loadPct}% от capacity` : ""}`}
                               style={{ color: tone }}
                             >
-                              👥 {d.subscription_count}
-                              {d.load_pct != null && <span className="muted" style={{ marginLeft: 4 }}>{d.load_pct}%</span>}
+                              👥 {slot.subscription_count}
+                              {loadPct != null && <span className="muted" style={{ marginLeft: 4 }}>{loadPct}%</span>}
                             </span>
                           );
                         })()}

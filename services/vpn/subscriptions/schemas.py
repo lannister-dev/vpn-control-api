@@ -209,6 +209,24 @@ class EntryDistributionRowOut(BaseModel):
     most_recent_at: datetime | None = None
 
 
+class NodeAssignmentSlotOut(BaseModel):
+    subscription_count: int = 0
+    device_count: int = 0
+    most_recent_at: datetime | None = None
+
+
+class NodeAssignmentDistributionOut(BaseModel):
+    node_id: UUID
+    name: str
+    region: str
+    role: str
+    capacity: int = 0
+    as_entry: NodeAssignmentSlotOut | None = None
+    as_backend: NodeAssignmentSlotOut | None = None
+    total_device_count: int = 0
+    load_pct: float | None = None
+
+
 class SubscriptionDeviceOut(BaseModel):
     id: UUID
     subscription_id: UUID

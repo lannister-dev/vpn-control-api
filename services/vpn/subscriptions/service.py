@@ -11,7 +11,7 @@ from collections.abc import Iterable
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -118,10 +118,17 @@ logger_sub = StructuredLogger(logging.getLogger("subscription-build"))
 
 
 class SubscriptionService:
-    def __init__(self, session: AsyncSession, redis: RedisClient):
+    def __init__(
+            self,
+            session: AsyncSession,
+            redis: RedisClient,
+            *,
+            nats_client=None,
+    ):
         self.settings = get_settings()
         self.session = session
         self.redis = redis
+        self._nats = nats_client
         self.subscription_repository = SubscriptionRepository(session)
         self.device_repository = SubscriptionDeviceRepository(session)
         self.device_key_repository = SubscriptionDeviceKeyRepository(session)
@@ -262,33 +269,38 @@ class SubscriptionService:
             for r in rows
         ]
 
-    async def entry_distribution(self, *, since_hours: int | None = None) -> list:
+    async def node_distribution(self, *, since_hours: int | None = None) -> list:
         from datetime import datetime, timedelta, timezone
 
-        from services.vpn.subscriptions.schemas import EntryDistributionRowOut
+        from services.vpn.subscriptions.schemas import (
+            NodeAssignmentDistributionOut,
+            NodeAssignmentSlotOut,
+        )
         since = None
         if since_hours and since_hours > 0:
             since = datetime.now(timezone.utc) - timedelta(hours=since_hours)
-        rows = await self.subscription_repository.entry_distribution(since=since)
-        total_devices = sum(int(r["device_count"] or 0) for r in rows)
-        return [
-            EntryDistributionRowOut(
-                entry_node_id=r["entry_id"],
-                entry_name=r["entry_name"],
-                entry_region=r["entry_region"],
-                entry_role=r["entry_role"],
-                capacity=int(r["capacity"] or 0),
-                subscription_count=int(r["subscription_count"] or 0),
-                device_count=int(r["device_count"] or 0),
-                share_pct=round((int(r["device_count"] or 0) / total_devices) * 100, 1) if total_devices else 0.0,
-                load_pct=(
-                    round((int(r["device_count"] or 0) / int(r["capacity"])) * 100, 1)
-                    if int(r["capacity"] or 0) > 0 else None
-                ),
-                most_recent_at=r["most_recent_at"],
+        rows = await self.subscription_repository.node_assignment_distribution(since=since)
+        out = []
+        for r in rows:
+            as_entry = NodeAssignmentSlotOut(**r["as_entry"]) if r.get("as_entry") else None
+            as_backend = NodeAssignmentSlotOut(**r["as_backend"]) if r.get("as_backend") else None
+            total = max(
+                as_entry.device_count if as_entry else 0,
+                as_backend.device_count if as_backend else 0,
             )
-            for r in rows
-        ]
+            cap = int(r.get("capacity") or 0)
+            out.append(NodeAssignmentDistributionOut(
+                node_id=r["node_id"],
+                name=r["name"],
+                region=r["region"],
+                role=r["role"],
+                capacity=cap,
+                as_entry=as_entry,
+                as_backend=as_backend,
+                total_device_count=total,
+                load_pct=round(total / cap * 100, 1) if cap > 0 and total > 0 else None,
+            ))
+        return out
 
     async def list_active_nodes(self, subscription_id) -> list:
         from services.vpn.subscriptions.schemas import (
@@ -923,9 +935,15 @@ class SubscriptionService:
         backend_loads = await self._safe_call_counter(
             self.placement_repository.count_desired_active_by_backend_node
         )
-        entry_loads = await self._safe_call_counter(
-            self.route_repository.count_active_by_entry
+        # Live entry load = actual sing-box connections per entry-node,
+        # reported every ~10s by each node-agent into NATS KV
+        # `entry-routing-stats`. Falls back to persisted assignment counts
+        # when NATS is unavailable (gives reasonable distribution between
+        # subscription polls of the same user).
+        entry_loads = await self._fetch_live_entry_loads(
+            exclude_subscription_id=self._as_uuid(subscription.id),
         )
+        entry_user_loads = entry_loads
 
         resolved_routes: list[ResolvedSubscriptionRoute] = []
         seen_uris: set[str] = set()
@@ -943,6 +961,7 @@ class SubscriptionService:
                     current_entry=raw_entry_node,
                     user_id=getattr(subscription, "user_id", None),
                     entries_by_zone=entries_by_zone,
+                    entry_user_loads=entry_user_loads,
                 )
                 if entry_node is not None:
                     entry_nodes_by_id[self._as_uuid(entry_node.id)] = entry_node
@@ -1058,6 +1077,7 @@ class SubscriptionService:
             entry_relay_enabled=entry_relay_enabled,
             backend_loads=backend_loads,
             entry_loads=entry_loads,
+            entry_user_loads=entry_user_loads,
         )
 
         selected_routes = self.route_selector.select(
@@ -1165,7 +1185,9 @@ class SubscriptionService:
             entry_relay_enabled: bool,
             backend_loads: dict,
             entry_loads: dict,
+            entry_user_loads: dict | None = None,
     ) -> list[ResolvedSubscriptionRoute]:
+        entry_user_loads = entry_user_loads or {}
         entries_by_zone = entries_by_zone or {}
         backends_with_routes = {r.backend_node_id for r in resolved_routes}
         missing_backends = [bid for bid in allowed_backend_ids if bid not in backends_with_routes]
@@ -1235,6 +1257,7 @@ class SubscriptionService:
                     current_entry=raw_entry_node,
                     user_id=getattr(subscription, "user_id", None),
                     entries_by_zone=entries_by_zone,
+                    entry_user_loads=entry_user_loads,
                 )
                 if entry_node is None:
                     continue
@@ -1913,6 +1936,7 @@ class SubscriptionService:
             current_entry: VpnNode | None,
             user_id,
             entries_by_zone: dict[str, list[VpnNode]],
+            entry_user_loads: dict | None = None,
     ) -> VpnNode | None:
         if self._is_entry_usable(current_entry):
             return current_entry
@@ -1926,8 +1950,61 @@ class SubscriptionService:
             candidates = [e for e in candidates if getattr(e, "role", None) == required_role]
         if not candidates:
             return None
-        idx = self._user_hash_index(user_id, len(candidates), bucket=self._current_entry_bucket())
-        return candidates[idx]
+
+        loads = entry_user_loads or {}
+        bucket = self._current_entry_bucket()
+        return min(
+            candidates,
+            key=lambda c: (
+                int(loads.get(self._as_uuid(c.id), 0)),
+                self._entry_tiebreak(user_id=user_id, entry_id=c.id, bucket=bucket),
+            ),
+        )
+
+    async def _fetch_live_entry_loads(
+            self, *, exclude_subscription_id,
+    ) -> dict[UUID, int]:
+        """Return {entry_node_id: live_connection_count} from sing-box
+        clash-api reports cached in NATS KV. Falls back to DB-assignment
+        counts when NATS is unavailable or the bucket is empty."""
+        from services.routing.entry.constants import KV_STATS_BUCKET
+
+        live: dict[UUID, int] = {}
+        if self._nats is not None:
+            try:
+                entries = await self._nats.kv_list_all(bucket=KV_STATS_BUCKET)
+                for raw in entries.values():
+                    try:
+                        payload = json.loads(raw.decode("utf-8"))
+                    except (UnicodeDecodeError, json.JSONDecodeError):
+                        continue
+                    node_id_raw = payload.get("node_id")
+                    total = payload.get("total")
+                    if node_id_raw and total is not None:
+                        try:
+                            node_uuid = UUID(str(node_id_raw))
+                        except ValueError:
+                            continue
+                        live[node_uuid] = live.get(node_uuid, 0) + int(total)
+            except Exception:
+                logger_sub.exception("live_entry_loads_fetch_failed")
+
+        if live:
+            return live
+
+        # Fallback: persisted assignment counts (lower fidelity but always
+        # available; updates only on subscription fetch).
+        try:
+            return await self.subscription_repository.count_active_subs_by_entry(
+                exclude_subscription_id=exclude_subscription_id,
+            )
+        except Exception:
+            return {}
+
+    @staticmethod
+    def _entry_tiebreak(*, user_id, entry_id, bucket: int | None) -> int:
+        seed = f"{user_id}:{bucket}:{entry_id}" if bucket is not None else f"{user_id}:{entry_id}"
+        return int.from_bytes(hashlib.sha256(seed.encode()).digest()[:8], "big")
 
     async def _set_placement_desired_state(
             self,
@@ -2379,7 +2456,9 @@ class SubscriptionService:
 
 
 def get_subscription_service(
+        request: Request,
         session: AsyncSession = Depends(AsyncDatabase.get_session),
         redis: RedisClient = Depends(get_redis_client),
 ) -> SubscriptionService:
-    return SubscriptionService(session, redis)
+    nats_client = getattr(request.app.state, "nats_client", None)
+    return SubscriptionService(session, redis, nats_client=nats_client)
