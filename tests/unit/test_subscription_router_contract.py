@@ -62,7 +62,7 @@ async def test_get_subscription_config_success_headers_and_payload():
     assert out.headers["providerid"] == "provider-id-1"
     assert out.headers["routing"] == "happ://routing/custom"
     assert out.headers["subscription-always-hwid-enable"] == "1"
-    assert out.headers["color-profile"] == '{"buttonColor":"#D96C3FFF","backgroundColors":["#07171EFF","#0D2A33FF"]}'
+    assert out.headers["color-profile"].startswith("base64:")
     call = service.build_payload.await_args
     assert call is not None
     kwargs = call.kwargs

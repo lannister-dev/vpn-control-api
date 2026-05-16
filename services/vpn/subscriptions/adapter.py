@@ -230,7 +230,7 @@ class SubscriptionPublicAdapter:
         if self._happ_always_hwid_enable:
             headers["subscription-always-hwid-enable"] = "1"
         if self._happ_color_profile:
-            headers["color-profile"] = self._happ_color_profile
+            headers["color-profile"] = self._b64_header_value(self._happ_color_profile)
         if self._happ_autoconnect:
             headers["subscription-autoconnect"] = "true"
             headers["subscription-autoconnect-type"] = self._happ_autoconnect_type
