@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 
@@ -210,7 +211,7 @@ class SubscriptionPublicAdapter:
             "Cache-Control": "no-store",
             "Pragma": "no-cache",
             "Content-Type": "application/json; charset=utf-8" if is_json else "text/plain; charset=utf-8",
-            "profile-title": self._happ_profile_title,
+            "profile-title": self._b64_header_value(self._happ_profile_title),
             "profile-update-interval": str(self._happ_profile_update_interval_hours),
             "Vary": ", ".join(vary_parts),
         }
@@ -238,40 +239,19 @@ class SubscriptionPublicAdapter:
         return headers
 
     def _build_payload_body(self, *, payload: str, user_agent: str | None, is_json: bool = False) -> str:
-        del user_agent
-        if is_json:
-            return payload
-        directives = self._happ_body_directives()
-        if not directives:
-            return payload
-        if not payload:
-            return "\n".join(directives)
-        return "\n".join([*directives, payload])
+        # Happ reads all directives (color-profile, hide-settings, etc.) from HTTP
+        # response headers only. Body-prefixed "#..." lines confuse some Happ
+        # parsers (each "#" line is treated as a VLESS fragment), so we keep the
+        # body strictly to vless:// lines — matches the Remnawave panel convention.
+        del user_agent, is_json
+        return payload
 
-    def _happ_body_directives(self) -> list[str]:
-        directives: list[str] = []
-        if self._happ_profile_title:
-            directives.append(f"#profile-title: {self._happ_profile_title}")
-        if self._happ_profile_update_interval_hours:
-            directives.append(f"#profile-update-interval: {self._happ_profile_update_interval_hours}")
-        if self._happ_support_url:
-            directives.append(f"#support-url: {self._happ_support_url}")
-        if self._happ_profile_web_page_url:
-            directives.append(f"#profile-web-page-url: {self._happ_profile_web_page_url}")
-        if self._happ_provider_id:
-            directives.append(f"#providerid: {self._happ_provider_id}")
-        if self._happ_routing:
-            directives.append(f"#routing: {self._happ_routing}")
-        if self._happ_hide_settings:
-            directives.append("#hide-settings: 1")
-        if self._happ_always_hwid_enable:
-            directives.append("#subscription-always-hwid-enable: 1")
-        if self._happ_color_profile:
-            directives.append(f"#color-profile: {self._happ_color_profile}")
-        if self._happ_autoconnect:
-            directives.append("#subscription-autoconnect: true")
-            directives.append(f"#subscription-autoconnect-type: {self._happ_autoconnect_type}")
-        if self._happ_ping_onopen:
-            directives.append("#subscription-ping-onopen-enabled: true")
-        return directives
+    @staticmethod
+    def _b64_header_value(value: str) -> str:
+        """Wrap a UTF-8 value in `base64:<base64>` so it survives non-ASCII chars
+        in HTTP headers (Cloudflare/proxies may strip non-latin-1)."""
+        if not value:
+            return ""
+        encoded = base64.b64encode(value.encode("utf-8")).decode("ascii")
+        return f"base64:{encoded}"
 
