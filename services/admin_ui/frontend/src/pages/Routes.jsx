@@ -69,6 +69,15 @@ export function RoutesPage({ initialAction, onActionConsumed, onOpenNode }) {
     return m;
   }, [routingState.data, nodes]);
 
+  // 👤 unique users per entry (from sing-box clash-API metadata.user)
+  const usersByEntryId = useMemo(() => {
+    const m = {};
+    for (const it of routingState.data?.live_by_entry || []) {
+      if (it.entry_node_id) m[it.entry_node_id] = (m[it.entry_node_id] || 0) + (it.unique_users || 0);
+    }
+    return m;
+  }, [routingState.data]);
+
   const liveByEntryId = useMemo(() => {
     const counts = {};
     for (const item of routingState.data?.live_by_entry || []) {

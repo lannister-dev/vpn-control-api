@@ -139,6 +139,8 @@ class HeartbeatEvent(BaseModel):
     poll_count: int = Field(ge=0)
     applied: int = Field(ge=0)
     failed: int = Field(ge=0)
+    cpu_pct: float | None = Field(default=None, ge=0, le=100)
+    mem_pct: float | None = Field(default=None, ge=0, le=100)
     pool: HeartbeatPoolHealth | None = None
     upstream: HeartbeatUpstreamHealth | None = None
 

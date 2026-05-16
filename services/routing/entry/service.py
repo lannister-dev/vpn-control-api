@@ -311,6 +311,7 @@ class EntryRoutingAdminService:
             return [], []
         by_backend_totals: dict[str, int] = {}
         by_entry_totals: dict[str, int] = {}
+        by_entry_unique_users: dict[str, int] = {}
         for raw in entries.values():
             try:
                 payload = json.loads(raw.decode("utf-8"))
@@ -322,13 +323,20 @@ class EntryRoutingAdminService:
             total = payload.get("total")
             if node_id and total is not None:
                 by_entry_totals[str(node_id)] = by_entry_totals.get(str(node_id), 0) + int(total)
+                by_entry_unique_users[str(node_id)] = (
+                    by_entry_unique_users.get(str(node_id), 0) + int(payload.get("unique_users") or 0)
+                )
         return (
             [
                 RoutingLiveStatsByBackend(tag=tag, connections=count)
                 for tag, count in sorted(by_backend_totals.items())
             ],
             [
-                RoutingLiveStatsByEntry(entry_node_id=node_id, connections=count)
+                RoutingLiveStatsByEntry(
+                    entry_node_id=node_id,
+                    connections=count,
+                    unique_users=by_entry_unique_users.get(node_id, 0),
+                )
                 for node_id, count in sorted(by_entry_totals.items())
             ],
         )
