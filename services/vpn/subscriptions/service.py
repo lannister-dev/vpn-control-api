@@ -931,6 +931,12 @@ class SubscriptionService:
         entry_loads = await self._safe_call_counter(
             self.route_repository.count_active_by_entry
         )
+        try:
+            entry_user_loads = await self.subscription_repository.count_active_subs_by_entry(
+                exclude_subscription_id=self._as_uuid(subscription.id),
+            )
+        except Exception:
+            entry_user_loads = {}
 
         resolved_routes: list[ResolvedSubscriptionRoute] = []
         seen_uris: set[str] = set()
@@ -948,6 +954,7 @@ class SubscriptionService:
                     current_entry=raw_entry_node,
                     user_id=getattr(subscription, "user_id", None),
                     entries_by_zone=entries_by_zone,
+                    entry_user_loads=entry_user_loads,
                 )
                 if entry_node is not None:
                     entry_nodes_by_id[self._as_uuid(entry_node.id)] = entry_node
@@ -1063,6 +1070,7 @@ class SubscriptionService:
             entry_relay_enabled=entry_relay_enabled,
             backend_loads=backend_loads,
             entry_loads=entry_loads,
+            entry_user_loads=entry_user_loads,
         )
 
         selected_routes = self.route_selector.select(
@@ -1170,7 +1178,9 @@ class SubscriptionService:
             entry_relay_enabled: bool,
             backend_loads: dict,
             entry_loads: dict,
+            entry_user_loads: dict | None = None,
     ) -> list[ResolvedSubscriptionRoute]:
+        entry_user_loads = entry_user_loads or {}
         entries_by_zone = entries_by_zone or {}
         backends_with_routes = {r.backend_node_id for r in resolved_routes}
         missing_backends = [bid for bid in allowed_backend_ids if bid not in backends_with_routes]
@@ -1240,6 +1250,7 @@ class SubscriptionService:
                     current_entry=raw_entry_node,
                     user_id=getattr(subscription, "user_id", None),
                     entries_by_zone=entries_by_zone,
+                    entry_user_loads=entry_user_loads,
                 )
                 if entry_node is None:
                     continue
@@ -1918,6 +1929,7 @@ class SubscriptionService:
             current_entry: VpnNode | None,
             user_id,
             entries_by_zone: dict[str, list[VpnNode]],
+            entry_user_loads: dict | None = None,
     ) -> VpnNode | None:
         if self._is_entry_usable(current_entry):
             return current_entry
@@ -1931,8 +1943,21 @@ class SubscriptionService:
             candidates = [e for e in candidates if getattr(e, "role", None) == required_role]
         if not candidates:
             return None
-        idx = self._user_hash_index(user_id, len(candidates), bucket=self._current_entry_bucket())
-        return candidates[idx]
+
+        loads = entry_user_loads or {}
+        bucket = self._current_entry_bucket()
+        return min(
+            candidates,
+            key=lambda c: (
+                int(loads.get(self._as_uuid(c.id), 0)),
+                self._entry_tiebreak(user_id=user_id, entry_id=c.id, bucket=bucket),
+            ),
+        )
+
+    @staticmethod
+    def _entry_tiebreak(*, user_id, entry_id, bucket: int | None) -> int:
+        seed = f"{user_id}:{bucket}:{entry_id}" if bucket is not None else f"{user_id}:{entry_id}"
+        return int.from_bytes(hashlib.sha256(seed.encode()).digest()[:8], "big")
 
     async def _set_placement_desired_state(
             self,

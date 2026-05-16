@@ -152,6 +152,26 @@ class SubscriptionRepository(BaseRepository[Subscription]):
             deduped.append(dict(r))
         return deduped
 
+    async def count_active_subs_by_entry(
+            self, *, exclude_subscription_id: UUID | None = None,
+    ) -> dict[UUID, int]:
+        """Returns {entry_node_id: distinct_subscriptions_count} over active
+        devices. Used by selector to balance load — excludes current sub so
+        repeat fetches by the same sub stay stable."""
+        stmt = (
+            select(
+                SubscriptionRouteAssignment.entry_node_id,
+                func.count(func.distinct(SubscriptionRouteAssignment.subscription_id)),
+            )
+            .join(SubscriptionDevice, SubscriptionDevice.id == SubscriptionRouteAssignment.subscription_device_id)
+            .where(SubscriptionDevice.is_active.is_(True))
+        )
+        if exclude_subscription_id is not None:
+            stmt = stmt.where(SubscriptionRouteAssignment.subscription_id != exclude_subscription_id)
+        stmt = stmt.group_by(SubscriptionRouteAssignment.entry_node_id)
+        res = await self.session.execute(stmt)
+        return {row[0]: int(row[1]) for row in res.all()}
+
     async def node_assignment_distribution(
             self, *, since: datetime | None = None,
     ) -> list[dict]:
