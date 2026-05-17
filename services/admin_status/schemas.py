@@ -26,6 +26,7 @@ class AdminNodeStatusOut(BaseModel):
     placements_backend: int
     cpu_pct: float | None = None
     mem_pct: float | None = None
+    bandwidth_pct: float | None = None
 
 
 class AdminStatusTotalsOut(BaseModel):

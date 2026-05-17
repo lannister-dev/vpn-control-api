@@ -141,6 +141,7 @@ class HeartbeatEvent(BaseModel):
     failed: int = Field(ge=0)
     cpu_pct: float | None = Field(default=None, ge=0, le=100)
     mem_pct: float | None = Field(default=None, ge=0, le=100)
+    bandwidth_pct: float | None = Field(default=None, ge=0, le=100)
     pool: HeartbeatPoolHealth | None = None
     upstream: HeartbeatUpstreamHealth | None = None
 

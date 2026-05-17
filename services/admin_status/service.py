@@ -92,6 +92,7 @@ class AdminStatusService:
                     placements_backend=placements_backend.get(node.id, 0),
                     cpu_pct=self._extract_stat(agent_state, "cpu_pct"),
                     mem_pct=self._extract_stat(agent_state, "mem_pct"),
+                    bandwidth_pct=self._extract_stat(agent_state, "bandwidth_pct"),
                 )
             )
 
