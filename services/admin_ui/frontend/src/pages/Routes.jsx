@@ -127,14 +127,14 @@ export function RoutesPage({ initialAction, onActionConsumed, onOpenNode }) {
           userCountByBackendName={userCountByBackendName}
           liveByBackendName={liveByBackendName}
           liveByEntryId={liveByEntryId}
-          loadByNodeId={loadByNodeId}
+          usersByEntryId={usersByEntryId}
           onOpenNode={onOpenNode}
         />
       ) : (
         <RoutesList
           routesList={routesList}
           nodesById={nodesById}
-          loadByNodeId={loadByNodeId}
+          loadByNodeId={liveByNodeId}
           search={search} setSearch={setSearch}
           statusFilter={statusFilter} setStatusFilter={setStatusFilter}
           loading={routes.loading}

@@ -90,6 +90,9 @@ class AdminStatusService:
                     last_seen_at=agent_state.last_seen_at if agent_state else None,
                     last_sync_at=agent_state.last_sync_at if agent_state else None,
                     placements_backend=placements_backend.get(node.id, 0),
+                    cpu_pct=self._extract_stat(agent_state, "cpu_pct"),
+                    mem_pct=self._extract_stat(agent_state, "mem_pct"),
+                    bandwidth_pct=self._extract_stat(agent_state, "bandwidth_pct"),
                 )
             )
 
@@ -202,6 +205,19 @@ class AdminStatusService:
         if last_seen_at < self._node_seen_after(now=now):
             return "heartbeat_stale"
         return None
+
+    @staticmethod
+    def _extract_stat(agent_state, key: str) -> float | None:
+        if agent_state is None:
+            return None
+        details = getattr(agent_state, "details", None)
+        if not isinstance(details, dict):
+            return None
+        stats = details.get("stats")
+        if not isinstance(stats, dict):
+            return None
+        raw = stats.get(key)
+        return float(raw) if isinstance(raw, (int, float)) else None
 
     @staticmethod
     def _extract_drain_meta(agent_state) -> tuple[str | None, datetime | None]:

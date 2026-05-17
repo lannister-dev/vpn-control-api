@@ -1,49 +1,31 @@
 export function nodeLoad(node, opts = {}) {
-  // Combined "нагрузка": max of multiple normalised signals.
-  // 1. placements / capacity  — pre-allocated load
-  // 2. live_connections / capacity  — real TCP sessions right now
-  // 3. cpu_pct  — agent heartbeat CPU usage (when reported)
-  // Worst-of metric → highlights real bottleneck.
-  const placements = Number(node?.placements_backend || 0);
-  const rawCap = node?.capacity;
-  const capacity = Number.isFinite(rawCap) && rawCap > 0 ? Number(rawCap) : null;
-  const live = Number.isFinite(opts.liveConnections) ? Number(opts.liveConnections) : null;
+  // Реальная нагрузка ноды — max(CPU%, Bandwidth%). Коннекты и плейсменты
+  // про количество, а не про нагрузку (один коннект может качать гигабит,
+  // тысяча простаивать). null/muted когда метрик от агента ещё нет.
   const cpuPct = Number.isFinite(opts.cpuPct) ? Number(opts.cpuPct) : null;
+  const bwPct = Number.isFinite(opts.bandwidthPct) ? Number(opts.bandwidthPct) : null;
 
   const components = [];
-  if (capacity && capacity > 0) {
-    components.push({ name: "плейсменты", pct: (placements / capacity) * 100, used: placements, total: capacity });
-    if (live != null) {
-      components.push({ name: "live коннекты", pct: (live / capacity) * 100, used: live, total: capacity });
-    }
-  }
-  if (cpuPct != null) {
-    components.push({ name: "CPU", pct: cpuPct, used: cpuPct, total: 100 });
-  }
+  if (cpuPct != null) components.push({ name: "CPU", pct: cpuPct });
+  if (bwPct != null) components.push({ name: "Bandwidth", pct: bwPct });
 
   if (components.length === 0) {
     return {
-      used: placements,
-      capacity: null,
       pct: null,
       tone: "muted",
-      label: String(placements),
-      tooltip: "Нет данных для расчёта нагрузки.",
+      label: "—",
+      tooltip: "Нагрузка: нет данных от агента (heartbeat без CPU/bw).",
     };
   }
 
   const dominant = components.reduce((a, b) => (b.pct > a.pct ? b : a));
   const pct = Math.round(dominant.pct);
-  const tone = pct >= 95 ? "bad" : pct >= 75 ? "warn" : "ok";
-  const tipLines = components.map(
-    (c) => `· ${c.name}: ${Math.round(c.pct)}% (${c.used}/${c.total})`,
-  );
+  const tone = pct >= 90 ? "bad" : pct >= 70 ? "warn" : "ok";
+  const tipLines = components.map((c) => `· ${c.name}: ${Math.round(c.pct)}%`);
   return {
-    used: dominant.used,
-    capacity: dominant.total,
     pct,
     tone,
-    label: `${dominant.used} / ${dominant.total}`,
+    label: `${pct}%`,
     tooltip:
       `Нагрузка ${pct}% (доминирует «${dominant.name}»).\n` +
       tipLines.join("\n"),
@@ -51,42 +33,28 @@ export function nodeLoad(node, opts = {}) {
 }
 
 export function regionLoad(nodes) {
-  const list = Array.isArray(nodes) ? nodes : [];
-  let usedSum = 0;
-  let capSum = 0;
-  let unknownCount = 0;
+  // Region load = mean(CPU) across enabled nodes; null when no CPU data yet.
+  const list = (Array.isArray(nodes) ? nodes : []).filter((n) => n?.is_enabled);
+  const samples = [];
   for (const n of list) {
-    const { used, capacity } = nodeLoad(n);
-    usedSum += used;
-    if (capacity == null) unknownCount += 1;
-    else capSum += capacity;
+    const cpu = n?.cpu_pct;
+    if (Number.isFinite(cpu)) samples.push(Number(cpu));
   }
-  if (capSum === 0) {
+  if (samples.length === 0) {
     return {
-      used: usedSum,
-      capacity: null,
       pct: null,
       tone: "muted",
-      label: String(usedSum),
-      tooltip:
-        `Активных назначений в регионе: ${usedSum}. ` +
-        `Capacity не задан ни у одной ноды — % не считается.`,
+      label: "—",
+      tooltip: "Нет данных CPU от агентов — % региона не считается.",
     };
   }
-  const pct = Math.round((usedSum / capSum) * 100);
-  const tone = pct >= 95 ? "bad" : pct >= 75 ? "warn" : "ok";
-  const note = unknownCount > 0
-    ? ` (${unknownCount} нод без capacity в расчёт не вошли)`
-    : "";
+  const mean = samples.reduce((s, x) => s + x, 0) / samples.length;
+  const pct = Math.round(mean);
+  const tone = pct >= 90 ? "bad" : pct >= 70 ? "warn" : "ok";
   return {
-    used: usedSum,
-    capacity: capSum,
     pct,
     tone,
-    label: `${usedSum} / ${capSum}`,
-    tooltip:
-      `Активных назначений: ${usedSum}. ` +
-      `Суммарный capacity: ${capSum}. ` +
-      `Загрузка региона ${pct}%${note}.`,
+    label: `${pct}%`,
+    tooltip: `Средний CPU ${pct}% по ${samples.length} нодам региона.`,
   };
 }

@@ -84,6 +84,7 @@ class HeartbeatStats(BaseModel):
     failed: int
     cpu_pct: float | None = None
     mem_pct: float | None = None
+    bandwidth_pct: float | None = None
 
 
 class HeartbeatRuntime(BaseModel):

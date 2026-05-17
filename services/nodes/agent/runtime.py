@@ -735,6 +735,7 @@ class NodeAgentRuntime:
                             failed=event.failed,
                             cpu_pct=event.cpu_pct,
                             mem_pct=event.mem_pct,
+                            bandwidth_pct=event.bandwidth_pct,
                         ),
                         pool=pool_details,
                         upstream=upstream_details,
