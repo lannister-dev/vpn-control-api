@@ -89,13 +89,19 @@ export function RoutesPage({ initialAction, onActionConsumed, onOpenNode }) {
   const counts = useMemo(() => {
     const c = { healthy: 0, warn: 0, bad: 0, other: 0 };
     for (const r of routesList) {
-      if (r.health_status === "healthy") c.healthy++;
-      else if (r.health_status === "blocked") c.bad++;
-      else if (r.health_status === "degraded" || r.health_status === "suspected") c.warn++;
+      const entryNode = r.entry_node_id ? nodesById[r.entry_node_id] : null;
+      const backendNode = nodesById[r.node_id];
+      const endpointBlocked =
+        (entryNode && (!entryNode.is_enabled || entryNode.is_draining || entryNode.is_healthy === false)) ||
+        (backendNode && (!backendNode.is_enabled || backendNode.is_draining || backendNode.is_healthy === false));
+      const status = endpointBlocked ? "blocked" : r.health_status;
+      if (status === "healthy") c.healthy++;
+      else if (status === "blocked") c.bad++;
+      else if (status === "degraded" || status === "suspected") c.warn++;
       else c.other++;
     }
     return c;
-  }, [routesList]);
+  }, [routesList, nodesById]);
 
   return (
     <div className="page">
@@ -193,6 +199,21 @@ function RoutesList({ routesList, nodesById, loadByNodeId = {}, search, setSearc
             {rows.map((r) => {
               const backendNode = nodesById[r.node_id];
               const entryNode = r.entry_node_id ? nodesById[r.entry_node_id] : null;
+              const endpointBlocked =
+                (entryNode && (!entryNode.is_enabled || entryNode.is_draining || entryNode.is_healthy === false)) ||
+                (backendNode && (!backendNode.is_enabled || backendNode.is_draining || backendNode.is_healthy === false));
+              const effectiveStatus = endpointBlocked ? "blocked" : r.health_status;
+              const blockedReason = (() => {
+                if (!endpointBlocked) return null;
+                const parts = [];
+                if (entryNode?.is_draining) parts.push(`entry ${entryNode.name} draining`);
+                else if (entryNode && !entryNode.is_enabled) parts.push(`entry ${entryNode.name} off`);
+                else if (entryNode?.is_healthy === false) parts.push(`entry ${entryNode.name} unhealthy`);
+                if (backendNode?.is_draining) parts.push(`backend ${backendNode.name} draining`);
+                else if (backendNode && !backendNode.is_enabled) parts.push(`backend ${backendNode.name} off`);
+                else if (backendNode?.is_healthy === false) parts.push(`backend ${backendNode.name} unhealthy`);
+                return parts.join(" · ");
+              })();
               const openInBackend = () => onOpenNode && backendNode && onOpenNode(backendNode, { initialTab: "routes", focusRouteId: r.id });
               const openInEntry = () => onOpenNode && entryNode && onOpenNode(entryNode, { initialTab: "routes", focusRouteId: r.id });
               const openEntryPool = (e) => {
@@ -250,7 +271,7 @@ function RoutesList({ routesList, nodesById, loadByNodeId = {}, search, setSearc
                   </td>
                   <td>
                     {r.is_active
-                      ? <span className={"pill " + (HEALTH_TONE[r.health_status] || "")}><span className={`status-dot ${HEALTH_TONE[r.health_status] || "muted"}`} /> {r.health_status}</span>
+                      ? <span className={"pill " + (HEALTH_TONE[effectiveStatus] || "")} title={blockedReason || undefined}><span className={`status-dot ${HEALTH_TONE[effectiveStatus] || "muted"}`} /> {effectiveStatus}</span>
                       : <span className="pill muted">не активен</span>}
                   </td>
                   <td className="tbl-num mono">{r.effective_weight}/{r.base_weight}</td>

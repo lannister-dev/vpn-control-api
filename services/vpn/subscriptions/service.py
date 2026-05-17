@@ -2031,17 +2031,19 @@ class SubscriptionService:
         see the updated count and naturally distribute."""
         if not allowed_backend_ids:
             return
-        candidates: list[tuple[int, str, str]] = []
+        candidates: list[tuple[int, int, str]] = []
         for bid in allowed_backend_ids:
             node = nodes_by_id.get(bid)
             if not node or not getattr(node, "is_enabled", True):
                 continue
             tag = f"backend-{node.name}"
-            candidates.append((int(backend_live_loads.get(tag, 0)), tag, node.name))
+            load = int(backend_live_loads.get(tag, 0))
+            tiebreak = self._backend_tiebreak(key_id=key.vpn_key_id, backend_id=node.id)
+            candidates.append((load, tiebreak, tag))
         if not candidates:
             return
         candidates.sort()
-        chosen_tag = candidates[0][1]
+        chosen_tag = candidates[0][2]
         try:
             vpn_key = await self.vpn_key_repository.get_by_id(key.vpn_key_id)
             if vpn_key is None:
@@ -2101,6 +2103,11 @@ class SubscriptionService:
     @staticmethod
     def _entry_tiebreak(*, user_id, entry_id, bucket: int | None) -> int:
         seed = f"{user_id}:{bucket}:{entry_id}" if bucket is not None else f"{user_id}:{entry_id}"
+        return int.from_bytes(hashlib.sha256(seed.encode()).digest()[:8], "big")
+
+    @staticmethod
+    def _backend_tiebreak(*, key_id, backend_id) -> int:
+        seed = f"{key_id}:{backend_id}"
         return int.from_bytes(hashlib.sha256(seed.encode()).digest()[:8], "big")
 
     async def _set_placement_desired_state(
