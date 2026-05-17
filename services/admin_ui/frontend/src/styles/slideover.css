@@ -78,16 +78,19 @@
     to   { transform: translateX(0); opacity: 1; }
   }
   .slideover-head {
-    padding: 6px 12px;
-    padding-top: calc(6px + env(safe-area-inset-top, 0));
-    gap: 6px;
-    height: calc(48px + env(safe-area-inset-top, 0));
+    padding: 10px 12px;
+    padding-top: calc(10px + env(safe-area-inset-top, 0));
+    gap: 8px;
+    min-height: calc(56px + env(safe-area-inset-top, 0));
+    align-items: flex-start;
     position: sticky;
     top: 0;
     background: var(--bg-elevated);
     z-index: 5;
     border-bottom: 1px solid var(--border);
   }
+  .slideover-head .slideover-title-main { min-width: 0; }
+  .slideover-head .slideover-title { flex-wrap: wrap; row-gap: 4px; }
   .slideover-back { display: inline-flex; }
   .slideover-close { display: none; }
   .slideover-title { font-size: 15px; }
