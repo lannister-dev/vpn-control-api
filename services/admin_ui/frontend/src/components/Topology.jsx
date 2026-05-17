@@ -38,17 +38,24 @@ export function Topology({ routes = [], nodes = [], probes = [], userCountByBack
   const enrichedRoutes = useMemo(() =>
     routes
       .filter((r) => r.entry_node_id && r.node_id)
-      .map((r) => ({
-        id: r.id,
-        entry_id: r.entry_node_id,
-        backend_id: r.node_id,
-        entry: nodesById[r.entry_node_id]?.name,
-        backend: nodesById[r.node_id]?.name,
-        status: r.health_status,
-        weight: r.effective_weight,
-        is_active: r.is_active,
-        latency: latencyByBackend[r.node_id] ?? null,
-      }))
+      .map((r) => {
+        const entryNode = nodesById[r.entry_node_id];
+        const backendNode = nodesById[r.node_id];
+        const endpointBlocked =
+          (entryNode && (!entryNode.is_enabled || entryNode.is_draining || entryNode.is_healthy === false)) ||
+          (backendNode && (!backendNode.is_enabled || backendNode.is_draining || backendNode.is_healthy === false));
+        return {
+          id: r.id,
+          entry_id: r.entry_node_id,
+          backend_id: r.node_id,
+          entry: entryNode?.name,
+          backend: backendNode?.name,
+          status: endpointBlocked ? "blocked" : r.health_status,
+          weight: r.effective_weight,
+          is_active: r.is_active,
+          latency: latencyByBackend[r.node_id] ?? null,
+        };
+      })
       .filter((r) => r.entry && r.backend),
     [routes, nodesById, latencyByBackend]);
 
