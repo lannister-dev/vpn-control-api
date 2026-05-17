@@ -1961,18 +1961,19 @@ class SubscriptionService:
             entries_by_zone: dict[str, list[VpnNode]],
             entry_user_loads: dict | None = None,
     ) -> VpnNode | None:
-        if self._is_entry_usable(current_entry):
-            return current_entry
         zone = effective_zone(
             explicit_zone=getattr(backend_node, "zone", None),
             region=getattr(backend_node, "region", None),
         )
-        candidates = entries_by_zone.get(zone) or []
+        candidates = list(entries_by_zone.get(zone) or [])
+        if self._is_entry_usable(current_entry) and current_entry not in candidates:
+            candidates.append(current_entry)
         required_role = getattr(current_entry, "role", None) if current_entry is not None else None
         if required_role:
             candidates = [e for e in candidates if getattr(e, "role", None) == required_role]
+        candidates = [e for e in candidates if self._is_entry_usable(e)]
         if not candidates:
-            return None
+            return current_entry if self._is_entry_usable(current_entry) else None
 
         loads = entry_user_loads or {}
         bucket = self._current_entry_bucket()
@@ -2030,17 +2031,19 @@ class SubscriptionService:
         see the updated count and naturally distribute."""
         if not allowed_backend_ids:
             return
-        candidates: list[tuple[int, str, str]] = []
+        candidates: list[tuple[int, int, str]] = []
         for bid in allowed_backend_ids:
             node = nodes_by_id.get(bid)
             if not node or not getattr(node, "is_enabled", True):
                 continue
             tag = f"backend-{node.name}"
-            candidates.append((int(backend_live_loads.get(tag, 0)), tag, node.name))
+            load = int(backend_live_loads.get(tag, 0))
+            tiebreak = self._backend_tiebreak(key_id=key.vpn_key_id, backend_id=node.id)
+            candidates.append((load, tiebreak, tag))
         if not candidates:
             return
         candidates.sort()
-        chosen_tag = candidates[0][1]
+        chosen_tag = candidates[0][2]
         try:
             vpn_key = await self.vpn_key_repository.get_by_id(key.vpn_key_id)
             if vpn_key is None:
@@ -2100,6 +2103,11 @@ class SubscriptionService:
     @staticmethod
     def _entry_tiebreak(*, user_id, entry_id, bucket: int | None) -> int:
         seed = f"{user_id}:{bucket}:{entry_id}" if bucket is not None else f"{user_id}:{entry_id}"
+        return int.from_bytes(hashlib.sha256(seed.encode()).digest()[:8], "big")
+
+    @staticmethod
+    def _backend_tiebreak(*, key_id, backend_id) -> int:
+        seed = f"{key_id}:{backend_id}"
         return int.from_bytes(hashlib.sha256(seed.encode()).digest()[:8], "big")
 
     async def _set_placement_desired_state(

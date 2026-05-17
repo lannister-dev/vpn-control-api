@@ -23,6 +23,7 @@ from services.auth.docs import DocsBasicAuthMiddleware
 from services.auth.router import router as auth_router
 from services.billing.router import router as billing_router
 from services.bot_api.router import router as bot_api_router
+from services.config import get_settings
 from services.connect.router import router as connect_router
 from services.entry.router import router as entry_router
 from services.nodes.router import router as node_router
@@ -46,11 +47,19 @@ from shared.utils.logger import StructuredLogger
 configure_root_logging()
 logger = StructuredLogger(logging.getLogger("vpn-control-api"))
 
+settings = get_settings()
+
 app = FastAPI(
     title="VPN Control API",
     docs_url="/api/instruction",
     openapi_url="/api/openapi.json",
-    lifespan=build_lifespan(logger=logger, ready_event="api_ready", shutdown_event="api_shutdown"),
+    lifespan=build_lifespan(
+        logger=logger,
+        with_nats=settings.nats.enabled,
+        nats_settings=settings.nats,
+        ready_event="api_ready",
+        shutdown_event="api_shutdown",
+    ),
 )
 
 runtime_readiness_service = RuntimeReadinessService()

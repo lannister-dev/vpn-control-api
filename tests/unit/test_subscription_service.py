@@ -378,12 +378,17 @@ class TestEntrySelection:
         b.region = region
         return b
 
-    def test_live_explicit_entry_is_kept(self, service):
+    def test_live_explicit_entry_is_kept_when_others_busier(self, service):
         backend = self._backend()
         chosen = self._entry(node_id=uuid4())
-        pool = {"europe": [self._entry(node_id=uuid4()) for _ in range(3)]}
+        others = [self._entry(node_id=uuid4()) for _ in range(3)]
+        pool = {"europe": others}
+        # All other entries already loaded with many users — `chosen` is empty,
+        # so the load-aware selector keeps chosen as the lightest.
+        loads = {e.id: 50 for e in others}
         result = service._select_entry_for_backend(
-            backend_node=backend, current_entry=chosen, user_id=uuid4(), entries_by_zone=pool,
+            backend_node=backend, current_entry=chosen, user_id=uuid4(),
+            entries_by_zone=pool, entry_user_loads=loads,
         )
         assert result is chosen
 

@@ -146,6 +146,13 @@ class WgMeshConfig:
 class EntryRoutingConfig:
     enabled: bool = False
     publisher_tick_sec: int = 30
+    backend_rebalance_enabled: bool = False
+    backend_rebalance_tick_sec: int = 300
+    backend_rebalance_window_sec: int = 300
+    backend_rebalance_ratio_threshold: float = 3.0
+    backend_rebalance_min_bytes_per_sec: int = 524288
+    backend_rebalance_cooldown_sec: int = 1800
+    backend_rebalance_batch_size: int = 1
     listen_port: int = 8443
     reality_private_key: str = ""
     reality_short_id: str = ""
@@ -576,6 +583,13 @@ def get_settings() -> Settings:
     entry_routing = EntryRoutingConfig(
         enabled=env.bool("ENTRY_ROUTING_ENABLED", default=False),
         publisher_tick_sec=max(5, env.int("ENTRY_ROUTING_PUBLISHER_TICK_SEC", default=30)),
+        backend_rebalance_enabled=env.bool("ENTRY_ROUTING_BACKEND_REBALANCE_ENABLED", default=False),
+        backend_rebalance_tick_sec=max(60, env.int("ENTRY_ROUTING_BACKEND_REBALANCE_TICK_SEC", default=300)),
+        backend_rebalance_window_sec=max(60, env.int("ENTRY_ROUTING_BACKEND_REBALANCE_WINDOW_SEC", default=300)),
+        backend_rebalance_ratio_threshold=env.float("ENTRY_ROUTING_BACKEND_REBALANCE_RATIO_THRESHOLD", default=3.0),
+        backend_rebalance_min_bytes_per_sec=env.int("ENTRY_ROUTING_BACKEND_REBALANCE_MIN_BYTES_PER_SEC", default=524288),
+        backend_rebalance_cooldown_sec=env.int("ENTRY_ROUTING_BACKEND_REBALANCE_COOLDOWN_SEC", default=1800),
+        backend_rebalance_batch_size=max(1, env.int("ENTRY_ROUTING_BACKEND_REBALANCE_BATCH_SIZE", default=1)),
         listen_port=env.int("ENTRY_ROUTING_LISTEN_PORT", default=8443),
         reality_private_key=env.str("ENTRY_ROUTING_REALITY_PRIVATE_KEY", default=""),
         reality_short_id=env.str("ENTRY_ROUTING_REALITY_SHORT_ID", default=""),

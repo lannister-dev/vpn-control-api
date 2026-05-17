@@ -118,6 +118,7 @@ def service(async_session):
     svc.plan_repo = AsyncMock()
     svc.sub_repo = AsyncMock()
     svc.sub_repo.list_by_user_id = AsyncMock(return_value=[])
+    svc.sub_repo.get_latest_for_user = AsyncMock(return_value=None)
     svc.settings = SimpleNamespace(order_ttl_minutes=30)
     return svc
 
@@ -519,6 +520,39 @@ class TestAutoPurchase:
         call_args = service.sub_repo.update_by_id.call_args
         new_expires = call_args[0][1]["expires_at"]
         assert new_expires > existing_sub.expires_at
+
+    async def test_auto_purchase_trial_to_paid_reuses_subscription(self, service, async_session):
+        user = _make_user(balance=Decimal("299.00"))
+        trial_plan_id = uuid4()
+        paid_plan = _make_plan(price_rub=Decimal("299.00"))
+        order = _make_order(user_id=user.id, plan_id=paid_plan.id)
+        now = datetime.now(timezone.utc)
+        trial_sub = _make_subscription(
+            user_id=user.id,
+            plan_id=trial_plan_id,
+            expires_at=now + timedelta(days=2),
+        )
+        original_token_hash = trial_sub.token_hash
+
+        service._lock_user = AsyncMock(return_value=user)
+        service._update_user_balance = AsyncMock()
+        service._record_transaction = AsyncMock()
+        service.sub_repo.list_by_user_id = AsyncMock(return_value=[])
+        service.sub_repo.get_latest_for_user = AsyncMock(return_value=trial_sub)
+        service.sub_repo.update_by_id.return_value = trial_sub
+        service.order_repo.update_by_id.return_value = order
+
+        await service._auto_purchase(user, paid_plan, order, now)
+
+        service.sub_repo.create.assert_not_awaited()
+        service.sub_repo.update_by_id.assert_awaited_once()
+        sub_id_arg, update_payload = service.sub_repo.update_by_id.call_args[0]
+        assert sub_id_arg == trial_sub.id
+        assert update_payload["plan_id"] == paid_plan.id
+        assert update_payload["expires_at"] > trial_sub.expires_at
+        assert update_payload["is_active"] is True
+        assert update_payload["paid_device_slots"] == 0
+        assert trial_sub.token_hash == original_token_hash
 
     async def test_auto_purchase_insufficient_balance(self, service, async_session):
         user = _make_user(balance=Decimal("10.00"))

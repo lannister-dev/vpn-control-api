@@ -988,6 +988,10 @@ class BillingService:
                 existing = None
         if existing is None:
             existing = await self._find_active_subscription_for_plan(user.id, plan.id)
+        plan_changed = False
+        if existing is None:
+            existing = await self.sub_repo.get_latest_for_user(user.id)
+            plan_changed = existing is not None and existing.plan_id != plan.id
 
         if existing:
             base_expires = existing.expires_at if existing.expires_at and existing.expires_at > now else now
@@ -995,7 +999,12 @@ class BillingService:
             update_data = SubscriptionInternalUpdate(
                 expires_at=new_expires, is_active=True,
             )
-            if extra_devices > 0:
+            if plan_changed:
+                included = getattr(plan, "included_devices", 1)
+                update_data.plan_id = plan.id
+                update_data.max_devices = included + extra_devices
+                update_data.paid_device_slots = extra_devices
+            elif extra_devices > 0:
                 update_data.paid_device_slots = (getattr(existing, "paid_device_slots", 0) or 0) + extra_devices
             await self.sub_repo.update_by_id(
                 existing.id,
@@ -1009,6 +1018,7 @@ class BillingService:
                 "subscription_extended",
                 subscription_id=str(existing.id),
                 new_expires=str(new_expires),
+                plan_changed=plan_changed,
             )
         else:
             # Create new subscription
