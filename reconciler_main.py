@@ -49,6 +49,7 @@ from services.traffic.users.reconcilers.reset import TrafficResetReconciler
 # Register all SQLAlchemy models (no routers to pull them in)
 from services.users.models import User  # noqa: F401
 from services.vpn.keys.models import KeyAssignment, VpnKey  # noqa: F401
+from services.vpn.keys.reconcilers.backend_rebalance import BackendRebalanceReconciler
 from services.vpn.keys.reconcilers.expiration import VpnKeyExpirationReconciler
 from services.vpn.subscriptions.model import Subscription, SubscriptionDevice, SubscriptionDeviceKey  # noqa: F401
 from services.vpn.subscriptions.reconcilers.expiration import SubscriptionExpirationReconciler
@@ -92,6 +93,7 @@ def _build_reconcilers() -> list:
         EntryAutoDrainReconciler(),
         UpstreamFailoverReconciler(),
         EntryRoutingPublisher(),
+        BackendRebalanceReconciler(),
         WgMeshPeerPublisher(),
     ]
 
