@@ -146,6 +146,7 @@ class WgMeshConfig:
 class EntryRoutingConfig:
     enabled: bool = False
     publisher_tick_sec: int = 30
+    backend_rebalance_tick_sec: int = 60
     listen_port: int = 8443
     reality_private_key: str = ""
     reality_short_id: str = ""
@@ -576,6 +577,7 @@ def get_settings() -> Settings:
     entry_routing = EntryRoutingConfig(
         enabled=env.bool("ENTRY_ROUTING_ENABLED", default=False),
         publisher_tick_sec=max(5, env.int("ENTRY_ROUTING_PUBLISHER_TICK_SEC", default=30)),
+        backend_rebalance_tick_sec=max(30, env.int("ENTRY_ROUTING_BACKEND_REBALANCE_TICK_SEC", default=60)),
         listen_port=env.int("ENTRY_ROUTING_LISTEN_PORT", default=8443),
         reality_private_key=env.str("ENTRY_ROUTING_REALITY_PRIVATE_KEY", default=""),
         reality_short_id=env.str("ENTRY_ROUTING_REALITY_SHORT_ID", default=""),
