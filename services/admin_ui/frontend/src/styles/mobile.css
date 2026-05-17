@@ -185,6 +185,58 @@ html, body { max-width: 100vw; overflow-x: hidden; }
   .topbar .last-sync-label { display: none; }
   .topbar .btn span:not(.kbd) { display: none; }
   .topbar .btn .kbd { display: none; }
+
+  /* — Sidebar: dvh height so URL bar doesn't eat the bottom; safe-area pad — */
+  .sidebar {
+    height: 100dvh !important;
+    bottom: env(safe-area-inset-bottom, 0) !important;
+  }
+  .side-footer {
+    padding-bottom: max(10px, env(safe-area-inset-bottom, 0)) !important;
+  }
+  /* Make sure nav scrolls if too tall, footer stays visible */
+  .sidebar > nav { overflow-y: auto; -webkit-overflow-scrolling: touch; flex: 1; min-height: 0; }
+
+  /* — Topology node cards: name truncates, pills wrap below — */
+  .topo-v2-node-main { flex-wrap: wrap; row-gap: 4px; }
+  .topo-v2-node-main .topo-v2-node-name {
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .topo-v2-node-main > span[style*="margin-left: auto"] {
+    margin-left: 0 !important;
+    flex-basis: 100%;
+    flex-wrap: wrap;
+    row-gap: 3px;
+  }
+
+  /* — TicketDrawer head: stack avatar/title/meta neatly — */
+  .slideover-head {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+  .slideover-head > div:first-child {
+    width: 100%;
+    align-items: flex-start !important;
+  }
+  .slideover-head .slideover-title {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+  .slideover-head .slideover-title > span:first-child {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  .slideover-head .slideover-sub {
+    flex-wrap: wrap;
+    row-gap: 3px;
+    line-height: 1.4;
+  }
+  /* hide noisy separator dots on mobile sub-line so meta items breathe */
+  .slideover-head .slideover-sub .muted:not(.mono) { display: inline; }
 }
 
 /* Tablet ≤ 900: matrix etc. scroll horizontally; sidebar already off-canvas */

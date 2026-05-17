@@ -81,7 +81,8 @@
     padding: 10px 12px;
     padding-top: calc(10px + env(safe-area-inset-top, 0));
     gap: 8px;
-    min-height: calc(56px + env(safe-area-inset-top, 0));
+    min-height: auto;
+    height: auto;
     align-items: flex-start;
     position: sticky;
     top: 0;
@@ -89,7 +90,7 @@
     z-index: 5;
     border-bottom: 1px solid var(--border);
   }
-  .slideover-head .slideover-title-main { min-width: 0; }
+  .slideover-head .slideover-title-main { min-width: 0; width: 100%; }
   .slideover-head .slideover-title { flex-wrap: wrap; row-gap: 4px; }
   .slideover-back { display: inline-flex; }
   .slideover-close { display: none; }
