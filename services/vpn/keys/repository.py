@@ -113,6 +113,29 @@ class VpnKeyRepository(BaseRepository[VpnKey]):
         keys = list(result.scalars().all())
         return keys, total
 
+    async def list_active_by_override_tag(
+        self,
+        *,
+        tag: str,
+        updated_before: datetime,
+        limit: int = 50,
+    ) -> list[VpnKey]:
+        now = datetime.now(timezone.utc)
+        stmt = (
+            select(self.model)
+            .where(
+                self.model.entry_routing_override_backend_tag == tag,
+                self.model.is_active.is_(True),
+                self.model.valid_until > now,
+                or_(self.model.is_revoked.is_(False), self.model.is_revoked.is_(None)),
+                self.model.updated_at < updated_before,
+            )
+            .order_by(self.model.updated_at.asc())
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
     async def list_all_active(self) -> list[VpnKey]:
         now = datetime.now(timezone.utc)
         stmt = select(self.model).where(
