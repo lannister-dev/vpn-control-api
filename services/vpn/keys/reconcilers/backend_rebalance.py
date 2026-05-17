@@ -1,19 +1,16 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
-import json
 import logging
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from services.config import EntryRoutingConfig, NatsConfig, get_settings
+from services.config import EntryRoutingConfig, get_settings
 from services.nodes.repository import VpnNodeRepository
 from services.placements.repository import UserPlacementRepository
-from services.routing.entry.constants import KV_STATS_BUCKET
-from services.vpn.keys.models import VpnKey
+from services.traffic.nodes.repository import NodeTrafficUsageRepository
 from services.vpn.keys.repository import VpnKeyRepository
 from shared.database.session import AsyncDatabase
-from shared.nats.client import NatsClient
 from shared.reconciler.watchdog import watchdog
 from shared.redis.lock import RedisTickLock
 from shared.utils.logger import StructuredLogger
@@ -26,18 +23,18 @@ class BackendRebalanceReconciler:
         self,
         *,
         routing_config: EntryRoutingConfig | None = None,
-        nats_config: NatsConfig | None = None,
-        nats_client: NatsClient | None = None,
         tick_lock: RedisTickLock | None = None,
     ) -> None:
         settings = get_settings()
         self._cfg = routing_config or settings.entry_routing
-        self._nats_cfg = nats_config or settings.nats
-        self._enabled = bool(self._cfg.enabled)
-        self._interval_sec = max(30, int(self._cfg.backend_rebalance_tick_sec))
+        self._enabled = bool(self._cfg.backend_rebalance_enabled)
+        self._interval_sec = max(60, int(self._cfg.backend_rebalance_tick_sec))
+        self._window_sec = max(60, int(self._cfg.backend_rebalance_window_sec))
+        self._ratio_threshold = float(self._cfg.backend_rebalance_ratio_threshold)
+        self._min_bytes_per_sec = int(self._cfg.backend_rebalance_min_bytes_per_sec)
+        self._cooldown_sec = int(self._cfg.backend_rebalance_cooldown_sec)
+        self._batch_size = max(1, int(self._cfg.backend_rebalance_batch_size))
         self._session_maker = AsyncDatabase.get_session_maker()
-        self._nats: NatsClient | None = nats_client
-        self._owns_nats = nats_client is None
         self._tick_lock = tick_lock or RedisTickLock(
             key="reconciler:backend_rebalance",
             ttl_sec=max(60, self._interval_sec * 2),
@@ -60,9 +57,6 @@ class BackendRebalanceReconciler:
         self._stop_event.set()
         await self._task
         self._task = None
-        if self._owns_nats and self._nats is not None:
-            await self._nats.close()
-            self._nats = None
 
     async def run_once(self) -> int | None:
         if not self._enabled:
@@ -87,95 +81,87 @@ class BackendRebalanceReconciler:
             except asyncio.TimeoutError:
                 continue
 
-    async def _ensure_nats(self) -> NatsClient:
-        if self._nats is None:
-            self._nats = NatsClient(self._nats_cfg)
-        if not self._nats.is_connected:
-            await self._nats.connect()
-        return self._nats
-
-    async def _fetch_backend_loads(self, nats: NatsClient) -> dict[str, int]:
-        out: dict[str, int] = {}
-        try:
-            entries = await nats.kv_list_all(bucket=KV_STATS_BUCKET)
-        except Exception:
-            logger.exception("backend_rebalance_kv_read_failed")
-            return out
-        for raw in entries.values():
-            try:
-                payload = json.loads(raw.decode("utf-8"))
-            except (UnicodeDecodeError, json.JSONDecodeError):
-                continue
-            for tag, count in (payload.get("by_backend") or {}).items():
-                out[tag] = out.get(tag, 0) + int(count)
-        return out
-
     async def _tick(self) -> int:
-        nats = await self._ensure_nats()
-        backend_loads = await self._fetch_backend_loads(nats)
+        now = datetime.now(timezone.utc)
         async with self._session_maker() as session:
+            node_repo = VpnNodeRepository(session)
             key_repo = VpnKeyRepository(session)
             placement_repo = UserPlacementRepository(session)
-            node_repo = VpnNodeRepository(session)
+            traffic_repo = NodeTrafficUsageRepository(session)
 
-            keys = await key_repo.list_all_active()
-            if not keys:
-                return 0
             live_backends = await node_repo.list_live_backends()
+            if len(live_backends) < 2:
+                return 0
             nodes_by_id = {n.id: n for n in live_backends}
-            if not nodes_by_id:
+
+            window_from = now - timedelta(seconds=self._window_sec)
+            aggregates = await traffic_repo.sum_backend_self(
+                from_ts=window_from, to_ts=now,
+            )
+            bps_by_backend = self._compute_bps(aggregates, nodes_by_id)
+            if len(bps_by_backend) < 2:
+                return 0
+
+            src_id, src_bps = max(bps_by_backend.items(), key=lambda x: x[1])
+            dst_id, dst_bps = min(bps_by_backend.items(), key=lambda x: x[1])
+            if src_id == dst_id:
+                return 0
+            if src_bps < self._min_bytes_per_sec:
+                return 0
+            ratio = src_bps / max(1, dst_bps)
+            if ratio < self._ratio_threshold:
+                return 0
+
+            src_tag = f"backend-{nodes_by_id[src_id].name}"
+            dst_tag = f"backend-{nodes_by_id[dst_id].name}"
+            cooldown_at = now - timedelta(seconds=self._cooldown_sec)
+            candidates = await key_repo.list_active_by_override_tag(
+                tag=src_tag,
+                updated_before=cooldown_at,
+                limit=self._batch_size * 4,
+            )
+            if not candidates:
                 return 0
 
             allowed_by_key = await placement_repo.map_active_backend_nodes_by_key(
-                key_ids=[k.id for k in keys],
+                key_ids=[k.id for k in candidates],
             )
-
-            changed = 0
-            for key in keys:
+            moved = 0
+            for key in candidates:
+                if moved >= self._batch_size:
+                    break
                 allowed = allowed_by_key.get(key.id)
-                if not allowed:
+                if not allowed or dst_id not in allowed:
                     continue
-                chosen_tag = self._pick_least_loaded(
-                    key=key,
-                    allowed=allowed,
-                    nodes_by_id=nodes_by_id,
-                    backend_loads=backend_loads,
+                await key_repo.update_by_id(
+                    key.id, {"entry_routing_override_backend_tag": dst_tag},
                 )
-                if chosen_tag is None:
-                    continue
-                if key.entry_routing_override_backend_tag != chosen_tag:
-                    await key_repo.update_by_id(
-                        key.id,
-                        {"entry_routing_override_backend_tag": chosen_tag},
-                    )
-                    changed += 1
-                    backend_loads[chosen_tag] = backend_loads.get(chosen_tag, 0) + 1
-            await session.commit()
-            if changed:
-                logger.info("backend_rebalance_applied", changed=changed, total=len(keys))
-            return changed
+                moved += 1
 
-    @staticmethod
-    def _pick_least_loaded(
-        *,
-        key: VpnKey,
-        allowed: set[UUID],
+            if moved:
+                await session.commit()
+                logger.info(
+                    "backend_rebalance_applied",
+                    moved=moved,
+                    src=nodes_by_id[src_id].name,
+                    dst=nodes_by_id[dst_id].name,
+                    src_mbps=round(src_bps * 8 / 1_000_000, 2),
+                    dst_mbps=round(dst_bps * 8 / 1_000_000, 2),
+                    ratio=round(ratio, 1),
+                )
+            return moved
+
+    def _compute_bps(
+        self,
+        aggregates,
         nodes_by_id: dict[UUID, object],
-        backend_loads: dict[str, int],
-    ) -> str | None:
-        candidates: list[tuple[int, int, str]] = []
-        for bid in allowed:
-            node = nodes_by_id.get(bid)
-            if node is None:
+    ) -> dict[UUID, int]:
+        out: dict[UUID, int] = {}
+        for n in nodes_by_id:
+            out[n] = 0
+        for agg in aggregates:
+            if agg.node_id not in nodes_by_id:
                 continue
-            tag = f"backend-{node.name}"
-            load = int(backend_loads.get(tag, 0))
-            tiebreak = int.from_bytes(
-                hashlib.sha256(f"{key.id}:{bid}".encode()).digest()[:8],
-                "big",
-            )
-            candidates.append((load, tiebreak, tag))
-        if not candidates:
-            return None
-        candidates.sort()
-        return candidates[0][2]
+            total = int(agg.bytes_in) + int(agg.bytes_out)
+            out[agg.node_id] = total // max(1, self._window_sec)
+        return out

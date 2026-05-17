@@ -1,29 +1,32 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
 
-from services.config import EntryRoutingConfig, NatsConfig
+from services.config import EntryRoutingConfig
 from services.vpn.keys.reconcilers.backend_rebalance import BackendRebalanceReconciler
 
 
-def _make_reconciler(nats: AsyncMock | None = None):
-    cfg = EntryRoutingConfig(enabled=True, publisher_tick_sec=5, backend_rebalance_tick_sec=60)
-    nats_cfg = NatsConfig(enabled=True, server="nats://test", name="test")
+def _make_reconciler():
+    cfg = EntryRoutingConfig(
+        enabled=True,
+        publisher_tick_sec=5,
+        backend_rebalance_enabled=True,
+        backend_rebalance_tick_sec=300,
+        backend_rebalance_window_sec=300,
+        backend_rebalance_ratio_threshold=3.0,
+        backend_rebalance_min_bytes_per_sec=524288,
+        backend_rebalance_cooldown_sec=1800,
+        backend_rebalance_batch_size=1,
+    )
     lock = MagicMock()
     lock.hold.return_value.__aenter__ = AsyncMock(return_value=True)
     lock.hold.return_value.__aexit__ = AsyncMock(return_value=False)
-    nats = nats or AsyncMock()
-    nats.is_connected = True
-    return BackendRebalanceReconciler(
-        routing_config=cfg,
-        nats_config=nats_cfg,
-        nats_client=nats,
-        tick_lock=lock,
-    )
+    return BackendRebalanceReconciler(routing_config=cfg, tick_lock=lock)
 
 
 def _make_node(*, id, name, is_enabled=True, is_draining=False):
@@ -31,171 +34,170 @@ def _make_node(*, id, name, is_enabled=True, is_draining=False):
 
 
 def _make_key(*, id, override=None):
-    return SimpleNamespace(id=id, entry_routing_override_backend_tag=override)
+    return SimpleNamespace(
+        id=id,
+        entry_routing_override_backend_tag=override,
+        updated_at=datetime.now(timezone.utc) - timedelta(hours=2),
+    )
+
+
+def _make_agg(*, node_id, bytes_in, bytes_out):
+    return SimpleNamespace(
+        node_id=node_id, bytes_in=bytes_in, bytes_out=bytes_out,
+        total_sessions=0, active_sessions=0,
+    )
 
 
 @pytest.mark.asyncio
-async def test_picks_least_loaded_backend_and_updates(async_session):
+async def test_no_action_when_traffic_is_balanced(async_session):
     pra_id, lv_id = uuid4(), uuid4()
-    key_id = uuid4()
-    nats = AsyncMock()
-    nats.is_connected = True
-    # KV has Praha=58, Latvia absent (0)
-    nats.kv_list_all.return_value = {
-        "node.x": b'{"by_backend": {"backend-pra-backend-01": 58}}',
-    }
-
-    reconciler = _make_reconciler(nats=nats)
-
-    mock_key_repo = AsyncMock()
-    mock_key_repo.list_all_active.return_value = [
-        _make_key(id=key_id, override="backend-pra-backend-01"),
-    ]
-
-    mock_placement_repo = AsyncMock()
-    mock_placement_repo.map_active_backend_nodes_by_key.return_value = {
-        key_id: {pra_id, lv_id},
-    }
+    reconciler = _make_reconciler()
 
     mock_node_repo = AsyncMock()
     mock_node_repo.list_live_backends.return_value = [
         _make_node(id=pra_id, name="pra-backend-01"),
         _make_node(id=lv_id, name="rix-backend-01"),
     ]
+    mock_traffic_repo = AsyncMock()
+    mock_traffic_repo.sum_backend_self.return_value = [
+        _make_agg(node_id=pra_id, bytes_in=300 * 1024 * 1024, bytes_out=0),
+        _make_agg(node_id=lv_id, bytes_in=200 * 1024 * 1024, bytes_out=0),
+    ]
 
     with patch(
+        "services.vpn.keys.reconcilers.backend_rebalance.VpnNodeRepository",
+        return_value=mock_node_repo,
+    ), patch(
+        "services.vpn.keys.reconcilers.backend_rebalance.NodeTrafficUsageRepository",
+        return_value=mock_traffic_repo,
+    ), patch(
+        "services.vpn.keys.reconcilers.backend_rebalance.VpnKeyRepository",
+    ), patch(
+        "services.vpn.keys.reconcilers.backend_rebalance.UserPlacementRepository",
+    ):
+        moved = await reconciler._tick()
+
+    assert moved == 0
+
+
+@pytest.mark.asyncio
+async def test_no_action_when_traffic_too_low(async_session):
+    pra_id, lv_id = uuid4(), uuid4()
+    reconciler = _make_reconciler()
+
+    mock_node_repo = AsyncMock()
+    mock_node_repo.list_live_backends.return_value = [
+        _make_node(id=pra_id, name="pra-backend-01"),
+        _make_node(id=lv_id, name="rix-backend-01"),
+    ]
+    mock_traffic_repo = AsyncMock()
+    mock_traffic_repo.sum_backend_self.return_value = [
+        _make_agg(node_id=pra_id, bytes_in=10_000, bytes_out=10_000),
+        _make_agg(node_id=lv_id, bytes_in=0, bytes_out=0),
+    ]
+
+    with patch(
+        "services.vpn.keys.reconcilers.backend_rebalance.VpnNodeRepository",
+        return_value=mock_node_repo,
+    ), patch(
+        "services.vpn.keys.reconcilers.backend_rebalance.NodeTrafficUsageRepository",
+        return_value=mock_traffic_repo,
+    ), patch(
+        "services.vpn.keys.reconcilers.backend_rebalance.VpnKeyRepository",
+    ), patch(
+        "services.vpn.keys.reconcilers.backend_rebalance.UserPlacementRepository",
+    ):
+        moved = await reconciler._tick()
+
+    assert moved == 0
+
+
+@pytest.mark.asyncio
+async def test_moves_one_key_when_traffic_imbalanced(async_session):
+    pra_id, lv_id = uuid4(), uuid4()
+    key_id = uuid4()
+    reconciler = _make_reconciler()
+
+    mock_node_repo = AsyncMock()
+    mock_node_repo.list_live_backends.return_value = [
+        _make_node(id=pra_id, name="pra-backend-01"),
+        _make_node(id=lv_id, name="rix-backend-01"),
+    ]
+    mock_traffic_repo = AsyncMock()
+    mock_traffic_repo.sum_backend_self.return_value = [
+        _make_agg(node_id=pra_id, bytes_in=300 * 1024 * 1024, bytes_out=22 * 1024 * 1024),
+        _make_agg(node_id=lv_id, bytes_in=3 * 1024 * 1024, bytes_out=0),
+    ]
+    mock_key_repo = AsyncMock()
+    mock_key_repo.list_active_by_override_tag.return_value = [
+        _make_key(id=key_id, override="backend-pra-backend-01"),
+    ]
+    mock_placement_repo = AsyncMock()
+    mock_placement_repo.map_active_backend_nodes_by_key.return_value = {
+        key_id: {pra_id, lv_id},
+    }
+
+    with patch(
+        "services.vpn.keys.reconcilers.backend_rebalance.VpnNodeRepository",
+        return_value=mock_node_repo,
+    ), patch(
+        "services.vpn.keys.reconcilers.backend_rebalance.NodeTrafficUsageRepository",
+        return_value=mock_traffic_repo,
+    ), patch(
         "services.vpn.keys.reconcilers.backend_rebalance.VpnKeyRepository",
         return_value=mock_key_repo,
     ), patch(
         "services.vpn.keys.reconcilers.backend_rebalance.UserPlacementRepository",
         return_value=mock_placement_repo,
-    ), patch(
-        "services.vpn.keys.reconcilers.backend_rebalance.VpnNodeRepository",
-        return_value=mock_node_repo,
     ):
-        changed = await reconciler._tick()
+        moved = await reconciler._tick()
 
-    assert changed == 1
+    assert moved == 1
     mock_key_repo.update_by_id.assert_awaited_once_with(
         key_id, {"entry_routing_override_backend_tag": "backend-rix-backend-01"},
     )
 
 
 @pytest.mark.asyncio
-async def test_no_update_when_override_already_optimal(async_session):
+async def test_skips_keys_without_dst_placement(async_session):
     pra_id, lv_id = uuid4(), uuid4()
+    other_backend = uuid4()
     key_id = uuid4()
-    nats = AsyncMock()
-    nats.is_connected = True
-    nats.kv_list_all.return_value = {
-        "node.x": b'{"by_backend": {"backend-pra-backend-01": 58}}',
-    }
+    reconciler = _make_reconciler()
 
-    reconciler = _make_reconciler(nats=nats)
-
-    mock_key_repo = AsyncMock()
-    mock_key_repo.list_all_active.return_value = [
-        _make_key(id=key_id, override="backend-rix-backend-01"),
-    ]
-    mock_placement_repo = AsyncMock()
-    mock_placement_repo.map_active_backend_nodes_by_key.return_value = {
-        key_id: {pra_id, lv_id},
-    }
     mock_node_repo = AsyncMock()
     mock_node_repo.list_live_backends.return_value = [
         _make_node(id=pra_id, name="pra-backend-01"),
         _make_node(id=lv_id, name="rix-backend-01"),
     ]
-
-    with patch(
-        "services.vpn.keys.reconcilers.backend_rebalance.VpnKeyRepository",
-        return_value=mock_key_repo,
-    ), patch(
-        "services.vpn.keys.reconcilers.backend_rebalance.UserPlacementRepository",
-        return_value=mock_placement_repo,
-    ), patch(
-        "services.vpn.keys.reconcilers.backend_rebalance.VpnNodeRepository",
-        return_value=mock_node_repo,
-    ):
-        changed = await reconciler._tick()
-
-    assert changed == 0
-    mock_key_repo.update_by_id.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_skips_keys_without_placements(async_session):
-    nats = AsyncMock()
-    nats.is_connected = True
-    nats.kv_list_all.return_value = {}
-    reconciler = _make_reconciler(nats=nats)
-
-    key_id = uuid4()
-    mock_key_repo = AsyncMock()
-    mock_key_repo.list_all_active.return_value = [_make_key(id=key_id, override=None)]
-    mock_placement_repo = AsyncMock()
-    mock_placement_repo.map_active_backend_nodes_by_key.return_value = {}
-    mock_node_repo = AsyncMock()
-    mock_node_repo.list_live_backends.return_value = [
-        _make_node(id=uuid4(), name="pra-backend-01"),
+    mock_traffic_repo = AsyncMock()
+    mock_traffic_repo.sum_backend_self.return_value = [
+        _make_agg(node_id=pra_id, bytes_in=300 * 1024 * 1024, bytes_out=22 * 1024 * 1024),
+        _make_agg(node_id=lv_id, bytes_in=0, bytes_out=0),
     ]
-
-    with patch(
-        "services.vpn.keys.reconcilers.backend_rebalance.VpnKeyRepository",
-        return_value=mock_key_repo,
-    ), patch(
-        "services.vpn.keys.reconcilers.backend_rebalance.UserPlacementRepository",
-        return_value=mock_placement_repo,
-    ), patch(
-        "services.vpn.keys.reconcilers.backend_rebalance.VpnNodeRepository",
-        return_value=mock_node_repo,
-    ):
-        changed = await reconciler._tick()
-
-    assert changed == 0
-    mock_key_repo.update_by_id.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_sequential_increment_distributes_keys(async_session):
-    """When 2 keys are tied at 0, the local increment after first pick
-    causes the second key to go to the OTHER backend."""
-    pra_id, lv_id = uuid4(), uuid4()
-    k1, k2 = uuid4(), uuid4()
-    nats = AsyncMock()
-    nats.is_connected = True
-    # Empty KV → both backends at 0
-    nats.kv_list_all.return_value = {}
-    reconciler = _make_reconciler(nats=nats)
-
     mock_key_repo = AsyncMock()
-    mock_key_repo.list_all_active.return_value = [
-        _make_key(id=k1, override=None),
-        _make_key(id=k2, override=None),
+    mock_key_repo.list_active_by_override_tag.return_value = [
+        _make_key(id=key_id, override="backend-pra-backend-01"),
     ]
     mock_placement_repo = AsyncMock()
     mock_placement_repo.map_active_backend_nodes_by_key.return_value = {
-        k1: {pra_id, lv_id}, k2: {pra_id, lv_id},
+        key_id: {pra_id, other_backend},
     }
-    mock_node_repo = AsyncMock()
-    mock_node_repo.list_live_backends.return_value = [
-        _make_node(id=pra_id, name="pra-backend-01"),
-        _make_node(id=lv_id, name="rix-backend-01"),
-    ]
 
     with patch(
+        "services.vpn.keys.reconcilers.backend_rebalance.VpnNodeRepository",
+        return_value=mock_node_repo,
+    ), patch(
+        "services.vpn.keys.reconcilers.backend_rebalance.NodeTrafficUsageRepository",
+        return_value=mock_traffic_repo,
+    ), patch(
         "services.vpn.keys.reconcilers.backend_rebalance.VpnKeyRepository",
         return_value=mock_key_repo,
     ), patch(
         "services.vpn.keys.reconcilers.backend_rebalance.UserPlacementRepository",
         return_value=mock_placement_repo,
-    ), patch(
-        "services.vpn.keys.reconcilers.backend_rebalance.VpnNodeRepository",
-        return_value=mock_node_repo,
     ):
-        await reconciler._tick()
+        moved = await reconciler._tick()
 
-    chosen = {call.args[0]: call.args[1]["entry_routing_override_backend_tag"]
-              for call in mock_key_repo.update_by_id.await_args_list}
-    # Both keys got distinct backends (one each)
-    assert len(set(chosen.values())) == 2
+    assert moved == 0
+    mock_key_repo.update_by_id.assert_not_awaited()
