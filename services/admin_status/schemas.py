@@ -24,6 +24,8 @@ class AdminNodeStatusOut(BaseModel):
     last_seen_at: datetime | None
     last_sync_at: datetime | None
     placements_backend: int
+    cpu_pct: float | None = None
+    mem_pct: float | None = None
 
 
 class AdminStatusTotalsOut(BaseModel):

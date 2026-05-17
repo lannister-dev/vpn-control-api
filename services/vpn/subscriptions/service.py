@@ -1961,18 +1961,19 @@ class SubscriptionService:
             entries_by_zone: dict[str, list[VpnNode]],
             entry_user_loads: dict | None = None,
     ) -> VpnNode | None:
-        if self._is_entry_usable(current_entry):
-            return current_entry
         zone = effective_zone(
             explicit_zone=getattr(backend_node, "zone", None),
             region=getattr(backend_node, "region", None),
         )
-        candidates = entries_by_zone.get(zone) or []
+        candidates = list(entries_by_zone.get(zone) or [])
+        if self._is_entry_usable(current_entry) and current_entry not in candidates:
+            candidates.append(current_entry)
         required_role = getattr(current_entry, "role", None) if current_entry is not None else None
         if required_role:
             candidates = [e for e in candidates if getattr(e, "role", None) == required_role]
+        candidates = [e for e in candidates if self._is_entry_usable(e)]
         if not candidates:
-            return None
+            return current_entry if self._is_entry_usable(current_entry) else None
 
         loads = entry_user_loads or {}
         bucket = self._current_entry_bucket()

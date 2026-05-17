@@ -11,7 +11,7 @@ function edgeStatusClass(s) {
   return "";
 }
 
-export function Topology({ routes = [], nodes = [], probes = [], userCountByBackendName = {}, liveByBackendName = {}, liveByEntryId = {}, loadByNodeId = {}, onOpenNode }) {
+export function Topology({ routes = [], nodes = [], probes = [], userCountByBackendName = {}, liveByBackendName = {}, liveByEntryId = {}, usersByEntryId = {}, onOpenNode }) {
   const canvasRef = useRef(null);
   const [edges, setEdges] = useState([]);
   const [focus, setFocus] = useState(null);
@@ -216,6 +216,15 @@ export function Topology({ routes = [], nodes = [], probes = [], userCountByBack
                   <span className="flag">{nodeGeo(n.region).flag}</span>
                   <span className="topo-v2-node-name">{n.name}</span>
                   <span style={{ marginLeft: "auto", display: "inline-flex", gap: 4 }}>
+                    {(usersByEntryId[n.id] || 0) > 0 && (
+                      <span
+                        className="pill accent"
+                        title={`${usersByEntryId[n.id]} уникальных юзеров онлайн через эту entry`}
+                        style={{ padding: "1px 6px", fontSize: 10, lineHeight: 1.4 }}
+                      >
+                        <Icon name="user" size={9} /> {usersByEntryId[n.id]}
+                      </span>
+                    )}
                     {(liveByEntryId[n.id] || 0) > 0 && (
                       <span
                         className="pill ok"
@@ -238,7 +247,7 @@ export function Topology({ routes = [], nodes = [], probes = [], userCountByBack
                 </div>
                 <div className="topo-v2-node-meta">
                   {(() => {
-                    const ld = nodeLoad(n, { liveConnections: loadByNodeId[n.id] });
+                    const ld = nodeLoad(n, { cpuPct: n.cpu_pct, bandwidthPct: n.bandwidth_pct });
                     return (
                       <span className="mono" title={ld.tooltip} style={{ color: `var(--${ld.tone})` }}>
                         {ld.pct != null ? `${ld.pct}%` : ld.label}
@@ -296,7 +305,7 @@ export function Topology({ routes = [], nodes = [], probes = [], userCountByBack
                 </div>
                 <div className="topo-v2-node-meta">
                   {(() => {
-                    const ld = nodeLoad(n, { liveConnections: loadByNodeId[n.id] });
+                    const ld = nodeLoad(n, { cpuPct: n.cpu_pct, bandwidthPct: n.bandwidth_pct });
                     return (
                       <span className="mono" title={ld.tooltip} style={{ color: `var(--${ld.tone})` }}>
                         {ld.pct != null ? `${ld.pct}%` : ld.label}
