@@ -515,11 +515,15 @@ class TestEntryRoutingPerUserOutboundWG:
         node_repo = MagicMock()
         node_repo.get_by_id = AsyncMock(return_value=entry)
         node_repo.list = AsyncMock(return_value=[entry, *backends])
+        node_repo.list_by_ids = AsyncMock(return_value=backends)
         key_repo = MagicMock()
         key_repo.list_all_active = AsyncMock(return_value=keys)
+        route_repo = MagicMock()
+        route_repo.list_backend_ids_for_entry = AsyncMock(return_value=[b.id for b in backends])
         svc = EntryRoutingService(session=MagicMock(), config=self._cfg())
         svc.node_repo = node_repo
         svc.key_repo = key_repo
+        svc.route_repo = route_repo
         return await svc.build_spec_for_node(entry.id)
 
     async def test_each_user_gets_own_outbound_with_own_uuid(self):

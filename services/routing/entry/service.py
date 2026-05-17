@@ -47,6 +47,8 @@ class EntryRoutingService:
         self.config = config
         self.node_repo = VpnNodeRepository(session)
         self.key_repo = VpnKeyRepository(session)
+        from services.routes.repository import RouteRepository
+        self.route_repo = RouteRepository(session)
 
     async def list_target_nodes(self) -> list[VpnNode]:
         all_nodes = await self.node_repo.list()
@@ -100,6 +102,24 @@ class EntryRoutingService:
                 return []
             if not self.config.backend_reality_public_key:
                 return []
+        route_backend_ids: list[UUID] = []
+        try:
+            route_backend_ids = await self.route_repo.list_backend_ids_for_entry(
+                entry_node_id=entry.id,
+            )
+        except Exception:
+            logger.exception("entry_routing_route_filter_failed", entry_id=str(entry.id))
+        if route_backend_ids:
+            route_id_set = set(route_backend_ids)
+            nodes = await self.node_repo.list_by_ids(route_backend_ids)
+            return [
+                n for n in nodes
+                if n.id in route_id_set
+                and n.role == ROLE_BACKEND
+                and n.is_enabled
+                and not n.is_draining
+                and self._has_reachable_addr(n)
+            ]
         zone = effective_zone(explicit_zone=entry.zone, region=entry.region)
         all_nodes = await self.node_repo.list()
         return [

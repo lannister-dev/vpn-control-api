@@ -771,9 +771,15 @@ class SubscriptionService:
                 backend_live_loads = await self._fetch_live_backend_loads()
                 nodes_by_id = await self._collect_backend_nodes_by_id(transport_results)
                 for tr in transport_results:
+                    route_backend_ids = await self.route_repository.list_backend_ids_with_entry_routes(
+                        key_transport=tr.key.transport,
+                    )
+                    route_constrained = tuple(
+                        bid for bid in tr.allowed_backend_ids if bid in set(route_backend_ids)
+                    )
                     await self._rebalance_key_backend_override(
                         key=tr.key,
-                        allowed_backend_ids=tr.allowed_backend_ids,
+                        allowed_backend_ids=route_constrained or tr.allowed_backend_ids,
                         backend_live_loads=backend_live_loads,
                         nodes_by_id=nodes_by_id,
                     )

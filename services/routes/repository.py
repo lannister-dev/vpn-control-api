@@ -175,6 +175,24 @@ class RouteRepository(BaseRepository[Route]):
         res = await self.session.execute(stmt)
         return list(res.scalars().all())
 
+    async def list_backend_ids_for_entry(
+            self,
+            *,
+            entry_node_id: UUID,
+    ) -> list[UUID]:
+        stmt = (
+            select(Route.node_id)
+            .join(TransportProfile, TransportProfile.id == Route.transport_profile_id)
+            .where(
+                Route.is_active.is_(True),
+                Route.entry_node_id == entry_node_id,
+                TransportProfile.is_active.is_(True),
+            )
+            .distinct()
+        )
+        res = await self.session.execute(stmt)
+        return [row[0] for row in res.all()]
+
     async def list_backend_ids_with_entry_routes(
             self,
             *,
