@@ -188,6 +188,7 @@ export function Topology({ routes = [], nodes = [], probes = [], userCountByBack
         </div>
       </div>
 
+      <div className="topo-v2-scroll">
       <div
         className={`topo-v2 ${(focus || focusedRoute) ? "has-focus" : ""}`}
         ref={canvasRef}
@@ -369,6 +370,7 @@ export function Topology({ routes = [], nodes = [], probes = [], userCountByBack
             );
           })}
         </svg>
+      </div>
       </div>
     </div>
   );

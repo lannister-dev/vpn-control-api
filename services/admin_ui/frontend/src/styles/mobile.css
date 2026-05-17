@@ -121,6 +121,67 @@ html, body { max-width: 100vw; overflow-x: hidden; }
 
   /* — Datepicker popover — */
   .dp-popover { max-width: calc(100vw - 24px); }
+
+  /* — TicketDrawer header: avatar + title row, badges below — */
+  .slideover-head { padding: 12px 14px; }
+  .slideover-head .slideover-title { font-size: 14px; line-height: 1.3; }
+  .slideover-head .slideover-title > span:first-child { max-width: 100%; min-width: 0; flex: 1; }
+  .slideover-head .slideover-title > .pill,
+  .slideover-head .slideover-title > .pill * { flex-shrink: 0; }
+  .slideover-head .slideover-sub { font-size: 11.5px; row-gap: 4px; }
+
+  /* — Chat: stop browser pull-to-refresh on first scroll — */
+  .tk-chat-scroller,
+  .slideover-body,
+  .bsheet-body { overscroll-behavior: contain; }
+  .tk-chat-scroller { overscroll-behavior-y: contain; touch-action: pan-y; }
+
+  /* — Sidebar bottom items: respect iOS safe-area / browser chrome — */
+  .side-footer,
+  .sidebar-footer,
+  aside .side-footer {
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 0)) !important;
+  }
+  .sidebar, .app-side { padding-bottom: env(safe-area-inset-bottom, 0); }
+
+  /* — Topology: scroll horizontally instead of being clipped — */
+  .topo-v2-scroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    margin: 0 -14px;
+    padding: 0 14px;
+  }
+  .topo-v2 {
+    min-width: 620px;
+    overflow: visible !important;
+  }
+
+  /* — Users page: stack search above filters — */
+  .u-filter-bar { flex-direction: column; align-items: stretch; gap: 8px; }
+  .u-filter-bar > * { width: 100%; margin-left: 0 !important; }
+  .u-filter-bar .input-search-wrap[style*="max-width"] { max-width: 100% !important; }
+  .u-filter-bar select { width: 100%; }
+
+  /* — UserDrawer header: stack avatar above identity on narrow screens — */
+  .slideover-head > div[style*="flex: 1"][style*="min-width: 0"] { width: 100%; }
+
+  /* — Page head actions (Transport/Queue: «Обновить», «Повторить с ошибкой», «Удалить старые») — */
+  .page-head { flex-direction: column; align-items: stretch; gap: 10px; }
+  .page-head-main { width: 100%; }
+  .page-head-actions {
+    width: 100%;
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .page-head-actions .btn { width: 100%; justify-content: center; flex: initial; }
+
+  /* — Topbar: keep bell/notif badge anchored, prevent flex squeeze — */
+  .topbar > * { flex-shrink: 0; }
+  .topbar .last-sync-label { display: none; }
+  .topbar .btn span:not(.kbd) { display: none; }
+  .topbar .btn .kbd { display: none; }
 }
 
 /* Tablet ≤ 900: matrix etc. scroll horizontally; sidebar already off-canvas */
