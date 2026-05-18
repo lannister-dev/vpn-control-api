@@ -6,6 +6,7 @@ import { api } from "./api/client.js";
 import { useQuery } from "./hooks/useQuery.js";
 import { useTicketNotifications } from "./hooks/useTicketNotifications.js";
 import { useUserNotifications } from "./hooks/useUserNotifications.js";
+import { useAlertNotifications } from "./hooks/useAlertNotifications.js";
 import { Sidebar } from "./components/Sidebar.jsx";
 import { Topbar } from "./components/Topbar.jsx";
 import { Palette } from "./components/Palette.jsx";
@@ -169,6 +170,7 @@ function AuthedApp({ theme, setTheme, me, onLogout }) {
 
   useTicketNotifications(setTab);
   useUserNotifications(setTab);
+  useAlertNotifications(() => setAlertsOpen(true));
 
   const status = useQuery(() => api.get("/admin/status"), { interval: 20000 });
   const routesData = useQuery(() => api.get("/routes?limit=500"), { interval: 30000 });

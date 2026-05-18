@@ -235,9 +235,11 @@ export function Topology({ routes = [], nodes = [], probes = [], userCountByBack
                     )}
                     {(liveByEntryId[n.id] || 0) > 0 && (
                       <span
-                        className="pill ok"
-                        title={`${liveByEntryId[n.id]} активных коннектов через эту entry (sing-box clash-API)`}
-                        style={{ padding: "1px 6px", fontSize: 10, lineHeight: 1.4 }}
+                        className={n.is_draining ? "pill muted" : "pill ok"}
+                        title={n.is_draining
+                          ? `${liveByEntryId[n.id]} осиротевших TCP (entry в drain, новые сюда не идут)`
+                          : `${liveByEntryId[n.id]} активных коннектов через эту entry (sing-box clash-API)`}
+                        style={{ padding: "1px 6px", fontSize: 10, lineHeight: 1.4, textDecoration: n.is_draining ? "line-through" : "none", opacity: n.is_draining ? 0.6 : 1 }}
                       >
                         <Icon name="activity" size={9} /> {liveByEntryId[n.id]}
                       </span>
@@ -293,9 +295,11 @@ export function Topology({ routes = [], nodes = [], probes = [], userCountByBack
                   <span style={{ marginLeft: "auto", display: "inline-flex", gap: 4 }}>
                     {liveCount > 0 && (
                       <span
-                        className="pill ok"
-                        title={`${liveCount} активных TCP-сессии (sing-box clash-API)`}
-                        style={{ padding: "1px 6px", fontSize: 10, lineHeight: 1.4 }}
+                        className={n.is_draining ? "pill muted" : "pill ok"}
+                        title={n.is_draining
+                          ? `${liveCount} осиротевших TCP-сокетов (нода в drain, новые сюда не идут — это TCP keep-alive ghost'ы)`
+                          : `${liveCount} активных TCP-сессии (sing-box clash-API)`}
+                        style={{ padding: "1px 6px", fontSize: 10, lineHeight: 1.4, textDecoration: n.is_draining ? "line-through" : "none", opacity: n.is_draining ? 0.6 : 1 }}
                       >
                         <Icon name="activity" size={9} /> {liveCount}
                       </span>
