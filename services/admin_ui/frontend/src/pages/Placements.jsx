@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { api } from "../api/client.js";
 import { useQuery } from "../hooks/useQuery.js";
+import { useIsMobile } from "../hooks/useIsMobile.js";
 import { Icon } from "../components/Icon.jsx";
 import { nodeGeo } from "../lib/geo.js";
 
@@ -10,6 +11,7 @@ const APPLIED_TONE = { applied: "ok", pending: "warn", error: "bad" };
 export function PlacementsPage() {
   const [desired, setDesired] = useState("");
   const [applied, setApplied] = useState("");
+  const isMobile = useIsMobile();
 
   const placements = useQuery(() => api.get("/placements?limit=500"), { interval: 15000 });
   const status = useQuery(() => api.get("/admin/status"), { interval: 15000 });
@@ -66,6 +68,42 @@ export function PlacementsPage() {
         </div>
       </div>
 
+      {isMobile ? (
+        <div className="m-cardlist">
+          {rows.map((p) => {
+            const n = nodesById[p.backend_node_id];
+            const geo = n ? nodeGeo(n.region) : null;
+            return (
+              <div key={p.id} className="m-card">
+                <div className="m-card-head">
+                  <div className="m-card-title">
+                    <div className="m-card-name">
+                      {geo && <span style={{ marginRight: 6 }}>{geo.flag}</span>}
+                      {n?.name || <span className="mono">{String(p.backend_node_id).slice(0, 12)}…</span>}
+                    </div>
+                    <div className="mono muted m-card-id">key {String(p.key_id).slice(0, 12)}…</div>
+                  </div>
+                </div>
+                <div className="m-card-meta">
+                  <span className={"pill small " + (DESIRED_TONE[p.desired_state] || "")}>desired: {p.desired_state}</span>
+                  <span className={"pill small " + (APPLIED_TONE[p.applied_state] || "")}>applied: {p.applied_state}</span>
+                  <span className="mono small">v {p.applied_version}/{p.op_version}</span>
+                </div>
+                {p.last_migration_reason && (
+                  <div className="m-card-body">
+                    <div className="m-card-row">
+                      <span className="m-card-label">Причина</span>
+                      <span className="small muted">{p.last_migration_reason}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {(placements.loading && !rows.length) && <div className="muted" style={{ padding: 14 }}>Загрузка…</div>}
+          {(!placements.loading && !rows.length) && <div className="muted" style={{ padding: 14 }}>Нет плейсментов.</div>}
+        </div>
+      ) : (
       <div className="card">
         <table className="tbl">
           <thead>
@@ -108,6 +146,7 @@ export function PlacementsPage() {
         {(placements.loading && !rows.length) && <div className="muted" style={{ padding: 14 }}>Загрузка…</div>}
         {(!placements.loading && !rows.length) && <div className="muted" style={{ padding: 14 }}>Нет плейсментов.</div>}
       </div>
+      )}
     </div>
   );
 }
