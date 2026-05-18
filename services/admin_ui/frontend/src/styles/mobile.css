@@ -217,10 +217,14 @@ html, body { max-width: 100vw; overflow-x: hidden; }
   .slideover-head {
     flex-wrap: wrap;
     row-gap: 6px;
+    padding-left: 10px;
+    padding-right: 10px;
+    gap: 10px;
   }
   .slideover-head > div:first-child {
     width: 100%;
     align-items: flex-start !important;
+    gap: 10px !important;
   }
   .slideover-head .slideover-title {
     flex-wrap: wrap;
@@ -235,8 +239,33 @@ html, body { max-width: 100vw; overflow-x: hidden; }
     row-gap: 3px;
     line-height: 1.4;
   }
-  /* hide noisy separator dots on mobile sub-line so meta items breathe */
-  .slideover-head .slideover-sub .muted:not(.mono) { display: inline; }
+  /* TicketDrawer actions: hide explicit "Профиль" — it's in the kebab too */
+  .slideover-head .tk-act-profile { display: none; }
+
+  /* — Settings: stack categories as horizontal-scroll tabs above content — */
+  .page > div[style*="240px 1fr"] {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+  .page > div[style*="240px 1fr"] > aside {
+    position: static !important;
+    display: flex;
+    flex-direction: row;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 4px !important;
+    gap: 4px;
+    margin: 0 -14px;
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+  }
+  .page > div[style*="240px 1fr"] > aside .side-btn {
+    flex: 0 0 auto;
+    margin-bottom: 0 !important;
+    white-space: nowrap;
+    padding: 8px 12px !important;
+    min-height: 36px;
+  }
 }
 
 /* Tablet ≤ 900: matrix etc. scroll horizontally; sidebar already off-canvas */
