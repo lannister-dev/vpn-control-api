@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api } from "../api/client.js";
 import { useQuery } from "../hooks/useQuery.js";
+import { useIsMobile } from "../hooks/useIsMobile.js";
 import { Modal } from "../components/Modal.jsx";
 import { Field, Row } from "../components/Field.jsx";
 import { Icon } from "../components/Icon.jsx";
@@ -12,6 +13,7 @@ export function PlansPage() {
   const [editing, setEditing] = useState(null);
   const [creating, setCreating] = useState(false);
   const items = data?.items || [];
+  const isMobile = useIsMobile();
 
   return (
     <div className="page">
@@ -29,6 +31,39 @@ export function PlansPage() {
 
       {error && <div className="card card-bad">Ошибка: {error.message}</div>}
 
+      {isMobile ? (
+        <div className="m-cardlist">
+          {items.map((p) => (
+            <div key={p.id} className="m-card" onClick={() => setEditing(p)}>
+              <div className="m-card-head">
+                <div className="m-card-title">
+                  <div className="m-card-name">{p.name}</div>
+                  {p.description && <div className="small muted">{p.description}</div>}
+                </div>
+                <span className={`pill small ${p.is_active ? "ok" : ""}`}>{p.is_active ? "active" : "inactive"}</span>
+              </div>
+              <div className="m-card-body">
+                <div className="m-card-row"><span className="m-card-label">Цена</span><span className="mono">{p.price_rub}₽</span></div>
+                <div className="m-card-row"><span className="m-card-label">Длительность</span><span className="mono">{p.duration_days} дн.</span></div>
+                <div className="m-card-row"><span className="m-card-label">Трафик</span><span className="mono">{formatBytes(p.traffic_limit_bytes)}</span></div>
+                <div className="m-card-row"><span className="m-card-label">Устройства</span><span className="mono">{p.included_devices}/{p.max_devices}</span></div>
+                <div className="m-card-row"><span className="m-card-label">Сброс</span><ResetStrategyPill value={p.reset_strategy} /></div>
+                {(p.entry_relay_enabled || p.whitelist_enabled) && (
+                  <div className="m-card-row">
+                    <span className="m-card-label">Флаги</span>
+                    <span style={{ display: "inline-flex", gap: 4 }}>
+                      {p.entry_relay_enabled && <span className="pill ok small">Entry</span>}
+                      {p.whitelist_enabled && <span className="pill ok small">WL</span>}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+          {(loading && !items.length) && <div className="muted" style={{ padding: 14 }}>Загрузка…</div>}
+          {(!loading && !items.length) && <Empty icon="wallet" title="Тарифов нет" hint="Создайте первый тарифный план." />}
+        </div>
+      ) : (
       <div className="card">
         <table className="tbl">
           <thead>
@@ -57,6 +92,7 @@ export function PlansPage() {
         {(loading && !items.length) && <div className="muted" style={{ padding: 14 }}>Загрузка…</div>}
         {(!loading && !items.length) && <Empty icon="wallet" title="Тарифов нет" hint="Создайте первый тарифный план." />}
       </div>
+      )}
 
       {creating && <PlanForm onClose={() => { setCreating(false); refetch(); }} />}
       {editing && <PlanForm plan={editing} onClose={() => { setEditing(null); refetch(); }} />}

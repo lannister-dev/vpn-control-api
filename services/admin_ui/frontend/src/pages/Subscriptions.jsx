@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { api } from "../api/client.js";
 import { useQuery } from "../hooks/useQuery.js";
+import { useIsMobile } from "../hooks/useIsMobile.js";
 import { Icon } from "../components/Icon.jsx";
 import { SubscriptionDrawer } from "../components/SubscriptionDrawer.jsx";
 import { SubscriptionCreateModal } from "../components/SubscriptionCreateModal.jsx";
@@ -35,6 +36,7 @@ export function SubscriptionsPage() {
   const [planFilter, setPlanFilter] = useState("");
   const [selected, setSelected] = useState(null);
   const [creating, setCreating] = useState(false);
+  const isMobile = useIsMobile();
 
   const qs = new URLSearchParams({ limit: "100" });
   if (planFilter) qs.set("plan_id", planFilter);
@@ -107,6 +109,17 @@ export function SubscriptionsPage() {
           hasFilters={Boolean(planFilter || preset !== "all")}
           onReset={() => { setPlanFilter(""); setPreset("all"); }}
         />
+      ) : isMobile ? (
+        <div className="m-cardlist">
+          {items.map((s) => (
+            <SubMobileCard
+              key={s.id}
+              s={s}
+              plan={s.plan_id ? plansById[s.plan_id] : null}
+              onOpen={() => setSelected(s)}
+            />
+          ))}
+        </div>
       ) : (
         <div className="card">
           <table className="tbl u-tbl">
@@ -159,6 +172,51 @@ function Kpi({ icon, label, value, tone }) {
     <div className={"u-kpi" + (tone ? ` ${tone}` : "")}>
       <div className="u-kpi-label"><Icon name={icon} size={11} /> {label}</div>
       <div className="u-kpi-val">{value}</div>
+    </div>
+  );
+}
+
+function SubMobileCard({ s, plan, onOpen }) {
+  const status = deriveSubStatus(s);
+  const days = daysLeft(s.expires_at);
+  const cap = plan?.traffic_limit_bytes
+    ?? (plan?.traffic_limit_mb ? plan.traffic_limit_mb * 1024 * 1024 : null);
+  const planName = plan?.name || s.plan_name || "—";
+  return (
+    <div className="m-card" onClick={onOpen}>
+      <div className="m-card-head">
+        <div className="m-card-title">
+          <div className="m-card-name">{planName}</div>
+          <div className="mono muted m-card-id">{String(s.id).slice(0, 8)}…</div>
+        </div>
+        <StatusPill status={status} />
+      </div>
+      <div className="m-card-body">
+        <div className="m-card-row">
+          <span className="m-card-label">Трафик</span>
+          <div style={{ flex: 1 }}>
+            {cap
+              ? <TrafficBar used={s.used_traffic_bytes || 0} cap={cap} />
+              : <span className="mono small muted">∞</span>}
+          </div>
+        </div>
+        <div className="m-card-row">
+          <span className="m-card-label">Осталось</span>
+          <DaysCountdown days={days} />
+        </div>
+        <div className="m-card-row">
+          <span className="m-card-label">Регион</span>
+          <span className="mono small">{s.preferred_region || "—"}</span>
+        </div>
+        <div className="m-card-row">
+          <span className="m-card-label">Устройства</span>
+          <span className="mono">{s.max_devices != null ? `${s.paid_device_slots ?? 0}/${s.max_devices}` : "—"}</span>
+        </div>
+        <div className="m-card-row">
+          <span className="m-card-label">Создана</span>
+          <span className="small muted">{fmtDate(s.created_at)}</span>
+        </div>
+      </div>
     </div>
   );
 }

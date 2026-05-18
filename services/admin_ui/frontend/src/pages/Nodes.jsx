@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../api/client.js";
 import { useQuery } from "../hooks/useQuery.js";
+import { useIsMobile } from "../hooks/useIsMobile.js";
 import { Icon } from "../components/Icon.jsx";
 import { Spark } from "../components/Spark.jsx";
 import { Modal } from "../components/Modal.jsx";
@@ -67,6 +68,7 @@ export function NodesPage({ onOpenNode, initialAction, onActionConsumed }) {
   const { data: status, loading, error, refetch } = useQuery(() => api.get("/admin/status"), { interval: 15000 });
   const zones = useQuery(() => api.get("/zones"), { interval: 60000 });
   const zoneByCode = useMemo(() => Object.fromEntries((zones.data?.items || []).map((z) => [z.code, z])), [zones.data]);
+  const isMobile = useIsMobile();
 
   // No extra metrics on the Серверы list — only LoadBar (CPU+BW%) from heartbeat.
   // Connection counts and per-entry users live in /routes Topology view.
@@ -130,6 +132,21 @@ export function NodesPage({ onOpenNode, initialAction, onActionConsumed }) {
         </div>
       </div>
 
+      {isMobile ? (
+        <div className="m-cardlist">
+          {list.map((n) => (
+            <NodeMobileCard
+              key={n.id}
+              node={n}
+              zoneByCode={zoneByCode}
+              onOpen={() => onOpenNode && onOpenNode(n)}
+              onRefresh={refetch}
+            />
+          ))}
+          {loading && !nodes.length && <div className="muted" style={{ padding: 14 }}>Загрузка…</div>}
+          {!loading && !list.length && <div className="muted" style={{ padding: 14 }}>Нет нод, подходящих под фильтр.</div>}
+        </div>
+      ) : (
       <div className="card">
         <table className="tbl">
           <thead>
@@ -199,8 +216,53 @@ export function NodesPage({ onOpenNode, initialAction, onActionConsumed }) {
         {loading && !nodes.length && <div className="muted" style={{ padding: 14 }}>Загрузка…</div>}
         {!loading && !list.length && <div className="muted" style={{ padding: 14 }}>Нет нод, подходящих под фильтр.</div>}
       </div>
+      )}
 
       {creating && <CreateNodeModal zones={zones.data?.items || []} onClose={() => { setCreating(false); refetch(); }} />}
+    </div>
+  );
+}
+
+function NodeMobileCard({ node, zoneByCode, onOpen, onRefresh }) {
+  const h = healthOf(node);
+  const st = stateOf(node);
+  const load = nodeLoad(node, { cpuPct: node.cpu_pct, bandwidthPct: node.bandwidth_pct });
+  const flag = zoneFlag(zoneByCode, node.zone, node.region);
+  const geo = nodeGeo(node.region);
+  const hb = relTime(node.last_seen_at);
+  const hbBad = /s$/.test(hb) && parseInt(hb) > 10;
+  return (
+    <div className="m-card" onClick={onOpen}>
+      <div className="m-card-head">
+        <span className={`status-dot ${h} ${h === "bad" ? "pulse" : ""}`} />
+        <div className="m-card-title">
+          <div className="m-card-name">{node.name}</div>
+          <div className="mono muted m-card-id">{String(node.id).slice(0, 12)}…</div>
+        </div>
+        <div className="m-card-actions" onClick={(e) => e.stopPropagation()}>
+          <RowMenu node={node} onRefresh={onRefresh} />
+        </div>
+      </div>
+      <div className="m-card-meta">
+        <span><span style={{ marginRight: 4 }}>{flag}</span>{geo.country}</span>
+        <span className="pill small">{node.role}</span>
+        <span className={`pill small ${st === "active" ? "ok" : st === "draining" ? "warn" : "muted"}`}>{st}</span>
+        <span className="mono small" style={{ color: hbBad ? "var(--bad)" : "var(--text-muted)" }}>hb {hb}</span>
+      </div>
+      <div className="m-card-body">
+        <div className="m-card-row">
+          <span className="m-card-label">Нагрузка</span>
+          <div style={{ flex: 1 }}><LoadBar load={load} /></div>
+        </div>
+        <div className="m-card-row">
+          <span className="m-card-label">Маршруты</span>
+          <span className="mono">{node.placements_backend ?? 0}</span>
+        </div>
+        <div className="m-card-row">
+          <span className="m-card-label">Capacity</span>
+          <span className="mono">{node.capacity ?? "—"}</span>
+        </div>
+      </div>
     </div>
   );
 }
