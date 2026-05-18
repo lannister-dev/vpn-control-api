@@ -38,7 +38,8 @@ export function useAlertNotifications(onOpenAlerts) {
           const tone = a.level === "critical" ? "bad" : a.level === "warning" ? "warn" : "info";
           toast[tone](a.title, {
             action: { label: "Открыть", onClick: () => onOpenAlerts?.() },
-            duration: 10000,
+            duration: a.level === "critical" ? 86400000 : 15000,
+            sticky: a.level === "critical",
           });
         }
         lastSeenRef.current = newest;

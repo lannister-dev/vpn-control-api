@@ -6,8 +6,7 @@
 }
 .toast {
   pointer-events: auto;
-  display: grid;
-  grid-template-columns: 20px 1fr 14px;
+  display: flex;
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
@@ -21,6 +20,14 @@
   animation: toast-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
   transition: transform 120ms ease, box-shadow 120ms ease;
 }
+.toast-msg { flex: 1; min-width: 0; }
+.toast-icon { flex-shrink: 0; }
+.toast-close { flex-shrink: 0; opacity: 0.6; }
+.toast-close:hover { opacity: 1; }
+.toast-action { flex-shrink: 0; }
+.toast-bad { border-left: 3px solid var(--bad); }
+.toast-warn { border-left: 3px solid var(--warn); }
+.toast-info { border-left: 3px solid var(--accent); }
 .toast:hover { transform: translateY(-1px); }
 .toast-msg { color: var(--text); line-height: 1.35; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .toast-close { color: var(--text-faint); display: inline-flex; }

@@ -19,7 +19,9 @@ export function ToastProvider({ children }) {
     const t = { id, tone: "ok", ttl: 3500, ...(typeof opts === "string" ? { message: opts } : opts) };
     if (t.duration) t.ttl = t.duration;
     setItems((xs) => [...xs, t]);
-    setTimeout(() => setItems((xs) => xs.filter((x) => x.id !== id)), t.ttl);
+    if (!t.sticky) {
+      setTimeout(() => setItems((xs) => xs.filter((x) => x.id !== id)), t.ttl);
+    }
   }, []);
 
   useEffect(() => { _globalShow = show; return () => { _globalShow = () => {}; }; }, [show]);
@@ -37,14 +39,13 @@ export function ToastProvider({ children }) {
             remove(t.id);
           };
           return (
-            <div key={t.id} className={"toast toast-" + tone} onClick={handleClick} role="status" style={{ cursor: t.action ? "pointer" : "default" }}>
+            <div key={t.id} className={"toast toast-" + tone} role="status" style={{ cursor: t.action ? "pointer" : "default" }}>
               <span className={"toast-icon toast-icon-" + tone}><Icon name={icon} size={12} strokeWidth={2.5} /></span>
-              <span className="toast-msg">{t.message}</span>
-              {t.action ? (
-                <span className="toast-action" style={{ marginLeft: 8, color: "var(--accent)", fontWeight: 600 }}>{t.action.label}</span>
-              ) : (
-                <span className="toast-close" onClick={(e) => { e.stopPropagation(); remove(t.id); }}><Icon name="x" size={12} /></span>
+              <span className="toast-msg" onClick={handleClick}>{t.message}</span>
+              {t.action && (
+                <span className="toast-action" onClick={handleClick} style={{ marginLeft: 8, color: "var(--accent)", fontWeight: 600, cursor: "pointer" }}>{t.action.label}</span>
               )}
+              <span className="toast-close" onClick={(e) => { e.stopPropagation(); remove(t.id); }} style={{ cursor: "pointer", paddingLeft: 4 }}><Icon name="x" size={12} /></span>
             </div>
           );
         })}
