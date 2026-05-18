@@ -2031,16 +2031,14 @@ class SubscriptionService:
             backend_live_loads: dict[str, int],
             nodes_by_id: dict,
     ) -> None:
-        """Pin this vpn_key to the least-loaded backend among its allowed
-        placements. Updates entry_routing_override_backend_tag if needed.
-        Mutates `backend_live_loads` so subsequent keys in the same fetch
-        see the updated count and naturally distribute."""
         if not allowed_backend_ids:
             return
         candidates: list[tuple[int, int, str]] = []
         for bid in allowed_backend_ids:
             node = nodes_by_id.get(bid)
             if not node or not getattr(node, "is_enabled", True):
+                continue
+            if getattr(node, "is_draining", False):
                 continue
             tag = f"backend-{node.name}"
             load = int(backend_live_loads.get(tag, 0))
@@ -2054,7 +2052,16 @@ class SubscriptionService:
             vpn_key = await self.vpn_key_repository.get_by_id(key.vpn_key_id)
             if vpn_key is None:
                 return
-            if vpn_key.entry_routing_override_backend_tag != chosen_tag:
+            current_tag = vpn_key.entry_routing_override_backend_tag
+            current_in_candidates = any(c[2] == current_tag for c in candidates)
+            if current_in_candidates and current_tag:
+                current_load = next(c[0] for c in candidates if c[2] == current_tag)
+                best_load = candidates[0][0]
+                gap = current_load - best_load
+                relative = gap / max(1, current_load)
+                if gap <= 2 or relative < 0.30:
+                    chosen_tag = current_tag
+            if current_tag != chosen_tag:
                 await self.vpn_key_repository.update_by_id(
                     key.vpn_key_id,
                     {"entry_routing_override_backend_tag": chosen_tag},
@@ -2062,8 +2069,6 @@ class SubscriptionService:
         except Exception:
             logger_sub.exception("backend_override_update_failed", key_id=str(key.vpn_key_id))
             return
-        # Optimistic local increment so the next key picks a different backend
-        # when this one and another tie on load.
         backend_live_loads[chosen_tag] = backend_live_loads.get(chosen_tag, 0) + 1
 
     async def _fetch_live_entry_loads(
