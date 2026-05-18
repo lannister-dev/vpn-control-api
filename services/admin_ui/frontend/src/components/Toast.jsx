@@ -40,12 +40,12 @@ export function ToastProvider({ children }) {
           };
           return (
             <div key={t.id} className={"toast toast-" + tone} role="status" style={{ cursor: t.action ? "pointer" : "default" }}>
-              <span className={"toast-icon toast-icon-" + tone}><Icon name={icon} size={12} strokeWidth={2.5} /></span>
+              <span className={"toast-icon toast-icon-" + tone}><Icon name={icon} size={15} strokeWidth={2.5} /></span>
               <span className="toast-msg" onClick={handleClick}>{t.message}</span>
               {t.action && (
                 <span className="toast-action" onClick={handleClick} style={{ marginLeft: 8, color: "var(--accent)", fontWeight: 600, cursor: "pointer" }}>{t.action.label}</span>
               )}
-              <span className="toast-close" onClick={(e) => { e.stopPropagation(); remove(t.id); }} style={{ cursor: "pointer", paddingLeft: 4 }}><Icon name="x" size={12} /></span>
+              <span className="toast-close" onClick={(e) => { e.stopPropagation(); remove(t.id); }} style={{ cursor: "pointer", paddingLeft: 4 }}><Icon name="x" size={14} /></span>
             </div>
           );
         })}
