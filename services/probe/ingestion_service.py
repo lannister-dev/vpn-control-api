@@ -237,30 +237,7 @@ class ProbeIngestionService:
             previous,
             current,
     ) -> None:
-        should_alert = False
-        if previous is None:
-            should_alert = not current.is_reachable
-        else:
-            should_alert = bool(previous.is_reachable) != bool(current.is_reachable)
-
-        if not should_alert:
-            return
-
-        await self.alert_service.send_probe_status_change(
-            node_id=node.id,
-            node_name=node.name,
-            region=node.region,
-            source=source,
-            is_reachable=current.is_reachable,
-            checked_at=current.checked_at,
-            error=current.error,
-            route_id=current.route_id,
-            transport_kind=current.transport_kind,
-            probe_kind=current.probe_kind,
-            target_host=current.target_host,
-            target_port=current.target_port,
-            error_phase=current.error_phase,
-        )
+        return
 
     async def cleanup_old_signals(self) -> int:
         policy = await self._policy()

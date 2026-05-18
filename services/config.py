@@ -193,6 +193,8 @@ class AlertsConfig:
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
     telegram_timeout_sec: int = 5
+    cleanup_retention_days: int = 7
+    cleanup_tick_sec: int = 1800
 
 
 @dataclass
@@ -474,6 +476,8 @@ def get_settings() -> Settings:
         telegram_bot_token=env.str("ALERTS_TELEGRAM_BOT_TOKEN", default=""),
         telegram_chat_id=env.str("ALERTS_TELEGRAM_CHAT_ID", default=""),
         telegram_timeout_sec=env.int("ALERTS_TELEGRAM_TIMEOUT_SEC", default=5),
+        cleanup_retention_days=max(1, env.int("ALERTS_CLEANUP_RETENTION_DAYS", default=7)),
+        cleanup_tick_sec=max(300, env.int("ALERTS_CLEANUP_TICK_SEC", default=1800)),
     )
 
     bot_notifications_token = env.str("BOT_NOTIFICATIONS_TOKEN", default="")

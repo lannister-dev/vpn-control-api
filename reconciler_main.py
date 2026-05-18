@@ -8,6 +8,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 
 from services.admin_transport.models import NatsProcessedMsgLog  # noqa: F401
 from services.admin_transport.reconcilers.cleanup import AdminTransportCleanupReconciler
+from services.alerts.reconcilers.cleanup import AlertsCleanupReconciler
 from services.artifacts.models import ProfileArtifact  # noqa: F401
 from services.auth.admin.models import AdminAuditEvent, AdminSession, AdminUser  # noqa: F401
 from services.billing.models import BalanceTransaction, PaymentOrder  # noqa: F401
@@ -84,6 +85,7 @@ def _build_reconcilers() -> list:
         TrafficHistoryCleanupReconciler(),
         NodeTrafficHistoryCleanupReconciler(),
         AdminTransportCleanupReconciler(),
+        AlertsCleanupReconciler(),
         TrafficResetReconciler(),
         PlacementErrorRetryReconciler(),
         PlacementRebalanceReconciler(),

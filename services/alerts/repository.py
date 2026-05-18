@@ -154,3 +154,9 @@ class AlertEventRepository:
         )
         result = await self.session.execute(stmt)
         return int(result.rowcount or 0) > 0
+
+    async def delete_older_than(self, *, cutoff: datetime) -> int:
+        from sqlalchemy import delete as sa_delete
+        stmt = sa_delete(AlertEvent).where(AlertEvent.created_at < cutoff)
+        result = await self.session.execute(stmt)
+        return int(result.rowcount or 0)

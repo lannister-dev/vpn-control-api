@@ -521,7 +521,7 @@ async def test_report_success(async_session):
     assert out.is_reachable is False
     svc.probe_repository.create.assert_awaited_once()
     svc.probe_repository.delete_older_than.assert_not_awaited()
-    svc.alert_service.send_probe_status_change.assert_awaited_once()
+    svc.alert_service.send_probe_status_change.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -895,7 +895,7 @@ async def test_report_alert_sent_on_recovery_transition(async_session):
         )
     )
 
-    svc.alert_service.send_probe_status_change.assert_awaited_once()
+    svc.alert_service.send_probe_status_change.assert_not_awaited()
 
 
 @pytest.mark.asyncio
