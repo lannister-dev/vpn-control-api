@@ -394,6 +394,34 @@ class ProbeIngestionService:
                 updated_at=datetime.now(timezone.utc),
             ).model_dump(),
         )
+        if (
+            next_state.health_status == RouteHealthStatus.blocked
+            and status != RouteHealthStatus.blocked.value
+        ):
+            await self._emit_route_blocked_alert(route=route, checked_at=checked_at)
+
+    async def _emit_route_blocked_alert(self, *, route, checked_at: datetime) -> None:
+        from services.alerts.constants import AlertSource
+        from services.alerts.repository import AlertEventRepository
+        from services.alerts.schemas import AlertLevel
+        try:
+            repo = AlertEventRepository(self.route_repository.session)
+            dedup_key = f"route-blocked:{route.id}"
+            existing = await repo.find_active_by_dedup(source=AlertSource.GENERIC, dedup_key=dedup_key)
+            if existing is not None:
+                await repo.bump_existing(existing, telegram_sent=False)
+                return
+            await repo.insert(
+                level=AlertLevel.critical.value,
+                source=AlertSource.GENERIC,
+                title="Маршрут заблокирован",
+                body=f"{route.name or route.id} переведён в blocked в {checked_at.isoformat()}",
+                dedup_key=dedup_key,
+                entity_id=str(route.id),
+                telegram_sent=False,
+            )
+        except Exception:
+            logger_probe.exception("emit_route_blocked_alert_failed", route_id=str(route.id))
 
     async def _recover_route_after_probe(self, *, route, checked_at: datetime) -> None:
         status = str(route.health_status)

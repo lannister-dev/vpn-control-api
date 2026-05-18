@@ -7,6 +7,9 @@ from uuid import UUID
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.alerts.constants import AlertSource
+from services.alerts.repository import AlertEventRepository
+from services.alerts.schemas import AlertLevel
 from services.config import get_settings
 from services.entry.events import enqueue_pool_snapshots_for_backend
 from services.nodes.constants import (
@@ -252,6 +255,7 @@ class VpnNodeService:
                 threshold=unhealthy_drain_threshold,
                 consecutive_unhealthy=heartbeat_meta.consecutive_unhealthy,
             )
+            await self._emit_node_down_alert(node=node, now=now)
         should_undrain = (
             effective_is_healthy
             and node.is_draining
@@ -390,6 +394,26 @@ class VpnNodeService:
             existing_sync.full_resync_completed if existing_sync else None
         )
         return existing_full_resync_completed == payload.full_resync_completed
+
+    async def _emit_node_down_alert(self, *, node: VpnNode, now: datetime) -> None:
+        try:
+            repo = AlertEventRepository(self.vpn_node_repository.session)
+            dedup_key = f"node-down:{node.id}"
+            existing = await repo.find_active_by_dedup(source=AlertSource.GENERIC, dedup_key=dedup_key)
+            if existing is not None:
+                await repo.bump_existing(existing, telegram_sent=False)
+                return
+            await repo.insert(
+                level=AlertLevel.critical.value,
+                source=AlertSource.GENERIC,
+                title="Сервер упал",
+                body=f"{node.name} ({node.region}) переведён в drain по heartbeat-таймауту в {now.isoformat()}",
+                dedup_key=dedup_key,
+                entity_id=str(node.id),
+                telegram_sent=False,
+            )
+        except Exception:
+            logger_node.exception("emit_node_down_alert_failed", node_id=str(node.id))
 
     async def _effective_heartbeat_health(self, payload: NodeHeartbeatIn) -> bool:
         if not bool(payload.is_healthy and payload.details.runtime.ready):
