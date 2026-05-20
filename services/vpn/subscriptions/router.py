@@ -20,7 +20,6 @@ from services.vpn.subscriptions.exceptions import (
     SubscriptionInactive,
     SubscriptionNotFound,
     SubscriptionRateLimited,
-    SubscriptionTokenExpired,
 )
 from services.vpn.subscriptions.schemas import (
     NodeAssignmentDistributionOut,
@@ -61,7 +60,7 @@ router = APIRouter(prefix="/subscriptions", tags=["Subscriptions"])
     responses={
         200: {"description": "Subscription config (text/plain or application/json)"},
         304: {"description": "Not modified (ETag match)"},
-        403: {"description": "Subscription inactive / expired / token expired"},
+        403: {"description": "Subscription inactive / expired / device limit"},
         404: {"description": "Subscription not found"},
         429: {"description": "Rate limit exceeded"},
         503: {"description": "No available nodes/configs to build subscription"},
@@ -117,7 +116,6 @@ async def get_subscription_config(
             SubscriptionDeviceLimitReached,
             SubscriptionInactive,
             SubscriptionExpired,
-            SubscriptionTokenExpired,
             SubscriptionRateLimited,
             SubscriptionBuild,
     ) as exc:

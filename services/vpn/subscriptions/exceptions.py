@@ -6,10 +6,6 @@ class SubscriptionNotFound(SubscriptionError):
     """Subscription not found by token or ID."""
 
 
-class SubscriptionTokenExpired(SubscriptionError):
-    pass
-
-
 class SubscriptionExpired(SubscriptionError):
     """Rate limit exceeded for subscription access."""
     pass

@@ -14,7 +14,6 @@ from services.vpn.subscriptions.exceptions import (
     SubscriptionInactive,
     SubscriptionNotFound,
     SubscriptionRateLimited,
-    SubscriptionTokenExpired,
 )
 from services.vpn.subscriptions.schemas import (
     SubscriptionPublicErrorResponse,
@@ -155,12 +154,6 @@ class SubscriptionPublicAdapter:
         if isinstance(exc, SubscriptionExpired):
             return SubscriptionPublicErrorResponse(
                 metric_result="expired",
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Subscription is not active",
-            )
-        if isinstance(exc, SubscriptionTokenExpired):
-            return SubscriptionPublicErrorResponse(
-                metric_result="token_expired",
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Subscription is not active",
             )

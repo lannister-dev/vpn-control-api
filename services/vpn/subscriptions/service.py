@@ -56,7 +56,6 @@ from services.vpn.subscriptions.exceptions import (
     SubscriptionInactive,
     SubscriptionNotFound,
     SubscriptionRateLimited,
-    SubscriptionTokenExpired,
 )
 from services.vpn.subscriptions.model import Subscription, SubscriptionDevice
 from services.vpn.subscriptions.repository import (
@@ -839,6 +838,7 @@ class SubscriptionService:
         return bool(subscription.expires_at and subscription.expires_at <= datetime.now(timezone.utc))
 
     def _validate_subscription(self, subscription, token_hash: str) -> None:
+        del token_hash
         now = datetime.now(timezone.utc)
 
         if not subscription.is_active:
@@ -846,13 +846,6 @@ class SubscriptionService:
 
         if subscription.expires_at and subscription.expires_at <= now:
             raise SubscriptionExpired()
-
-        if (
-            subscription.prev_token_hash == token_hash
-            and subscription.prev_token_expires_at
-            and subscription.prev_token_expires_at <= now
-        ):
-            raise SubscriptionTokenExpired()
 
     def _calc_etag(
             self,

@@ -17,7 +17,6 @@ from services.vpn.subscriptions.exceptions import (
     SubscriptionInactive,
     SubscriptionNotFound,
     SubscriptionRateLimited,
-    SubscriptionTokenExpired,
 )
 from services.vpn.subscriptions.schemas import (
     ResolvedDeviceBundle,
@@ -192,21 +191,11 @@ class TestValidateSubscription:
         with pytest.raises(SubscriptionExpired):
             service._validate_subscription(sub, "hash")
 
-    def test_prev_token_expired_raises(self, service):
+    def test_prev_token_always_accepted(self, service):
         sub = _make_sub(
             prev_token_hash="old_hash",
             prev_token_expires_at=datetime(2020, 1, 1, tzinfo=timezone.utc),
         )
-        with pytest.raises(SubscriptionTokenExpired):
-            service._validate_subscription(sub, "old_hash")
-
-    def test_prev_token_not_expired_ok(self, service):
-        future = datetime.now(timezone.utc) + timedelta(hours=1)
-        sub = _make_sub(
-            prev_token_hash="old_hash",
-            prev_token_expires_at=future,
-        )
-        # should not raise
         service._validate_subscription(sub, "old_hash")
 
     def test_active_valid_ok(self, service):
