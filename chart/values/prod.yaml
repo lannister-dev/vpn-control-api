@@ -58,6 +58,10 @@ ingress:
       paths:
         - path: /api
           pathType: Prefix
+    - host: origin.apirelay.org
+      paths:
+        - path: /api
+          pathType: Prefix
 
 serviceMonitor:
   enabled: true
