@@ -30,7 +30,7 @@ env:
   ENTRY_ROUTING_PER_USER_OUTBOUND_UUID: "true"
   WG_MESH_ENABLED: "true"
   WG_MESH_CIDR: "10.10.0.0/24"
-  WG_MESH_LISTEN_PORT: "51820"
+  WG_MESH_LISTEN_PORT: "51821"
 
 nodeSelector:
   kind: prod
