@@ -100,6 +100,7 @@ class EntryAutoDrainService:
             .outerjoin(NodeAgentState, NodeAgentState.node_id == VpnNode.id)
             .where(VpnNode.is_active.is_(True))
             .where(VpnNode.is_enabled.is_(True))
+            .where(VpnNode.is_virtual.is_(False))
             .where(VpnNode.role.in_(tuple(ENTRY_ROLES)))
             .order_by(VpnNode.name.asc())
         )
