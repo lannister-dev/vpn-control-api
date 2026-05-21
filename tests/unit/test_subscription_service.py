@@ -726,7 +726,7 @@ async def test_build_payload_fetches_route_buffer_scaled_to_max_routes(service):
         await service.build_payload(raw_token="tok")
 
     assert str(exc.value).startswith("No available routes")
-    assert service.route_repository.list_resolved_active.await_count == 2
+    assert service.route_repository.list_resolved_active.await_count == 3
     first_call = service.route_repository.list_resolved_active.await_args_list[0]
     assert first_call.kwargs["preferred_node_id"] == preferred_backend_id
     assert first_call.kwargs["preferred_region"] == "fr"

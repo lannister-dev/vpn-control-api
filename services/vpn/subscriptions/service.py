@@ -943,6 +943,38 @@ class SubscriptionService:
             )
             entry_nodes_by_id = await self._entry_nodes_by_id(route_rows=route_rows)
 
+        wl_route_rows = await self.route_repository.list_resolved_active(
+            preferred_node_id=None,
+            preferred_region=None,
+            limit=max_fetch,
+            backend_node_ids=None,
+            node_seen_after=None,
+            allow_dead_entry=True,
+        )
+        existing_route_ids = {self._as_uuid(r.id) for r, _, _ in route_rows}
+        wl_entry_ids = [
+            self._route_entry_node_id(r)
+            for r, _, _ in wl_route_rows
+            if self._route_entry_node_id(r) is not None
+        ]
+        wl_entry_nodes = (
+            await self.node_repository.list_by_ids(list(dict.fromkeys(wl_entry_ids)))
+            if wl_entry_ids
+            else []
+        )
+        wl_entry_role_by_id = {self._as_uuid(n.id): getattr(n, "role", "") for n in wl_entry_nodes}
+        for row in wl_route_rows:
+            wl_route, _wl_node, _wl_tp = row
+            entry_id = self._route_entry_node_id(wl_route)
+            if entry_id is None:
+                continue
+            if wl_entry_role_by_id.get(self._as_uuid(entry_id)) != ROLE_WHITELIST_ENTRY:
+                continue
+            if self._as_uuid(wl_route.id) in existing_route_ids:
+                continue
+            route_rows.append(row)
+        entry_nodes_by_id = await self._entry_nodes_by_id(route_rows=route_rows)
+
         plan =subscription.plan
         whitelist_enabled = bool(plan and getattr(plan, "whitelist_enabled", False))
         entry_relay_enabled = bool(plan and getattr(plan, "entry_relay_enabled", False))
