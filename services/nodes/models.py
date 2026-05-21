@@ -32,6 +32,7 @@ class VpnNode(Base):
     agent_port: Mapped[int] = mapped_column(Integer, default=9000)
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"), nullable=False)
     is_draining: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"), nullable=False)
+    is_virtual: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"), nullable=False)
     drain_source: Mapped[str | None] = mapped_column(String(length=16), nullable=True)
     capacity: Mapped[int] = mapped_column(Integer, default=100, server_default=text("100"), nullable=False)
     zone: Mapped[str | None] = mapped_column(

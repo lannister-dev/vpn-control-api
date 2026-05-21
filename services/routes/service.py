@@ -495,6 +495,8 @@ class RouteService:
             return "node_disabled"
         if bool(node.is_draining):
             return "node_draining"
+        if bool(getattr(node, "is_virtual", False)):
+            return None
         if agent_state is None:
             return "agent_state_missing"
         if not bool(agent_state.is_healthy):
