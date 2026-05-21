@@ -1945,6 +1945,8 @@ class SubscriptionService:
             return False
         if getattr(entry, "is_draining", False):
             return False
+        if getattr(entry, "is_virtual", False):
+            return True
         try:
             insp = sa_inspect(entry)
         except Exception:
