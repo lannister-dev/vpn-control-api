@@ -965,10 +965,14 @@ class SubscriptionService:
         seen_logical_keys: set[tuple] = set()
         for route, node, transport_profile in route_rows:
             backend_node_id = self._as_uuid(node.id)
-            if backend_node_id not in allowed_backend_ids:
-                continue
             raw_entry_node_id = self._route_entry_node_id(route)
             raw_entry_node = entry_nodes_by_id.get(raw_entry_node_id) if raw_entry_node_id is not None else None
+            is_whitelist_route = (
+                raw_entry_node is not None
+                and getattr(raw_entry_node, "role", "") == ROLE_WHITELIST_ENTRY
+            )
+            if not is_whitelist_route and backend_node_id not in allowed_backend_ids:
+                continue
 
             if raw_entry_node_id is not None:
                 entry_node = self._select_entry_for_backend(
