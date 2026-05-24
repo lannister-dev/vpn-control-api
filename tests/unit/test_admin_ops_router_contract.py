@@ -6,8 +6,8 @@ from uuid import uuid4
 
 import pytest
 
-from services.admin_ops.router import admin_migrate_backend, admin_set_route_health
-from services.admin_ops.schemas import AdminSetRouteHealthIn
+from services.admin.ops.router import admin_migrate_backend, admin_set_route_health
+from services.admin.ops.schemas import AdminSetRouteHealthIn
 from services.placements.schemas import PlacementMigrateBackendIn, PlacementMigrateBackendOut
 from services.routes.schemas import RouteHealthAction, RouteOut
 

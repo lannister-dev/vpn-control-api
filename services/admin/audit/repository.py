@@ -1,7 +1,7 @@
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.admin_audit.models import AdminAuditRecord
+from services.admin.audit.models import AdminAuditRecord
 from shared.database.base_repository import BaseRepository
 
 

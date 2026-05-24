@@ -1,7 +1,7 @@
 import pytest
 from starlette.requests import Request
 
-from services.admin_ui.router import admin_control_panel
+from services.admin.ui.router import admin_control_panel
 
 
 @pytest.mark.asyncio

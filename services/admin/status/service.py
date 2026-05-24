@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.admin_status.schemas import (
+from services.admin.status.schemas import (
     AdminNodeStatusOut,
     AdminReadinessCheckOut,
     AdminReadinessOut,

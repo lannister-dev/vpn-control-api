@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from services.admin_audit.service import AdminAuditService, get_admin_audit_service
+from services.admin.audit.service import AdminAuditService, get_admin_audit_service
 from services.auth.dependencies import admin_auth, current_admin_actor
 from services.routing.entry.exceptions import UnknownBackendTagError
 from services.routing.entry.schemas import (

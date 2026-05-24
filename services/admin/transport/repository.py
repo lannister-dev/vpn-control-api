@@ -9,8 +9,8 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.admin_transport.models import NatsProcessedMsgLog
-from services.admin_transport.read_models import (
+from services.admin.transport.models import NatsProcessedMsgLog
+from services.admin.transport.read_models import (
     EventLogSummaryRow,
     OutboxSummaryRow,
     TransportEventRow,

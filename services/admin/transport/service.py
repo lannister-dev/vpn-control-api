@@ -6,15 +6,15 @@ from uuid import UUID
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.admin_transport.presenters import (
+from services.admin.transport.presenters import (
     to_event_with_node_out,
     to_outbox_item_with_node_out,
     to_transport_event_out,
     to_transport_node_out,
     to_transport_outbox_item_out,
 )
-from services.admin_transport.repository import AdminTransportRepository
-from services.admin_transport.schemas import (
+from services.admin.transport.repository import AdminTransportRepository
+from services.admin.transport.schemas import (
     ConsumerTaskStatus,
     EventLogListOut,
     EventLogSummary,
@@ -205,7 +205,7 @@ class AdminTransportService:
         )
 
     async def cleanup_old_data(self) -> TransportCleanupOut:
-        from services.admin_transport.policy.repository import TransportPolicyRepository
+        from services.admin.transport.policy.repository import TransportPolicyRepository
         policy = (await TransportPolicyRepository(self.session).list(limit=1))[0]
         retention = max(1, int(policy.retention_days))
         cutoff = datetime.now(timezone.utc) - timedelta(days=retention)

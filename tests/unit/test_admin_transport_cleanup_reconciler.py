@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from services.admin_transport.reconcilers.cleanup import AdminTransportCleanupReconciler
+from services.admin.transport.reconcilers.cleanup import AdminTransportCleanupReconciler
 
 
 class _SessionContext:
@@ -54,7 +54,7 @@ def _policy(**overrides):
 
 def _policy_repo_patch(policy):
     return patch(
-        "services.admin_transport.reconcilers.cleanup.TransportPolicyRepository",
+        "services.admin.transport.reconcilers.cleanup.TransportPolicyRepository",
         return_value=SimpleNamespace(list=AsyncMock(return_value=[policy])),
     )
 
@@ -80,7 +80,7 @@ async def test_run_once_cleans_and_commits(monkeypatch):
             return await delete_dedup(cutoff=cutoff)
 
     monkeypatch.setattr(
-        "services.admin_transport.reconcilers.cleanup.AdminTransportRepository",
+        "services.admin.transport.reconcilers.cleanup.AdminTransportRepository",
         _Repo,
     )
 

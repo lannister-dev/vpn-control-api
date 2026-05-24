@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, status
 
-from services.admin_audit.service import AdminAuditService, get_admin_audit_service
+from services.admin.audit.service import AdminAuditService, get_admin_audit_service
 from services.auth.dependencies import admin_auth, current_admin_actor
 from services.traffic.policy.schemas import TrafficPolicyOut, TrafficPolicyUpdateIn
 from services.traffic.policy.service import TrafficPolicyService, get_traffic_policy_service

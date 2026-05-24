@@ -37,8 +37,8 @@ async def admin_spa(request: Request, full_path: str = ""):
     if not _INDEX_PATH.exists():
         return HTMLResponse(
             "<h1>Admin panel not built</h1>"
-            "<p>Run <code>cd services/admin_ui/frontend && npm install && npm run build</code> "
-            "then copy dist to services/admin_ui/static/v2/.</p>",
+            "<p>Run <code>cd services/admin/ui/frontend && npm install && npm run build</code> "
+            "then copy dist to services/admin/ui/static/v2/.</p>",
             status_code=503,
         )
     return HTMLResponse(_INDEX_PATH.read_text(encoding="utf-8"))

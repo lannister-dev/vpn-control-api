@@ -5,7 +5,7 @@ import logging
 
 from pydantic import ValidationError
 
-from services.admin_transport.repository import NatsMessageDedupRepository
+from services.admin.transport.repository import NatsMessageDedupRepository
 from services.config import NatsConfig
 from services.support.repository import SupportMessageRepository
 from services.support.schemas import SupportInboundMessage, SupportSentAck

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Query, status
 
-from services.admin_audit.schemas import AdminAuditListOut
-from services.admin_audit.service import AdminAuditService, get_admin_audit_service
+from services.admin.audit.schemas import AdminAuditListOut
+from services.admin.audit.service import AdminAuditService, get_admin_audit_service
 from services.auth.dependencies import admin_auth
 
 router = APIRouter(

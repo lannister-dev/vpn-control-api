@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from services.admin_status.runtime_service import RuntimeReadinessService
+from services.admin.status.runtime_service import RuntimeReadinessService
 
 
 class _SessionContext:

@@ -5,7 +5,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
 
-from services.admin_transport.schemas import (
+from services.admin.transport.schemas import (
     EventLogListOut,
     ForceSnapshotOut,
     OutboxBreakdownOut,
@@ -17,7 +17,7 @@ from services.admin_transport.schemas import (
     TransportNodeListOut,
     TransportOverviewOut,
 )
-from services.admin_transport.service import (
+from services.admin.transport.service import (
     AdminTransportService,
     get_admin_transport_service,
 )

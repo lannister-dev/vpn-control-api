@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from services.admin_transport.read_models import (
+from services.admin.transport.read_models import (
     TransportEventRow,
     TransportEventWithNodeRow,
     TransportNodeRow,
     TransportOutboxRow,
     TransportOutboxWithNodeRow,
 )
-from services.admin_transport.schemas import (
+from services.admin.transport.schemas import (
     EventWithNodeOut,
     OutboxItemWithNodeOut,
     TransportEventOut,

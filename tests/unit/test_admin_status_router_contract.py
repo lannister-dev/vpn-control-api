@@ -7,8 +7,8 @@ from uuid import uuid4
 
 import pytest
 
-from services.admin_status.router import get_admin_readiness, get_admin_status
-from services.admin_status.schemas import (
+from services.admin.status.router import get_admin_readiness, get_admin_status
+from services.admin.status.schemas import (
     AdminNodeStatusOut,
     AdminReadinessCheckOut,
     AdminReadinessOut,

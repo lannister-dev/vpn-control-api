@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, status
 
-from services.admin_audit.service import AdminAuditService, get_admin_audit_service
-from services.admin_ops.schemas import AdminSetRouteHealthIn
+from services.admin.audit.service import AdminAuditService, get_admin_audit_service
+from services.admin.ops.schemas import AdminSetRouteHealthIn
 from services.auth.dependencies import admin_auth, current_admin_actor
 from services.placements.schemas import PlacementMigrateBackendIn, PlacementMigrateBackendOut
 from services.placements.service import UserPlacementService, get_user_placement_service

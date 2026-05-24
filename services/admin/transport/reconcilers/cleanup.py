@@ -4,12 +4,12 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
-from services.admin_transport.constants import (
+from services.admin.transport.constants import (
     CLEANUP_IDLE_WHEN_DISABLED_SEC,
     NATS_DEDUP_RETENTION_HOURS,
 )
-from services.admin_transport.policy.repository import TransportPolicyRepository
-from services.admin_transport.repository import AdminTransportRepository
+from services.admin.transport.policy.repository import TransportPolicyRepository
+from services.admin.transport.repository import AdminTransportRepository
 from shared.database.session import AsyncDatabase
 from shared.reconciler.watchdog import watchdog
 from shared.redis.lock import RedisTickLock

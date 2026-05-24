@@ -1,8 +1,8 @@
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.admin_audit.repository import AdminAuditRepository
-from services.admin_audit.schemas import (
+from services.admin.audit.repository import AdminAuditRepository
+from services.admin.audit.schemas import (
     AdminAuditListOut,
     AdminAuditRecordCreate,
     AdminAuditRecordOut,

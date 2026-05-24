@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from services.admin_transport.service import AdminTransportService
+from services.admin.transport.service import AdminTransportService
 
 
 def _policy(retention_days: int = 30):
@@ -18,7 +18,7 @@ def _policy(retention_days: int = 30):
 
 def _policy_repo_patch(policy):
     return patch(
-        "services.admin_transport.policy.repository.TransportPolicyRepository",
+        "services.admin.transport.policy.repository.TransportPolicyRepository",
         return_value=SimpleNamespace(list=AsyncMock(return_value=[policy])),
     )
 

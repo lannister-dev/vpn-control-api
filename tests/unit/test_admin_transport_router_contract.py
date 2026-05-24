@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from services.admin_transport.router import transport_cleanup
-from services.admin_transport.schemas import TransportCleanupOut
+from services.admin.transport.router import transport_cleanup
+from services.admin.transport.schemas import TransportCleanupOut
 
 
 @pytest.mark.asyncio

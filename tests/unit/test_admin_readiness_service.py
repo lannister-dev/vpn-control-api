@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import pytest
 
-from services.admin_status.service import AdminStatusService
+from services.admin.status.service import AdminStatusService
 
 
 def _node(*, enabled: bool, draining: bool, role: str = "backend"):

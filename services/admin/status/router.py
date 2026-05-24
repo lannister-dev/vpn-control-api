@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, status
 
-from services.admin_status.schemas import AdminReadinessOut, AdminStatusOut
-from services.admin_status.service import AdminStatusService, get_admin_status_service
+from services.admin.status.schemas import AdminReadinessOut, AdminStatusOut
+from services.admin.status.service import AdminStatusService, get_admin_status_service
 from services.auth.dependencies import admin_auth
 
 router = APIRouter(prefix="/admin", tags=["Admin"])

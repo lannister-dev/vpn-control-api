@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from services.admin_status.schemas import RuntimeReadinessCheckOut, RuntimeReadinessOut
+from services.admin.status.schemas import RuntimeReadinessCheckOut, RuntimeReadinessOut
 from shared.database.session import AsyncDatabase
 from shared.redis.client import RedisClient, redis_client
 

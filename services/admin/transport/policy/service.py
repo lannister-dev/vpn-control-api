@@ -1,8 +1,8 @@
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.admin_transport.policy.repository import TransportPolicyRepository
-from services.admin_transport.policy.schemas import TransportPolicyOut, TransportPolicyUpdateIn
+from services.admin.transport.policy.repository import TransportPolicyRepository
+from services.admin.transport.policy.schemas import TransportPolicyOut, TransportPolicyUpdateIn
 from shared.database.session import AsyncDatabase
 
 

@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, status
 
-from services.admin_audit.service import AdminAuditService, get_admin_audit_service
-from services.admin_transport.policy.schemas import TransportPolicyOut, TransportPolicyUpdateIn
-from services.admin_transport.policy.service import TransportPolicyService, get_transport_policy_service
+from services.admin.audit.service import AdminAuditService, get_admin_audit_service
+from services.admin.transport.policy.schemas import TransportPolicyOut, TransportPolicyUpdateIn
+from services.admin.transport.policy.service import TransportPolicyService, get_transport_policy_service
 from services.auth.dependencies import admin_auth, current_admin_actor
 
 router = APIRouter(
