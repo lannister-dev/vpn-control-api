@@ -7,7 +7,7 @@ from sqlalchemy import BigInteger, cast, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.nodes.models import VpnNode
-from services.traffic.nodes.model import NodeTrafficUsage
+from services.traffic.nodes.models import NodeTrafficUsage
 from services.traffic.nodes.schemas import (
     NodePairAggregate,
     NodeTimeseriesBucket,

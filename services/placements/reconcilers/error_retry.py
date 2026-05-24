@@ -9,7 +9,7 @@ from sqlalchemy import update as sa_update
 
 from services.nodes.policy.repository import NodePolicyRepository
 from services.placements.constants import ERROR_RETRY_IDLE_WHEN_DISABLED_SEC
-from services.placements.model import UserPlacement
+from services.placements.models import UserPlacement
 from services.placements.transport import NodeAgentPlacementTransport
 from shared.database.session import AsyncDatabase
 from shared.reconciler.watchdog import watchdog

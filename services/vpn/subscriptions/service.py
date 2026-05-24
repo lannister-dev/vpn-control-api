@@ -22,7 +22,7 @@ from services.entry.repository import EntryBackendAssignmentRepository
 from services.nodes.constants import ROLE_ENTRY, ROLE_WHITELIST_ENTRY
 from services.nodes.models import VpnNode
 from services.nodes.repository import VpnNodeRepository
-from services.placements.model import UserPlacement
+from services.placements.models import UserPlacement
 from services.placements.repository import UserPlacementRepository
 from services.placements.schemas import PlacementDesiredState
 from services.placements.transport import NodeAgentPlacementTransport
@@ -57,7 +57,7 @@ from services.vpn.subscriptions.exceptions import (
     SubscriptionNotFound,
     SubscriptionRateLimited,
 )
-from services.vpn.subscriptions.model import Subscription, SubscriptionDevice
+from services.vpn.subscriptions.models import Subscription, SubscriptionDevice
 from services.vpn.subscriptions.repository import (
     SubscriptionDeviceKeyRepository,
     SubscriptionDeviceRepository,

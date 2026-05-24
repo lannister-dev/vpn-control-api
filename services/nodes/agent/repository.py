@@ -7,7 +7,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.nodes.agent.model import (
+from services.nodes.agent.models import (
     NodeTransportEventLog,
     NodeTransportOutbox,
     NodeTransportState,

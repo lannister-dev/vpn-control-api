@@ -1,7 +1,7 @@
-from services.placements.model import UserPlacement
-from services.traffic.users.model import TrafficUsage
+from services.placements.models import UserPlacement
+from services.traffic.users.models import TrafficUsage
 from services.vpn.keys.models import KeyAssignment, VpnKey
-from services.vpn.subscriptions.model import (
+from services.vpn.subscriptions.models import (
     Subscription,
     SubscriptionDevice,
     SubscriptionDeviceKey,

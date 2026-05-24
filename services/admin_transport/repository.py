@@ -19,7 +19,7 @@ from services.admin_transport.read_models import (
     TransportOutboxRow,
     TransportOutboxWithNodeRow,
 )
-from services.nodes.agent.model import (
+from services.nodes.agent.models import (
     NodeTransportEventLog,
     NodeTransportOutbox,
     NodeTransportState,

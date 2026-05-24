@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.traffic.policy.model import TrafficPolicy
+from services.traffic.policy.models import TrafficPolicy
 from shared.database.base_repository import BaseRepository
 
 

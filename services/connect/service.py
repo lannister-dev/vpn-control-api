@@ -19,7 +19,7 @@ from services.connect.schemas import (
 )
 from services.nodes.models import VpnNode
 from services.nodes.repository import VpnNodeRepository
-from services.placements.model import UserPlacement
+from services.placements.models import UserPlacement
 from services.placements.repository import UserPlacementRepository
 from services.placements.schemas import PlacementDesiredState
 from services.placements.transport import NodeAgentPlacementTransport

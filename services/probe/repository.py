@@ -7,7 +7,7 @@ from sqlalchemy import case, delete, func, or_, select
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.probe.model import ProbeSignal
+from services.probe.models import ProbeSignal
 from shared.database.base_repository import BaseRepository
 from shared.database.session import AsyncDatabase
 

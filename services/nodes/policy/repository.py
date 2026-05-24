@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.nodes.policy.model import NodePolicy
+from services.nodes.policy.models import NodePolicy
 from shared.database.base_repository import BaseRepository
 
 
