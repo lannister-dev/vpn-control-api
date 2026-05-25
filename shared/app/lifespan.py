@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from services.config import NatsConfig
+from services.notifications.service import NotificationService
 from shared.app.bootstrap import (
     bootstrap_profiles,
     connect_nats,
@@ -39,6 +40,7 @@ def build_lifespan(
             if nats is not None:
                 app.state.nats_client = nats
                 app.state.nats_config = nats_settings
+        app.state.notifications = NotificationService(nats)
 
         logger.info(ready_event)
         try:

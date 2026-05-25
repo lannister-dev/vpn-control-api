@@ -4,12 +4,13 @@ import logging
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.alerts.service import AlertService, get_alert_service
 from services.config import get_settings
 from services.nodes.repository import VpnNodeRepository
+from services.notifications.service import NotificationService
 from services.placements.repository import UserPlacementRepository
 from services.placements.transport import NodeAgentPlacementTransport
 from services.probe.policy.repository import ProbePolicyRepository
@@ -53,6 +54,7 @@ class ProbeIngestionService:
             target_port: int,
             edge_public_domain: str,
             synthetic_probe_client_ids: ProbeSyntheticClientIds,
+            notifications: NotificationService | None = None,
     ):
         self.node_repository = node_repository
         self.probe_repository = probe_repository
@@ -65,6 +67,7 @@ class ProbeIngestionService:
         self.target_port = target_port
         self.edge_public_domain = edge_public_domain
         self.synthetic_probe_client_ids = synthetic_probe_client_ids
+        self.notifications = notifications
         self._policy_cache = None
 
     async def _policy(self):
@@ -399,6 +402,13 @@ class ProbeIngestionService:
             and status != RouteHealthStatus.blocked.value
         ):
             await self._emit_route_blocked_alert(route=route, checked_at=checked_at)
+            if self.notifications is not None:
+                await self.notifications.publish_route_blocked(
+                    route_id=str(route.id),
+                    route_name=route.name or str(route.id),
+                    node_id=str(getattr(route, "node_id", "")),
+                    reason=f"{consecutive} consecutive failures",
+                )
 
     async def _emit_route_blocked_alert(self, *, route, checked_at: datetime) -> None:
         from services.alerts.constants import AlertSource
@@ -455,6 +465,11 @@ class ProbeIngestionService:
                     updated_at=datetime.now(timezone.utc),
                 ).model_dump(),
             )
+            if self.notifications is not None:
+                await self.notifications.publish_route_recovered(
+                    route_id=str(route.id),
+                    route_name=route.name or str(route.id),
+                )
 
     async def _route_entry_is_unhealthy(self, *, route) -> bool:
         entry_node_id = getattr(route, "entry_node_id", None)
@@ -760,11 +775,14 @@ class ProbeIngestionService:
 
 
 def get_probe_ingestion_service(
+        request: Request,
         session: AsyncSession = Depends(AsyncDatabase.get_session),
         alert_service: AlertService = Depends(get_alert_service),
 ) -> ProbeIngestionService:
     probe_settings = get_settings().probe
+    notifications = getattr(request.app.state, "notifications", None)
     return ProbeIngestionService(
+        notifications=notifications,
         node_repository=VpnNodeRepository(session),
         probe_repository=ProbeSignalRepository(session),
         route_repository=RouteRepository(session),

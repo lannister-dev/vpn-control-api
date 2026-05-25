@@ -18,7 +18,9 @@ from fastapi.responses import StreamingResponse
 from services.auth.dependencies import admin_auth, current_admin_user_id
 from services.config import get_settings
 from services.support.exceptions import (
+    BroadcastNotFound,
     EmptyMessage,
+    InvalidStateTransition,
     SupportActionFailed,
     TemplateAlreadyExists,
     TemplateNotFound,
@@ -298,6 +300,19 @@ async def delete_template(
 @router.get("/broadcasts", response_model=BroadcastListOut)
 async def list_broadcasts(service: SupportService = Depends(get_support_service)):
     return await service.list_broadcasts()
+
+
+@router.post("/broadcasts/{broadcast_id}/cancel", response_model=BroadcastOut)
+async def cancel_broadcast(
+    broadcast_id: UUID,
+    service: SupportService = Depends(get_support_service),
+):
+    try:
+        return await service.cancel_broadcast(broadcast_id)
+    except BroadcastNotFound:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Broadcast not found")
+    except InvalidStateTransition as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
 
 
 @router.get("/broadcasts/audience-size", response_model=BroadcastAudienceCount)

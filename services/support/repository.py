@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import and_, desc, func, select
+from sqlalchemy import and_, desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.billing.models import PaymentOrder
@@ -285,6 +285,67 @@ class BroadcastRepository(BaseRepository[Broadcast]):
             .limit(limit)
         )
         return list((await self.session.execute(stmt)).scalars().all())
+
+    async def cancel_scheduled(self, broadcast_id: UUID) -> Broadcast | None:
+        stmt = (
+            update(Broadcast)
+            .where(
+                Broadcast.id == broadcast_id,
+                Broadcast.status == "scheduled",
+            )
+            .values(status="cancelled")
+            .returning(Broadcast)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalars().one_or_none()
+
+    async def pick_due_scheduled(self, *, now: datetime, limit: int) -> list[Broadcast]:
+        stmt = (
+            select(Broadcast)
+            .where(
+                Broadcast.status == "scheduled",
+                Broadcast.scheduled_at.is_not(None),
+                Broadcast.scheduled_at <= now,
+            )
+            .order_by(Broadcast.scheduled_at.asc())
+            .limit(limit)
+        )
+        return list((await self.session.execute(stmt)).scalars().all())
+
+    async def claim_for_send(self, broadcast_id: UUID) -> Broadcast | None:
+        stmt = (
+            update(Broadcast)
+            .where(
+                Broadcast.id == broadcast_id,
+                Broadcast.status == "scheduled",
+            )
+            .values(status="sending")
+            .returning(Broadcast)
+        )
+        return (await self.session.execute(stmt)).scalars().one_or_none()
+
+    async def mark_sent(
+        self,
+        broadcast_id: UUID,
+        *,
+        delivered: int,
+        errors: int,
+        sent_at: datetime,
+    ) -> None:
+        stmt = (
+            update(Broadcast)
+            .where(Broadcast.id == broadcast_id)
+            .values(status="sent", delivered=delivered, errors=errors, sent_at=sent_at)
+        )
+        await self.session.execute(stmt)
+
+    async def mark_failed(self, broadcast_id: UUID) -> None:
+        stmt = (
+            update(Broadcast)
+            .where(Broadcast.id == broadcast_id)
+            .values(status="failed")
+        )
+        await self.session.execute(stmt)
 
     async def resolve_audience_user_ids(
         self,

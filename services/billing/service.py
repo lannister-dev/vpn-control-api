@@ -46,6 +46,7 @@ from services.billing.schemas import (
 )
 from services.bot_notifications.service import TelegramBotNotifyService
 from services.config import get_settings
+from services.notifications.service import NotificationService
 from services.plans.repository import PlanRepository
 from services.users.models import User
 from services.users.repository import UserRepository
@@ -68,7 +69,12 @@ TELEGRAM_PENDING_MESSAGE_META_KEY = "_telegram_pending_message"
 
 
 class BillingService:
-    def __init__(self, session: AsyncSession, redis: RedisClient | None = None):
+    def __init__(
+        self,
+        session: AsyncSession,
+        redis: RedisClient | None = None,
+        notifications: NotificationService | None = None,
+    ):
         self.session = session
         self.order_repo = OrderRepository(session)
         self.tx_repo = TransactionRepository(session)
@@ -77,6 +83,7 @@ class BillingService:
         self.sub_repo = SubscriptionRepository(session)
         self.settings = get_settings().billing
         self.notify_service = TelegramBotNotifyService()
+        self.notifications = notifications
         from services.vpn.subscriptions.cache import SubscriptionCacheInvalidator
         self._cache_invalidator = (
             SubscriptionCacheInvalidator(session, redis) if redis is not None else None
@@ -651,6 +658,8 @@ class BillingService:
             PAYMENTS_FAILED_TOTAL.labels(
                 provider=provider_name, reason="user_not_found"
             ).inc()
+            if self.notifications is not None:
+                await self.notifications.record_payment_failure(provider_name)
             raise FulfillmentFailed(
                 f"User {order.user_id} not found for order {order.id}"
             )
@@ -700,6 +709,8 @@ class BillingService:
         PAYMENTS_SUCCEEDED_TOTAL.labels(
             provider=provider_name, order_type=order_type
         ).inc()
+        if self.notifications is not None:
+            self.notifications.reset_payment_failures(provider_name)
         if order_type in ("plan_purchase", "subscription_renewal") and provider_name != "free":
             try:
                 from services.referral.service import ReferralService
@@ -707,6 +718,33 @@ class BillingService:
                 await referral_service.process_reward_if_eligible(order.user_id)
             except Exception:
                 log.exception("referral_reward_failed", user_id=str(order.user_id))
+            if self.notifications is not None:
+                try:
+                    plan_name = ""
+                    if order.plan_id:
+                        plan_for_event = await self.plan_repo.get_by_id(order.plan_id)
+                        plan_name = getattr(plan_for_event, "name", "") or ""
+                    await self.notifications.publish_purchase(
+                        telegram_id=user.telegram_id,
+                        username=getattr(user, "username", None),
+                        plan_name=plan_name,
+                        amount_rub=float(order.amount_rub),
+                        provider=provider_name,
+                        is_renewal=order_type == "subscription_renewal",
+                    )
+                except Exception:
+                    log.exception("notification_publish_failed", order_id=str(order.id))
+        elif order_type == "top_up" and provider_name != "free" and self.notifications is not None:
+            try:
+                await self.notifications.publish_balance_topup(
+                    telegram_id=user.telegram_id,
+                    username=getattr(user, "username", None),
+                    amount_rub=float(order.amount_rub),
+                    provider=provider_name,
+                    balance_after_rub=float(new_balance),
+                )
+            except Exception:
+                log.exception("notification_publish_failed", order_id=str(order.id))
 
         if provider_name != "stars":
             updated_order = await self.order_repo.get_by_id(order.id)
@@ -1098,7 +1136,9 @@ class BillingService:
 
 
 def get_billing_service(
+    request: Request,
     session: AsyncSession = Depends(AsyncDatabase.get_session),
     redis: RedisClient = Depends(get_redis_client),
 ) -> BillingService:
-    return BillingService(session, redis)
+    notifications = getattr(request.app.state, "notifications", None)
+    return BillingService(session, redis, notifications)

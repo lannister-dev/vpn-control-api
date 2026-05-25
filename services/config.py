@@ -70,6 +70,8 @@ class NatsConfig:
     js_support_duplicate_window_s: int = 600
     js_support_ack_wait_s: float = 30.0
     js_support_max_deliver: int = 5
+    js_notifications_stream: str = "vpn_notifications"
+    notifications_subject: str = "notifications.event"
 
 
 @dataclass
@@ -418,6 +420,8 @@ def get_settings() -> Settings:
         js_support_duplicate_window_s=max(0, env.int("NATS_JS_SUPPORT_DUPLICATE_WINDOW_S", default=600)),
         js_support_ack_wait_s=max(1.0, env.float("NATS_JS_SUPPORT_ACK_WAIT_S", default=30.0)),
         js_support_max_deliver=max(1, env.int("NATS_JS_SUPPORT_MAX_DELIVER", default=5)),
+        js_notifications_stream=env.str("NATS_JS_NOTIFICATIONS_STREAM", default="vpn_notifications"),
+        notifications_subject=env.str("NATS_NOTIFICATIONS_SUBJECT", default="notifications.event"),
     )
 
     admin = AdminConfig(

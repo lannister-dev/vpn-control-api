@@ -51,6 +51,7 @@ class BroadcastStatus(str, Enum):
     SENDING = "sending"
     SENT = "sent"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class TicketUserRef(BaseModel):
