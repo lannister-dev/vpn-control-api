@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, status
 
-from services.admin_audit.service import AdminAuditService, get_admin_audit_service
+from services.admin.audit.service import AdminAuditService, get_admin_audit_service
 from services.auth.dependencies import admin_auth, current_admin_actor
 from services.probe.policy.schemas import ProbePolicyOut, ProbePolicyUpdateIn
 from services.probe.policy.service import ProbePolicyService, get_probe_policy_service

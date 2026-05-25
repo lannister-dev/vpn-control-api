@@ -18,7 +18,7 @@ from services.nodes.constants import (
 from services.nodes.models import NodeAgentState, VpnNode
 from services.nodes.repository import NodeAgentStateRepository, VpnNodeRepository
 from services.probe.repository import ProbeSignalRepository
-from services.routes.model import Route
+from services.routes.models import Route
 from services.routes.repository import RouteRepository
 from shared.utils.logger import StructuredLogger
 

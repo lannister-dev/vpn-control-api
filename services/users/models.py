@@ -4,7 +4,7 @@ from decimal import Decimal
 from sqlalchemy import BIGINT, DateTime, Index, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from services.vpn.subscriptions.model import Subscription
+from services.vpn.subscriptions.models import Subscription
 from shared.database.base_model import Base
 
 

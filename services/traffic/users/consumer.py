@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 
-from services.admin_transport.repository import NatsMessageDedupRepository
+from services.admin.transport.repository import NatsMessageDedupRepository
 from services.config import NatsConfig
 from services.traffic.users.schemas import UserTrafficIn
 from services.traffic.users.service import UserTrafficService

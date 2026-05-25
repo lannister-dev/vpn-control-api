@@ -34,7 +34,7 @@ class UserRepository(BaseRepository[User]):
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[User], int]:
-        from services.vpn.subscriptions.model import Subscription
+        from services.vpn.subscriptions.models import Subscription
 
         stmt = select(User)
         count_stmt = select(func.count(User.id))
@@ -83,7 +83,7 @@ class UserRepository(BaseRepository[User]):
         return list(rows), total
 
     async def count_subscriptions(self, user_id) -> int:
-        from services.vpn.subscriptions.model import Subscription
+        from services.vpn.subscriptions.models import Subscription
 
         result = await self.session.execute(
             select(func.count(Subscription.id)).where(Subscription.user_id == user_id)

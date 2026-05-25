@@ -8,8 +8,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.nodes.models import NodeAgentState, VpnNode
-from services.placements.model import UserPlacement
-from services.traffic.nodes.model import NodeTrafficUsage
+from services.placements.models import UserPlacement
+from services.traffic.nodes.models import NodeTrafficUsage
 
 
 class RoutingRepository:

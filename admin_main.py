@@ -5,19 +5,19 @@ from fastapi import APIRouter, FastAPI
 from prometheus_fastapi_instrumentator import Instrumentator
 from starlette.staticfiles import StaticFiles
 
-from services.admin_audit.router import router as admin_audit_router
-from services.admin_nodes.router import (
+from services.admin.audit.router import router as admin_audit_router
+from services.admin.nodes.router import (
     admin_router as nodes_admin_router,
 )
-from services.admin_nodes.router import (
+from services.admin.nodes.router import (
     installer_router as nodes_installer_router,
 )
-from services.admin_ops.router import router as admin_ops_router
-from services.admin_status.router import router as admin_status_router
-from services.admin_transport.policy.router import router as admin_transport_policy_router
-from services.admin_transport.router import router as admin_transport_router
-from services.admin_ui.router_v2 import STATIC_V2_DIR
-from services.admin_ui.router_v2 import router as admin_ui_v2_router
+from services.admin.ops.router import router as admin_ops_router
+from services.admin.status.router import router as admin_status_router
+from services.admin.transport.policy.router import router as admin_transport_policy_router
+from services.admin.transport.router import router as admin_transport_router
+from services.admin.ui.router_v2 import STATIC_V2_DIR
+from services.admin.ui.router_v2 import router as admin_ui_v2_router
 from services.alerts.admin_router import router as admin_alerts_router
 from services.auth.admin.router import router as admin_auth_router
 from services.config import get_settings

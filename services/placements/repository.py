@@ -8,7 +8,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, insert
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.placements.model import UserPlacement
+from services.placements.models import UserPlacement
 from services.vpn.keys.models import VpnKey
 from shared.database.base_repository import BaseRepository
 from shared.database.session import AsyncDatabase

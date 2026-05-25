@@ -34,15 +34,15 @@ from services.alerts.models import AlertEvent
 from services.artifacts.models import ProfileArtifact
 from services.auth.admin.models import AdminAuditEvent, AdminSession, AdminUser
 from services.billing.models import BalanceTransaction, PaymentOrder
-from services.nodes.agent.model import (
+from services.nodes.agent.models import (
     NodeTransportEventLog,
     NodeTransportOutbox,
     NodeTransportState,
 )
 from services.nodes.models import NodeAgentIdentity, NodeAgentState, VpnNode
-from services.placements.model import UserPlacement
-from services.probe.model import ProbeSignal
-from services.routes.model import Route, TransportProfile
+from services.placements.models import UserPlacement
+from services.probe.models import ProbeSignal
+from services.routes.models import Route, TransportProfile
 from services.support.models import (
     Broadcast,
     BroadcastLog,
@@ -51,11 +51,11 @@ from services.support.models import (
     SupportTemplate,
     SupportTicket,
 )
-from services.traffic.nodes.model import NodeTrafficUsage
-from services.traffic.users.model import TrafficUsage
+from services.traffic.nodes.models import NodeTrafficUsage
+from services.traffic.users.models import TrafficUsage
 from services.users.models import User
 from services.vpn.keys.models import KeyAssignment, VpnKey
-from services.vpn.subscriptions.model import Subscription
+from services.vpn.subscriptions.models import Subscription
 from services.zones.models import Zone
 
 target_metadata = Base.metadata

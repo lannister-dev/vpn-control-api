@@ -111,9 +111,9 @@ ipwhitelist.txt
 cidrwhitelist.txt
 check_whitelist_ip.py
 # Admin UI v2 build artifacts — built in Docker
-services/admin_ui/static/v2/
-services/admin_ui/frontend/dist/
-services/admin_ui/frontend/node_modules/
+services/admin/ui/static/v2/
+services/admin/ui/frontend/dist/
+services/admin/ui/frontend/node_modules/
 
 # design handoff bundle (local reference, not part of product)
 /assets/

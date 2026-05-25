@@ -8,7 +8,7 @@ from uuid import UUID
 from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.admin_status.service import AdminStatusService
+from services.admin.status.service import AdminStatusService
 from services.billing.repository import OrderRepository
 from services.billing.schemas import OrderCreateIn, OrderOut, OrderTypeEnum, PaymentProviderEnum
 from services.billing.service import BillingService

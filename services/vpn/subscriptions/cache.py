@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.vpn.keys.models import VpnKey
 from services.vpn.subscriptions import redis_key
-from services.vpn.subscriptions.model import Subscription
+from services.vpn.subscriptions.models import Subscription
 from shared.redis.client import RedisClient
 from shared.utils.logger import StructuredLogger
 

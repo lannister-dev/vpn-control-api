@@ -22,7 +22,7 @@ from services.support.schemas import (
     TicketStatus,
 )
 from services.users.models import User
-from services.vpn.subscriptions.model import Subscription
+from services.vpn.subscriptions.models import Subscription
 from shared.database.base_repository import BaseRepository
 
 

@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from services.nodes.models import NodeAgentState, VpnNode
-from services.routes.model import Route, TransportProfile
+from services.routes.models import Route, TransportProfile
 from shared.database.base_repository import BaseRepository
 from shared.database.session import AsyncDatabase
 

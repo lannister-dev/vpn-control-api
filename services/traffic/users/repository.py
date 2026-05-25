@@ -7,11 +7,11 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.plans.models import Plan
-from services.traffic.users.model import TrafficUsage
+from services.traffic.users.models import TrafficUsage
 from services.traffic.users.schemas import TrafficUsageCreate
 from services.users.models import User
 from services.vpn.keys.models import VpnKey
-from services.vpn.subscriptions.model import Subscription
+from services.vpn.subscriptions.models import Subscription
 from shared.database.base_repository import BaseRepository
 
 

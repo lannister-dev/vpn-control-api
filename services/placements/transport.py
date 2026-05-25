@@ -14,7 +14,7 @@ from services.nodes.agent.schemas import (
     TransportProtocol,
     TransportVpnTransport,
 )
-from services.placements.model import UserPlacement
+from services.placements.models import UserPlacement
 from services.placements.repository import UserPlacementRepository
 from services.vpn.keys.models import VpnKey
 

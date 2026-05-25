@@ -6,17 +6,17 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from services.admin_nodes.router import (
+from services.admin.nodes.router import (
     admin_router as nodes_admin_router,
 )
-from services.admin_nodes.router import (
+from services.admin.nodes.router import (
     installer_router as nodes_installer_router,
 )
-from services.admin_ops.router import router as admin_ops_router
-from services.admin_status.router import router as admin_status_router
-from services.admin_status.runtime_service import RuntimeReadinessService
-from services.admin_status.schemas import RuntimeReadinessOut
-from services.admin_transport.router import router as admin_transport_router
+from services.admin.ops.router import router as admin_ops_router
+from services.admin.status.router import router as admin_status_router
+from services.admin.status.runtime_service import RuntimeReadinessService
+from services.admin.status.schemas import RuntimeReadinessOut
+from services.admin.transport.router import router as admin_transport_router
 from services.artifacts.router import router as artifacts_router
 from services.auth.admin.router import router as admin_auth_router
 from services.auth.docs import DocsBasicAuthMiddleware

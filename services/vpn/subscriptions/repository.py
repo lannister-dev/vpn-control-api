@@ -7,12 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, joinedload
 
 from services.nodes.models import VpnNode
-from services.placements.model import UserPlacement
+from services.placements.models import UserPlacement
 from services.plans.models import Plan
-from services.routes.model import Route, TransportProfile
+from services.routes.models import Route, TransportProfile
 from services.vpn.keys.models import VpnKey
 from services.vpn.subscriptions.exceptions import SubscriptionNotFound
-from services.vpn.subscriptions.model import (
+from services.vpn.subscriptions.models import (
     Subscription,
     SubscriptionDevice,
     SubscriptionDeviceKey,
