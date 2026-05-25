@@ -19,7 +19,9 @@ from services.support.constants import (
     SUPPORT_OUTBOUND_SUBJECT,
 )
 from services.support.exceptions import (
+    BroadcastNotFound,
     EmptyMessage,
+    InvalidStateTransition,
     SupportActionFailed,
     TemplateAlreadyExists,
     TemplateNotFound,
@@ -536,6 +538,70 @@ class SupportService:
             raise TemplateNotFound(str(template_id))
         await self.session.delete(t)
         await self.session.commit()
+
+    async def send_scheduled_broadcast(self, broadcast_id: UUID) -> bool:
+        claimed = await self.broadcasts.claim_for_send(broadcast_id)
+        if claimed is None:
+            return False
+        await self.session.commit()
+        try:
+            target_ids = await self._resolve_audience(
+                BroadcastAudience(claimed.audience),
+                claimed.plan_id,
+            )
+            delivered = await self._fan_out_broadcast(
+                claimed.id,
+                target_ids,
+                claimed.text_body or "",
+                media_kind=claimed.media_kind,
+                media_url=claimed.media_url,
+                buttons=claimed.inline_buttons,
+            )
+            errors = max(0, len(target_ids) - delivered)
+            await self.broadcasts.mark_sent(
+                claimed.id,
+                delivered=delivered,
+                errors=errors,
+                sent_at=datetime.now(timezone.utc),
+            )
+            await self.session.commit()
+            return True
+        except Exception:
+            logger_support.exception("broadcast_dispatch_failed", broadcast_id=str(broadcast_id))
+            await self.session.rollback()
+            await self.broadcasts.mark_failed(broadcast_id)
+            await self.session.commit()
+            return False
+
+    async def cancel_broadcast(self, broadcast_id: UUID) -> BroadcastOut:
+        existing = await self.broadcasts.get_by_id(broadcast_id)
+        if existing is None:
+            raise BroadcastNotFound(str(broadcast_id))
+        if existing.status != BroadcastStatus.SCHEDULED.value:
+            raise InvalidStateTransition(
+                f"Broadcast in status '{existing.status}' cannot be cancelled"
+            )
+        updated = await self.broadcasts.cancel_scheduled(broadcast_id)
+        await self.session.commit()
+        target = updated or existing
+        return BroadcastOut(
+            id=target.id,
+            audience=BroadcastAudience(target.audience),
+            audience_label=None,
+            preview=(target.text_body or "")[:160],
+            text_body=target.text_body or "",
+            media_kind=target.media_kind,
+            media_url=target.media_url,
+            inline_buttons=target.inline_buttons,
+            status=BroadcastStatus.CANCELLED,
+            delivered=target.delivered,
+            errors=target.errors,
+            clicks=target.clicks,
+            target_count=target.target_count,
+            sent_at=target.sent_at,
+            scheduled_at=target.scheduled_at,
+            created_at=target.created_at,
+        )
 
     async def list_broadcasts(self) -> BroadcastListOut:
         rows = await self.broadcasts.list_all()

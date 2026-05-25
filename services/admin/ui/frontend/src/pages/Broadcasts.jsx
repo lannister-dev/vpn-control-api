@@ -438,14 +438,30 @@ function BroadcastHistory() {
           })}
         </tbody>
       </table>
-      {opened && <BroadcastDetail broadcast={opened} onClose={() => setOpened(null)} />}
+      {opened && <BroadcastDetail broadcast={opened} onClose={() => setOpened(null)} onChanged={() => { setOpened(null); q.refetch(); }} />}
     </div>
   );
 }
 
-function BroadcastDetail({ broadcast: b, onClose }) {
+function BroadcastDetail({ broadcast: b, onClose, onChanged }) {
   const total = (b.delivered || 0) + (b.errors || 0);
   const clickRate = total > 0 ? Math.round(((b.clicks || 0) / total) * 1000) / 10 : null;
+  const [busy, setBusy] = useState(false);
+  const canCancel = b.status === "scheduled";
+  const cancel = async () => {
+    if (!canCancel) return;
+    if (!window.confirm("Отменить запланированную рассылку?")) return;
+    setBusy(true);
+    try {
+      await api.post(`/support/broadcasts/${b.id}/cancel`);
+      toast.ok("Рассылка отменена");
+      onChanged?.();
+    } catch (e) {
+      toast.err(e?.message || "Не удалось отменить");
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <Modal title={`Рассылка · ${new Date(b.sent_at || b.created_at).toLocaleString("ru-RU")}`} onClose={onClose}>
       <div className="kv-table-wrap" style={{ marginBottom: 14 }}>
@@ -473,6 +489,13 @@ function BroadcastDetail({ broadcast: b, onClose }) {
           dangerouslySetInnerHTML={{ __html: b.text_body || b.preview || "<span style='color:var(--text-muted)'>пусто</span>" }}
         />
       </div>
+      {canCancel && (
+        <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
+          <button className="btn btn-ghost btn-sm" onClick={cancel} disabled={busy}>
+            {busy ? "Отменяется…" : "Отменить рассылку"}
+          </button>
+        </div>
+      )}
       {Array.isArray(b.inline_buttons) && b.inline_buttons.length > 0 && (
         <div style={{ marginTop: 12 }}>
           <div className="muted small" style={{ marginBottom: 6 }}>
@@ -513,6 +536,7 @@ function StatusPill({ status }) {
     sending:   { label: "Отправляется",  tone: "warn" },
     sent:      { label: "Отправлена",    tone: "ok" },
     failed:    { label: "Ошибка",        tone: "bad" },
+    cancelled: { label: "Отменена",      tone: "" },
   };
   const s = map[status] || { label: status, tone: "" };
   return <span className={`pill ${s.tone} small`}>{s.label}</span>;
