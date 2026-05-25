@@ -25,6 +25,8 @@ from services.nodes.agent.runtime import NodeAgentRuntime
 from services.nodes.models import NodeAgentIdentity, NodeAgentState, VpnNode  # noqa: F401
 from services.nodes.reconcilers.placement import NodePlacementReconciler
 from services.nodes.reconcilers.upstream_failover import UpstreamFailoverReconciler
+from services.notifications.reconciller.digest import NotificationsDigestReconciler
+from services.notifications.service import NotificationService
 from services.placements.models import UserPlacement  # noqa: F401
 from services.placements.reconcilers.error_retry import PlacementErrorRetryReconciler
 from services.placements.reconcilers.rebalance import PlacementRebalanceReconciler
@@ -38,6 +40,7 @@ from services.routes.reconcilers.warmup import RouteWarmupReconciler
 from services.routing.entry.publisher import EntryRoutingPublisher
 from services.support.consumer import SupportInboundConsumer, SupportSentConsumer
 from services.support.models import SupportTicket  # noqa: F401
+from services.support.reconcilers.broadcast_scheduler import BroadcastSchedulerReconciler
 from services.traffic.nodes.consumer import NodeTrafficNatsConsumer
 from services.traffic.nodes.models import NodeTrafficUsage  # noqa: F401
 from services.traffic.nodes.reconcilers.cleanup import NodeTrafficHistoryCleanupReconciler
@@ -66,6 +69,7 @@ from shared.monitoring.metrics import (
     RECONCILER_MAX_SILENCE_SECONDS,
     RECONCILER_SILENCE_SECONDS,
 )
+from shared.nats.client import NatsClient
 from shared.reconciler.watchdog import watchdog
 from shared.utils.logger import StructuredLogger
 
@@ -75,13 +79,13 @@ logger = StructuredLogger(logging.getLogger("reconciler-worker"))
 _METRICS_EXPORT_INTERVAL_SEC = 10
 
 
-def _build_reconcilers() -> list:
+def _build_reconcilers(notifications: NotificationService, nats_client: NatsClient | None) -> list:
     return [
         RouteWarmupReconciler(),
         ProbeSignalCleanupReconciler(),
         ProbeAutoDrainReconciler(),
         ProbeSyntheticCredentialReconciler(),
-        NodePlacementReconciler(),
+        NodePlacementReconciler(notifications=notifications),
         TrafficHistoryCleanupReconciler(),
         NodeTrafficHistoryCleanupReconciler(),
         AdminTransportCleanupReconciler(),
@@ -97,6 +101,8 @@ def _build_reconcilers() -> list:
         EntryRoutingPublisher(),
         BackendRebalanceReconciler(),
         WgMeshPeerPublisher(),
+        NotificationsDigestReconciler(notifications=notifications),
+        BroadcastSchedulerReconciler(nats_client=nats_client),
     ]
 
 
@@ -128,7 +134,17 @@ async def lifespan(app: FastAPI):
     await bootstrap_profiles(logger)
 
     settings = get_settings()
-    reconcilers = _build_reconcilers()
+    notifications_nats: NatsClient | None = None
+    try:
+        notifications_nats = NatsClient(settings.nats)
+        await notifications_nats.connect()
+    except Exception:
+        logger.exception("notifications_nats_connect_failed")
+        notifications_nats = None
+    notifications = NotificationService(notifications_nats)
+    app.state.notifications = notifications
+
+    reconcilers = _build_reconcilers(notifications, notifications_nats)
     runtimes = _build_nats_runtimes(settings.nats)
 
     for r in reconcilers:
@@ -151,6 +167,11 @@ async def lifespan(app: FastAPI):
             await r.stop()
         for r in reversed(reconcilers):
             await r.stop()
+        if notifications_nats is not None:
+            try:
+                await notifications_nats.close()
+            except Exception:
+                logger.exception("notifications_nats_close_failed")
         logger.info("reconciler_worker_stopped")
 
 
