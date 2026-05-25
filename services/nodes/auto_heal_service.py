@@ -13,6 +13,7 @@ from services.nodes.constants import ROLE_BACKEND
 from services.nodes.models import NodeAgentState, VpnNode
 from services.nodes.repository import NodeAgentStateRepository, VpnNodeRepository
 from services.nodes.schemas import NodeHeartbeatMeta
+from services.notifications.service import NotificationService
 from services.placements.repository import UserPlacementRepository
 from services.placements.schemas import PlacementDesiredState
 from services.placements.transport import NodeAgentPlacementTransport
@@ -54,6 +55,7 @@ class NodePlacementAutoHealService:
         max_nodes: int,
         auto_undrain_enabled: bool,
         drain_cooldown_sec: int = 180,
+        notifications: NotificationService | None = None,
     ):
         self.node_repository = VpnNodeRepository(session)
         self.node_agent_state_repository = NodeAgentStateRepository(session)
@@ -66,6 +68,7 @@ class NodePlacementAutoHealService:
         self.max_nodes = min(500, max(1, int(max_nodes)))
         self.auto_undrain_enabled = bool(auto_undrain_enabled)
         self.drain_cooldown_sec = max(0, int(drain_cooldown_sec))
+        self.notifications = notifications
         self._policy_cache = None
 
     async def run_once(self) -> NodeAutoHealTickOut:
@@ -196,6 +199,13 @@ class NodePlacementAutoHealService:
                     freshness_sec=round(freshness, 1),
                     stale_threshold=self.stale_after_sec,
                 )
+                if self.notifications is not None:
+                    await self.notifications.publish_node_down(
+                        node_id=str(node.id),
+                        node_name=node.name,
+                        last_seen_at=state.last_seen_at,
+                        affected_placements=0,
+                    )
 
     async def _recover_draining_nodes(
         self,
@@ -235,6 +245,18 @@ class NodePlacementAutoHealService:
                 await enqueue_pool_snapshots_for_backend(
                     self.node_repository.session,
                     node.id,
+                )
+            downtime_seconds = 0
+            drained_at = heartbeat_meta.drained_at if heartbeat_meta else None
+            if drained_at is not None:
+                if drained_at.tzinfo is None:
+                    drained_at = drained_at.replace(tzinfo=timezone.utc)
+                downtime_seconds = max(0, int((now - drained_at).total_seconds()))
+            if self.notifications is not None:
+                await self.notifications.publish_node_recovered(
+                    node_id=str(node.id),
+                    node_name=node.name,
+                    downtime_seconds=downtime_seconds,
                 )
             undrained += 1
             PLACEMENT_AUTO_HEAL_TOTAL.labels(action="undrain", result="ok").inc()

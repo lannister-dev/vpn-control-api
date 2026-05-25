@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from services.nodes.auto_heal_service import NodeAutoHealTickOut, NodePlacementAutoHealService
 from services.nodes.constants import PLACEMENT_RECONCILER_IDLE_WHEN_DISABLED_SEC
 from services.nodes.policy.repository import NodePolicyRepository
+from services.notifications.service import NotificationService
 from shared.database.session import AsyncDatabase
 from shared.reconciler.watchdog import watchdog
 from shared.redis.lock import RedisTickLock
@@ -24,8 +25,10 @@ class NodePlacementReconciler:
         session_maker: async_sessionmaker[AsyncSession] | None = None,
         service_factory: Callable[[AsyncSession, int, int, bool, int], NodePlacementAutoHealService] | None = None,
         tick_lock: RedisTickLock | None = None,
+        notifications: NotificationService | None = None,
     ):
         self._session_maker = session_maker or AsyncDatabase.get_session_maker()
+        self._notifications = notifications
         self._service_factory = service_factory or self._default_service_factory
         self._tick_lock = tick_lock or RedisTickLock(
             key="reconciler:node_auto_heal",
@@ -107,8 +110,8 @@ class NodePlacementReconciler:
             )
             return out
 
-    @staticmethod
     def _default_service_factory(
+        self,
         session: AsyncSession,
         stale_after_sec: int,
         max_nodes: int,
@@ -121,4 +124,5 @@ class NodePlacementReconciler:
             max_nodes=max_nodes,
             auto_undrain_enabled=auto_undrain_enabled,
             drain_cooldown_sec=drain_cooldown_sec,
+            notifications=self._notifications,
         )

@@ -1,8 +1,9 @@
 from uuid import UUID
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.notifications.service import NotificationService
 from services.users.exceptions import UserAlreadyExists, UserNotFound
 from services.users.repository import UserRepository
 from services.users.schemas import (
@@ -19,8 +20,9 @@ from shared.monitoring.metrics import USERS_REGISTERED_TOTAL
 
 
 class UserService:
-    def __init__(self, session: AsyncSession):
+    def __init__(self, session: AsyncSession, notifications: NotificationService | None = None):
         self.repo = UserRepository(session)
+        self.notifications = notifications
 
     async def list_users(
         self,
@@ -75,6 +77,12 @@ class UserService:
             ).model_dump()
         )
         USERS_REGISTERED_TOTAL.labels(source=source).inc()
+        if self.notifications is not None:
+            await self.notifications.publish_user_registered(
+                telegram_id=data.telegram_id,
+                username=data.username,
+                source=source,
+            )
         return UserOut.model_validate(user)
 
     async def update_user(self, user_id: UUID, data: UserUpdateIn) -> UserOut:
@@ -104,6 +112,8 @@ class UserService:
 
 
 def get_user_service(
+    request: Request,
     session: AsyncSession = Depends(AsyncDatabase.get_session),
 ) -> UserService:
-    return UserService(session)
+    notifications = getattr(request.app.state, "notifications", None)
+    return UserService(session, notifications)
