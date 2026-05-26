@@ -3,15 +3,19 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID
 
+from uuid import uuid4
+
 from sqlalchemy import select
 
 from services.config import NatsConfig
+from services.entry.models import EntryBackendAssignment
 from services.nodes.agent.constants import NODE_AGENT_SNAPSHOT_CHUNK_SIZE
 from services.nodes.agent.repository import NodeTransportStateRepository
 from services.nodes.agent.schemas import (
     AgentSubjects,
     PlacementCommandEvent,
     SnapshotChunkEvent,
+    UpstreamChangedPayload,
 )
 from services.nodes.models import VpnNode
 from services.placements.transport import NodeAgentPlacementTransport
@@ -102,8 +106,46 @@ class AdminSnapshotPublisher:
                         is_last_chunk=is_last,
                         items=chunk,
                     )
+            if role in ("entry", "whitelist_entry"):
+                await self._publish_upstreams_for_entry(
+                    session=session,
+                    entry_node_id=node_id,
+                    now=now,
+                )
             await session.commit()
             return epoch, reserved_snapshot_id
+
+    async def _publish_upstreams_for_entry(
+        self,
+        *,
+        session,
+        entry_node_id: UUID,
+        now: datetime,
+    ) -> None:
+        rows = await session.execute(
+            select(VpnNode)
+            .join(
+                EntryBackendAssignment,
+                EntryBackendAssignment.backend_node_id == VpnNode.id,
+            )
+            .where(EntryBackendAssignment.entry_node_id == entry_node_id)
+            .where(EntryBackendAssignment.enabled.is_(True))
+        )
+        backends = rows.scalars().all()
+        for backend in backends:
+            event = UpstreamChangedPayload(
+                event_id=str(uuid4()),
+                node_id=str(entry_node_id),
+                emitted_at=now,
+                upstream_node_id=str(backend.id),
+                upstream_public_domain=str(backend.public_domain or ""),
+                upstream_reality_ip=getattr(backend, "reality_ip", None),
+            )
+            await self._nats.publish_jetstream(
+                subject=self._subjects.upstream_changed(str(entry_node_id)),
+                payload=event.model_dump(mode="json"),
+                msg_id=f"upstream-snapshot:{entry_node_id}:{backend.id}:{now.isoformat()}",
+            )
 
     async def _publish_chunk(
         self,
