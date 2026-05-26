@@ -102,7 +102,9 @@ class WgMeshPeerPublisher:
                     continue
                 if not (node.internal_wg_ip or "").strip():
                     continue
-                peers = service._build_peers(all_nodes=nodes, exclude_id=node.id)
+                peers = service._build_peers(
+                    all_nodes=nodes, exclude_id=node.id, self_role=node.role,
+                )
                 payload = {
                     "node_id": str(node.id),
                     "address": node.internal_wg_ip,
