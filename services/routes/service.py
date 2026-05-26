@@ -432,8 +432,10 @@ class RouteService:
             node_id=str(entry_node_id),
             emitted_at=now,
             upstream_node_id=str(backend_node_id),
-            upstream_public_domain=str(backend_node.public_domain),
+            upstream_public_domain=str(backend_node.public_domain or ""),
             upstream_reality_ip=getattr(backend_node, "reality_ip", None),
+            upstream_internal_wg_ip=getattr(backend_node, "internal_wg_ip", None),
+            upstream_agent_port=getattr(backend_node, "agent_port", None),
         )
         outbox_item = OutboxEnqueueItem(
             node_id=entry_node_id,

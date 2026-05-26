@@ -227,6 +227,8 @@ class UpstreamChangedPayload(BaseModel):
     upstream_node_id: str
     upstream_public_domain: str
     upstream_reality_ip: str | None = None
+    upstream_internal_wg_ip: str | None = None
+    upstream_agent_port: int | None = None
 
 
 class OutboxEnqueueItem(BaseModel):
