@@ -126,6 +126,29 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
         result = await self.session.execute(stmt)
         return list(result.tuples().all())
 
+    async def list_transport_rows_for_entry(
+        self,
+        *,
+        entry_node_id: UUID,
+    ) -> list[tuple[UserPlacement, VpnKey]]:
+        from services.entry.models import EntryBackendAssignment
+
+        stmt = (
+            select(self.model, VpnKey)
+            .join(VpnKey, VpnKey.id == self.model.key_id)
+            .join(
+                EntryBackendAssignment,
+                EntryBackendAssignment.backend_node_id == self.model.backend_node_id,
+            )
+            .where(EntryBackendAssignment.entry_node_id == entry_node_id)
+            .where(EntryBackendAssignment.enabled.is_(True))
+            .where(self.model.is_active.is_(True))
+            .where(VpnKey.is_active.is_(True))
+            .order_by(self.model.updated_at.asc(), self.model.id.asc())
+        )
+        result = await self.session.execute(stmt)
+        return list(result.tuples().all())
+
     async def upsert_set_pending(
         self,
         *,

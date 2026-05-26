@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID
 
+from sqlalchemy import select
+
 from services.config import NatsConfig
 from services.nodes.agent.constants import NODE_AGENT_SNAPSHOT_CHUNK_SIZE
 from services.nodes.agent.repository import NodeTransportStateRepository
@@ -11,6 +13,7 @@ from services.nodes.agent.schemas import (
     PlacementCommandEvent,
     SnapshotChunkEvent,
 )
+from services.nodes.models import VpnNode
 from services.placements.transport import NodeAgentPlacementTransport
 from shared.database.session import AsyncDatabase
 from shared.nats.client import NatsClient
@@ -31,9 +34,15 @@ class AdminSnapshotPublisher:
     async def execute(self, *, node_id: UUID, reason: str = "admin_requested") -> tuple[int, str]:
         session_maker = AsyncDatabase.get_session_maker()
         async with session_maker() as session:
-            commands = await NodeAgentPlacementTransport(session).list_command_payloads_for_backend(
-                backend_node_id=node_id,
+            role_row = await session.execute(
+                select(VpnNode.role).where(VpnNode.id == node_id)
             )
+            role = role_row.scalar_one_or_none() or "backend"
+            transport = NodeAgentPlacementTransport(session)
+            if role in ("entry", "whitelist_entry"):
+                commands = await transport.list_command_payloads_for_entry(entry_node_id=node_id)
+            else:
+                commands = await transport.list_command_payloads_for_backend(backend_node_id=node_id)
             state_repo = NodeTransportStateRepository(session)
             now = datetime.now(timezone.utc)
             snapshot_id = f"snap-{node_id}-admin-{now.isoformat()}"

@@ -79,16 +79,30 @@ class NodeAgentPlacementTransport:
         )
         return [self._build_command_payload(placement=placement, key=key) for placement, key in rows]
 
+    async def list_command_payloads_for_entry(
+        self,
+        *,
+        entry_node_id: UUID,
+    ) -> list[PlacementCommandPayload]:
+        rows = await self._placement_repository.list_transport_rows_for_entry(
+            entry_node_id=entry_node_id
+        )
+        return [
+            self._build_command_payload(placement=placement, key=key, override_node_id=entry_node_id)
+            for placement, key in rows
+        ]
+
     @staticmethod
     def _build_command_payload(
         *,
         placement: UserPlacement,
         key: VpnKey,
+        override_node_id: UUID | None = None,
     ) -> PlacementCommandPayload:
         return PlacementCommandPayload(
             placement_id=placement.id,
             key_id=placement.key_id,
-            node_id=placement.backend_node_id,
+            node_id=override_node_id if override_node_id is not None else placement.backend_node_id,
             backend_node_id=placement.backend_node_id,
             op_version=placement.op_version,
             desired_state=TransportDesiredState(placement.desired_state),
