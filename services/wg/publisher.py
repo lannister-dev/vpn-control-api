@@ -94,6 +94,8 @@ class WgMeshPeerPublisher:
         nats = await self._ensure_nats()
         async with self._session_maker() as session:
             await self._sync_pubkeys_from_kv(session=session, nats=nats)
+            if session.has_pending_writes():
+                await session.commit()
             service = WgMeshService(session, config=self._cfg)
             nodes = await VpnNodeRepository(session).list()
             published = 0
