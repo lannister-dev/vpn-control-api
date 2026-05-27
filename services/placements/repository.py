@@ -566,6 +566,7 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
                     existing.c.key_id == cross.c.key_id,
                     existing.c.backend_node_id == cross.c.node_id,
                     existing.c.is_active.is_(True),
+                    existing.c.desired_state == "active",
                 ),
             )
             .where(existing.c.id.is_(None))
