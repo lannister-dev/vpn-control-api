@@ -57,6 +57,7 @@ from services.vpn.keys.models import KeyAssignment, VpnKey  # noqa: F401
 from services.vpn.keys.reconcilers.backend_rebalance import BackendRebalanceReconciler
 from services.vpn.keys.reconcilers.expiration import VpnKeyExpirationReconciler
 from services.vpn.subscriptions.models import Subscription, SubscriptionDevice, SubscriptionDeviceKey  # noqa: F401
+from services.vpn.subscriptions.reconcilers.assignment_invalidator import SubscriptionAssignmentInvalidator
 from services.vpn.subscriptions.reconcilers.expiration import SubscriptionExpirationReconciler
 from services.wg.publisher import WgMeshPeerPublisher
 from shared.app.bootstrap import (
@@ -97,6 +98,7 @@ def _build_reconcilers(notifications: NotificationService, nats_client: NatsClie
         PlacementRebalanceReconciler(),
         VpnKeyExpirationReconciler(),
         SubscriptionExpirationReconciler(),
+        SubscriptionAssignmentInvalidator(),
         BillingOrderExpirationReconciler(),
         EntryAutoDrainReconciler(),
         UpstreamFailoverReconciler(),
