@@ -13,6 +13,7 @@ from services.nodes.repository import VpnNodeRepository
 from services.notifications.service import NotificationService
 from services.placements.repository import UserPlacementRepository
 from services.placements.transport import NodeAgentPlacementTransport
+from services.probe.constants import SYNTHETIC_REPAIR_COOLDOWN_SEC, SYNTHETIC_REPAIR_REASON
 from services.probe.policy.repository import ProbePolicyRepository
 from services.probe.repository import ProbeSignalRepository
 from services.probe.schemas import (
@@ -37,9 +38,6 @@ logger_probe = StructuredLogger(logging.getLogger("probe-ingestion-service"))
 
 
 class ProbeIngestionService:
-    _SYNTHETIC_REPAIR_REASON = "probe_synthetic_self_heal"
-    _SYNTHETIC_REPAIR_COOLDOWN_SEC = 300
-
     def __init__(
             self,
             *,
@@ -316,15 +314,15 @@ class ProbeIngestionService:
 
         updated_at = self._to_utc_or_none(getattr(placement, "updated_at", None))
         if (
-            getattr(placement, "last_migration_reason", None) == self._SYNTHETIC_REPAIR_REASON
+            getattr(placement, "last_migration_reason", None) == SYNTHETIC_REPAIR_REASON
             and updated_at is not None
-            and (datetime.now(timezone.utc) - updated_at).total_seconds() < self._SYNTHETIC_REPAIR_COOLDOWN_SEC
+            and (datetime.now(timezone.utc) - updated_at).total_seconds() < SYNTHETIC_REPAIR_COOLDOWN_SEC
         ):
             return
 
         placement_ids = await self.placement_repository.set_pending_for_backend(
             backend_node_id=node.id,
-            last_migration_reason=self._SYNTHETIC_REPAIR_REASON,
+            last_migration_reason=SYNTHETIC_REPAIR_REASON,
             updated_at=datetime.now(timezone.utc),
         )
         if not placement_ids:
@@ -583,7 +581,6 @@ class ProbeIngestionService:
             return []
 
         nodes = await self.node_repository.list_public()
-        nodes_by_id: dict[UUID, object] = {n.id: n for n in nodes}
         routes_by_entry: dict[UUID, list[tuple]] = {}
         for row in route_rows or []:
             route = row[0]
@@ -609,7 +606,6 @@ class ProbeIngestionService:
             synth = self._build_entry_synthetic_target(
                 entry_node=node,
                 entry_routes=routes_by_entry.get(node.id, []),
-                nodes_by_id=nodes_by_id,
                 probe_client_ids_by_target=probe_ids,
                 include_disabled=include_disabled,
                 include_draining=include_draining,
@@ -623,7 +619,6 @@ class ProbeIngestionService:
             *,
             entry_node,
             entry_routes: list[tuple],
-            nodes_by_id: dict[UUID, object],
             probe_client_ids_by_target: dict[tuple[UUID, str], str],
             include_disabled: bool,
             include_draining: bool,

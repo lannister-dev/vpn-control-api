@@ -82,14 +82,17 @@ class NotificationService:
         *,
         node_id: str,
         node_name: str | None,
+        region: str | None,
         last_seen_at: datetime,
         affected_placements: int = 0,
+        event_id: str | None = None,
     ) -> None:
         await self.publish(NodeDownEvent(
-            event_id=_new_id(),
+            event_id=event_id or _new_id(),
             emitted_at=_now(),
             node_id=node_id,
             node_name=node_name,
+            region=region,
             last_seen_at=last_seen_at,
             affected_placements=affected_placements,
         ))
@@ -99,13 +102,16 @@ class NotificationService:
         *,
         node_id: str,
         node_name: str | None,
+        region: str | None,
         downtime_seconds: int,
+        event_id: str | None = None,
     ) -> None:
         await self.publish(NodeRecoveredEvent(
-            event_id=_new_id(),
+            event_id=event_id or _new_id(),
             emitted_at=_now(),
             node_id=node_id,
             node_name=node_name,
+            region=region,
             downtime_seconds=downtime_seconds,
         ))
 

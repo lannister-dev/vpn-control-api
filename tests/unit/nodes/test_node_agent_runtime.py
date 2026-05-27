@@ -91,7 +91,7 @@ async def test_handle_sync_report_publishes_skipped_ack_after_debounce(monkeypat
     )
     monkeypatch.setattr(
         "services.nodes.agent.runtime.VpnNodeService",
-        lambda _: node_service,
+        lambda *_args, **_kwargs: node_service,
     )
 
     should_ack = await runtime._handle_sync_report_message(

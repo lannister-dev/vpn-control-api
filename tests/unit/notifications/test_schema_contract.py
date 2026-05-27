@@ -17,11 +17,11 @@ from services.notifications.schemas import (
 EXPECTED_CONTRACT: dict[str, tuple[type, frozenset[str]]] = {
     "node_down": (NodeDownEvent, frozenset({
         "schema_version", "event_id", "emitted_at", "kind",
-        "node_id", "node_name", "last_seen_at", "affected_placements",
+        "node_id", "node_name", "region", "last_seen_at", "affected_placements",
     })),
     "node_recovered": (NodeRecoveredEvent, frozenset({
         "schema_version", "event_id", "emitted_at", "kind",
-        "node_id", "node_name", "downtime_seconds",
+        "node_id", "node_name", "region", "downtime_seconds",
     })),
     "route_blocked": (RouteBlockedEvent, frozenset({
         "schema_version", "event_id", "emitted_at", "kind",

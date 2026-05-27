@@ -48,6 +48,7 @@ from services.nodes.schemas import (
     NodeSyncReportIn,
 )
 from services.nodes.service import VpnNodeService
+from services.notifications.service import NotificationService
 from services.placements.schemas import PlacementAppliedState
 from services.placements.transport import NodeAgentPlacementTransport
 from shared.database.session import AsyncDatabase, WriteAwareAsyncSession
@@ -58,9 +59,10 @@ logger_transport = StructuredLogger(logging.getLogger("node-agent-transport"))
 
 
 class NodeAgentRuntime:
-    def __init__(self, config: NatsConfig):
+    def __init__(self, config: NatsConfig, notifications: NotificationService | None = None):
         self._config = config
         self._nats = NatsClient(config)
+        self._notifications = notifications
         self._running = False
         self._active = False
         self._started_at: datetime | None = None
@@ -713,7 +715,7 @@ class NodeAgentRuntime:
                 logger_transport.warning("heartbeat_unknown_node", node_id=str(node_id))
                 return True
 
-            service = VpnNodeService(session)
+            service = VpnNodeService(session, self._notifications)
             pool_details = (
                 HeartbeatPool(**event.pool.model_dump())
                 if event.pool is not None else None
@@ -770,7 +772,7 @@ class NodeAgentRuntime:
                     ),
                 )
 
-            service = VpnNodeService(session)
+            service = VpnNodeService(session, self._notifications)
             accepted = await service.handle_sync_report(
                 node=node,
                 payload=NodeSyncReportIn(

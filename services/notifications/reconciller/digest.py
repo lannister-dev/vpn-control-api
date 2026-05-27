@@ -139,18 +139,22 @@ class NotificationsDigestReconciler:
                     PaymentOrder.status.in_(("paid", "completed")),
                     PaymentOrder.paid_at >= period_start,
                     PaymentOrder.paid_at < period_end,
+                    PaymentOrder.order_type.in_(("plan_purchase", "subscription_renewal")),
+                    PaymentOrder.provider != "free",
                 )
             )
             purchases, purchases_rub_raw = paid_in_window.one()
             purchases_rub = float(purchases_rub_raw or Decimal("0"))
 
-            subs_started = await session.scalar(
-                select(func.count(Subscription.id)).where(
-                    Subscription.created_at >= period_start,
-                    Subscription.created_at < period_end,
+            trials = await session.scalar(
+                select(func.count(PaymentOrder.id)).where(
+                    PaymentOrder.status.in_(("paid", "completed")),
+                    PaymentOrder.paid_at >= period_start,
+                    PaymentOrder.paid_at < period_end,
+                    PaymentOrder.order_type == "plan_purchase",
+                    PaymentOrder.provider == "free",
                 )
             ) or 0
-            trials = max(0, int(subs_started) - int(purchases))
 
             active_subscriptions = await session.scalar(
                 select(func.count(Subscription.id)).where(

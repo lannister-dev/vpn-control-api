@@ -4,7 +4,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.alerts.constants import AlertSource
@@ -47,6 +47,7 @@ from services.nodes.schemas import (
     VpnNodeOut,
     VpnNodeUpdate,
 )
+from services.notifications.service import NotificationService
 from services.wg.allocator import allocate_next_ip
 from services.wg.exceptions import WgMeshAddressPoolExhaustedError
 from shared.database.session import AsyncDatabase
@@ -59,7 +60,8 @@ logger_node = StructuredLogger(logging.getLogger("node-service"))
 
 
 class VpnNodeService:
-    def __init__(self, session: AsyncSession):
+    def __init__(self, session: AsyncSession, notifications: NotificationService | None = None):
+        self.notifications = notifications
         self.vpn_node_repository = (
             VpnNodeRepository(session)
         )
@@ -256,6 +258,15 @@ class VpnNodeService:
                 consecutive_unhealthy=heartbeat_meta.consecutive_unhealthy,
             )
             await self._emit_node_down_alert(node=node, now=now)
+            if self.notifications is not None and existing_state is not None and existing_state.last_seen_at is not None:
+                await self.notifications.publish_node_down(
+                    node_id=str(node.id),
+                    node_name=node.name,
+                    region=node.region,
+                    last_seen_at=existing_state.last_seen_at,
+                    affected_placements=0,
+                    event_id=f"{node.id}:{int(now.timestamp())}",
+                )
         should_undrain = (
             effective_is_healthy
             and node.is_draining
@@ -284,6 +295,21 @@ class VpnNodeService:
                 threshold=healthy_undrain_threshold,
                 consecutive_healthy=heartbeat_meta.consecutive_healthy,
             )
+            if self.notifications is not None:
+                drained_at = heartbeat_meta.drained_at if heartbeat_meta else None
+                downtime_seconds = 0
+                if drained_at is not None:
+                    if drained_at.tzinfo is None:
+                        drained_at = drained_at.replace(tzinfo=timezone.utc)
+                    downtime_seconds = max(0, int((now - drained_at).total_seconds()))
+                drained_at_ts = int(drained_at.timestamp()) if drained_at is not None else 0
+                await self.notifications.publish_node_recovered(
+                    node_id=str(node.id),
+                    node_name=node.name,
+                    region=node.region,
+                    downtime_seconds=downtime_seconds,
+                    event_id=f"{node.id}:{drained_at_ts}",
+                )
         details_data = details.model_dump(mode="json", exclude_none=True)
         details_data[HEARTBEAT_DETAILS_KEY] = heartbeat_meta.model_dump(
             mode="json",
@@ -630,6 +656,8 @@ class VpnNodeService:
 
 
 async def get_vpn_node_service(
-        session: AsyncSession = Depends(AsyncDatabase.get_session)
+        request: Request,
+        session: AsyncSession = Depends(AsyncDatabase.get_session),
 ) -> VpnNodeService:
-    return VpnNodeService(session)
+    notifications = getattr(request.app.state, "notifications", None)
+    return VpnNodeService(session, notifications)

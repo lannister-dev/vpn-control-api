@@ -150,6 +150,15 @@ class NodePlacementAutoHealService:
                     )
                 out.drained_nodes += 1
                 PLACEMENT_AUTO_HEAL_TOTAL.labels(action="drain", result="ok").inc()
+                if self.notifications is not None and state is not None and state.last_seen_at is not None:
+                    await self.notifications.publish_node_down(
+                        node_id=str(node.id),
+                        node_name=node.name,
+                        region=node.region,
+                        last_seen_at=state.last_seen_at,
+                        affected_placements=active_count,
+                        event_id=f"{node.id}:{int(state.last_seen_at.timestamp())}",
+                    )
 
             migrated = await self._smart_migrate_placements(
                 source_node=node,
@@ -199,12 +208,14 @@ class NodePlacementAutoHealService:
                     freshness_sec=round(freshness, 1),
                     stale_threshold=self.stale_after_sec,
                 )
-                if self.notifications is not None:
+                if self.notifications is not None and state.last_seen_at is not None:
                     await self.notifications.publish_node_down(
                         node_id=str(node.id),
                         node_name=node.name,
+                        region=node.region,
                         last_seen_at=state.last_seen_at,
                         affected_placements=0,
+                        event_id=f"{node.id}:{int(state.last_seen_at.timestamp())}",
                     )
 
     async def _recover_draining_nodes(
@@ -227,8 +238,8 @@ class NodePlacementAutoHealService:
                 continue
             has_placements = desired_active_counts.get(node.id, 0) > 0
             heartbeat_meta = self._extract_heartbeat_meta(state)
+            drain_reason = self._extract_drain_reason(heartbeat_meta)
             if has_placements:
-                drain_reason = self._extract_drain_reason(heartbeat_meta)
                 if drain_reason is None or drain_reason == self._DRAIN_REASON_UNHEALTHY_HEARTBEAT:
                     pass
                 elif self._is_probe_drain_reason(drain_reason):
@@ -246,17 +257,23 @@ class NodePlacementAutoHealService:
                     self.node_repository.session,
                     node.id,
                 )
-            downtime_seconds = 0
-            drained_at = heartbeat_meta.drained_at if heartbeat_meta else None
-            if drained_at is not None:
-                if drained_at.tzinfo is None:
-                    drained_at = drained_at.replace(tzinfo=timezone.utc)
-                downtime_seconds = max(0, int((now - drained_at).total_seconds()))
-            if self.notifications is not None:
+            if (
+                self.notifications is not None
+                and drain_reason == self._DRAIN_REASON_UNHEALTHY_HEARTBEAT
+            ):
+                downtime_seconds = 0
+                drained_at = heartbeat_meta.drained_at if heartbeat_meta else None
+                if drained_at is not None:
+                    if drained_at.tzinfo is None:
+                        drained_at = drained_at.replace(tzinfo=timezone.utc)
+                    downtime_seconds = max(0, int((now - drained_at).total_seconds()))
+                drained_at_ts = int(drained_at.timestamp()) if drained_at is not None else 0
                 await self.notifications.publish_node_recovered(
                     node_id=str(node.id),
                     node_name=node.name,
+                    region=node.region,
                     downtime_seconds=downtime_seconds,
+                    event_id=f"{node.id}:{drained_at_ts}",
                 )
             undrained += 1
             PLACEMENT_AUTO_HEAL_TOTAL.labels(action="undrain", result="ok").inc()

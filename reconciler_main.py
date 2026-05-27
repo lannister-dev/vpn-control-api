@@ -106,9 +106,9 @@ def _build_reconcilers(notifications: NotificationService, nats_client: NatsClie
     ]
 
 
-def _build_nats_runtimes(nats_settings) -> list:
+def _build_nats_runtimes(nats_settings, notifications: NotificationService) -> list:
     return [
-        NodeAgentRuntime(nats_settings),
+        NodeAgentRuntime(nats_settings, notifications=notifications),
         UserTrafficNatsConsumer(nats_settings),
         NodeTrafficNatsConsumer(nats_settings),
         SupportInboundConsumer(nats_settings),
@@ -145,7 +145,7 @@ async def lifespan(app: FastAPI):
     app.state.notifications = notifications
 
     reconcilers = _build_reconcilers(notifications, notifications_nats)
-    runtimes = _build_nats_runtimes(settings.nats)
+    runtimes = _build_nats_runtimes(settings.nats, notifications)
 
     for r in reconcilers:
         watchdog.register(r.__class__.__name__)
