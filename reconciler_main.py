@@ -36,6 +36,7 @@ from services.probe.reconcilers.auto_drain import ProbeAutoDrainReconciler
 from services.probe.reconcilers.cleanup import ProbeSignalCleanupReconciler
 from services.probe.reconcilers.synthetic import ProbeSyntheticCredentialReconciler
 from services.routes.models import Route, TransportProfile  # noqa: F401
+from services.routes.reconcilers.auto_create import RouteAutoCreateReconciler
 from services.routes.reconcilers.warmup import RouteWarmupReconciler
 from services.routing.entry.publisher import EntryRoutingPublisher
 from services.support.consumer import SupportInboundConsumer, SupportSentConsumer
@@ -82,6 +83,7 @@ _METRICS_EXPORT_INTERVAL_SEC = 10
 def _build_reconcilers(notifications: NotificationService, nats_client: NatsClient | None) -> list:
     return [
         RouteWarmupReconciler(),
+        RouteAutoCreateReconciler(),
         ProbeSignalCleanupReconciler(),
         ProbeAutoDrainReconciler(),
         ProbeSyntheticCredentialReconciler(),
