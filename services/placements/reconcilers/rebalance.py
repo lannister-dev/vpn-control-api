@@ -87,8 +87,19 @@ class PlacementRebalanceReconciler:
         batch_size = max(1, int(policy.placement_rebalance_batch_size))
         stale_after_sec = max(30, int(policy.stale_after_sec))
         async with self._session_maker() as session:
+            transport = NodeAgentPlacementTransport(session)
+            drained_ids = await self._deactivate_placements_on_draining_backends(session)
+            if drained_ids:
+                await transport.enqueue_for_placement_ids(drained_ids)
+                logger.info(
+                    "placement_drain_deactivated",
+                    placement_ids=len(drained_ids),
+                )
+
             healthy_node_ids = await self._find_healthy_backend_node_ids(session, stale_after_sec)
             if len(healthy_node_ids) < 2:
+                if drained_ids:
+                    await session.commit()
                 return 0
 
             placement_repo = UserPlacementRepository(session)
@@ -122,6 +133,25 @@ class PlacementRebalanceReconciler:
                 healthy_nodes=len(healthy_node_ids),
             )
             return len(created_ids)
+
+    async def _deactivate_placements_on_draining_backends(
+        self, session: AsyncSession,
+    ) -> list[UUID]:
+        from sqlalchemy import text
+        result = await session.execute(text("""
+            UPDATE user_placement up
+            SET desired_state = 'inactive',
+                op_version = up.op_version + 1,
+                last_migration_reason = 'backend_draining',
+                updated_at = now()
+            FROM vpn_node vn
+            WHERE vn.id = up.backend_node_id
+              AND vn.is_draining = true
+              AND up.desired_state = 'active'
+              AND up.is_active = true
+            RETURNING up.id
+        """))
+        return [row[0] for row in result.all()]
 
     async def _find_healthy_backend_node_ids(
         self, session: AsyncSession, stale_after_sec: int,
