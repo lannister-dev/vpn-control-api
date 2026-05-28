@@ -258,6 +258,8 @@ class ProbeIngestionService:
         policy = await self._policy()
         if not policy.auto_route_health_enabled:
             return
+        if signal.probe_kind != "synthetic_vpn":
+            return
         route_id = signal.route_id
         if route_id is None:
             logger_probe.info(
@@ -290,6 +292,7 @@ class ProbeIngestionService:
         consecutive = await self.probe_repository.count_consecutive_route_failures(
             route_id=signal.route_id,
             limit=policy.route_block_after_failures + 2,
+            probe_kind="synthetic_vpn",
         )
         if consecutive < policy.route_suspected_after_failures:
             return
@@ -347,6 +350,7 @@ class ProbeIngestionService:
         consecutive = await self.probe_repository.count_consecutive_route_failures(
             route_id=route.id,
             limit=policy.route_block_after_failures + 2,
+            probe_kind="synthetic_vpn",
         )
         logger_probe.info(
             "probe_route_health_consecutive_failures",

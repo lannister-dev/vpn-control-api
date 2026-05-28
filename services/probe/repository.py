@@ -132,6 +132,7 @@ class ProbeSignalRepository(BaseRepository[ProbeSignal]):
             *,
             route_id: UUID,
             limit: int = 10,
+            probe_kind: str | None = None,
     ) -> int:
         stmt = (
             select(self.model.is_reachable)
@@ -142,6 +143,8 @@ class ProbeSignalRepository(BaseRepository[ProbeSignal]):
             .order_by(self.model.checked_at.desc(), self.model.created_at.desc())
             .limit(limit)
         )
+        if probe_kind is not None:
+            stmt = stmt.where(self.model.probe_kind == probe_kind)
         res = await self.session.execute(stmt)
         count = 0
         for (is_reachable,) in res.all():
