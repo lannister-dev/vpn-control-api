@@ -332,11 +332,24 @@ class EntryRoutingAdminService:
         by_backend_totals: dict[str, int] = {}
         by_entry_totals: dict[str, int] = {}
         by_entry_unique_users: dict[str, int] = {}
-        for raw in entries.values():
+        client_ids_by_entry: dict[str, set[str]] = {}
+        client_ids_by_backend: dict[str, set[str]] = {}
+        for key, raw in entries.items():
             try:
                 payload = json.loads(raw.decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError):
                 continue
+            if key.startswith("backend."):
+                node_id = payload.get("node_id") or key[len("backend."):]
+                active_ids = payload.get("active_client_ids") or []
+                if not isinstance(active_ids, list):
+                    continue
+                bucket = client_ids_by_backend.setdefault(str(node_id), set())
+                for cid in active_ids:
+                    if cid:
+                        bucket.add(str(cid))
+                continue
+            # entry-shaped payloads (legacy: any key not prefixed with backend.)
             for tag, count in (payload.get("by_backend") or {}).items():
                 by_backend_totals[tag] = by_backend_totals.get(tag, 0) + int(count)
             node_id = payload.get("node_id")
@@ -346,20 +359,59 @@ class EntryRoutingAdminService:
                 by_entry_unique_users[str(node_id)] = (
                     by_entry_unique_users.get(str(node_id), 0) + int(payload.get("unique_users") or 0)
                 )
-        return (
-            [
-                RoutingLiveStatsByBackend(tag=tag, connections=count)
-                for tag, count in sorted(by_backend_totals.items())
-            ],
-            [
-                RoutingLiveStatsByEntry(
-                    entry_node_id=node_id,
-                    connections=count,
-                    unique_users=by_entry_unique_users.get(node_id, 0),
-                )
-                for node_id, count in sorted(by_entry_totals.items())
-            ],
-        )
+                for cid in (payload.get("by_client_id") or {}).keys():
+                    if cid:
+                        client_ids_by_entry.setdefault(str(node_id), set()).add(str(cid))
+
+        real_users_by_entry = await self._resolve_real_users(client_ids_by_entry)
+        real_users_by_backend = await self._resolve_real_users(client_ids_by_backend)
+
+        backend_id_to_tag = await self.routing.node_repo.backend_tag_by_id()
+        # synthesise backend live entries even if no sing-box connection routed through them.
+        for backend_node_id in client_ids_by_backend.keys():
+            tag = backend_id_to_tag.get(backend_node_id)
+            if tag and tag not in by_backend_totals:
+                by_backend_totals[tag] = 0
+
+        backend_list: list[RoutingLiveStatsByBackend] = []
+        backend_tag_to_id = {v: k for k, v in backend_id_to_tag.items()}
+        for tag, count in sorted(by_backend_totals.items()):
+            backend_node_id = backend_tag_to_id.get(tag)
+            backend_list.append(RoutingLiveStatsByBackend(
+                tag=tag,
+                connections=count,
+                backend_node_id=backend_node_id,
+                unique_real_users=real_users_by_backend.get(backend_node_id, 0) if backend_node_id else 0,
+            ))
+
+        entry_list: list[RoutingLiveStatsByEntry] = []
+        for node_id, count in sorted(by_entry_totals.items()):
+            entry_list.append(RoutingLiveStatsByEntry(
+                entry_node_id=node_id,
+                connections=count,
+                unique_users=by_entry_unique_users.get(node_id, 0),
+                unique_real_users=real_users_by_entry.get(node_id, 0),
+            ))
+        return backend_list, entry_list
+
+    async def _resolve_real_users(
+            self,
+            client_ids_by_node: dict[str, set[str]],
+    ) -> dict[str, int]:
+        if not client_ids_by_node:
+            return {}
+        all_ids: set[str] = set()
+        for ids in client_ids_by_node.values():
+            all_ids.update(ids)
+        if not all_ids:
+            return {}
+        client_to_user = await self.key_repo.map_client_ids_to_user_ids(client_ids=list(all_ids))
+        out: dict[str, int] = {}
+        for node_id, ids in client_ids_by_node.items():
+            users = {client_to_user.get(cid) for cid in ids}
+            users.discard(None)
+            out[node_id] = len(users)
+        return out
 
     async def get_live_entry_loads(self) -> dict[str, int]:
         """Return {entry_node_id: total_connections} from latest sing-box reports

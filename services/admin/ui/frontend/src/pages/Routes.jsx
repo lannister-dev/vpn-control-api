@@ -33,13 +33,14 @@ export function RoutesPage({ initialAction, onActionConsumed, onOpenNode }) {
   const nodesById = useMemo(() => Object.fromEntries(nodes.map((n) => [n.id, n])), [nodes]);
   const routesList = routes.data || [];
 
+  // Live real users per backend name — counts distinct Telegram users actively
+  // transferring traffic through this backend right now (xray stats → KV).
   const userCountByBackendName = useMemo(() => {
     const counts = {};
-    for (const k of routingState.data?.keys || []) {
-      const tag = k.effective_backend;
-      if (!tag) continue;
-      const name = tag.startsWith("backend-") ? tag.slice("backend-".length) : tag;
-      counts[name] = (counts[name] || 0) + 1;
+    for (const item of routingState.data?.live || []) {
+      if (!item.tag) continue;
+      const name = item.tag.startsWith("backend-") ? item.tag.slice("backend-".length) : item.tag;
+      counts[name] = (counts[name] || 0) + (item.unique_real_users || 0);
     }
     return counts;
   }, [routingState.data]);
@@ -69,11 +70,12 @@ export function RoutesPage({ initialAction, onActionConsumed, onOpenNode }) {
     return m;
   }, [routingState.data, nodes]);
 
-  // 👤 unique users per entry (from sing-box clash-API metadata.user)
+  // 👤 unique real Telegram users per entry — resolved from active sing-box
+  // client_ids via vpn_key → subscription.user_id join (not raw client_id count).
   const usersByEntryId = useMemo(() => {
     const m = {};
     for (const it of routingState.data?.live_by_entry || []) {
-      if (it.entry_node_id) m[it.entry_node_id] = (m[it.entry_node_id] || 0) + (it.unique_users || 0);
+      if (it.entry_node_id) m[it.entry_node_id] = (m[it.entry_node_id] || 0) + (it.unique_real_users || 0);
     }
     return m;
   }, [routingState.data]);

@@ -71,6 +71,23 @@ class VpnKeyRepository(BaseRepository[VpnKey]):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
+    async def map_client_ids_to_user_ids(
+            self,
+            *,
+            client_ids: list[str],
+    ) -> dict[str, str]:
+        from services.vpn.subscriptions.models import Subscription
+        normalized = [item for item in client_ids if item]
+        if not normalized:
+            return {}
+        stmt = (
+            select(self.model.client_id, Subscription.user_id)
+            .join(Subscription, Subscription.id == self.model.subscription_id)
+            .where(self.model.client_id.in_(normalized))
+        )
+        result = await self.session.execute(stmt)
+        return {str(cid): str(uid) for cid, uid in result.all()}
+
 
     async def list_with_traffic_summary(
             self,
