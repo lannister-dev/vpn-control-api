@@ -359,7 +359,7 @@ class EntryRoutingAdminService:
                 by_entry_unique_users[str(node_id)] = (
                     by_entry_unique_users.get(str(node_id), 0) + int(payload.get("unique_users") or 0)
                 )
-                for cid in (payload.get("by_client_id") or {}).keys():
+                for cid in (payload.get("by_client_id") or {}):
                     if cid:
                         client_ids_by_entry.setdefault(str(node_id), set()).add(str(cid))
 
@@ -368,7 +368,7 @@ class EntryRoutingAdminService:
 
         backend_id_to_tag = await self.routing.node_repo.backend_tag_by_id()
         # synthesise backend live entries even if no sing-box connection routed through them.
-        for backend_node_id in client_ids_by_backend.keys():
+        for backend_node_id in client_ids_by_backend:
             tag = backend_id_to_tag.get(backend_node_id)
             if tag and tag not in by_backend_totals:
                 by_backend_totals[tag] = 0

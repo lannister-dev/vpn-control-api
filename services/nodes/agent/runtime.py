@@ -4,15 +4,12 @@ import asyncio
 import contextlib
 import logging
 from datetime import datetime, timedelta, timezone
-from uuid import UUID
-
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from sqlalchemy import select, text
 
 from services.config import NatsConfig
 from services.entry.models import EntryBackendAssignment
-from services.nodes.models import VpnNode
 from services.nodes.agent.constants import (
     NODE_AGENT_RUNTIME_LEADER_LOCK_KEY,
     NODE_AGENT_RUNTIME_LEADER_POLL_INTERVAL_S,
@@ -42,6 +39,7 @@ from services.nodes.agent.schemas import (
     TransportReportStatus,
     UpstreamChangedPayload,
 )
+from services.nodes.models import VpnNode
 from services.nodes.repository import VpnNodeRepository
 from services.nodes.schemas import (
     HeartbeatDetails,
