@@ -432,6 +432,7 @@ class RouteService:
             node_id=str(entry_node_id),
             emitted_at=now,
             upstream_node_id=str(backend_node_id),
+            upstream_name=str(backend_node.name or ""),
             upstream_public_domain=str(backend_node.public_domain or ""),
             upstream_reality_ip=getattr(backend_node, "reality_ip", None),
             upstream_internal_wg_ip=getattr(backend_node, "internal_wg_ip", None),

@@ -225,6 +225,7 @@ class UpstreamChangedPayload(BaseModel):
     node_id: str
     emitted_at: datetime
     upstream_node_id: str
+    upstream_name: str | None = None
     upstream_public_domain: str
     upstream_reality_ip: str | None = None
     upstream_internal_wg_ip: str | None = None

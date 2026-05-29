@@ -346,6 +346,7 @@ class NodeAgentRuntime:
                 node_id=str(entry_node_id),
                 emitted_at=now,
                 upstream_node_id=str(backend.id),
+                upstream_name=str(backend.name or ""),
                 upstream_public_domain=str(backend.public_domain or ""),
                 upstream_reality_ip=getattr(backend, "reality_ip", None),
                 upstream_internal_wg_ip=getattr(backend, "internal_wg_ip", None),
