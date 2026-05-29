@@ -30,6 +30,7 @@ from services.notifications.service import NotificationService
 from services.placements.models import UserPlacement  # noqa: F401
 from services.placements.reconcilers.error_retry import PlacementErrorRetryReconciler
 from services.placements.reconcilers.rebalance import PlacementRebalanceReconciler
+from services.placements.reconcilers.role_invalidator import PlacementNodeRoleInvalidator
 from services.plans.models import Plan  # noqa: F401
 from services.probe.models import ProbeSignal  # noqa: F401
 from services.probe.reconcilers.auto_drain import ProbeAutoDrainReconciler
@@ -99,6 +100,7 @@ def _build_reconcilers(notifications: NotificationService, nats_client: NatsClie
         VpnKeyExpirationReconciler(),
         SubscriptionExpirationReconciler(),
         SubscriptionAssignmentInvalidator(),
+        PlacementNodeRoleInvalidator(),
         BillingOrderExpirationReconciler(),
         EntryAutoDrainReconciler(),
         UpstreamFailoverReconciler(),
