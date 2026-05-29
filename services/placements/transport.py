@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.config import get_settings
+from services.entry.models import EntryBackendAssignment
 from services.nodes.agent.repository import NodeTransportOutboxRepository
 from services.nodes.agent.schemas import (
     AgentSubjects,
@@ -36,24 +39,62 @@ class NodeAgentPlacementTransport:
         rows = await self._placement_repository.list_transport_rows_by_placement_ids(
             placement_ids=placement_ids
         )
-        payloads = [self._build_command_payload(placement=placement, key=key) for placement, key in rows]
-        if not payloads:
+        if not rows:
             return
-        await self._outbox_repository.enqueue_many(
-            [
+        backend_ids = {placement.backend_node_id for placement, _ in rows}
+        entries_by_backend = await self._load_entries_for_backends(backend_ids)
+        items: list[OutboxEnqueueItem] = []
+        for placement, key in rows:
+            backend_payload = self._build_command_payload(placement=placement, key=key)
+            items.append(
                 OutboxEnqueueItem(
-                    node_id=payload.node_id,
+                    node_id=backend_payload.node_id,
                     event_type="placement_command",
-                    aggregate_id=payload.placement_id,
-                    op_version=payload.op_version,
-                    subject=self._subjects.placement_command(str(payload.node_id)),
-                    payload=payload.model_dump(mode="json"),
-                    message_id=f"placement-command:{payload.placement_id}:{payload.op_version}",
-                    status="pending"
+                    aggregate_id=backend_payload.placement_id,
+                    op_version=backend_payload.op_version,
+                    subject=self._subjects.placement_command(str(backend_payload.node_id)),
+                    payload=backend_payload.model_dump(mode="json"),
+                    message_id=f"placement-command:{backend_payload.placement_id}:{backend_payload.op_version}",
+                    status="pending",
                 )
-                for payload in payloads
-            ]
+            )
+            for entry_node_id in entries_by_backend.get(placement.backend_node_id, ()):
+                entry_payload = self._build_command_payload(
+                    placement=placement,
+                    key=key,
+                    override_node_id=entry_node_id,
+                )
+                items.append(
+                    OutboxEnqueueItem(
+                        node_id=entry_payload.node_id,
+                        event_type="placement_command",
+                        aggregate_id=entry_payload.placement_id,
+                        op_version=entry_payload.op_version,
+                        subject=self._subjects.placement_command(str(entry_payload.node_id)),
+                        payload=entry_payload.model_dump(mode="json"),
+                        message_id=f"placement-command:{entry_payload.placement_id}:{entry_payload.op_version}:{entry_node_id}",
+                        status="pending",
+                    )
+                )
+        await self._outbox_repository.enqueue_many(items)
+
+    async def _load_entries_for_backends(
+        self,
+        backend_ids: set[UUID],
+    ) -> dict[UUID, list[UUID]]:
+        if not backend_ids:
+            return {}
+        session = self._placement_repository.session
+        stmt = (
+            select(EntryBackendAssignment.backend_node_id, EntryBackendAssignment.entry_node_id)
+            .where(EntryBackendAssignment.backend_node_id.in_(backend_ids))
+            .where(EntryBackendAssignment.enabled.is_(True))
         )
+        result = await session.execute(stmt)
+        mapping: dict[UUID, list[UUID]] = defaultdict(list)
+        for backend_id, entry_id in result.all():
+            mapping[backend_id].append(entry_id)
+        return mapping
 
     async def enqueue_for_key_state(
         self,
