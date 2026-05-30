@@ -42,7 +42,7 @@ from services.auth.admin.service import AdminAuthService
 from services.nodes.models import VpnNode  # noqa: F401
 from services.plans.models import Plan  # noqa: F401
 from services.users.models import User  # noqa: F401
-from services.vpn.keys.models import KeyAssignment, VpnKey  # noqa: F401
+from services.vpn.keys.models import VpnKey  # noqa: F401
 
 # ---------------------------------------------------------------------------
 # Crypto tests

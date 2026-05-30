@@ -191,21 +191,17 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
             raise RuntimeError("placement upsert failed to load placement row")
         return row
 
-    async def deactivate_placements_on_non_backend_nodes(
+    async def deactivate_placements_on_node(
         self,
         *,
-        last_migration_reason: str = "role_swap_non_backend",
+        backend_node_id: UUID,
+        last_migration_reason: str,
     ) -> list[UUID]:
-        from services.nodes.constants import ROLE_BACKEND
-        from services.nodes.models import VpnNode
-        bad_ids_subq = (
-            select(VpnNode.id).where(VpnNode.role != ROLE_BACKEND)
-        ).scalar_subquery()
         select_stmt = (
             select(self.model.id)
             .where(self.model.is_active.is_(True))
             .where(self.model.desired_state != "inactive")
-            .where(self.model.backend_node_id.in_(bad_ids_subq))
+            .where(self.model.backend_node_id == backend_node_id)
         )
         rows = await self.session.execute(select_stmt)
         placement_ids = [row[0] for row in rows.all()]

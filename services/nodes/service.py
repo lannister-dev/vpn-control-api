@@ -533,6 +533,50 @@ class VpnNodeService:
             )
         return candidate
 
+    async def admin_update_node(self, node_id: UUID, data: dict) -> VpnNode:
+        node = await self.vpn_node_repository.get_by_id(node_id)
+        if node is None:
+            raise AdminNodeNotFoundError(f"node {node_id} not found")
+
+        prev_role = node.role
+        new_role = data.get("role", prev_role)
+        is_role_swap_off_backend = (
+            prev_role == ROLE_BACKEND and new_role != ROLE_BACKEND
+        )
+
+        updated = await self.vpn_node_repository.update_by_id(node_id, data)
+
+        if is_role_swap_off_backend:
+            from sqlalchemy import delete as sa_delete
+
+            from services.placements.repository import UserPlacementRepository
+            from services.placements.transport import NodeAgentPlacementTransport
+            from services.vpn.subscriptions.models import SubscriptionRouteAssignment
+
+            session = self.vpn_node_repository.session
+            placement_repo = UserPlacementRepository(session)
+            affected_ids = await placement_repo.deactivate_placements_on_node(
+                backend_node_id=node_id,
+                last_migration_reason=f"role_swap:{prev_role}->{new_role}",
+            )
+            await session.execute(
+                sa_delete(SubscriptionRouteAssignment).where(
+                    SubscriptionRouteAssignment.entry_node_id == node_id
+                )
+            )
+            if affected_ids:
+                transport = NodeAgentPlacementTransport(session)
+                await transport.enqueue_for_placement_ids(affected_ids)
+            logger_node.info(
+                "node_role_swap_cleanup",
+                node_id=str(node_id),
+                prev_role=prev_role,
+                new_role=new_role,
+                deactivated_placements=len(affected_ids),
+            )
+
+        return updated
+
     async def admin_create_node(self, payload: AdminNodeCreateIn) -> AdminNodeCreateOut:
         role = payload.role.strip()
         if role not in ALLOWED_NODE_ROLES:

@@ -1,6 +1,6 @@
 from services.placements.models import UserPlacement
 from services.traffic.users.models import TrafficUsage
-from services.vpn.keys.models import KeyAssignment, VpnKey
+from services.vpn.keys.models import VpnKey
 from services.vpn.subscriptions.models import (
     Subscription,
     SubscriptionDevice,
@@ -20,6 +20,5 @@ def test_user_delete_cascades_across_subscription_and_key_graph():
     assert _fk_ondelete(SubscriptionDevice, "subscription_id") == "CASCADE"
     assert _fk_ondelete(SubscriptionDeviceKey, "subscription_device_id") == "CASCADE"
     assert _fk_ondelete(SubscriptionDeviceKey, "vpn_key_id") == "CASCADE"
-    assert _fk_ondelete(KeyAssignment, "key_id") == "CASCADE"
     assert _fk_ondelete(UserPlacement, "key_id") == "CASCADE"
     assert _fk_ondelete(TrafficUsage, "key_id") == "CASCADE"
