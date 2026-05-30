@@ -405,7 +405,7 @@ async def test_list_targets_emits_synthetic_for_entry_pool(async_session):
     assert target.reality_server_name == tp.reality_server_name
     assert target.probe_client_id == "probe-reality-cid"
     assert target.transport_kind == "reality"
-    assert target.route_id is None
+    assert target.route_id is not None
     assert target.transport_profile_id is None
 
 
@@ -630,6 +630,126 @@ async def test_report_blocks_warming_up_route_on_repeated_failures(async_session
     assert kwargs["item_id"] == route.id
     assert kwargs["data"]["health_status"] == "blocked"
     assert kwargs["data"]["effective_weight"] == 0
+
+
+@pytest.mark.asyncio
+async def test_report_does_not_block_entry_route_when_mesh_path_healthy(async_session):
+    svc = _ingestion_service()
+    svc.node_repository = AsyncMock()
+    svc.probe_repository = AsyncMock()
+    svc.route_repository = AsyncMock()
+    svc.alert_service = AsyncMock()
+
+    backend = _node()
+    entry = _node(role="entry", name="par-entry-01")
+    transport_profile = _transport_profile()
+    route = _route(
+        node_id=backend.id,
+        transport_profile_id=transport_profile.id,
+        entry_node_id=entry.id,
+    )
+    checked_at = datetime.now(timezone.utc)
+    created = _probe(is_reachable=False, checked_at=checked_at, route_id=route.id)
+    created.node_id = backend.id
+    created.transport_profile_id = transport_profile.id
+    created.transport_kind = "reality"
+    created.probe_kind = "synthetic_vpn"
+    created.target_host = backend.reality_ip
+    created.target_port = 443
+    created.error_phase = "tcp"
+    created.source = "probe-dev-backend"
+    created.latency_ms = None
+    created.error = "timeout"
+    created.details = {}
+    created.created_at = datetime.now(timezone.utc)
+    route.health_status = "healthy"
+    route.base_weight = 50
+
+    svc.node_repository.get_by_id.return_value = backend
+    svc.route_repository.get_active_detailed_by_id.return_value = (route, backend, transport_profile, None)
+    svc.probe_repository.get_latest_for_route.side_effect = [None, created]
+    svc.probe_repository.create.return_value = created
+    svc.probe_repository.count_consecutive_route_failures = AsyncMock(return_value=4)
+    svc.probe_repository.get_latest_mesh_for_backend.return_value = _probe(
+        is_reachable=True, checked_at=checked_at,
+    )
+    svc.route_repository.get_by_id.return_value = route
+    svc.route_repository.update_by_id = AsyncMock(return_value=route)
+
+    await svc.report(
+        ProbeReportIn(
+            node_id=backend.id,
+            route_id=route.id,
+            source="probe-dev-backend",
+            probe_kind="synthetic_vpn",
+            is_reachable=False,
+            error="timeout",
+            error_phase="tcp",
+        )
+    )
+
+    svc.route_repository.update_by_id.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_report_blocks_entry_route_when_mesh_path_also_failing(async_session):
+    svc = _ingestion_service()
+    svc.node_repository = AsyncMock()
+    svc.probe_repository = AsyncMock()
+    svc.route_repository = AsyncMock()
+    svc.alert_service = AsyncMock()
+
+    backend = _node()
+    entry = _node(role="entry", name="par-entry-01")
+    transport_profile = _transport_profile()
+    route = _route(
+        node_id=backend.id,
+        transport_profile_id=transport_profile.id,
+        entry_node_id=entry.id,
+    )
+    checked_at = datetime.now(timezone.utc)
+    created = _probe(is_reachable=False, checked_at=checked_at, route_id=route.id)
+    created.node_id = entry.id
+    created.transport_profile_id = transport_profile.id
+    created.transport_kind = "reality"
+    created.probe_kind = "synthetic_vpn"
+    created.target_host = entry.public_domain
+    created.target_port = 443
+    created.error_phase = "tunnel_http"
+    created.source = "probe-dev-entry"
+    created.latency_ms = None
+    created.error = "tls eof"
+    created.details = {}
+    created.created_at = datetime.now(timezone.utc)
+    route.health_status = "healthy"
+    route.base_weight = 50
+
+    svc.node_repository.get_by_id.return_value = entry
+    svc.route_repository.get_active_detailed_by_id.return_value = (route, backend, transport_profile, None)
+    svc.probe_repository.get_latest_for_route.side_effect = [None, created]
+    svc.probe_repository.create.return_value = created
+    svc.probe_repository.count_consecutive_route_failures = AsyncMock(return_value=4)
+    svc.probe_repository.get_latest_mesh_for_backend.return_value = _probe(
+        is_reachable=False, checked_at=checked_at,
+    )
+    svc.route_repository.get_by_id.return_value = route
+    svc.route_repository.update_by_id = AsyncMock(return_value=route)
+
+    await svc.report(
+        ProbeReportIn(
+            node_id=entry.id,
+            route_id=route.id,
+            source="probe-dev-entry",
+            probe_kind="synthetic_vpn",
+            is_reachable=False,
+            error="tls eof",
+            error_phase="tunnel_http",
+        )
+    )
+
+    svc.route_repository.update_by_id.assert_awaited_once()
+    kwargs = svc.route_repository.update_by_id.await_args.kwargs
+    assert kwargs["data"]["health_status"] == "blocked"
 
 
 @pytest.mark.asyncio
@@ -1102,6 +1222,163 @@ async def test_report_skips_synthetic_requeue_during_self_heal_cooldown(async_se
 
 
 @pytest.mark.asyncio
+async def test_list_targets_emits_mesh_probe_per_backend(async_session):
+    svc = _ingestion_service()
+    svc.route_repository = AsyncMock()
+    svc.key_repository = AsyncMock()
+    svc.placement_repository = AsyncMock()
+    svc.synthetic_probe_client_ids = ProbeSyntheticClientIds(reality="probe-reality-cid")
+
+    entry = _node(role="entry", name="par-entry-01", public_domain="entry.example.com", reality_ip="")
+    backend_a = _node(role="backend", name="zrh-backend-01", reality_ip="78.108.56.91")
+    backend_b = _node(role="backend", name="rix-backend-01", reality_ip="31.42.120.60")
+    tp = _transport_profile()
+    route_a = _route(node_id=backend_a.id, transport_profile_id=tp.id, entry_node_id=entry.id, name="par->zrh")
+    route_b = _route(node_id=backend_b.id, transport_profile_id=tp.id, entry_node_id=entry.id, name="par->rix")
+
+    key = MagicMock()
+    key.id = uuid4()
+    key.client_id = "probe-reality-cid"
+    key.transport = "reality"
+    placement_a = MagicMock()
+    placement_a.backend_node_id = backend_a.id
+    placement_a.applied_state = "applied"
+    placement_a.op_version = 1
+    placement_a.applied_version = 1
+    placement_b = MagicMock()
+    placement_b.backend_node_id = backend_b.id
+    placement_b.applied_state = "applied"
+    placement_b.op_version = 1
+    placement_b.applied_version = 1
+
+    svc.route_repository.list_active_detailed.return_value = [
+        (route_a, backend_a, tp, None),
+        (route_b, backend_b, tp, None),
+    ]
+    svc.key_repository.list_by_client_ids.return_value = [key]
+    svc.placement_repository.list_by_key_id.return_value = [placement_a, placement_b]
+    svc.node_repository.list_public.return_value = [entry, backend_a, backend_b]
+
+    out = await svc.list_targets(role="all")
+
+    mesh = [t for t in out if t.probe_kind == "synthetic_vpn" and t.node_id == entry.id]
+    assert len(mesh) == 2
+    assert {t.route_id for t in mesh} == {route_a.id, route_b.id}
+    for t in mesh:
+        assert t.target_host == "entry.example.com"
+        assert t.probe_client_id == "probe-reality-cid"
+
+
+@pytest.mark.asyncio
+async def test_report_accepts_mesh_probe_from_entry(async_session):
+    svc = _ingestion_service()
+    svc.node_repository = AsyncMock()
+    svc.probe_repository = AsyncMock()
+    svc.route_repository = AsyncMock()
+    svc.alert_service = AsyncMock()
+
+    backend = _node(role="backend", name="zrh-backend-01")
+    entry = _node(role="entry", name="par-entry-01")
+    tp = _transport_profile()
+    route = _route(node_id=backend.id, transport_profile_id=tp.id, entry_node_id=entry.id, name="par->zrh-pool")
+
+    created = MagicMock()
+    created.id = uuid4()
+    created.node_id = entry.id
+    created.route_id = route.id
+    created.transport_profile_id = tp.id
+    created.transport_kind = "reality"
+    created.probe_kind = "synthetic_vpn"
+    created.target_host = entry.public_domain
+    created.target_port = 443
+    created.error_phase = None
+    created.source = "probe-dev-entry"
+    created.is_reachable = True
+    created.latency_ms = 42
+    created.error = None
+    created.checked_at = datetime.now(timezone.utc)
+    created.details = {}
+    created.created_at = datetime.now(timezone.utc)
+
+    svc.node_repository.get_by_id.return_value = entry
+    svc.route_repository.get_active_detailed_by_id.return_value = (route, backend, tp, None)
+    svc.route_repository.get_by_id.return_value = route
+    svc.probe_repository.get_latest_for_route.side_effect = [None, created]
+    svc.probe_repository.create.return_value = created
+
+    out = await svc.report(
+        ProbeReportIn(
+            node_id=entry.id,
+            route_id=route.id,
+            source="probe-dev-entry",
+            probe_kind="synthetic_vpn",
+            is_reachable=True,
+            latency_ms=42,
+        )
+    )
+
+    assert out.node_id == entry.id
+    assert out.route_id == route.id
+    svc.probe_repository.create.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_drain_skips_when_mesh_path_healthy(async_session):
+    svc = _drain_service()
+    svc.node_repository = AsyncMock()
+    svc.probe_repository = AsyncMock()
+    svc.placement_service = AsyncMock()
+
+    source = _node(role="backend")
+    direct_fail = _probe(is_reachable=False, checked_at=datetime.now(timezone.utc))
+    mesh_ok = _probe(is_reachable=True, checked_at=datetime.now(timezone.utc))
+    svc.node_repository.get_by_id.return_value = source
+    svc.probe_repository.get_latest_for_backend_node.return_value = direct_fail
+    svc.probe_repository.get_latest_mesh_for_backend.return_value = mesh_ok
+
+    with pytest.raises(HTTPException) as exc:
+        await svc.drain_and_migrate_backend(
+            ProbeDrainMigrateIn(source_backend_id=source.id, require_recent_failure=True)
+        )
+
+    assert exc.value.status_code == 409
+    assert "User-path" in exc.value.detail
+    svc.placement_service.migrate_backend.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_drain_proceeds_when_mesh_path_absent(async_session):
+    svc = _drain_service()
+    svc.node_repository = AsyncMock()
+    svc.probe_repository = AsyncMock()
+    svc.placement_service = AsyncMock()
+
+    source = _node(role="backend")
+    direct_fail = _probe(is_reachable=False, checked_at=datetime.now(timezone.utc))
+    migration = MagicMock()
+    migration.source_backend_id = source.id
+    migration.target_backend_id = uuid4()
+    migration.migrated_count = 2
+    svc.node_repository.get_by_id.return_value = source
+    svc.probe_repository.get_latest_for_backend_node.return_value = direct_fail
+    svc.probe_repository.get_latest_mesh_for_backend.return_value = None
+    svc.probe_repository.list_recent_for_backend_node.return_value = [direct_fail]
+    svc.placement_service.migrate_backend.return_value = migration
+    svc.node_state_repository.get_one_by.return_value = SimpleNamespace(details={"heartbeat": {}})
+
+    out = await svc.drain_and_migrate_backend(
+        ProbeDrainMigrateIn(
+            source_backend_id=source.id,
+            require_recent_failure=True,
+            min_consecutive_failures=1,
+        )
+    )
+
+    assert out.drained is True
+    svc.placement_service.migrate_backend.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_cleanup_old_signals_returns_deleted_count(async_session):
     svc = _ingestion_service()
     svc.probe_repository = AsyncMock()
@@ -1224,6 +1501,7 @@ async def test_drain_and_migrate_success(async_session):
     svc.node_repository.get_by_id.return_value = source
     svc.probe_repository.get_latest_for_backend_node.return_value = latest
     svc.probe_repository.list_recent_for_backend_node.return_value = [latest]
+    svc.probe_repository.get_latest_mesh_for_backend.return_value = None
     svc.placement_service.migrate_backend.return_value = migration
     svc.node_state_repository.get_one_by.return_value = SimpleNamespace(details={"heartbeat": {}})
 
@@ -1272,6 +1550,7 @@ async def test_auto_drain_and_migrate_backends_dry_run(async_session):
         return None
 
     svc.probe_repository.get_latest_for_backend_node.side_effect = _latest_side_effect
+    svc.probe_repository.get_latest_mesh_for_backend.return_value = None
 
     out = await svc.auto_drain_and_migrate_backends(
         ProbeAutoDrainMigrateIn(
@@ -1301,6 +1580,7 @@ async def test_auto_drain_and_migrate_backends_executes(async_session):
     svc.node_repository.list.return_value = [backend_fail]
     fail_latest = _probe(is_reachable=False, checked_at=datetime.now(timezone.utc))
     svc.probe_repository.get_latest_for_backend_node.return_value = fail_latest
+    svc.probe_repository.get_latest_mesh_for_backend.return_value = None
 
     svc.drain_and_migrate_backend = AsyncMock(
         return_value=ProbeDrainMigrateOut(
@@ -1340,6 +1620,7 @@ async def test_auto_drain_reverts_is_draining_on_migration_failure(async_session
     svc.node_repository.get_by_id.return_value = backend_fail
     fail_latest = _probe(is_reachable=False, checked_at=datetime.now(timezone.utc))
     svc.probe_repository.get_latest_for_backend_node.return_value = fail_latest
+    svc.probe_repository.get_latest_mesh_for_backend.return_value = None
     svc.placement_service.migrate_backend.side_effect = HTTPException(status_code=409, detail="No target backend available")
 
     out = await svc.auto_drain_and_migrate_backends(

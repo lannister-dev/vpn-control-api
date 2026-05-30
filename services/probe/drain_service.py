@@ -13,6 +13,11 @@ from services.nodes.repository import NodeAgentStateRepository, VpnNodeRepositor
 from services.nodes.schemas import NodeHeartbeatMeta, VpnNodeUpdate
 from services.placements.schemas import PlacementMigrateBackendIn
 from services.placements.service import UserPlacementService, get_user_placement_service
+from services.probe.constants import (
+    DRAIN_MIGRATE_ACTION,
+    MESH_HEALTHY_MAX_AGE_SEC,
+    PROBE_DRAIN_REASON_PREFIX,
+)
 from services.probe.repository import ProbeSignalRepository
 from services.probe.schemas import (
     ProbeAutoDrainMigrateIn,
@@ -29,8 +34,6 @@ logger_probe = StructuredLogger(logging.getLogger("probe-drain-service"))
 
 
 class ProbeDrainService:
-    _PROBE_DRAIN_REASON_PREFIX = "probe_"
-
     def __init__(
             self,
             *,
@@ -48,7 +51,6 @@ class ProbeDrainService:
             self,
             payload: ProbeDrainMigrateIn,
     ) -> ProbeDrainMigrateOut:
-        action = "drain_migrate_backend"
         try:
             source_node = await self.node_repository.get_by_id(payload.source_backend_id)
             if not source_node:
@@ -105,7 +107,7 @@ class ProbeDrainService:
                         payload.source_backend_id,
                     )
                 raise
-            PROBE_ACTION_TOTAL.labels(action=action, result="success").inc()
+            PROBE_ACTION_TOTAL.labels(action=DRAIN_MIGRATE_ACTION, result="success").inc()
             return ProbeDrainMigrateOut(
                 source_backend_id=migration.source_backend_id,
                 target_backend_id=migration.target_backend_id,
@@ -119,7 +121,7 @@ class ProbeDrainService:
                 source_backend_id=str(payload.source_backend_id),
                 detail=str(exc.detail),
             )
-            PROBE_ACTION_TOTAL.labels(action=action, result="rejected").inc()
+            PROBE_ACTION_TOTAL.labels(action=DRAIN_MIGRATE_ACTION, result="rejected").inc()
             raise
 
     async def auto_drain_and_migrate_backends(
@@ -304,6 +306,17 @@ class ProbeDrainService:
                         f"{consecutive_failures}/{min_consecutive_failures}"
                     ),
                 )
+
+        mesh = await self.probe_repository.get_latest_mesh_for_backend(backend_node_id=node_id)
+        if mesh is not None and mesh.is_reachable:
+            mesh_checked_at = mesh.checked_at
+            if mesh_checked_at.tzinfo is None:
+                mesh_checked_at = mesh_checked_at.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) - mesh_checked_at <= timedelta(seconds=MESH_HEALTHY_MAX_AGE_SEC):
+                raise HTTPException(
+                    status_code=409,
+                    detail="User-path (entry→mesh→backend) probe healthy; skipping drain",
+                )
         return latest
 
     async def _set_probe_drain_reason(
@@ -347,10 +360,10 @@ class ProbeDrainService:
 
     def _normalize_probe_drain_reason(self, value: str | None) -> str:
         normalized = (value or "").strip()
-        if normalized.startswith(self._PROBE_DRAIN_REASON_PREFIX):
+        if normalized.startswith(PROBE_DRAIN_REASON_PREFIX):
             return normalized
         if normalized:
-            return f"{self._PROBE_DRAIN_REASON_PREFIX}{normalized}"
+            return f"{PROBE_DRAIN_REASON_PREFIX}{normalized}"
         return "probe_failure"
 
     @staticmethod

@@ -127,6 +127,29 @@ class ProbeSignalRepository(BaseRepository[ProbeSignal]):
         res = await self.session.execute(stmt)
         return list(res.scalars().all())
 
+    async def get_latest_mesh_for_backend(
+            self,
+            *,
+            backend_node_id: UUID,
+    ) -> ProbeSignal | None:
+        from services.routes.models import Route
+
+        stmt = (
+            select(self.model)
+            .join(Route, Route.id == self.model.route_id)
+            .where(
+                self.model.is_active.is_(True),
+                self.model.probe_kind == "synthetic_vpn",
+                Route.node_id == backend_node_id,
+                Route.entry_node_id.is_not(None),
+                self.model.node_id == Route.entry_node_id,
+            )
+            .order_by(self.model.checked_at.desc(), self.model.created_at.desc())
+            .limit(1)
+        )
+        res = await self.session.execute(stmt)
+        return res.scalar_one_or_none()
+
     async def count_consecutive_route_failures(
             self,
             *,
