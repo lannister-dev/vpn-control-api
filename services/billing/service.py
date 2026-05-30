@@ -44,7 +44,7 @@ from services.billing.schemas import (
     TransactionListOut,
     TransactionOut,
 )
-from services.bot_notifications.service import TelegramBotNotifyService
+from services.bot_api.notify.service import TelegramBotNotifyService
 from services.config import get_settings
 from services.notifications.service import NotificationService
 from services.plans.repository import PlanRepository

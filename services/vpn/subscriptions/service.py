@@ -50,6 +50,7 @@ from services.vpn.subscriptions.constants import (
 )
 from services.vpn.subscriptions.exceptions import (
     SubscriptionBuild,
+    SubscriptionBuildUnavailable,
     SubscriptionDeviceLimitReached,
     SubscriptionExpired,
     SubscriptionHwidRequired,
@@ -720,14 +721,14 @@ class SubscriptionService:
                     transport_diagnostics[key.transport] = result.diagnostic_reason
 
             if not transport_results:
-                raise SubscriptionBuild(self._build_no_routes_message(transport_diagnostics))
+                raise SubscriptionBuildUnavailable(self._build_no_routes_message(transport_diagnostics))
 
             selected_routes = self._merge_transport_routes(
                 subscription=subscription,
                 transport_results=transport_results,
             )
             if not selected_routes:
-                raise SubscriptionBuild(self._build_no_routes_message(transport_diagnostics))
+                raise SubscriptionBuildUnavailable(self._build_no_routes_message(transport_diagnostics))
 
             max_payload_bytes = max(512, int(self.settings.subscriptions.response_max_payload_bytes))
             selected_routes, guardrail_result = self._fit_routes_to_payload_limit(
@@ -1603,7 +1604,7 @@ class SubscriptionService:
             if self._node_has_required_public_host(node=node)
         ]
         if not candidate_nodes and not placements_by_backend:
-            raise SubscriptionBuild("No available nodes")
+            raise SubscriptionBuildUnavailable("No available nodes")
 
         if candidate_nodes:
             target_nodes = candidate_nodes[:desired_replicas]
@@ -1638,7 +1639,7 @@ class SubscriptionService:
             preferred_placement = next(iter(placements_by_backend.values()))
 
         if preferred_placement is None:
-            raise SubscriptionBuild("Node placement sync pending")
+            raise SubscriptionBuildUnavailable("Node placement sync pending")
 
         preferred_backend_id = self._as_uuid(preferred_placement.backend_node_id)
         allowed_backend_ids: set[UUID] = set(target_node_ids) if target_node_ids else set(placements_by_backend.keys())
@@ -2247,7 +2248,7 @@ class SubscriptionService:
             valid_until = now + timedelta(days=365)
         bundle_transports = self._subscription_bundle_transports(subscription)
         if not bundle_transports:
-            raise SubscriptionBuild("No available key")
+            raise SubscriptionBuildUnavailable("No available key")
 
         primary_transport = bundle_transports[0]
         primary_key = await self._create_vpn_key_for_transport(

@@ -33,7 +33,7 @@ class BaseApiClient:
             )
         return self._client
 
-    async def close(self) -> None:
+    async def close(self):
         if self._client and not self._client.is_closed:
             await self._client.close()
             self._client = None

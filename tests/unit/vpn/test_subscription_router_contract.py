@@ -7,7 +7,10 @@ import pytest
 from fastapi import HTTPException
 
 from services.vpn.subscriptions.adapter import SubscriptionPublicAdapter
-from services.vpn.subscriptions.exceptions import SubscriptionBuild, SubscriptionNotFound
+from services.vpn.subscriptions.exceptions import (
+    SubscriptionBuildUnavailable,
+    SubscriptionNotFound,
+)
 from services.vpn.subscriptions.router import get_subscription_config
 
 
@@ -114,7 +117,7 @@ async def test_get_subscription_config_maps_not_found_error():
 @pytest.mark.asyncio
 async def test_get_subscription_config_maps_build_unavailable_error():
     service = SimpleNamespace(
-        build_payload=AsyncMock(side_effect=SubscriptionBuild("No available routes"))
+        build_payload=AsyncMock(side_effect=SubscriptionBuildUnavailable("No available routes"))
     )
     request = _request_with_headers({})
 
@@ -132,7 +135,7 @@ async def test_get_subscription_config_maps_build_unavailable_error():
 @pytest.mark.asyncio
 async def test_get_subscription_config_maps_sync_pending_error_to_503():
     service = SimpleNamespace(
-        build_payload=AsyncMock(side_effect=SubscriptionBuild("Backend placement sync pending"))
+        build_payload=AsyncMock(side_effect=SubscriptionBuildUnavailable("Backend placement sync pending"))
     )
     request = _request_with_headers({})
 
