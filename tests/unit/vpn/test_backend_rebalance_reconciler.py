@@ -65,17 +65,17 @@ async def test_no_action_when_traffic_is_balanced(async_session):
     ]
 
     with patch(
-        "services.vpn.keys.reconcilers.backend_rebalance.VpnNodeRepository",
+        "services.vpn.keys.backend_rebalance_service.VpnNodeRepository",
         return_value=mock_node_repo,
     ), patch(
-        "services.vpn.keys.reconcilers.backend_rebalance.NodeTrafficUsageRepository",
+        "services.vpn.keys.backend_rebalance_service.NodeTrafficUsageRepository",
         return_value=mock_traffic_repo,
     ), patch(
-        "services.vpn.keys.reconcilers.backend_rebalance.VpnKeyRepository",
+        "services.vpn.keys.backend_rebalance_service.VpnKeyRepository",
     ), patch(
-        "services.vpn.keys.reconcilers.backend_rebalance.UserPlacementRepository",
+        "services.vpn.keys.backend_rebalance_service.UserPlacementRepository",
     ):
-        moved = await reconciler._tick()
+        moved = await reconciler._service.run_once()
 
     assert moved == 0
 
@@ -97,17 +97,17 @@ async def test_no_action_when_traffic_too_low(async_session):
     ]
 
     with patch(
-        "services.vpn.keys.reconcilers.backend_rebalance.VpnNodeRepository",
+        "services.vpn.keys.backend_rebalance_service.VpnNodeRepository",
         return_value=mock_node_repo,
     ), patch(
-        "services.vpn.keys.reconcilers.backend_rebalance.NodeTrafficUsageRepository",
+        "services.vpn.keys.backend_rebalance_service.NodeTrafficUsageRepository",
         return_value=mock_traffic_repo,
     ), patch(
-        "services.vpn.keys.reconcilers.backend_rebalance.VpnKeyRepository",
+        "services.vpn.keys.backend_rebalance_service.VpnKeyRepository",
     ), patch(
-        "services.vpn.keys.reconcilers.backend_rebalance.UserPlacementRepository",
+        "services.vpn.keys.backend_rebalance_service.UserPlacementRepository",
     ):
-        moved = await reconciler._tick()
+        moved = await reconciler._service.run_once()
 
     assert moved == 0
 
@@ -138,19 +138,19 @@ async def test_moves_one_key_when_traffic_imbalanced(async_session):
     }
 
     with patch(
-        "services.vpn.keys.reconcilers.backend_rebalance.VpnNodeRepository",
+        "services.vpn.keys.backend_rebalance_service.VpnNodeRepository",
         return_value=mock_node_repo,
     ), patch(
-        "services.vpn.keys.reconcilers.backend_rebalance.NodeTrafficUsageRepository",
+        "services.vpn.keys.backend_rebalance_service.NodeTrafficUsageRepository",
         return_value=mock_traffic_repo,
     ), patch(
-        "services.vpn.keys.reconcilers.backend_rebalance.VpnKeyRepository",
+        "services.vpn.keys.backend_rebalance_service.VpnKeyRepository",
         return_value=mock_key_repo,
     ), patch(
-        "services.vpn.keys.reconcilers.backend_rebalance.UserPlacementRepository",
+        "services.vpn.keys.backend_rebalance_service.UserPlacementRepository",
         return_value=mock_placement_repo,
     ):
-        moved = await reconciler._tick()
+        moved = await reconciler._service.run_once()
 
     assert moved == 1
     mock_key_repo.update_by_id.assert_awaited_once_with(
@@ -185,19 +185,19 @@ async def test_skips_keys_without_dst_placement(async_session):
     }
 
     with patch(
-        "services.vpn.keys.reconcilers.backend_rebalance.VpnNodeRepository",
+        "services.vpn.keys.backend_rebalance_service.VpnNodeRepository",
         return_value=mock_node_repo,
     ), patch(
-        "services.vpn.keys.reconcilers.backend_rebalance.NodeTrafficUsageRepository",
+        "services.vpn.keys.backend_rebalance_service.NodeTrafficUsageRepository",
         return_value=mock_traffic_repo,
     ), patch(
-        "services.vpn.keys.reconcilers.backend_rebalance.VpnKeyRepository",
+        "services.vpn.keys.backend_rebalance_service.VpnKeyRepository",
         return_value=mock_key_repo,
     ), patch(
-        "services.vpn.keys.reconcilers.backend_rebalance.UserPlacementRepository",
+        "services.vpn.keys.backend_rebalance_service.UserPlacementRepository",
         return_value=mock_placement_repo,
     ):
-        moved = await reconciler._tick()
+        moved = await reconciler._service.run_once()
 
     assert moved == 0
     mock_key_repo.update_by_id.assert_not_awaited()

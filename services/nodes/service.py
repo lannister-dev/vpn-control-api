@@ -543,8 +543,35 @@ class VpnNodeService:
         is_role_swap_off_backend = (
             prev_role == ROLE_BACKEND and new_role != ROLE_BACKEND
         )
+        prev_serving = (
+            node.role == ROLE_BACKEND and node.is_enabled and not node.is_draining
+        )
+        new_is_enabled = data.get("is_enabled", node.is_enabled)
+        new_is_draining = data.get("is_draining", node.is_draining)
+        will_serve = (
+            new_role == ROLE_BACKEND and new_is_enabled and not new_is_draining
+        )
+        became_serving_backend = will_serve and not prev_serving
 
         updated = await self.vpn_node_repository.update_by_id(node_id, data)
+
+        if became_serving_backend:
+            import asyncio
+
+            from services.vpn.keys.backend_rebalance_service import BackendRebalanceService
+
+            async def _kick() -> None:
+                try:
+                    moved = await BackendRebalanceService().run_once()
+                    logger_node.info(
+                        "backend_rebalance_kick_after_node_serving",
+                        node_id=str(node_id),
+                        moved=moved,
+                    )
+                except Exception:
+                    logger_node.exception("backend_rebalance_kick_failed", node_id=str(node_id))
+
+            asyncio.create_task(_kick())
 
         if is_role_swap_off_backend:
             from sqlalchemy import delete as sa_delete

@@ -136,6 +136,7 @@ class VpnKeyRepository(BaseRepository[VpnKey]):
         tag: str,
         updated_before: datetime,
         limit: int = 50,
+        order_by_traffic_desc: bool = False,
     ) -> list[VpnKey]:
         now = datetime.now(timezone.utc)
         stmt = (
@@ -147,9 +148,12 @@ class VpnKeyRepository(BaseRepository[VpnKey]):
                 or_(self.model.is_revoked.is_(False), self.model.is_revoked.is_(None)),
                 self.model.updated_at < updated_before,
             )
-            .order_by(self.model.updated_at.asc())
-            .limit(limit)
         )
+        if order_by_traffic_desc:
+            stmt = stmt.order_by(self.model.used_traffic_bytes.desc(), self.model.updated_at.asc())
+        else:
+            stmt = stmt.order_by(self.model.updated_at.asc())
+        stmt = stmt.limit(limit)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
