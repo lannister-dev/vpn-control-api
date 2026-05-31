@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,6 +12,17 @@ from services.wg.schemas import WgPeerOut
 from shared.utils.logger import StructuredLogger
 
 logger = StructuredLogger(logging.getLogger("wg-mesh-service"))
+
+# Roles that should peer with each other across the wg-mesh.
+# Same-role peerings are dropped: backends do not carry traffic to other
+# backends, and entries do not need a tunnel to other entries. Eliminating
+# these reduces handshake overhead and avoids provider-side UDP filtering
+# that some hosters apply between VPS in the same AS.
+_PEER_ROLES: dict[str, set[str]] = {
+    "backend": {"entry", "whitelist_entry"},
+    "entry": {"backend"},
+    "whitelist_entry": {"backend"},
+}
 
 
 class WgMeshService:
@@ -34,11 +46,14 @@ class WgMeshService:
         return ip
 
     def _build_peers(
-        self, *, all_nodes: list[VpnNode], exclude_id,
+        self, *, all_nodes: Sequence[VpnNode], exclude_id, self_role: str | None = None,
     ) -> list[WgPeerOut]:
+        allowed_roles = _PEER_ROLES.get(self_role or "") if self_role else None
         peers: list[WgPeerOut] = []
         for n in all_nodes:
             if n.id == exclude_id:
+                continue
+            if allowed_roles is not None and (n.role or "") not in allowed_roles:
                 continue
             if not n.wg_public_key:
                 continue

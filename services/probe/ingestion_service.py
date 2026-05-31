@@ -13,6 +13,11 @@ from services.nodes.repository import VpnNodeRepository
 from services.notifications.service import NotificationService
 from services.placements.repository import UserPlacementRepository
 from services.placements.transport import NodeAgentPlacementTransport
+from services.probe.constants import (
+    MESH_HEALTHY_MAX_AGE_SEC,
+    SYNTHETIC_REPAIR_COOLDOWN_SEC,
+    SYNTHETIC_REPAIR_REASON,
+)
 from services.probe.policy.repository import ProbePolicyRepository
 from services.probe.repository import ProbeSignalRepository
 from services.probe.schemas import (
@@ -37,9 +42,6 @@ logger_probe = StructuredLogger(logging.getLogger("probe-ingestion-service"))
 
 
 class ProbeIngestionService:
-    _SYNTHETIC_REPAIR_REASON = "probe_synthetic_self_heal"
-    _SYNTHETIC_REPAIR_COOLDOWN_SEC = 300
-
     def __init__(
             self,
             *,
@@ -91,7 +93,9 @@ class ProbeIngestionService:
             if detailed is None:
                 raise HTTPException(status_code=404, detail="Route not found")
             route, route_node, transport_profile, _agent_state = detailed
-            if route.node_id != payload.node_id or route_node.id != payload.node_id:
+            is_backend_scope = route.node_id == payload.node_id
+            is_entry_scope = route.entry_node_id == payload.node_id
+            if not (is_backend_scope or is_entry_scope):
                 raise HTTPException(status_code=409, detail="Route does not belong to node")
             target = self._build_probe_target(
                 route=route,
@@ -260,6 +264,8 @@ class ProbeIngestionService:
         policy = await self._policy()
         if not policy.auto_route_health_enabled:
             return
+        if signal.probe_kind != "synthetic_vpn":
+            return
         route_id = signal.route_id
         if route_id is None:
             logger_probe.info(
@@ -292,8 +298,12 @@ class ProbeIngestionService:
         consecutive = await self.probe_repository.count_consecutive_route_failures(
             route_id=signal.route_id,
             limit=policy.route_block_after_failures + 2,
+            probe_kind="synthetic_vpn",
         )
         if consecutive < policy.route_suspected_after_failures:
+            return
+
+        if await self._mesh_path_healthy_for_backend(node.id):
             return
 
         client_id = configured_by_transport[transport_kind]
@@ -316,15 +326,15 @@ class ProbeIngestionService:
 
         updated_at = self._to_utc_or_none(getattr(placement, "updated_at", None))
         if (
-            getattr(placement, "last_migration_reason", None) == self._SYNTHETIC_REPAIR_REASON
+            getattr(placement, "last_migration_reason", None) == SYNTHETIC_REPAIR_REASON
             and updated_at is not None
-            and (datetime.now(timezone.utc) - updated_at).total_seconds() < self._SYNTHETIC_REPAIR_COOLDOWN_SEC
+            and (datetime.now(timezone.utc) - updated_at).total_seconds() < SYNTHETIC_REPAIR_COOLDOWN_SEC
         ):
             return
 
         placement_ids = await self.placement_repository.set_pending_for_backend(
             backend_node_id=node.id,
-            last_migration_reason=self._SYNTHETIC_REPAIR_REASON,
+            last_migration_reason=SYNTHETIC_REPAIR_REASON,
             updated_at=datetime.now(timezone.utc),
         )
         if not placement_ids:
@@ -345,10 +355,14 @@ class ProbeIngestionService:
         if status == RouteHealthStatus.blocked.value:
             return
 
+        if await self._mesh_path_healthy_for_route(route=route):
+            return
+
         policy = await self._policy()
         consecutive = await self.probe_repository.count_consecutive_route_failures(
             route_id=route.id,
             limit=policy.route_block_after_failures + 2,
+            probe_kind="synthetic_vpn",
         )
         logger_probe.info(
             "probe_route_health_consecutive_failures",
@@ -480,6 +494,20 @@ class ProbeIngestionService:
             return False
         return bool(entry.is_draining or not entry.is_enabled or not entry.is_active)
 
+    async def _mesh_path_healthy_for_route(self, *, route) -> bool:
+        if getattr(route, "entry_node_id", None) is None or getattr(route, "node_id", None) is None:
+            return False
+        return await self._mesh_path_healthy_for_backend(route.node_id)
+
+    async def _mesh_path_healthy_for_backend(self, backend_node_id) -> bool:
+        if backend_node_id is None:
+            return False
+        mesh = await self.probe_repository.get_latest_mesh_for_backend(backend_node_id=backend_node_id)
+        if mesh is None or not mesh.is_reachable:
+            return False
+        age = (datetime.now(timezone.utc) - self._to_utc(mesh.checked_at)).total_seconds()
+        return age <= MESH_HEALTHY_MAX_AGE_SEC
+
     @staticmethod
     def _to_utc(value: datetime) -> datetime:
         if value.tzinfo is None:
@@ -583,7 +611,6 @@ class ProbeIngestionService:
             return []
 
         nodes = await self.node_repository.list_public()
-        nodes_by_id: dict[UUID, object] = {n.id: n for n in nodes}
         routes_by_entry: dict[UUID, list[tuple]] = {}
         for row in route_rows or []:
             route = row[0]
@@ -606,38 +633,37 @@ class ProbeIngestionService:
             )
             if tcp_target is not None:
                 targets.append(tcp_target)
-            synth = self._build_entry_synthetic_target(
-                entry_node=node,
-                entry_routes=routes_by_entry.get(node.id, []),
-                nodes_by_id=nodes_by_id,
-                probe_client_ids_by_target=probe_ids,
-                include_disabled=include_disabled,
-                include_draining=include_draining,
+            targets.extend(
+                self._build_entry_synthetic_targets(
+                    entry_node=node,
+                    entry_routes=routes_by_entry.get(node.id, []),
+                    probe_client_ids_by_target=probe_ids,
+                    include_disabled=include_disabled,
+                    include_draining=include_draining,
+                )
             )
-            if synth is not None:
-                targets.append(synth)
         return targets
 
-    def _build_entry_synthetic_target(
+    def _build_entry_synthetic_targets(
             self,
             *,
             entry_node,
             entry_routes: list[tuple],
-            nodes_by_id: dict[UUID, object],
             probe_client_ids_by_target: dict[tuple[UUID, str], str],
             include_disabled: bool,
             include_draining: bool,
-    ) -> ProbeTargetOut | None:
+    ) -> list[ProbeTargetOut]:
         if not include_disabled and not entry_node.is_enabled:
-            return None
+            return []
         if not include_draining and entry_node.is_draining:
-            return None
+            return []
 
         entry_host = entry_node.public_domain or entry_node.reality_ip
         if not entry_host:
-            return None
+            return []
 
-        chosen: tuple | None = None
+        targets: list[ProbeTargetOut] = []
+        seen_backends: set[UUID] = set()
         for row in entry_routes:
             route, backend, transport_profile, _agent_state = row
             if getattr(transport_profile, "security", None) != "reality":
@@ -648,38 +674,37 @@ class ProbeIngestionService:
                 continue
             if not include_draining and backend.is_draining:
                 continue
+            if backend.id in seen_backends:
+                continue
             probe_client_id = probe_client_ids_by_target.get((backend.id, "reality"))
             if not probe_client_id:
                 continue
             if not (transport_profile.reality_public_key and transport_profile.reality_short_id and transport_profile.reality_server_name):
                 continue
-            chosen = (route, backend, transport_profile, probe_client_id)
-            break
-
-        if chosen is None:
-            return None
-        route, backend, transport_profile, probe_client_id = chosen
-
-        return ProbeTargetOut(
-            node_id=entry_node.id,
-            route_id=None,
-            route_name=f"{entry_node.name}→{backend.name}·pool",
-            transport_profile_id=None,
-            transport_profile_name=transport_profile.name,
-            transport_kind="reality",
-            probe_kind="synthetic_vpn",
-            node_name=entry_node.name,
-            region=entry_node.region,
-            probe_client_id=probe_client_id,
-            target_host=entry_host,
-            target_port=self.target_port,
-            tls_sni=transport_profile.reality_server_name,
-            tls_fingerprint=transport_profile.tls_fingerprint or "chrome",
-            reality_public_key=transport_profile.reality_public_key,
-            reality_short_id=transport_profile.reality_short_id,
-            reality_server_name=transport_profile.reality_server_name,
-            flow=transport_profile.flow,
-        )
+            seen_backends.add(backend.id)
+            targets.append(
+                ProbeTargetOut(
+                    node_id=entry_node.id,
+                    route_id=route.id,
+                    route_name=f"{entry_node.name}→{backend.name}·pool",
+                    transport_profile_id=None,
+                    transport_profile_name=transport_profile.name,
+                    transport_kind="reality",
+                    probe_kind="synthetic_vpn",
+                    node_name=entry_node.name,
+                    region=entry_node.region,
+                    probe_client_id=probe_client_id,
+                    target_host=entry_host,
+                    target_port=self.target_port,
+                    tls_sni=transport_profile.reality_server_name,
+                    tls_fingerprint=transport_profile.tls_fingerprint or "chrome",
+                    reality_public_key=transport_profile.reality_public_key,
+                    reality_short_id=transport_profile.reality_short_id,
+                    reality_server_name=transport_profile.reality_server_name,
+                    flow=transport_profile.flow,
+                )
+            )
+        return targets
 
     def _build_node_probe_target(
             self,

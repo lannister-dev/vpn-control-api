@@ -94,6 +94,8 @@ class WgMeshPeerPublisher:
         nats = await self._ensure_nats()
         async with self._session_maker() as session:
             await self._sync_pubkeys_from_kv(session=session, nats=nats)
+            if session.has_pending_writes():
+                await session.commit()
             service = WgMeshService(session, config=self._cfg)
             nodes = await VpnNodeRepository(session).list()
             published = 0
@@ -102,7 +104,9 @@ class WgMeshPeerPublisher:
                     continue
                 if not (node.internal_wg_ip or "").strip():
                     continue
-                peers = service._build_peers(all_nodes=nodes, exclude_id=node.id)
+                peers = service._build_peers(
+                    all_nodes=nodes, exclude_id=node.id, self_role=node.role,
+                )
                 payload = {
                     "node_id": str(node.id),
                     "address": node.internal_wg_ip,

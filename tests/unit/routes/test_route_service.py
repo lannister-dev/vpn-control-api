@@ -24,6 +24,8 @@ def _node(*, role="backend", public_domain="node.example.com", reality_ip=None):
     n.role = role
     n.public_domain = public_domain
     n.reality_ip = reality_ip
+    n.internal_wg_ip = None
+    n.agent_port = None
     n.upstream_node_id = None
     return n
 

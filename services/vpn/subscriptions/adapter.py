@@ -8,6 +8,7 @@ from fastapi import status
 
 from services.vpn.subscriptions.exceptions import (
     SubscriptionBuild,
+    SubscriptionBuildUnavailable,
     SubscriptionDeviceLimitReached,
     SubscriptionExpired,
     SubscriptionHwidRequired,
@@ -38,6 +39,7 @@ class SubscriptionPublicAdapter:
             happ_color_profile: str = "",
             happ_autoconnect: bool = True,
             happ_autoconnect_type: str = "lowestdelay",
+            happ_auto_update: bool = True,
             happ_ping_onopen: bool = True,
     ):
         self._hwid_header = hwid_header.strip()
@@ -52,6 +54,8 @@ class SubscriptionPublicAdapter:
         self._happ_autoconnect = bool(happ_autoconnect)
         self._happ_autoconnect_type = happ_autoconnect_type.strip() or "lowestdelay"
         self._happ_ping_onopen = bool(happ_ping_onopen)
+        self.happ_auto_update = bool(happ_auto_update)
+
         color_profile = happ_color_profile.strip()
         self._happ_color_profile = (
             json.dumps(json.loads(color_profile), separators=(",", ":"))
@@ -82,8 +86,6 @@ class SubscriptionPublicAdapter:
         return hashlib.sha256("|".join(parts).encode()).hexdigest()[:12]
 
     def should_disable_not_modified(self, *, user_agent: str | None) -> bool:
-        # Independent of UA — many Happ builds (notably macOS) report unexpected
-        # user-agent strings; gating on it caused stale cached profiles to stick.
         del user_agent
         return (
             self._happ_hide_settings
@@ -100,7 +102,6 @@ class SubscriptionPublicAdapter:
             etag: str,
             not_modified: bool,
             user_info: SubscriptionUserInfo | None = None,
-            user_agent: str | None = None,
     ) -> SubscriptionPublicSuccessResponse:
         is_json = self._is_json_payload(payload)
         headers = self._build_headers(etag=etag, user_info=user_info, is_json=is_json)
@@ -114,7 +115,7 @@ class SubscriptionPublicAdapter:
         return SubscriptionPublicSuccessResponse(
             metric_result="success",
             status_code=status.HTTP_200_OK,
-            payload=self._build_payload_body(payload=payload, user_agent=user_agent, is_json=is_json),
+            payload=payload,
             headers=headers,
         )
 
@@ -163,14 +164,13 @@ class SubscriptionPublicAdapter:
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail="Rate limit exceeded",
             )
+        if isinstance(exc, SubscriptionBuildUnavailable):
+            return SubscriptionPublicErrorResponse(
+                metric_result="build_error",
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Failed to build subscription: {exc}",
+            )
         if isinstance(exc, SubscriptionBuild):
-            message = str(exc)
-            if self._is_service_unavailable_build_error(message):
-                return SubscriptionPublicErrorResponse(
-                    metric_result="build_error",
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail=f"Failed to build subscription: {exc}",
-                )
             return SubscriptionPublicErrorResponse(
                 metric_result="build_error",
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -181,12 +181,6 @@ class SubscriptionPublicAdapter:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to build subscription",
         )
-
-    @staticmethod
-    def _is_service_unavailable_build_error(message: str) -> bool:
-        if message.startswith("No available "):
-            return True
-        return message in {"Node placement sync pending", "Backend placement sync pending"}
 
     def _build_headers(
             self,
@@ -223,26 +217,20 @@ class SubscriptionPublicAdapter:
         if self._happ_always_hwid_enable:
             headers["subscription-always-hwid-enable"] = "1"
         if self._happ_color_profile:
-            headers["color-profile"] = self._b64_header_value(self._happ_color_profile)
+            headers["color-profile"] = base64.b64encode(
+                self._happ_color_profile.encode("utf-8")
+            ).decode("ascii")
         if self._happ_autoconnect:
             headers["subscription-autoconnect"] = "true"
             headers["subscription-autoconnect-type"] = self._happ_autoconnect_type
         if self._happ_ping_onopen:
             headers["subscription-ping-onopen-enabled"] = "true"
+        if self.happ_auto_update:
+            headers["subscription-auto-update-open-enable"] = "1"
         return headers
-
-    def _build_payload_body(self, *, payload: str, user_agent: str | None, is_json: bool = False) -> str:
-        # Happ reads all directives (color-profile, hide-settings, etc.) from HTTP
-        # response headers only. Body-prefixed "#..." lines confuse some Happ
-        # parsers (each "#" line is treated as a VLESS fragment), so we keep the
-        # body strictly to vless:// lines — matches the Remnawave panel convention.
-        del user_agent, is_json
-        return payload
 
     @staticmethod
     def _b64_header_value(value: str) -> str:
-        """Wrap a UTF-8 value in `base64:<base64>` so it survives non-ASCII chars
-        in HTTP headers (Cloudflare/proxies may strip non-latin-1)."""
         if not value:
             return ""
         encoded = base64.b64encode(value.encode("utf-8")).decode("ascii")

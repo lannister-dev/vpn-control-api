@@ -307,10 +307,10 @@ export function Topology({ routes = [], nodes = [], probes = [], userCountByBack
                     {userCount > 0 && (
                       <span
                         className="pill accent"
-                        title={`${userCount} ключ(ей) назначено на этот backend (effective_backend)`}
+                        title={`${userCount} активных юзер(ов) сейчас идут через этот backend (xray stats)`}
                         style={{ padding: "1px 6px", fontSize: 10, lineHeight: 1.4 }}
                       >
-                        <Icon name="key" size={9} /> {userCount}
+                        <Icon name="user" size={9} /> {userCount}
                       </span>
                     )}
                   </span>

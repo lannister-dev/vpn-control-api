@@ -54,7 +54,7 @@ from services.support.models import (
 from services.traffic.nodes.models import NodeTrafficUsage
 from services.traffic.users.models import TrafficUsage
 from services.users.models import User
-from services.vpn.keys.models import KeyAssignment, VpnKey
+from services.vpn.keys.models import VpnKey
 from services.vpn.subscriptions.models import Subscription
 from services.zones.models import Zone
 

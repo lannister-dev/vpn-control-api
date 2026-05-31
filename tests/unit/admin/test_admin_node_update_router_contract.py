@@ -36,7 +36,17 @@ def _make_service(*, get_by_id_return=None, get_by_node_key_return=None, update_
         get_by_node_key=AsyncMock(return_value=get_by_node_key_return),
         update_by_id=AsyncMock(return_value=update_return),
     )
-    return SimpleNamespace(vpn_node_repository=repo)
+
+    async def _admin_update_node(node_id, data):
+        if get_by_id_return is None and get_by_node_key_return is None:
+            from services.nodes.exceptions import AdminNodeNotFoundError
+            raise AdminNodeNotFoundError(f"node {node_id} not found")
+        return await repo.update_by_id(node_id, data)
+
+    return SimpleNamespace(
+        vpn_node_repository=repo,
+        admin_update_node=_admin_update_node,
+    )
 
 
 # ── PATCH /agent/nodes/{node_id} ──────────────────────────────
@@ -55,7 +65,6 @@ async def test_update_node_by_id_updates_reality_ip():
     )
 
     assert result.reality_ip == "1.2.3.4"
-    service.vpn_node_repository.get_by_id.assert_awaited_once_with(node.id)
     service.vpn_node_repository.update_by_id.assert_awaited_once_with(
         node.id, {"reality_ip": "1.2.3.4"}
     )

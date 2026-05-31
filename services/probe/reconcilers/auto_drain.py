@@ -39,13 +39,13 @@ class ProbeAutoDrainReconciler:
         self._stop_event = asyncio.Event()
         self._task: asyncio.Task | None = None
 
-    async def start(self) -> None:
+    async def start(self):
         if self._task is not None and not self._task.done():
             return
         self._stop_event.clear()
         self._task = asyncio.create_task(self._run())
 
-    async def stop(self) -> None:
+    async def stop(self):
         if self._task is None:
             return
         self._stop_event.set()

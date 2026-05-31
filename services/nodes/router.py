@@ -7,6 +7,7 @@ from starlette.requests import Request
 from services.auth.dependencies import admin_auth, bootstrap_auth
 from services.entry.events import enqueue_pool_snapshots_for_backend
 from services.nodes.constants import ALLOWED_NODE_ROLES, ROLE_BACKEND
+from services.nodes.exceptions import AdminNodeNotFoundError
 from services.nodes.schemas import (
     AdminNodeUpdateIn,
     NodeAgentInitialOut,
@@ -144,11 +145,10 @@ async def update_node_by_id(
             data["zone"] = service._validated_zone(data["zone"])
         except Exception as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-    node = await service.vpn_node_repository.get_by_id(node_id)
-    if not node:
-        raise HTTPException(status_code=404, detail="Node not found")
-    updated = await service.vpn_node_repository.update_by_id(node_id, data)
-    return updated
+    try:
+        return await service.admin_update_node(node_id, data)
+    except AdminNodeNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.patch(
@@ -173,5 +173,7 @@ async def update_node_by_key(
     node = await service.vpn_node_repository.get_by_node_key(node_key)
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
-    updated = await service.vpn_node_repository.update_by_id(node.id, data)
-    return updated
+    try:
+        return await service.admin_update_node(node.id, data)
+    except AdminNodeNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

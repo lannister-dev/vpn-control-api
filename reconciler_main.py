@@ -36,6 +36,7 @@ from services.probe.reconcilers.auto_drain import ProbeAutoDrainReconciler
 from services.probe.reconcilers.cleanup import ProbeSignalCleanupReconciler
 from services.probe.reconcilers.synthetic import ProbeSyntheticCredentialReconciler
 from services.routes.models import Route, TransportProfile  # noqa: F401
+from services.routes.reconcilers.auto_create import RouteAutoCreateReconciler
 from services.routes.reconcilers.warmup import RouteWarmupReconciler
 from services.routing.entry.publisher import EntryRoutingPublisher
 from services.support.consumer import SupportInboundConsumer, SupportSentConsumer
@@ -52,7 +53,7 @@ from services.traffic.users.reconcilers.reset import TrafficResetReconciler
 
 # Register all SQLAlchemy models (no routers to pull them in)
 from services.users.models import User  # noqa: F401
-from services.vpn.keys.models import KeyAssignment, VpnKey  # noqa: F401
+from services.vpn.keys.models import VpnKey  # noqa: F401
 from services.vpn.keys.reconcilers.backend_rebalance import BackendRebalanceReconciler
 from services.vpn.keys.reconcilers.expiration import VpnKeyExpirationReconciler
 from services.vpn.subscriptions.models import Subscription, SubscriptionDevice, SubscriptionDeviceKey  # noqa: F401
@@ -82,6 +83,7 @@ _METRICS_EXPORT_INTERVAL_SEC = 10
 def _build_reconcilers(notifications: NotificationService, nats_client: NatsClient | None) -> list:
     return [
         RouteWarmupReconciler(),
+        RouteAutoCreateReconciler(),
         ProbeSignalCleanupReconciler(),
         ProbeAutoDrainReconciler(),
         ProbeSyntheticCredentialReconciler(),
@@ -106,9 +108,9 @@ def _build_reconcilers(notifications: NotificationService, nats_client: NatsClie
     ]
 
 
-def _build_nats_runtimes(nats_settings) -> list:
+def _build_nats_runtimes(nats_settings, notifications: NotificationService) -> list:
     return [
-        NodeAgentRuntime(nats_settings),
+        NodeAgentRuntime(nats_settings, notifications=notifications),
         UserTrafficNatsConsumer(nats_settings),
         NodeTrafficNatsConsumer(nats_settings),
         SupportInboundConsumer(nats_settings),
@@ -145,7 +147,7 @@ async def lifespan(app: FastAPI):
     app.state.notifications = notifications
 
     reconcilers = _build_reconcilers(notifications, notifications_nats)
-    runtimes = _build_nats_runtimes(settings.nats)
+    runtimes = _build_nats_runtimes(settings.nats, notifications)
 
     for r in reconcilers:
         watchdog.register(r.__class__.__name__)

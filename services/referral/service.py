@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from services.billing.models import PaymentOrder
 from services.billing.repository import OrderRepository, TransactionRepository
 from services.billing.schemas import TransactionInternalCreate
-from services.bot_notifications.service import TelegramBotNotifyService
+from services.bot_api.notify.service import TelegramBotNotifyService
 from services.config import get_settings
 from services.referral.exceptions import (
     AlreadyReferred,

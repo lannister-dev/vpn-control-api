@@ -75,6 +75,7 @@ class AdminSnapshotPublisher:
                     is_revoked=cmd.is_revoked,
                     valid_until=cmd.valid_until,
                     updated_at=cmd.updated_at,
+                    entry_routing_override_backend_tag=cmd.entry_routing_override_backend_tag,
                 )
                 for cmd in commands
             ]
@@ -136,8 +137,11 @@ class AdminSnapshotPublisher:
                 node_id=str(entry_node_id),
                 emitted_at=now,
                 upstream_node_id=str(backend.id),
+                upstream_name=str(backend.name or ""),
                 upstream_public_domain=str(backend.public_domain or ""),
                 upstream_reality_ip=getattr(backend, "reality_ip", None),
+                upstream_internal_wg_ip=getattr(backend, "internal_wg_ip", None),
+                upstream_agent_port=getattr(backend, "agent_port", None),
             )
             await self._nats.publish_jetstream(
                 subject=self._subjects.upstream_changed(str(entry_node_id)),

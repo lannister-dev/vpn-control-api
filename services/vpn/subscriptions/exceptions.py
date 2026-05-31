@@ -22,6 +22,10 @@ class SubscriptionBuild(SubscriptionError):
     pass
 
 
+class SubscriptionBuildUnavailable(SubscriptionBuild):
+    pass
+
+
 class SubscriptionHwidRequired(SubscriptionError):
     """Subscription requires x-hwid header (device identification)."""
 

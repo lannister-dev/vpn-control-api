@@ -143,6 +143,12 @@ class VpnNodeRepository(BaseRepository[VpnNode]):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
+    async def backend_tag_by_id(self) -> dict[str, str]:
+        """Return {backend_node_id_str: "backend-<name>"} for all backend nodes."""
+        stmt = select(self.model.id, self.model.name).where(self.model.role == ROLE_BACKEND)
+        result = await self.session.execute(stmt)
+        return {str(node_id): f"backend-{name}" for node_id, name in result.all() if name}
+
     async def list_active_with_agent_state(self) -> list[tuple[VpnNode, NodeAgentState | None]]:
         stmt = (
             select(self.model, NodeAgentState)

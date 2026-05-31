@@ -40,7 +40,7 @@ async def test_publish_node_down_emits_jetstream_with_dedup_id():
     service = NotificationService(nats)
     last_seen = datetime(2026, 5, 25, 12, 0, tzinfo=timezone.utc)
     await service.publish_node_down(
-        node_id="n1", node_name="spb-01",
+        node_id="n1", node_name="spb-01", region="de",
         last_seen_at=last_seen, affected_placements=5,
     )
 

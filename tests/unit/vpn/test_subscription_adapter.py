@@ -1,6 +1,7 @@
 from services.vpn.subscriptions.adapter import SubscriptionPublicAdapter
 from services.vpn.subscriptions.exceptions import (
     SubscriptionBuild,
+    SubscriptionBuildUnavailable,
     SubscriptionHwidRequired,
     SubscriptionNotFound,
 )
@@ -27,7 +28,6 @@ def test_build_success_response_contains_contract_fields():
         etag="abc123",
         payload="vless://a\n\nvless://b",
         not_modified=False,
-        user_agent="Happ/1.0",
     )
 
     assert response.metric_result == "success"
@@ -44,8 +44,8 @@ def test_build_success_response_contains_contract_fields():
     assert response.headers["routing"] == "happ://routing/custom"
     assert response.headers["subscription-always-hwid-enable"] == "1"
     color_header = response.headers["color-profile"]
-    assert color_header.startswith("base64:")
-    assert base64.b64decode(color_header.removeprefix("base64:")).decode("utf-8") == \
+    assert not color_header.startswith("base64:")
+    assert base64.b64decode(color_header).decode("utf-8") == \
         '{"buttonColor":"#D96C3FFF","backgroundColors":["#07171EFF","#0D2A33FF"]}'
     # Body is strictly vless:// lines — no #-prefixed directives (Remnawave style).
     assert response.payload == "vless://a\n\nvless://b"
@@ -60,7 +60,6 @@ def test_build_success_response_not_modified_has_no_payload():
         etag="abc123",
         payload="",
         not_modified=True,
-        user_agent="Happ/1.0",
     )
 
     assert response.metric_result == "not_modified"
@@ -89,12 +88,18 @@ def test_map_subscription_error_hwid_required_keeps_opaque_response():
 
 
 def test_map_subscription_error_build_no_available_is_503():
-    mapped = _adapter().map_error(SubscriptionBuild("No available routes"))
+    mapped = _adapter().map_error(SubscriptionBuildUnavailable("No available routes"))
     assert mapped.metric_result == "build_error"
     assert mapped.status_code == 503
 
 
 def test_map_subscription_error_build_sync_pending_is_503():
-    mapped = _adapter().map_error(SubscriptionBuild("Backend placement sync pending"))
+    mapped = _adapter().map_error(SubscriptionBuildUnavailable("Backend placement sync pending"))
     assert mapped.metric_result == "build_error"
     assert mapped.status_code == 503
+
+
+def test_map_subscription_error_build_permanent_is_500():
+    mapped = _adapter().map_error(SubscriptionBuild("Subscription payload exceeds size limit"))
+    assert mapped.metric_result == "build_error"
+    assert mapped.status_code == 500

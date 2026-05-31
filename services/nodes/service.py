@@ -4,7 +4,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.alerts.constants import AlertSource
@@ -47,6 +47,7 @@ from services.nodes.schemas import (
     VpnNodeOut,
     VpnNodeUpdate,
 )
+from services.notifications.service import NotificationService
 from services.wg.allocator import allocate_next_ip
 from services.wg.exceptions import WgMeshAddressPoolExhaustedError
 from shared.database.session import AsyncDatabase
@@ -59,7 +60,8 @@ logger_node = StructuredLogger(logging.getLogger("node-service"))
 
 
 class VpnNodeService:
-    def __init__(self, session: AsyncSession):
+    def __init__(self, session: AsyncSession, notifications: NotificationService | None = None):
+        self.notifications = notifications
         self.vpn_node_repository = (
             VpnNodeRepository(session)
         )
@@ -256,6 +258,15 @@ class VpnNodeService:
                 consecutive_unhealthy=heartbeat_meta.consecutive_unhealthy,
             )
             await self._emit_node_down_alert(node=node, now=now)
+            if self.notifications is not None and existing_state is not None and existing_state.last_seen_at is not None:
+                await self.notifications.publish_node_down(
+                    node_id=str(node.id),
+                    node_name=node.name,
+                    region=node.region,
+                    last_seen_at=existing_state.last_seen_at,
+                    affected_placements=0,
+                    event_id=f"{node.id}:{int(now.timestamp())}",
+                )
         should_undrain = (
             effective_is_healthy
             and node.is_draining
@@ -284,6 +295,21 @@ class VpnNodeService:
                 threshold=healthy_undrain_threshold,
                 consecutive_healthy=heartbeat_meta.consecutive_healthy,
             )
+            if self.notifications is not None:
+                drained_at = heartbeat_meta.drained_at if heartbeat_meta else None
+                downtime_seconds = 0
+                if drained_at is not None:
+                    if drained_at.tzinfo is None:
+                        drained_at = drained_at.replace(tzinfo=timezone.utc)
+                    downtime_seconds = max(0, int((now - drained_at).total_seconds()))
+                drained_at_ts = int(drained_at.timestamp()) if drained_at is not None else 0
+                await self.notifications.publish_node_recovered(
+                    node_id=str(node.id),
+                    node_name=node.name,
+                    region=node.region,
+                    downtime_seconds=downtime_seconds,
+                    event_id=f"{node.id}:{drained_at_ts}",
+                )
         details_data = details.model_dump(mode="json", exclude_none=True)
         details_data[HEARTBEAT_DETAILS_KEY] = heartbeat_meta.model_dump(
             mode="json",
@@ -507,6 +533,77 @@ class VpnNodeService:
             )
         return candidate
 
+    async def admin_update_node(self, node_id: UUID, data: dict) -> VpnNode:
+        node = await self.vpn_node_repository.get_by_id(node_id)
+        if node is None:
+            raise AdminNodeNotFoundError(f"node {node_id} not found")
+
+        prev_role = node.role
+        new_role = data.get("role", prev_role)
+        is_role_swap_off_backend = (
+            prev_role == ROLE_BACKEND and new_role != ROLE_BACKEND
+        )
+        prev_serving = (
+            node.role == ROLE_BACKEND and node.is_enabled and not node.is_draining
+        )
+        new_is_enabled = data.get("is_enabled", node.is_enabled)
+        new_is_draining = data.get("is_draining", node.is_draining)
+        will_serve = (
+            new_role == ROLE_BACKEND and new_is_enabled and not new_is_draining
+        )
+        became_serving_backend = will_serve and not prev_serving
+
+        updated = await self.vpn_node_repository.update_by_id(node_id, data)
+
+        if became_serving_backend:
+            import asyncio
+
+            from services.vpn.keys.backend_rebalance_service import BackendRebalanceService
+
+            async def _kick() -> None:
+                try:
+                    moved = await BackendRebalanceService().run_once()
+                    logger_node.info(
+                        "backend_rebalance_kick_after_node_serving",
+                        node_id=str(node_id),
+                        moved=moved,
+                    )
+                except Exception:
+                    logger_node.exception("backend_rebalance_kick_failed", node_id=str(node_id))
+
+            asyncio.create_task(_kick())
+
+        if is_role_swap_off_backend:
+            from sqlalchemy import delete as sa_delete
+
+            from services.placements.repository import UserPlacementRepository
+            from services.placements.transport import NodeAgentPlacementTransport
+            from services.vpn.subscriptions.models import SubscriptionRouteAssignment
+
+            session = self.vpn_node_repository.session
+            placement_repo = UserPlacementRepository(session)
+            affected_ids = await placement_repo.deactivate_placements_on_node(
+                backend_node_id=node_id,
+                last_migration_reason=f"role_swap:{prev_role}->{new_role}",
+            )
+            await session.execute(
+                sa_delete(SubscriptionRouteAssignment).where(
+                    SubscriptionRouteAssignment.entry_node_id == node_id
+                )
+            )
+            if affected_ids:
+                transport = NodeAgentPlacementTransport(session)
+                await transport.enqueue_for_placement_ids(affected_ids)
+            logger_node.info(
+                "node_role_swap_cleanup",
+                node_id=str(node_id),
+                prev_role=prev_role,
+                new_role=new_role,
+                deactivated_placements=len(affected_ids),
+            )
+
+        return updated
+
     async def admin_create_node(self, payload: AdminNodeCreateIn) -> AdminNodeCreateOut:
         role = payload.role.strip()
         if role not in ALLOWED_NODE_ROLES:
@@ -630,6 +727,8 @@ class VpnNodeService:
 
 
 async def get_vpn_node_service(
-        session: AsyncSession = Depends(AsyncDatabase.get_session)
+        request: Request,
+        session: AsyncSession = Depends(AsyncDatabase.get_session),
 ) -> VpnNodeService:
-    return VpnNodeService(session)
+    notifications = getattr(request.app.state, "notifications", None)
+    return VpnNodeService(session, notifications)

@@ -16,6 +16,7 @@ class NodeDownEvent(_Base):
     kind: Literal["node_down"] = "node_down"
     node_id: str
     node_name: str | None = None
+    region: str | None = None
     last_seen_at: datetime
     affected_placements: int = 0
 
@@ -24,6 +25,7 @@ class NodeRecoveredEvent(_Base):
     kind: Literal["node_recovered"] = "node_recovered"
     node_id: str
     node_name: str | None = None
+    region: str | None = None
     downtime_seconds: int
 
 

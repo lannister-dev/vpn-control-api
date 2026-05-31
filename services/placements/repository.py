@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import Depends
@@ -191,6 +191,36 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
             raise RuntimeError("placement upsert failed to load placement row")
         return row
 
+    async def deactivate_placements_on_node(
+        self,
+        *,
+        backend_node_id: UUID,
+        last_migration_reason: str,
+    ) -> list[UUID]:
+        select_stmt = (
+            select(self.model.id)
+            .where(self.model.is_active.is_(True))
+            .where(self.model.desired_state != "inactive")
+            .where(self.model.backend_node_id == backend_node_id)
+        )
+        rows = await self.session.execute(select_stmt)
+        placement_ids = [row[0] for row in rows.all()]
+        if not placement_ids:
+            return []
+        stmt = (
+            sa_update(self.model)
+            .where(self.model.id.in_(placement_ids))
+            .values(
+                desired_state="inactive",
+                applied_state="pending",
+                op_version=self.model.op_version + 1,
+                last_migration_reason=last_migration_reason,
+                updated_at=datetime.now(timezone.utc),
+            )
+        )
+        await self.session.execute(stmt)
+        return placement_ids
+
     async def set_desired_state_for_key(
         self,
         *,
@@ -200,10 +230,16 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
         updated_at: datetime,
         backend_node_ids: list[UUID] | None = None,
     ) -> int:
+        from services.nodes.constants import ROLE_BACKEND
+        from services.nodes.models import VpnNode
+        backend_ids_subq = (
+            select(VpnNode.id).where(VpnNode.role == ROLE_BACKEND)
+        ).scalar_subquery()
         stmt = (
             sa_update(self.model)
             .where(self.model.key_id == key_id)
             .where(self.model.is_active.is_(True))
+            .where(self.model.backend_node_id.in_(backend_ids_subq))
             .where(
                 or_(
                     self.model.desired_state != desired_state,
@@ -566,6 +602,7 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
                     existing.c.key_id == cross.c.key_id,
                     existing.c.backend_node_id == cross.c.node_id,
                     existing.c.is_active.is_(True),
+                    existing.c.desired_state == "active",
                 ),
             )
             .where(existing.c.id.is_(None))

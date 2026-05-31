@@ -98,7 +98,6 @@ async def get_subscription_config(
             payload=payload,
             not_modified=not_modified,
             user_info=user_info,
-            user_agent=user_agent,
         )
         SUBSCRIPTION_REQUEST_TOTAL.labels(result=public_response.metric_result).inc()
         if public_response.payload is None:

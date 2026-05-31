@@ -123,6 +123,8 @@ class RoutingKeyRowOut(BaseModel):
 class RoutingLiveStatsByBackend(BaseModel):
     tag: str
     connections: int
+    backend_node_id: str | None = None
+    unique_real_users: int = 0
 
     model_config = ConfigDict(extra="forbid")
 
@@ -131,6 +133,7 @@ class RoutingLiveStatsByEntry(BaseModel):
     entry_node_id: str
     connections: int
     unique_users: int = 0
+    unique_real_users: int = 0
 
     model_config = ConfigDict(extra="forbid")
 

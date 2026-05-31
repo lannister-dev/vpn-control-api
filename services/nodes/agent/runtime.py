@@ -4,11 +4,12 @@ import asyncio
 import contextlib
 import logging
 from datetime import datetime, timedelta, timezone
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from services.config import NatsConfig
+from services.entry.models import EntryBackendAssignment
 from services.nodes.agent.constants import (
     NODE_AGENT_RUNTIME_LEADER_LOCK_KEY,
     NODE_AGENT_RUNTIME_LEADER_POLL_INTERVAL_S,
@@ -36,7 +37,9 @@ from services.nodes.agent.schemas import (
     SyncReportEvent,
     TransportEventLogInsert,
     TransportReportStatus,
+    UpstreamChangedPayload,
 )
+from services.nodes.models import VpnNode
 from services.nodes.repository import VpnNodeRepository
 from services.nodes.schemas import (
     HeartbeatDetails,
@@ -48,6 +51,7 @@ from services.nodes.schemas import (
     NodeSyncReportIn,
 )
 from services.nodes.service import VpnNodeService
+from services.notifications.service import NotificationService
 from services.placements.schemas import PlacementAppliedState
 from services.placements.transport import NodeAgentPlacementTransport
 from shared.database.session import AsyncDatabase, WriteAwareAsyncSession
@@ -58,9 +62,10 @@ logger_transport = StructuredLogger(logging.getLogger("node-agent-transport"))
 
 
 class NodeAgentRuntime:
-    def __init__(self, config: NatsConfig):
+    def __init__(self, config: NatsConfig, notifications: NotificationService | None = None):
         self._config = config
         self._nats = NatsClient(config)
+        self._notifications = notifications
         self._running = False
         self._active = False
         self._started_at: datetime | None = None
@@ -251,9 +256,15 @@ class NodeAgentRuntime:
     async def trigger_snapshot_for_node(self, *, node_id: UUID, reason: str = "admin_requested") -> None:
         session_maker = AsyncDatabase.get_session_maker()
         async with session_maker() as session:
-            commands = await NodeAgentPlacementTransport(session).list_command_payloads_for_backend(
-                backend_node_id=node_id,
+            role_row = await session.execute(
+                select(VpnNode.role).where(VpnNode.id == node_id)
             )
+            role = role_row.scalar_one_or_none() or "backend"
+            transport = NodeAgentPlacementTransport(session)
+            if role in ("entry", "whitelist_entry"):
+                commands = await transport.list_command_payloads_for_entry(entry_node_id=node_id)
+            else:
+                commands = await transport.list_command_payloads_for_backend(backend_node_id=node_id)
             state_repo = NodeTransportStateRepository(session)
             now = datetime.now(timezone.utc)
             snapshot_id = f"snap-{node_id}-admin-{now.isoformat()}"
@@ -284,6 +295,7 @@ class NodeAgentRuntime:
                     is_revoked=cmd.is_revoked,
                     valid_until=cmd.valid_until,
                     updated_at=cmd.updated_at,
+                    entry_routing_override_backend_tag=cmd.entry_routing_override_backend_tag,
                 )
                 for cmd in commands
             ]
@@ -302,7 +314,48 @@ class NodeAgentRuntime:
                         node_id=str(node_id), snapshot_id=reserved_snapshot_id,
                         epoch=epoch, chunk_index=index, is_last_chunk=is_last, items=chunk,
                     )
+            if role in ("entry", "whitelist_entry"):
+                await self._publish_upstreams_for_entry(
+                    session=session,
+                    entry_node_id=node_id,
+                    now=now,
+                )
             await session.commit()
+
+    async def _publish_upstreams_for_entry(
+        self,
+        *,
+        session,
+        entry_node_id: UUID,
+        now: datetime,
+    ) -> None:
+        rows = await session.execute(
+            select(VpnNode)
+            .join(
+                EntryBackendAssignment,
+                EntryBackendAssignment.backend_node_id == VpnNode.id,
+            )
+            .where(EntryBackendAssignment.entry_node_id == entry_node_id)
+            .where(EntryBackendAssignment.enabled.is_(True))
+        )
+        backends = rows.scalars().all()
+        for backend in backends:
+            event = UpstreamChangedPayload(
+                event_id=str(uuid4()),
+                node_id=str(entry_node_id),
+                emitted_at=now,
+                upstream_node_id=str(backend.id),
+                upstream_name=str(backend.name or ""),
+                upstream_public_domain=str(backend.public_domain or ""),
+                upstream_reality_ip=getattr(backend, "reality_ip", None),
+                upstream_internal_wg_ip=getattr(backend, "internal_wg_ip", None),
+                upstream_agent_port=getattr(backend, "agent_port", None),
+            )
+            await self._nats.publish_jetstream(
+                subject=self._subjects.upstream_changed(str(entry_node_id)),
+                payload=event.model_dump(mode="json"),
+                msg_id=f"upstream-snapshot:{entry_node_id}:{backend.id}:{now.isoformat()}",
+            )
 
     async def _ensure_topology(self) -> None:
         await self._nats.ensure_stream(
@@ -383,6 +436,7 @@ class NodeAgentRuntime:
                         is_revoked=command_payload.is_revoked,
                         valid_until=command_payload.valid_until,
                         updated_at=command_payload.updated_at,
+                        entry_routing_override_backend_tag=command_payload.entry_routing_override_backend_tag,
                     )
                     publish_payload = event.model_dump(mode="json")
 
@@ -628,9 +682,12 @@ class NodeAgentRuntime:
                 logger_transport.warning("snapshot_request_unknown_node", node_id=str(node_id))
                 return True
 
-            commands = await NodeAgentPlacementTransport(session).list_command_payloads_for_backend(
-                backend_node_id=node_id
-            )
+            transport = NodeAgentPlacementTransport(session)
+            role = getattr(node, "role", "backend") or "backend"
+            if role in ("entry", "whitelist_entry"):
+                commands = await transport.list_command_payloads_for_entry(entry_node_id=node_id)
+            else:
+                commands = await transport.list_command_payloads_for_backend(backend_node_id=node_id)
             state_repo = NodeTransportStateRepository(session)
             snapshot_id = f"snap-{node_id}-{event.requested_at.isoformat()}"
             epoch, reserved_snapshot_id = await state_repo.reserve_snapshot_epoch(
@@ -659,6 +716,7 @@ class NodeAgentRuntime:
                     is_revoked=command.is_revoked,
                     valid_until=command.valid_until,
                     updated_at=command.updated_at,
+                    entry_routing_override_backend_tag=command.entry_routing_override_backend_tag,
                 )
                 for command in commands
             ]
@@ -685,6 +743,13 @@ class NodeAgentRuntime:
                         is_last_chunk=is_last,
                         items=chunk,
                     )
+
+            if role in ("entry", "whitelist_entry"):
+                await self._publish_upstreams_for_entry(
+                    session=session,
+                    entry_node_id=node_id,
+                    now=datetime.now(timezone.utc),
+                )
 
             event_log_repo = NodeTransportEventLogRepository(session)
             await event_log_repo.record_if_new(
@@ -713,7 +778,7 @@ class NodeAgentRuntime:
                 logger_transport.warning("heartbeat_unknown_node", node_id=str(node_id))
                 return True
 
-            service = VpnNodeService(session)
+            service = VpnNodeService(session, self._notifications)
             pool_details = (
                 HeartbeatPool(**event.pool.model_dump())
                 if event.pool is not None else None
@@ -770,7 +835,7 @@ class NodeAgentRuntime:
                     ),
                 )
 
-            service = VpnNodeService(session)
+            service = VpnNodeService(session, self._notifications)
             accepted = await service.handle_sync_report(
                 node=node,
                 payload=NodeSyncReportIn(

@@ -52,6 +52,25 @@ def test_placement_command_schema_roundtrip():
     assert PlacementCommandEvent.model_validate(event.model_dump(mode="json")) == event
 
 
+def test_placement_command_carries_entry_routing_override():
+    event = PlacementCommandEvent(
+        node_id="node-1",
+        emitted_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        event_id="evt-1",
+        placement_id="pl-1",
+        key_id="key-1",
+        op_version=4,
+        desired_state=TransportDesiredState.active,
+        backend_node_id="node-1",
+        client_id="550e8400-e29b-41d4-a716-446655440000",
+        entry_routing_override_backend_tag="backend-zrh-backend-01",
+    )
+
+    dumped = event.model_dump(mode="json")
+    assert dumped["entry_routing_override_backend_tag"] == "backend-zrh-backend-01"
+    assert PlacementCommandEvent.model_validate(dumped) == event
+
+
 def test_result_event_accepts_inventory_metadata():
     event = PlacementApplyResultEvent(
         node_id="node-1",
