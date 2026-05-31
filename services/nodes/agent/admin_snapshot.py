@@ -75,6 +75,7 @@ class AdminSnapshotPublisher:
                     is_revoked=cmd.is_revoked,
                     valid_until=cmd.valid_until,
                     updated_at=cmd.updated_at,
+                    entry_routing_override_backend_tag=cmd.entry_routing_override_backend_tag,
                 )
                 for cmd in commands
             ]

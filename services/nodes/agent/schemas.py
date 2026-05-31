@@ -66,6 +66,7 @@ class PlacementCommandEvent(AgentEnvelope):
     snapshot_complete: bool = False
     valid_until: datetime | None = None
     updated_at: datetime | None = None
+    entry_routing_override_backend_tag: str | None = None
 
 
 class PlacementApplyResultEvent(AgentEnvelope):
@@ -256,6 +257,7 @@ class PlacementCommandPayload(BaseModel):
     is_revoked: bool = False
     valid_until: datetime | None = None
     updated_at: datetime | None = None
+    entry_routing_override_backend_tag: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

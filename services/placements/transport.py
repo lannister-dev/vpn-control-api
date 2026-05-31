@@ -153,4 +153,5 @@ class NodeAgentPlacementTransport:
             is_revoked=bool(key.is_revoked),
             valid_until=key.valid_until,
             updated_at=placement.updated_at,
+            entry_routing_override_backend_tag=key.entry_routing_override_backend_tag,
         )

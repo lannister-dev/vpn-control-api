@@ -295,6 +295,7 @@ class NodeAgentRuntime:
                     is_revoked=cmd.is_revoked,
                     valid_until=cmd.valid_until,
                     updated_at=cmd.updated_at,
+                    entry_routing_override_backend_tag=cmd.entry_routing_override_backend_tag,
                 )
                 for cmd in commands
             ]
@@ -435,6 +436,7 @@ class NodeAgentRuntime:
                         is_revoked=command_payload.is_revoked,
                         valid_until=command_payload.valid_until,
                         updated_at=command_payload.updated_at,
+                        entry_routing_override_backend_tag=command_payload.entry_routing_override_backend_tag,
                     )
                     publish_payload = event.model_dump(mode="json")
 
@@ -714,6 +716,7 @@ class NodeAgentRuntime:
                     is_revoked=command.is_revoked,
                     valid_until=command.valid_until,
                     updated_at=command.updated_at,
+                    entry_routing_override_backend_tag=command.entry_routing_override_backend_tag,
                 )
                 for command in commands
             ]
