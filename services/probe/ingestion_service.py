@@ -303,6 +303,9 @@ class ProbeIngestionService:
         if consecutive < policy.route_suspected_after_failures:
             return
 
+        if await self._mesh_path_healthy_for_backend(node.id):
+            return
+
         client_id = configured_by_transport[transport_kind]
         keys = await self.key_repository.list_by_client_ids(
             client_ids=[client_id],
@@ -494,7 +497,12 @@ class ProbeIngestionService:
     async def _mesh_path_healthy_for_route(self, *, route) -> bool:
         if getattr(route, "entry_node_id", None) is None or getattr(route, "node_id", None) is None:
             return False
-        mesh = await self.probe_repository.get_latest_mesh_for_backend(backend_node_id=route.node_id)
+        return await self._mesh_path_healthy_for_backend(route.node_id)
+
+    async def _mesh_path_healthy_for_backend(self, backend_node_id) -> bool:
+        if backend_node_id is None:
+            return False
+        mesh = await self.probe_repository.get_latest_mesh_for_backend(backend_node_id=backend_node_id)
         if mesh is None or not mesh.is_reachable:
             return False
         age = (datetime.now(timezone.utc) - self._to_utc(mesh.checked_at)).total_seconds()

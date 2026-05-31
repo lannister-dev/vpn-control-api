@@ -1123,6 +1123,7 @@ async def test_report_requeues_backend_inventory_after_consecutive_synthetic_fai
     svc.probe_repository.get_latest_for_route.side_effect = [None, created]
     svc.probe_repository.create.return_value = created
     svc.probe_repository.count_consecutive_route_failures = AsyncMock(return_value=3)
+    svc.probe_repository.get_latest_mesh_for_backend.return_value = None
     svc.route_repository.get_by_id.return_value = route
     svc.key_repository.list_by_client_ids.return_value = [key]
     svc.placement_repository.list_by_key_id.return_value = [placement]
@@ -1149,6 +1150,61 @@ async def test_report_requeues_backend_inventory_after_consecutive_synthetic_fai
     svc.placement_transport.enqueue_for_placement_ids.assert_awaited_once_with(
         [placement.id, other_placement_id]
     )
+
+
+@pytest.mark.asyncio
+async def test_report_skips_synthetic_self_heal_when_mesh_path_healthy(async_session):
+    svc = _ingestion_service()
+    svc.node_repository = AsyncMock()
+    svc.probe_repository = AsyncMock()
+    svc.route_repository = AsyncMock()
+    svc.key_repository = AsyncMock()
+    svc.placement_repository = AsyncMock()
+    svc.placement_transport = AsyncMock()
+    svc.alert_service = AsyncMock()
+    svc.synthetic_probe_client_ids = ProbeSyntheticClientIds(reality="probe-reality-cid")
+
+    node = _node()
+    transport_profile = _transport_profile()
+    route = _route(node_id=node.id, transport_profile_id=transport_profile.id)
+    created = _probe(is_reachable=False, checked_at=datetime.now(timezone.utc), route_id=route.id)
+    created.node_id = node.id
+    created.transport_profile_id = transport_profile.id
+    created.transport_kind = "reality"
+    created.probe_kind = "synthetic_vpn"
+    created.target_host = node.reality_ip
+    created.target_port = 443
+    created.error_phase = "tunnel_http"
+    created.source = "ru-probe-1"
+    created.latency_ms = None
+    created.error = "tls eof"
+    created.details = {}
+    created.created_at = datetime.now(timezone.utc)
+
+    svc.node_repository.get_by_id.return_value = node
+    svc.route_repository.get_active_detailed_by_id.return_value = (route, node, transport_profile, None)
+    svc.probe_repository.get_latest_for_route.side_effect = [None, created]
+    svc.probe_repository.create.return_value = created
+    svc.probe_repository.count_consecutive_route_failures = AsyncMock(return_value=3)
+    # user path over the mesh is healthy -> a failing direct probe must not churn the backend
+    svc.probe_repository.get_latest_mesh_for_backend.return_value = _probe(
+        is_reachable=True, checked_at=datetime.now(timezone.utc)
+    )
+    svc.route_repository.get_by_id.return_value = route
+
+    await svc.report(
+        ProbeReportIn(
+            node_id=node.id,
+            route_id=route.id,
+            source="ru-probe-1",
+            probe_kind="synthetic_vpn",
+            is_reachable=False,
+            error="tls eof",
+            error_phase="tunnel_http",
+        )
+    )
+
+    svc.placement_repository.set_pending_for_backend.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -1201,6 +1257,7 @@ async def test_report_skips_synthetic_requeue_during_self_heal_cooldown(async_se
     svc.probe_repository.get_latest_for_route.side_effect = [None, created]
     svc.probe_repository.create.return_value = created
     svc.probe_repository.count_consecutive_route_failures = AsyncMock(return_value=3)
+    svc.probe_repository.get_latest_mesh_for_backend.return_value = None
     svc.route_repository.get_by_id.return_value = route
     svc.key_repository.list_by_client_ids.return_value = [key]
     svc.placement_repository.list_by_key_id.return_value = [placement]
