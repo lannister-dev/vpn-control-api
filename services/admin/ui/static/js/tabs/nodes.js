@@ -279,18 +279,19 @@ function renderNdRoutes(node) {
   refs.ndRoutes.innerHTML = `<table class="nd-mini-table">
     <thead><tr><th>Маршрут</th><th>Путь</th><th>Статус</th><th>Вес</th><th></th></tr></thead>
     <tbody>${rs.map((r) => {
-      const sCls = r.health_status === "healthy" ? "ok" : (r.health_status === "blocked" ? "bad" : "warn");
+      const sCls = !r.routing_eligible ? "bad" : (r.health_status === "healthy" ? "ok" : (r.health_status === "blocked" ? "bad" : "warn"));
+      const statusLabel = !r.routing_eligible && r.routing_reason ? routeReasonLabel(r.routing_reason) : routeStatusLabel(r.health_status);
       const backendName = nodeNameById(r.node_id) || shortId(r.node_id);
       const entryName = r.entry_node_id ? (nodeNameById(r.entry_node_id) || shortId(r.entry_node_id)) : null;
       const pathHtml = entryName
         ? `<span class="muted">${esc(entryName)}</span> → <strong>${esc(backendName)}</strong>`
         : `<strong>${esc(backendName)}</strong>`;
-      const reasonHint = !r.routing_eligible && r.routing_reason
-        ? `<div style="margin-top:2px">${chip("warn", routeReasonLabel(r.routing_reason))}</div>` : "";
+      const healthHint = !r.routing_eligible
+        ? `<div class="muted" style="margin-top:2px;font-size:10px">probe: ${esc(routeStatusLabel(r.health_status))}</div>` : "";
       return `<tr data-rid="${esc(r.id)}">
         <td><strong>${esc(r.name)}</strong><div class="muted" style="font-size:11px">${uuidCell(r.id)}</div></td>
         <td>${pathHtml}</td>
-        <td>${chip(sCls, routeStatusLabel(r.health_status))}${reasonHint}</td>
+        <td>${chip(sCls, statusLabel)}${healthHint}</td>
         <td class="mono">${esc(r.effective_weight)}/${esc(r.base_weight)}</td>
         <td><div class="actions">
           <button class="btn-mini nd-route-action" data-id="${esc(r.id)}" data-action="set_healthy" title="Healthy">✓</button>
