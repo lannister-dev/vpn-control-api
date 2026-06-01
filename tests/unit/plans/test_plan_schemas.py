@@ -5,8 +5,10 @@ from pydantic import ValidationError
 
 from services.plans.schemas import (
     PlanCreateIn,
+    PlanPeriodOut,
     PlanUpdateIn,
     ResetStrategy,
+    _compute_savings,
 )
 
 
@@ -56,3 +58,52 @@ class TestPlanUpdateIn:
         p = PlanUpdateIn(traffic_limit_bytes=5368709120, is_active=False)
         data = p.model_dump(exclude_unset=True)
         assert data == {"traffic_limit_bytes": 5368709120, "is_active": False}
+
+
+class TestPeriodValidation:
+    def test_duplicate_months_rejected(self):
+        with pytest.raises(ValidationError):
+            PlanCreateIn(
+                name="Pro",
+                periods=[
+                    {"months": 1, "price_rub": "299"},
+                    {"months": 1, "price_rub": "300"},
+                ],
+            )
+
+    def test_unique_months_ok(self):
+        p = PlanCreateIn(
+            name="Pro",
+            periods=[
+                {"months": 1, "price_rub": "299"},
+                {"months": 12, "price_rub": "2890"},
+            ],
+        )
+        assert len(p.periods) == 2
+
+
+class TestSavingsComputation:
+    def _out(self, months, price):
+        return PlanPeriodOut(months=months, price_rub=price)
+
+    def test_year_savings(self):
+        periods = [self._out(1, "299"), self._out(12, "2890")]
+        _compute_savings(periods)
+        year = next(p for p in periods if p.months == 12)
+        assert year.savings_pct == round((1 - 2890 / (299 * 12)) * 100)
+
+    def test_no_savings_when_not_cheaper(self):
+        periods = [self._out(1, "299"), self._out(12, "3588")]
+        _compute_savings(periods)
+        year = next(p for p in periods if p.months == 12)
+        assert year.savings_pct is None
+
+    def test_month_has_no_savings(self):
+        periods = [self._out(1, "299")]
+        _compute_savings(periods)
+        assert periods[0].savings_pct is None
+
+    def test_no_monthly_baseline_noop(self):
+        periods = [self._out(6, "990")]
+        _compute_savings(periods)
+        assert periods[0].savings_pct is None

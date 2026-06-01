@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.nodes.models import NodeAgentState, VpnNode
@@ -13,6 +13,7 @@ from services.nodes.policy.repository import NodePolicyRepository
 from services.placements.constants import REBALANCE_IDLE_WHEN_DISABLED_SEC
 from services.placements.repository import UserPlacementRepository
 from services.placements.transport import NodeAgentPlacementTransport
+from services.routes.models import Route
 from shared.database.session import AsyncDatabase
 from shared.monitoring.metrics import (
     PLACEMENT_REBALANCE_MISSING_GAUGE,
@@ -169,6 +170,10 @@ class PlacementRebalanceReconciler:
                 VpnNode.role == "backend",
                 NodeAgentState.is_healthy.is_(True),
                 NodeAgentState.last_seen_at >= cutoff,
+                exists().where(
+                    Route.node_id == VpnNode.id,
+                    Route.entry_node_id.is_not(None),
+                ),
             )
         )
         result = await session.execute(stmt)

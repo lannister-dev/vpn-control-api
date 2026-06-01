@@ -1,7 +1,17 @@
 from decimal import Decimal
+from uuid import UUID
 
-from sqlalchemy import BigInteger, Boolean, Integer, Numeric, String, text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    UniqueConstraint,
+    text,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.database.base_model import Base
 
@@ -46,4 +56,32 @@ class Plan(Base):
     )
     device_price_stars: Mapped[int | None] = mapped_column(
         Integer, nullable=True, default=None,
+    )
+
+    periods: Mapped[list["PlanPeriod"]] = relationship(
+        back_populates="plan",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        order_by="PlanPeriod.months",
+    )
+
+
+class PlanPeriod(Base):
+    __tablename__ = "plan_period"
+
+    plan_id: Mapped[UUID] = mapped_column(
+        ForeignKey("plan.id", ondelete="CASCADE"), nullable=False
+    )
+    months: Mapped[int] = mapped_column(Integer, nullable=False)
+    price_rub: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2), default=0, server_default=text("0"), nullable=False
+    )
+    price_stars: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None,
+    )
+
+    plan: Mapped["Plan"] = relationship(back_populates="periods")
+
+    __table_args__ = (
+        UniqueConstraint("plan_id", "months", name="uq_plan_period_plan_months"),
     )

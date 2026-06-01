@@ -47,6 +47,7 @@ def _make_plan(
         device_price_rub=device_price_rub,
         price_stars=price_stars,
         device_price_stars=device_price_stars,
+        periods=[],
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
@@ -64,6 +65,7 @@ class TestPlanServiceCreate:
         service.repo.get_by_name.return_value = None
         plan = _make_plan(name="Pro", traffic_limit_bytes=10737418240)
         service.repo.create.return_value = plan
+        service.repo.get_by_id.return_value = plan
 
         data = PlanCreateIn(name="Pro", traffic_limit_bytes=10737418240)
         result = await service.create_plan(data)
@@ -96,7 +98,7 @@ class TestPlanServiceUpdate:
     async def test_update_plan_success(self, service):
         plan = _make_plan(name="Basic")
         updated = _make_plan(name="Premium")
-        service.repo.get_by_id.return_value = plan
+        service.repo.get_by_id.return_value = updated
         service.repo.get_by_name.return_value = None
         service.repo.update_by_id.return_value = updated
 

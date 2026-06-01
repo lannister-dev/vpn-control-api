@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from services.billing.constants import (
     ORDER_FINAL_STATUSES,
     ORDER_REFUNDABLE_STATUSES,
+    PERIOD_DAYS,
 )
 from services.billing.exceptions import (
     DeviceSlotLimitExceeded,
@@ -40,6 +41,7 @@ from services.billing.schemas import (
     OrderInternalUpdate,
     OrderListOut,
     OrderOut,
+    OrderPreviewOut,
     TransactionInternalCreate,
     TransactionListOut,
     TransactionOut,
@@ -193,14 +195,34 @@ class BillingService:
                 raise TrialUnavailable("Free trial is unavailable after a paid purchase")
             return await self._create_free_order(user, plan, data)
 
+        period_months = getattr(data, "period_months", 1) or 1
         extra_devices = getattr(data, "device_slots_qty", 0) or 0
         device_price = getattr(plan, "device_price_rub", Decimal("0")) or Decimal("0")
-        amount_rub = plan.price_rub + extra_devices * device_price
+
+        period_price = self._resolve_period_price(plan, period_months)
+        if period_price is None:
+            raise PlanNotPurchasable("Selected period is not available for this plan")
+
+        await self._guard_no_downgrade(
+            user_id=data.user_id, new_plan=plan, order_type=data.order_type.value,
+        )
+
+        proration = await self._switch_proration(
+            user_id=data.user_id,
+            new_plan_id=plan.id,
+            order_type=data.order_type.value,
+        )
+        plan_due = period_price - proration
+        if plan_due < 0:
+            plan_due = Decimal("0")
+        amount_rub = plan_due + extra_devices * device_price
         expires_at = datetime.now(timezone.utc) + timedelta(
             minutes=self.settings.order_ttl_minutes
         )
 
         description = f"Plan: {plan.name}"
+        if period_months > 1:
+            description += f" ({period_months} mo)"
         if extra_devices > 0:
             description += f" + {extra_devices} device(s)"
 
@@ -211,6 +233,7 @@ class BillingService:
                 data=data,
                 amount_rub=amount_rub,
                 extra_devices=extra_devices,
+                period_months=period_months,
             )
 
         if data.provider.value == "stars":
@@ -247,6 +270,7 @@ class BillingService:
                 subscription_id=data.subscription_id,
                 order_type=data.order_type.value,
                 device_slots_qty=extra_devices,
+                period_months=period_months,
             ).model_dump()
         )
 
@@ -448,6 +472,7 @@ class BillingService:
         data: OrderCreateIn,
         amount_rub: Decimal,
         extra_devices: int,
+        period_months: int = 1,
     ) -> OrderOut:
         now = datetime.now(timezone.utc)
         order = await self.order_repo.create(
@@ -464,6 +489,7 @@ class BillingService:
                 subscription_id=data.subscription_id,
                 order_type=data.order_type.value,
                 device_slots_qty=extra_devices,
+                period_months=period_months,
             ).model_dump()
         )
         await self._auto_purchase(user, plan, order, now, strict_balance=True)
@@ -511,6 +537,30 @@ class BillingService:
         BILLING_ORDER_TOTAL.labels(provider="balance", status="completed").inc()
         refreshed = await self.order_repo.get_by_id(order.id)
         return OrderOut.model_validate(refreshed)
+
+    async def preview_order_amount(
+        self, *, user_id: UUID, plan_id: UUID, period_months: int = 1,
+    ) -> OrderPreviewOut:
+        plan = await self.plan_repo.get_by_id(plan_id)
+        if plan is None:
+            raise PlanNotPurchasable("Plan is not available")
+        period_price = self._resolve_period_price(plan, period_months)
+        if period_price is None:
+            raise PlanNotPurchasable("Selected period is not available for this plan")
+        proration = await self._switch_proration(
+            user_id=user_id, new_plan_id=plan_id, order_type="plan_purchase",
+        )
+        amount_due = period_price - proration
+        if amount_due < 0:
+            amount_due = Decimal("0")
+        return OrderPreviewOut(
+            plan_id=plan_id,
+            period_months=period_months,
+            period_price=period_price,
+            proration_credit=proration,
+            amount_due=amount_due,
+            is_switch=proration > 0,
+        )
 
     async def get_order(self, order_id: UUID) -> OrderOut:
         order = await self.order_repo.get_by_id(order_id)
@@ -907,6 +957,76 @@ class BillingService:
         subscriptions = await self.sub_repo.list_by_user_id(user_id, active_only=True)
         return next((sub for sub in subscriptions if sub.plan_id == plan_id), None)
 
+    @staticmethod
+    def _resolve_period_price(plan, months: int) -> Decimal | None:
+        for period in getattr(plan, "periods", None) or []:
+            if period.months == months:
+                return period.price_rub
+        if months == 1:
+            return plan.price_rub
+        return None
+
+    @staticmethod
+    def _resolve_period_price_stars(plan, months: int) -> int | None:
+        for period in getattr(plan, "periods", None) or []:
+            if period.months == months:
+                return period.price_stars
+        if months == 1:
+            return getattr(plan, "price_stars", None)
+        return None
+
+    async def _current_active_subscription(self, user_id: UUID):
+        subscriptions = await self.sub_repo.list_by_user_id(user_id, active_only=True)
+        now = datetime.now(timezone.utc)
+        live = [s for s in subscriptions if s.expires_at is None or s.expires_at > now]
+        if not live:
+            return None
+        return max(live, key=lambda s: s.expires_at or now)
+
+    @classmethod
+    def _proration_value(cls, old_plan, old_period_months: int, expires_at, now) -> Decimal:
+        if not expires_at or expires_at <= now:
+            return Decimal("0")
+        remaining_days = (expires_at - now).days
+        if remaining_days <= 0:
+            return Decimal("0")
+        total_days = PERIOD_DAYS.get(old_period_months, PERIOD_DAYS[1])
+        old_price = cls._resolve_period_price(old_plan, old_period_months)
+        if not old_price or old_price <= 0:
+            return Decimal("0")
+        value = old_price * Decimal(remaining_days) / Decimal(total_days)
+        return value.quantize(Decimal("0.01"))
+
+    async def _switch_proration(self, *, user_id: UUID, new_plan_id: UUID, order_type: str) -> Decimal:
+        if order_type != "plan_purchase":
+            return Decimal("0")
+        current = await self._current_active_subscription(user_id)
+        if current is None or current.plan_id is None or current.plan_id == new_plan_id:
+            return Decimal("0")
+        old_plan = await self.plan_repo.get_by_id(current.plan_id)
+        if old_plan is None:
+            return Decimal("0")
+        return self._proration_value(
+            old_plan,
+            getattr(current, "period_months", 1) or 1,
+            current.expires_at,
+            datetime.now(timezone.utc),
+        )
+
+    async def _guard_no_downgrade(self, *, user_id: UUID, new_plan, order_type: str) -> None:
+        if order_type != "plan_purchase":
+            return
+        current = await self._current_active_subscription(user_id)
+        if current is None or current.plan_id is None or current.plan_id == new_plan.id:
+            return
+        old_plan = await self.plan_repo.get_by_id(current.plan_id)
+        if old_plan is None:
+            return
+        if new_plan.price_rub < old_plan.price_rub:
+            raise PlanNotPurchasable(
+                "Downgrade applies at the end of the current period"
+            )
+
     async def _notify_order_fulfilled(
         self,
         *,
@@ -988,8 +1108,9 @@ class BillingService:
     ) -> None:
         """Debit balance and create or extend a subscription."""
         extra_devices = getattr(order, "device_slots_qty", 0) or 0
-        device_price = getattr(plan, "device_price_rub", Decimal("0")) or Decimal("0")
-        total_price = plan.price_rub + extra_devices * device_price
+        period_months = getattr(order, "period_months", 1) or 1
+        period_days = PERIOD_DAYS.get(period_months, PERIOD_DAYS[1])
+        total_price = order.amount_rub
 
         # Re-read balance after lock
         user = await self._lock_user(user.id)
@@ -1032,16 +1153,20 @@ class BillingService:
             plan_changed = existing is not None and existing.plan_id != plan.id
 
         if existing:
-            base_expires = existing.expires_at if existing.expires_at and existing.expires_at > now else now
-            new_expires = base_expires + timedelta(days=plan.duration_days)
+            if plan_changed:
+                base_expires = now
+            else:
+                base_expires = existing.expires_at if existing.expires_at and existing.expires_at > now else now
+            new_expires = base_expires + timedelta(days=period_days)
             update_data = SubscriptionInternalUpdate(
-                expires_at=new_expires, is_active=True,
+                expires_at=new_expires, is_active=True, period_months=period_months,
             )
             if plan_changed:
                 included = getattr(plan, "included_devices", 1)
+                existing_paid = getattr(existing, "paid_device_slots", 0) or 0
                 update_data.plan_id = plan.id
-                update_data.max_devices = included + extra_devices
-                update_data.paid_device_slots = extra_devices
+                update_data.paid_device_slots = existing_paid + extra_devices
+                update_data.max_devices = included + existing_paid + extra_devices
             elif extra_devices > 0:
                 update_data.paid_device_slots = (getattr(existing, "paid_device_slots", 0) or 0) + extra_devices
             await self.sub_repo.update_by_id(
@@ -1062,7 +1187,7 @@ class BillingService:
             # Create new subscription
             raw_token = SubscriptionUtils.generate()
             token_hash = SubscriptionUtils.hash(raw_token)
-            expires_at = now + timedelta(days=plan.duration_days)
+            expires_at = now + timedelta(days=period_days)
             included = getattr(plan, "included_devices", 1)
 
             sub = await self.sub_repo.create(
@@ -1076,6 +1201,7 @@ class BillingService:
                     hwid_enabled=True,
                     max_devices=included + extra_devices,
                     paid_device_slots=extra_devices,
+                    period_months=period_months,
                 ).model_dump()
             )
             await self.order_repo.update_by_id(

@@ -35,6 +35,9 @@ class Subscription(Base):
     paid_device_slots: Mapped[int] = mapped_column(
         Integer, default=0, server_default=text("0"), nullable=False
     )
+    period_months: Mapped[int] = mapped_column(
+        Integer, default=1, server_default=text("1"), nullable=False
+    )
 
     used_traffic_bytes: Mapped[int] = mapped_column(
         BigInteger, nullable=False, default=0, server_default=text("0"),

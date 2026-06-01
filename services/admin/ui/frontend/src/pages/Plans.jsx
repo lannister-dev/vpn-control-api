@@ -100,6 +100,37 @@ export function PlansPage() {
   );
 }
 
+const EXTRA_PERIODS = [
+  { months: 3, label: "3 месяца" },
+  { months: 6, label: "Полгода" },
+  { months: 12, label: "Год" },
+];
+
+function buildPeriodPrices(plan) {
+  const prices = { 3: "", 6: "", 12: "" };
+  (plan?.periods || []).forEach((p) => {
+    if (p.months !== 1) prices[p.months] = p.price_rub;
+  });
+  return prices;
+}
+
+function savingsPct(monthly, price, months) {
+  const m = Number(monthly);
+  const p = Number(price);
+  if (!m || m <= 0 || !p || p <= 0) return null;
+  const pct = Math.round((1 - p / (m * months)) * 100);
+  return pct > 0 ? pct : null;
+}
+
+function buildPeriodsPayload(f) {
+  const periods = [{ months: 1, price_rub: Number(f.price_rub) || 0 }];
+  EXTRA_PERIODS.forEach(({ months }) => {
+    const value = Number(f.periodPrices?.[months]);
+    if (value > 0) periods.push({ months, price_rub: value });
+  });
+  return periods;
+}
+
 function PlanForm({ plan, onClose }) {
   const isEdit = !!plan;
   const initial = {
@@ -115,9 +146,12 @@ function PlanForm({ plan, onClose }) {
     is_active: plan ? plan.is_active : true,
     entry_relay_enabled: plan?.entry_relay_enabled || false,
     whitelist_enabled: plan?.whitelist_enabled || false,
+    periodPrices: buildPeriodPrices(plan),
   };
   const [f, setF] = useState(initial);
   const set = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value }));
+  const setPeriod = (months) => (e) =>
+    setF((s) => ({ ...s, periodPrices: { ...s.periodPrices, [months]: e.target.value } }));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
@@ -137,6 +171,7 @@ function PlanForm({ plan, onClose }) {
         is_active: !!f.is_active,
         entry_relay_enabled: !!f.entry_relay_enabled,
         whitelist_enabled: !!f.whitelist_enabled,
+        periods: buildPeriodsPayload(f),
       };
       if (isEdit) await api.patch(`/plans/${plan.id}`, payload);
       else {
@@ -192,7 +227,30 @@ function PlanForm({ plan, onClose }) {
         <Field label="Цена, ₽"><input type="number" min={0} value={f.price_rub} onChange={set("price_rub")} /></Field>
       </div>
       <Field label="Цена доп. устройства, ₽"><input type="number" min={0} value={f.device_price_rub} onChange={set("device_price_rub")} /></Field>
-      <label className="form-check"><input type="checkbox" checked={f.entry_relay_enabled} onChange={set("entry_relay_enabled")} /> Умная маршрутизация (entry pool)</label>
+
+      <div className="form-section-label" style={{ marginTop: 12, marginBottom: 4, fontWeight: 500 }}>
+        Цены по периодам
+        <span className="small muted" style={{ marginLeft: 6 }}>выгода считается от цены за месяц</span>
+      </div>
+      {EXTRA_PERIODS.map(({ months, label }) => {
+        const pct = savingsPct(f.price_rub, f.periodPrices?.[months], months);
+        return (
+          <Field key={months} label={`${label}, ₽`} hint="пусто = период недоступен">
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                type="number"
+                min={0}
+                value={f.periodPrices?.[months] ?? ""}
+                onChange={setPeriod(months)}
+                style={{ flex: 1 }}
+              />
+              {pct != null && <span className="pill ok small">−{pct}%</span>}
+            </div>
+          </Field>
+        );
+      })}
+
+      <label className="form-check" style={{ marginTop: 10 }}><input type="checkbox" checked={f.entry_relay_enabled} onChange={set("entry_relay_enabled")} /> Умная маршрутизация (entry pool)</label>
       <label className="form-check" style={{ marginTop: 6 }}><input type="checkbox" checked={f.whitelist_enabled} onChange={set("whitelist_enabled")} /> Whitelist-маршруты (обход глушилок)</label>
       <label className="form-check" style={{ marginTop: 6 }}><input type="checkbox" checked={f.is_active} onChange={set("is_active")} /> Активен</label>
     </Modal>
