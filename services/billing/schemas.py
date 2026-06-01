@@ -57,6 +57,7 @@ class OrderCreateIn(BaseModel):
     provider: PaymentProviderEnum
     order_type: OrderTypeEnum = OrderTypeEnum.PLAN_PURCHASE
     device_slots_qty: int = 0
+    period_months: int = 1
     subscription_id: UUID | None = None
     payment_method: PlategaPaymentMethodEnum | None = None
 
@@ -66,6 +67,14 @@ class OrderCreateIn(BaseModel):
             self.provider,
             payment_method=self.payment_method,
         )
+        return self
+
+    @model_validator(mode="after")
+    def validate_period(self) -> "OrderCreateIn":
+        from services.billing.constants import ALLOWED_PERIOD_MONTHS
+
+        if self.period_months not in ALLOWED_PERIOD_MONTHS:
+            raise ValueError(f"period_months must be one of {ALLOWED_PERIOD_MONTHS}")
         return self
 
 
@@ -82,6 +91,7 @@ class OrderInternalCreate(BaseModel):
     subscription_id: UUID | None = None
     order_type: str = "plan_purchase"
     device_slots_qty: int = 0
+    period_months: int = 1
 
 
 class OrderInternalUpdate(BaseModel):
@@ -118,6 +128,7 @@ class OrderOut(BaseModel):
     subscription_id: UUID | None
     order_type: str = "plan_purchase"
     device_slots_qty: int = 0
+    period_months: int = 1
     created_at: datetime
     updated_at: datetime
 
@@ -127,6 +138,15 @@ class OrderOut(BaseModel):
 class OrderListOut(BaseModel):
     items: list[OrderOut]
     total: int
+
+
+class OrderPreviewOut(BaseModel):
+    plan_id: UUID
+    period_months: int
+    period_price: Decimal
+    proration_credit: Decimal = Decimal("0")
+    amount_due: Decimal
+    is_switch: bool = False
 
 
 class OrderRefundIn(BaseModel):

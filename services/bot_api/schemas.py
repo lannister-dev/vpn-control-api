@@ -45,10 +45,20 @@ class BotSessionSyncIn(BaseModel):
     last_name: str | None = Field(default=None, max_length=128)
 
 
+class BotPlanPeriodOut(BaseModel):
+    months: int
+    price_rub: Decimal
+    price_stars: int | None = None
+    savings_pct: int | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class BotOrderCreateIn(BaseModel):
     plan_id: UUID
     provider: PaymentProviderEnum
     extra_devices: int = Field(default=0, ge=0)
+    period_months: int = Field(default=1, ge=1)
     payment_method: PlategaPaymentMethodEnum | None = None
 
     @model_validator(mode="after")
@@ -67,6 +77,7 @@ class BotStarsConfirmIn(BaseModel):
 
 class BotRenewOrderIn(BaseModel):
     provider: PaymentProviderEnum
+    period_months: int = Field(default=1, ge=1)
     payment_method: PlategaPaymentMethodEnum | None = None
 
     @model_validator(mode="after")
@@ -133,6 +144,7 @@ class BotPlanOut(BaseModel):
     device_price_rub: Decimal = Decimal("0")
     price_stars: int | None = None
     device_price_stars: int | None = None
+    periods: list[BotPlanPeriodOut] = Field(default_factory=list)
     is_active: bool
     is_current: bool = False
     can_renew: bool = True
@@ -163,6 +175,7 @@ class BotOrderOut(BaseModel):
     subscription_id: UUID | None
     order_type: str = "plan_purchase"
     device_slots_qty: int = 0
+    period_months: int = 1
     created_at: datetime
     updated_at: datetime
 
@@ -240,6 +253,17 @@ class BotOrderActionOut(BaseModel):
     session: BotSessionOut
 
 
+class BotOrderPreviewOut(BaseModel):
+    plan_id: UUID
+    period_months: int
+    period_price: Decimal
+    proration_credit: Decimal = Decimal("0")
+    amount_due: Decimal
+    is_switch: bool = False
+    current_plan_name: str | None = None
+    current_expires_at: datetime | None = None
+
+
 class BotRenewOfferOut(BaseModel):
     subscription_id: UUID
     plan_id: UUID
@@ -248,6 +272,7 @@ class BotRenewOfferOut(BaseModel):
     duration_days: int
     price_rub: Decimal
     price_stars: int | None = None
+    periods: list[BotPlanPeriodOut] = Field(default_factory=list)
     current_expires_at: datetime | None = None
     renewed_expires_at: datetime
     providers: list[PaymentProviderEnum] = Field(default_factory=list)

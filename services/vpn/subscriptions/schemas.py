@@ -28,6 +28,7 @@ class SubscriptionInternalCreate(BaseModel):
     hwid_enabled: bool = True
     max_devices: int | None = Field(default=None, gt=0, le=100)
     paid_device_slots: int = 0
+    period_months: int = 1
 
 
 class SubscriptionInternalUpdate(BaseModel):
@@ -39,6 +40,7 @@ class SubscriptionInternalUpdate(BaseModel):
     hwid_enabled: bool | None = None
     max_devices: int | None = Field(default=None, gt=0, le=100)
     paid_device_slots: int | None = None
+    period_months: int | None = None
     updated_at: datetime | None = None
 
 

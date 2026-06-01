@@ -13,6 +13,36 @@ class ResetStrategy(str, Enum):
     MONTH = "MONTH"
 
 
+class PlanPeriodIn(BaseModel):
+    months: int = Field(ge=1, le=36)
+    price_rub: Decimal = Field(ge=0)
+    price_stars: int | None = Field(default=None, ge=1)
+
+
+class PlanPeriodOut(BaseModel):
+    months: int
+    price_rub: Decimal
+    price_stars: int | None = None
+    savings_pct: int | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+def _compute_savings(periods: list[PlanPeriodOut]) -> list[PlanPeriodOut]:
+    monthly = next((p.price_rub for p in periods if p.months == 1), None)
+    if not monthly or monthly <= 0:
+        return periods
+    for period in periods:
+        if period.months <= 1:
+            continue
+        baseline = monthly * period.months
+        if baseline <= 0:
+            continue
+        pct = round((1 - period.price_rub / baseline) * 100)
+        period.savings_pct = pct if pct > 0 else None
+    return periods
+
+
 class PlanCreateIn(BaseModel):
     name: str = Field(max_length=64)
     description: str | None = None
@@ -28,6 +58,7 @@ class PlanCreateIn(BaseModel):
     device_price_rub: Decimal = Field(default=Decimal("0"), ge=0)
     price_stars: int | None = Field(default=None, ge=1)
     device_price_stars: int | None = Field(default=None, ge=1)
+    periods: list[PlanPeriodIn] | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -35,6 +66,14 @@ class PlanCreateIn(BaseModel):
     def _included_le_max(self):
         if self.included_devices > self.max_devices:
             raise ValueError("included_devices must be <= max_devices")
+        return self
+
+    @model_validator(mode="after")
+    def _unique_periods(self):
+        if self.periods:
+            seen = [p.months for p in self.periods]
+            if len(seen) != len(set(seen)):
+                raise ValueError("period months must be unique")
         return self
 
 
@@ -54,8 +93,17 @@ class PlanUpdateIn(BaseModel):
     device_price_rub: Decimal | None = Field(default=None, ge=0)
     price_stars: int | None = Field(default=None, ge=1)
     device_price_stars: int | None = Field(default=None, ge=1)
+    periods: list[PlanPeriodIn] | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="after")
+    def _unique_periods(self):
+        if self.periods:
+            seen = [p.months for p in self.periods]
+            if len(seen) != len(set(seen)):
+                raise ValueError("period months must be unique")
+        return self
 
 
 class PlanOut(BaseModel):
@@ -74,11 +122,17 @@ class PlanOut(BaseModel):
     device_price_rub: Decimal
     price_stars: int | None
     device_price_stars: int | None
+    periods: list[PlanPeriodOut] = Field(default_factory=list)
     is_active: bool
     created_at: datetime
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="after")
+    def _fill_savings(self):
+        _compute_savings(self.periods)
+        return self
 
 
 class PlanListOut(BaseModel):

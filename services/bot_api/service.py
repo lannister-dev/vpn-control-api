@@ -40,9 +40,11 @@ from .schemas import (
     BotOrderHistoryItemOut,
     BotOrderHistoryOut,
     BotOrderOut,
+    BotOrderPreviewOut,
     BotOrderUpdateIn,
     BotPlanListOut,
     BotPlanOut,
+    BotPlanPeriodOut,
     BotRenewOfferOut,
     BotRenewOrderIn,
     BotServiceHealth,
@@ -166,6 +168,7 @@ class BotApiService:
                     plan_id=payload.plan_id,
                     provider=payload.provider,
                     device_slots_qty=extra,
+                    period_months=getattr(payload, "period_months", 1) or 1,
                     payment_method=getattr(payload, "payment_method", None),
                 )
             )
@@ -274,6 +277,11 @@ class BotApiService:
             billing_settings=self.settings.billing,
         )
 
+        periods = [
+            BotPlanPeriodOut.model_validate(period)
+            for period in PlanOut.model_validate(plan).periods
+        ]
+
         return BotRenewOfferOut(
             subscription_id=subscription.id,
             plan_id=plan.id,
@@ -282,10 +290,38 @@ class BotApiService:
             duration_days=plan.duration_days,
             price_rub=plan.price_rub,
             price_stars=getattr(plan, "price_stars", None),
+            periods=periods,
             current_expires_at=current_expires_at,
             renewed_expires_at=renewed_expires_at,
             providers=providers,
             is_reactivation=status in {BotDashboardState.EXPIRED, BotDashboardState.INACTIVE},
+        )
+
+    async def get_order_preview(
+        self, *, telegram_id: int, plan_id: UUID, period_months: int = 1,
+    ) -> BotOrderPreviewOut:
+        from services.billing.exceptions import PlanNotPurchasable
+
+        user = await self._require_user_by_telegram_id(telegram_id)
+        try:
+            preview = await self.billing_service.preview_order_amount(
+                user_id=user.id, plan_id=plan_id, period_months=period_months,
+            )
+        except PlanNotPurchasable as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        current_plan_name = None
+        current_expires_at = None
+        subscription = await self._current_subscription(user.id)
+        if subscription is not None and subscription.plan_id is not None:
+            current_expires_at = subscription.expires_at
+            current_plan = await self.plan_repository.get_by_id(subscription.plan_id)
+            current_plan_name = getattr(current_plan, "name", None)
+
+        return BotOrderPreviewOut(
+            **preview.model_dump(),
+            current_plan_name=current_plan_name,
+            current_expires_at=current_expires_at,
         )
 
     async def create_renew_order(self, *, telegram_id: int, payload: BotRenewOrderIn) -> BotOrderActionOut:
@@ -306,7 +342,8 @@ class BotApiService:
         plan = await self.plan_repository.get_by_id(subscription.plan_id)
         if plan is None:
             raise HTTPException(status_code=404, detail="Plan not found")
-        if payload.provider == PaymentProviderEnum.STARS and not getattr(plan, "price_stars", None):
+        renew_months = getattr(payload, "period_months", 1) or 1
+        if payload.provider == PaymentProviderEnum.STARS and not self.billing_service._resolve_period_price_stars(plan, renew_months):
             raise HTTPException(status_code=400, detail="Stars not available for current plan")
 
         try:
@@ -317,6 +354,7 @@ class BotApiService:
                     provider=payload.provider,
                     order_type=OrderTypeEnum.SUBSCRIPTION_RENEWAL,
                     subscription_id=subscription.id,
+                    period_months=getattr(payload, "period_months", 1) or 1,
                     payment_method=getattr(payload, "payment_method", None),
                 )
             )

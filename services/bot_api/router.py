@@ -13,6 +13,7 @@ from .schemas import (
     BotOrderActionOut,
     BotOrderCreateIn,
     BotOrderHistoryOut,
+    BotOrderPreviewOut,
     BotOrderUpdateIn,
     BotPlanListOut,
     BotRenewOfferOut,
@@ -140,6 +141,22 @@ async def bot_get_renew_offer(
     service: BotApiService = Depends(get_bot_api_service),
 ):
     return await service.get_renew_offer(telegram_id=telegram_id)
+
+
+@router.get(
+    "/users/{telegram_id}/order-preview",
+    response_model=BotOrderPreviewOut,
+    summary="Preview order amount (with switch proration) for a plan/period",
+)
+async def bot_order_preview(
+    telegram_id: int,
+    plan_id: UUID,
+    period_months: int = 1,
+    service: BotApiService = Depends(get_bot_api_service),
+):
+    return await service.get_order_preview(
+        telegram_id=telegram_id, plan_id=plan_id, period_months=period_months,
+    )
 
 
 @router.post(

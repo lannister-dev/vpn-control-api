@@ -43,6 +43,9 @@ class PaymentOrder(Base):
     device_slots_qty: Mapped[int] = mapped_column(
         Integer, default=0, server_default=text("0"), nullable=False
     )
+    period_months: Mapped[int] = mapped_column(
+        Integer, default=1, server_default=text("1"), nullable=False
+    )
 
     __table_args__ = (
         Index("ix_payment_order_user_id", "user_id"),
