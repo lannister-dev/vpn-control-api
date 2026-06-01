@@ -95,6 +95,7 @@ class RouteAutoCreateReconciler:
 
             created = 0
             reactivated = 0
+            announce: list[tuple[UUID, UUID]] = []
             for entry_id, backend_id in want:
                 route = await RouteRepository(session).get_by_triple(
                     backend_node_id=backend_id,
@@ -117,10 +118,12 @@ class RouteAutoCreateReconciler:
                         is_active=True,
                     ))
                     created += 1
+                    announce.append((entry_id, backend_id))
                 elif not route.is_active:
                     route.is_active = True
                     route.health_status = "healthy"
                     reactivated += 1
+                    announce.append((entry_id, backend_id))
 
             existing_stmt = select(Route).where(
                 Route.is_active.is_(True),
@@ -135,12 +138,20 @@ class RouteAutoCreateReconciler:
                     deactivated += 1
 
             if created or reactivated or deactivated:
+                from services.routes.service import RouteService
+                route_service = RouteService(session)
+                for entry_id, backend_id in announce:
+                    await route_service.sync_entry_upstream(
+                        entry_node_id=entry_id,
+                        backend_node_id=backend_id,
+                    )
                 await session.commit()
                 self._log.info(
                     "route_auto_create_tick",
                     created=created,
                     reactivated=reactivated,
                     deactivated=deactivated,
+                    announced=len(announce),
                     total_want=len(want),
                 )
             return {"created": created, "reactivated": reactivated, "deactivated": deactivated}
