@@ -1,76 +1,43 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 
 from services.traffic.policy.constants import CLEANUP_IDLE_WHEN_DISABLED_SEC
 from services.traffic.policy.repository import TrafficPolicyRepository
 from services.traffic.users.service import UserTrafficService
 from shared.database.session import AsyncDatabase
-from shared.reconciler.watchdog import watchdog
+from shared.reconciler.base import Reconciler
 from shared.redis.lock import RedisTickLock
 from shared.utils.logger import StructuredLogger
 
 logger = StructuredLogger(logging.getLogger("traffic-cleanup-reconciler"))
 
 
-class TrafficHistoryCleanupReconciler:
+class TrafficHistoryCleanupReconciler(Reconciler):
+    name = "traffic_cleanup"
+
     def __init__(self, *, tick_lock: RedisTickLock | None = None):
-        self._session_maker = AsyncDatabase.get_session_maker()
-        self._tick_lock = tick_lock or RedisTickLock(
-            key="reconciler:traffic_cleanup",
-            ttl_sec=7200,
-            fail_open_if_client_unavailable=True,
+        super().__init__(
+            interval_sec=CLEANUP_IDLE_WHEN_DISABLED_SEC,
+            tick_lock=tick_lock,
+            lock_ttl_sec=7200,
         )
-        self._stop_event = asyncio.Event()
-        self._task: asyncio.Task | None = None
+        self._session_maker = AsyncDatabase.get_session_maker()
 
-    async def start(self) -> None:
-        if self._task is not None and not self._task.done():
-            return
-        self._stop_event.clear()
-        self._task = asyncio.create_task(self._run())
-
-    async def stop(self) -> None:
-        if self._task is None:
-            return
-        self._stop_event.set()
-        await self._task
-        self._task = None
-
-    async def run_once(self) -> int | None:
+    async def _policy(self):
         async with self._session_maker() as session:
             policy = (await TrafficPolicyRepository(session).list(limit=1))[0]
             await session.commit()
-        if not policy.user_cleanup_enabled:
-            return None
-        async with self._tick_lock.hold() as acquired:
-            if not acquired:
-                return None
-            return await self._execute_tick(policy.user_retention_days)
+            return policy
 
-    async def _run(self) -> None:
-        while not self._stop_event.is_set():
-            sleep_sec = CLEANUP_IDLE_WHEN_DISABLED_SEC
-            try:
-                async with self._session_maker() as session:
-                    policy = (await TrafficPolicyRepository(session).list(limit=1))[0]
-                    await session.commit()
-                sleep_sec = max(CLEANUP_IDLE_WHEN_DISABLED_SEC, int(policy.user_cleanup_tick_sec))
-                if policy.user_cleanup_enabled:
-                    async with self._tick_lock.hold() as acquired:
-                        if acquired:
-                            await self._execute_tick(policy.user_retention_days)
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                logger.exception("traffic_cleanup_tick_failed")
+    async def is_enabled(self) -> bool:
+        return bool((await self._policy()).user_cleanup_enabled)
 
-            watchdog.heartbeat(self.__class__.__name__, max_silence_sec=sleep_sec * 2 + 60)
-            try:
-                await asyncio.wait_for(self._stop_event.wait(), timeout=sleep_sec)
-            except asyncio.TimeoutError:
-                continue
+    async def interval_sec(self) -> int:
+        return max(CLEANUP_IDLE_WHEN_DISABLED_SEC, int((await self._policy()).user_cleanup_tick_sec))
+
+    async def tick(self) -> int:
+        return await self._execute_tick((await self._policy()).user_retention_days)
 
     async def _execute_tick(self, retention_days: int) -> int:
         async with self._session_maker() as session:

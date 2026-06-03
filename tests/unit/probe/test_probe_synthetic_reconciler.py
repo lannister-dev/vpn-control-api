@@ -136,6 +136,5 @@ async def test_run_once_skips_when_tick_lock_not_acquired():
         )
         out = await reconciler.run_once()
 
-    assert out is not None
-    assert out.processed_transports == 0
+    assert out is None
     service.reconcile.assert_not_awaited()

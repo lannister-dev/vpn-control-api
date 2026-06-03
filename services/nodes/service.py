@@ -558,18 +558,19 @@ class VpnNodeService:
         if became_serving_backend:
             import asyncio
 
-            from services.vpn.keys.backend_rebalance_service import BackendRebalanceService
+            from services.balancer.service import BalancerService
+            from services.config import get_settings
 
             async def _kick() -> None:
                 try:
-                    moved = await BackendRebalanceService().run_once()
+                    plan = await BalancerService(config=get_settings().balancer).run_once()
                     logger_node.info(
-                        "backend_rebalance_kick_after_node_serving",
+                        "balancer_kick_after_node_serving",
                         node_id=str(node_id),
-                        moved=moved,
+                        moved=len(plan.moves),
                     )
                 except Exception:
-                    logger_node.exception("backend_rebalance_kick_failed", node_id=str(node_id))
+                    logger_node.exception("balancer_kick_failed", node_id=str(node_id))
 
             asyncio.create_task(_kick())
 

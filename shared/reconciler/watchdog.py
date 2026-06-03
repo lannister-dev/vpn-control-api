@@ -13,18 +13,18 @@ class ReconcilerWatchdog:
         self._last_tick: dict[str, float] = {}
         self._max_silence: dict[str, float] = {}
 
-    def register(self, name: str) -> None:
+    def register(self, name: str):
         with self._lock:
             if name not in self._last_tick:
                 self._last_tick[name] = time.monotonic()
                 self._max_silence[name] = INITIAL_GRACE_SEC
 
-    def unregister(self, name: str) -> None:
+    def unregister(self, name: str):
         with self._lock:
             self._last_tick.pop(name, None)
             self._max_silence.pop(name, None)
 
-    def heartbeat(self, name: str, *, max_silence_sec: float) -> None:
+    def heartbeat(self, name: str, *, max_silence_sec: float):
         now = time.monotonic()
         with self._lock:
             self._last_tick[name] = now

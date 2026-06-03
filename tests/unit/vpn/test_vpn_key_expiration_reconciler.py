@@ -27,7 +27,7 @@ async def test_no_expired_keys_returns_zero(async_session):
     with patch("services.vpn.keys.reconcilers.expiration.VpnKeyRepository", return_value=mock_key_repo), \
          patch("services.vpn.keys.reconcilers.expiration.UserPlacementRepository"), \
          patch("services.vpn.keys.reconcilers.expiration.NodeAgentPlacementTransport"):
-        result = await reconciler._execute_tick()
+        result = await reconciler.tick()
 
     assert result == 0
     mock_key_repo.bulk_revoke_expired.assert_awaited_once_with(limit=500)
@@ -51,7 +51,7 @@ async def test_expired_keys_bulk_revoked(async_session):
     with patch("services.vpn.keys.reconcilers.expiration.VpnKeyRepository", return_value=mock_key_repo), \
          patch("services.vpn.keys.reconcilers.expiration.UserPlacementRepository", return_value=mock_placement_repo), \
          patch("services.vpn.keys.reconcilers.expiration.NodeAgentPlacementTransport", return_value=mock_transport):
-        result = await reconciler._execute_tick()
+        result = await reconciler.tick()
 
     assert result == 3
 
@@ -83,7 +83,7 @@ async def test_expired_keys_no_placements(async_session):
     with patch("services.vpn.keys.reconcilers.expiration.VpnKeyRepository", return_value=mock_key_repo), \
          patch("services.vpn.keys.reconcilers.expiration.UserPlacementRepository", return_value=mock_placement_repo), \
          patch("services.vpn.keys.reconcilers.expiration.NodeAgentPlacementTransport", return_value=mock_transport):
-        result = await reconciler._execute_tick()
+        result = await reconciler.tick()
 
     assert result == 1
     mock_transport.enqueue_for_placement_ids.assert_not_awaited()

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -12,7 +11,7 @@ from services.notifications.service import NotificationService
 from services.users.models import User
 from services.vpn.subscriptions.models import Subscription
 from shared.database.session import AsyncDatabase
-from shared.reconciler.watchdog import watchdog
+from shared.reconciler.base import Reconciler
 from shared.redis.client import redis_client
 from shared.redis.lock import RedisTickLock
 from shared.utils.logger import StructuredLogger
@@ -28,53 +27,23 @@ REDIS_KEY_WEEKLY = "notifications:digest:weekly:emitted"
 REDIS_STATE_TTL_SEC = 60 * 60 * 24 * 8
 
 
-class NotificationsDigestReconciler:
-    def __init__(self, *, notifications: NotificationService, interval_sec: int = 60):
+class NotificationsDigestReconciler(Reconciler):
+    name = "notifications_digest"
+
+    def __init__(
+        self,
+        *,
+        notifications: NotificationService,
+        interval_sec: int = 60,
+        tick_lock: RedisTickLock | None = None,
+    ):
+        super().__init__(interval_sec=max(30, int(interval_sec)), tick_lock=tick_lock)
         self._notifications = notifications
-        self._interval_sec = max(30, int(interval_sec))
         self._session_maker = AsyncDatabase.get_session_maker()
-        self._tick_lock = RedisTickLock(
-            key="reconciler:notifications_digest",
-            ttl_sec=max(60, self._interval_sec * 2),
-            fail_open_if_client_unavailable=True,
-        )
-        self._stop_event = asyncio.Event()
-        self._task: asyncio.Task | None = None
 
-    async def start(self) -> None:
-        if self._task is not None and not self._task.done():
-            return
-        self._stop_event.clear()
-        self._task = asyncio.create_task(self._run())
-
-    async def stop(self) -> None:
-        if self._task is None:
-            return
-        self._stop_event.set()
-        await self._task
-        self._task = None
-
-    async def run_once(self) -> None:
-        async with self._tick_lock.hold() as acquired:
-            if not acquired:
-                return
-            await self._maybe_emit_daily()
-            await self._maybe_emit_weekly()
-
-    async def _run(self) -> None:
-        while not self._stop_event.is_set():
-            try:
-                await self.run_once()
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                logger.exception("notifications_digest_tick_failed")
-
-            watchdog.heartbeat(self.__class__.__name__, max_silence_sec=self._interval_sec * 2 + 60)
-            try:
-                await asyncio.wait_for(self._stop_event.wait(), timeout=self._interval_sec)
-            except asyncio.TimeoutError:
-                continue
+    async def tick(self) -> None:
+        await self._maybe_emit_daily()
+        await self._maybe_emit_weekly()
 
     async def _maybe_emit_daily(self) -> None:
         now = datetime.now(timezone.utc)

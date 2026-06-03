@@ -50,7 +50,7 @@ async def test_execute_tick_no_expired_returns_zero(cfg):
     ):
         sub_repo = SubRepoCls.return_value
         sub_repo.list_expired_active = AsyncMock(return_value=[])
-        result = await rec._execute_tick()
+        result = await rec.tick()
 
     assert result == TickResult(0, 0, 0)
     fake_session.commit.assert_not_awaited()
@@ -92,7 +92,7 @@ async def test_execute_tick_full_path_revokes_keys_and_deactivates(cfg):
         transport = TransportCls.return_value
         transport.enqueue_for_placement_ids = AsyncMock()
 
-        result = await rec._execute_tick()
+        result = await rec.tick()
 
     assert result == TickResult(
         subscriptions_expired=2,
@@ -137,7 +137,7 @@ async def test_execute_tick_subs_without_keys_still_deactivates(cfg):
         transport = TransportCls.return_value
         transport.enqueue_for_placement_ids = AsyncMock()
 
-        result = await rec._execute_tick()
+        result = await rec.tick()
 
     assert result.subscriptions_expired == 1
     assert result.keys_revoked == 0

@@ -11,6 +11,7 @@ from services.admin.transport.reconcilers.cleanup import AdminTransportCleanupRe
 from services.alerts.reconcilers.cleanup import AlertsCleanupReconciler
 from services.artifacts.models import ProfileArtifact  # noqa: F401
 from services.auth.admin.models import AdminAuditEvent, AdminSession, AdminUser  # noqa: F401
+from services.balancer.reconcilers.balance import BalanceReconciler
 from services.billing.models import BalanceTransaction, PaymentOrder  # noqa: F401
 from services.billing.reconcilers.expiration import BillingOrderExpirationReconciler
 from services.config import get_settings
@@ -54,7 +55,6 @@ from services.traffic.users.reconcilers.reset import TrafficResetReconciler
 # Register all SQLAlchemy models (no routers to pull them in)
 from services.users.models import User  # noqa: F401
 from services.vpn.keys.models import VpnKey  # noqa: F401
-from services.vpn.keys.reconcilers.backend_rebalance import BackendRebalanceReconciler
 from services.vpn.keys.reconcilers.expiration import VpnKeyExpirationReconciler
 from services.vpn.subscriptions.models import Subscription, SubscriptionDevice, SubscriptionDeviceKey  # noqa: F401
 from services.vpn.subscriptions.reconcilers.expiration import SubscriptionExpirationReconciler
@@ -101,7 +101,7 @@ def _build_reconcilers(notifications: NotificationService, nats_client: NatsClie
         EntryAutoDrainReconciler(),
         UpstreamFailoverReconciler(),
         EntryRoutingPublisher(),
-        BackendRebalanceReconciler(),
+        BalanceReconciler(),
         WgMeshPeerPublisher(),
         NotificationsDigestReconciler(notifications=notifications),
         BroadcastSchedulerReconciler(nats_client=nats_client),
@@ -150,7 +150,6 @@ async def lifespan(app: FastAPI):
     runtimes = _build_nats_runtimes(settings.nats, notifications)
 
     for r in reconcilers:
-        watchdog.register(r.__class__.__name__)
         await r.start()
     for r in runtimes:
         await r.start()

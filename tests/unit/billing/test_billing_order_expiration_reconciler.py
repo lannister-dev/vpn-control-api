@@ -58,7 +58,7 @@ async def test_execute_tick_expires_pending_orders(cfg):
     ) as RepoCls:
         repo = RepoCls.return_value
         repo.bulk_expire_pending = AsyncMock(return_value=3)
-        count = await rec._execute_tick()
+        count = await rec.tick()
 
     assert count == 3
     fake_session.commit.assert_awaited_once()
@@ -79,7 +79,7 @@ async def test_execute_tick_no_orders_no_commit(cfg):
     ) as RepoCls:
         repo = RepoCls.return_value
         repo.bulk_expire_pending = AsyncMock(return_value=0)
-        count = await rec._execute_tick()
+        count = await rec.tick()
 
     assert count == 0
     fake_session.commit.assert_not_awaited()
