@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 from datetime import datetime, timezone
 
@@ -13,14 +12,16 @@ from services.traffic.users.reset_policy import RESETTABLE_STRATEGIES, reset_cut
 from services.vpn.keys.repository import VpnKeyRepository
 from services.vpn.subscriptions.repository import SubscriptionRepository
 from shared.database.session import AsyncDatabase
-from shared.reconciler.watchdog import watchdog
+from shared.reconciler.base import Reconciler
 from shared.redis.lock import RedisTickLock
 from shared.utils.logger import StructuredLogger
 
 logger = StructuredLogger(logging.getLogger("traffic-reset-reconciler"))
 
 
-class TrafficResetReconciler:
+class TrafficResetReconciler(Reconciler):
+    name = "traffic_reset"
+
     def __init__(
         self,
         *,
@@ -28,55 +29,16 @@ class TrafficResetReconciler:
         tick_lock: RedisTickLock | None = None,
     ):
         settings = traffic_settings or get_settings().traffic
-        self._enabled = bool(settings.reset_enabled)
-        self._interval_sec = max(60, int(settings.reset_tick_sec))
-        self._session_maker = AsyncDatabase.get_session_maker()
-        self._tick_lock = tick_lock or RedisTickLock(
-            key="reconciler:traffic_reset",
-            ttl_sec=max(120, self._interval_sec * 2),
-            fail_open_if_client_unavailable=True,
+        interval_sec = max(60, int(settings.reset_tick_sec))
+        super().__init__(
+            interval_sec=interval_sec,
+            enabled=bool(settings.reset_enabled),
+            tick_lock=tick_lock,
+            lock_ttl_sec=max(120, interval_sec * 2),
         )
-        self._stop_event = asyncio.Event()
-        self._task: asyncio.Task | None = None
+        self._session_maker = AsyncDatabase.get_session_maker()
 
-    async def start(self) -> None:
-        if self._task is not None and not self._task.done():
-            return
-        if not self._enabled:
-            logger.info("traffic_reset_disabled")
-        self._stop_event.clear()
-        self._task = asyncio.create_task(self._run())
-
-    async def stop(self) -> None:
-        if self._task is None:
-            return
-        self._stop_event.set()
-        await self._task
-        self._task = None
-
-    async def _run(self) -> None:
-        while not self._stop_event.is_set():
-            if self._enabled:
-                try:
-                    await self._tick()
-                except asyncio.CancelledError:
-                    raise
-                except Exception:
-                    logger.exception("traffic_reset_tick_failed")
-
-            watchdog.heartbeat(self.__class__.__name__, max_silence_sec=self._interval_sec * 2 + 60)
-            try:
-                await asyncio.wait_for(self._stop_event.wait(), timeout=self._interval_sec)
-            except asyncio.TimeoutError:
-                continue
-
-    async def _tick(self) -> None:
-        async with self._tick_lock.hold() as acquired:
-            if not acquired:
-                return
-            await self._execute_tick()
-
-    async def _execute_tick(self) -> None:
+    async def tick(self) -> None:
         now = datetime.now(timezone.utc)
         total_reset = 0
 

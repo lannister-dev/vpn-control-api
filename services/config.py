@@ -170,6 +170,21 @@ class EntryRoutingConfig:
     backend_wg_port: int = 10100
     per_user_outbound_uuid: bool = False
 
+
+@dataclass
+class BalancerConfig:
+    enabled: bool = False
+    tick_sec: int = 120
+    window_sec: int = 600
+    w_throughput: float = 0.7
+    w_sessions: float = 0.3
+    cpu_full_pct: float = 85.0
+    dead_zone: float = 0.12
+    move_fraction: float = 0.5
+    max_moves_per_tick: int = 20
+    cooldown_sec: int = 900
+
+
 @dataclass
 class K3sConfig:
     server_url: str = ""
@@ -351,6 +366,7 @@ class Settings:
     k3s: K3sConfig
     entry_relay: EntryRelayConfig
     entry_routing: EntryRoutingConfig
+    balancer: BalancerConfig
     subscriptions_expiration: SubscriptionsExpirationConfig
     wg_mesh: WgMeshConfig
     s3: S3Config
@@ -683,6 +699,18 @@ def get_settings() -> Settings:
         k3s=k3s,
         entry_relay=entry_relay,
         entry_routing=entry_routing,
+        balancer=BalancerConfig(
+            enabled=env.bool("BALANCER_ENABLED", default=False),
+            tick_sec=max(30, env.int("BALANCER_TICK_SEC", default=120)),
+            window_sec=max(60, env.int("BALANCER_WINDOW_SEC", default=600)),
+            w_throughput=env.float("BALANCER_W_THROUGHPUT", default=0.7),
+            w_sessions=env.float("BALANCER_W_SESSIONS", default=0.3),
+            cpu_full_pct=env.float("BALANCER_CPU_FULL_PCT", default=85.0),
+            dead_zone=env.float("BALANCER_DEAD_ZONE", default=0.12),
+            move_fraction=env.float("BALANCER_MOVE_FRACTION", default=0.5),
+            max_moves_per_tick=max(1, env.int("BALANCER_MAX_MOVES_PER_TICK", default=20)),
+            cooldown_sec=max(0, env.int("BALANCER_COOLDOWN_SEC", default=900)),
+        ),
         subscriptions_expiration=subscriptions_expiration,
         wg_mesh=wg_mesh,
         s3=s3,

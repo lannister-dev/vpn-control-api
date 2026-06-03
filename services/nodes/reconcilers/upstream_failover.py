@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 from collections.abc import Callable
 
@@ -9,7 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from services.nodes.repository import VpnNodeRepository
 from services.routes.service import RouteService
 from shared.database.session import AsyncDatabase
-from shared.reconciler.watchdog import watchdog
+from shared.reconciler.base import Reconciler
+from shared.redis.lock import RedisTickLock
 from shared.utils.logger import StructuredLogger
 
 logger = StructuredLogger(logging.getLogger("upstream-failover-reconciler"))
@@ -17,46 +17,21 @@ logger = StructuredLogger(logging.getLogger("upstream-failover-reconciler"))
 TICK_SEC = 30
 
 
-class UpstreamFailoverReconciler:
+class UpstreamFailoverReconciler(Reconciler):
+    name = "upstream_failover"
+
     def __init__(
         self,
         *,
         session_maker: async_sessionmaker[AsyncSession] | None = None,
         route_service_factory: Callable[[AsyncSession], RouteService] | None = None,
+        tick_lock: RedisTickLock | None = None,
     ) -> None:
+        super().__init__(interval_sec=TICK_SEC, tick_lock=tick_lock)
         self._session_maker = session_maker or AsyncDatabase.get_session_maker()
         self._route_service_factory = route_service_factory or RouteService
-        self._stop = asyncio.Event()
-        self._task: asyncio.Task | None = None
 
-    async def start(self) -> None:
-        if self._task is not None and not self._task.done():
-            return
-        self._stop.clear()
-        self._task = asyncio.create_task(self._run())
-
-    async def stop(self) -> None:
-        if self._task is None:
-            return
-        self._stop.set()
-        await self._task
-        self._task = None
-
-    async def _run(self) -> None:
-        while not self._stop.is_set():
-            try:
-                await self.run_once()
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                logger.exception("upstream_failover_tick_failed")
-            watchdog.heartbeat(self.__class__.__name__, max_silence_sec=TICK_SEC * 2 + 60)
-            try:
-                await asyncio.wait_for(self._stop.wait(), timeout=TICK_SEC)
-            except asyncio.TimeoutError:
-                continue
-
-    async def run_once(self) -> int:
+    async def tick(self) -> int:
         async with self._session_maker() as session:
             repo = VpnNodeRepository(session)
             dead = await repo.list_entries_with_dead_upstream()

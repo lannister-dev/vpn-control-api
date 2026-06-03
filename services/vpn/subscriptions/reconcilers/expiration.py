@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -17,7 +16,7 @@ from shared.monitoring.metrics import (
     EXPIRED_SUBSCRIPTIONS_TOTAL,
     VPN_KEY_OPERATION_TOTAL,
 )
-from shared.reconciler.watchdog import watchdog
+from shared.reconciler.base import Reconciler
 from shared.redis.client import redis_client
 from shared.redis.lock import RedisTickLock
 from shared.utils.logger import StructuredLogger
@@ -32,7 +31,9 @@ class TickResult:
     placements_affected: int
 
 
-class SubscriptionExpirationReconciler:
+class SubscriptionExpirationReconciler(Reconciler):
+    name = "subscription_expiration"
+
     def __init__(
         self,
         *,
@@ -40,60 +41,15 @@ class SubscriptionExpirationReconciler:
         tick_lock: RedisTickLock | None = None,
     ):
         cfg = settings or get_settings().subscriptions_expiration
-        self._enabled = bool(cfg.enabled)
-        self._interval_sec = max(30, int(cfg.tick_sec))
+        super().__init__(
+            interval_sec=max(30, int(cfg.tick_sec)),
+            enabled=bool(cfg.enabled),
+            tick_lock=tick_lock,
+        )
         self._batch_size = max(1, int(cfg.batch_size))
         self._session_maker = AsyncDatabase.get_session_maker()
-        self._tick_lock = tick_lock or RedisTickLock(
-            key="reconciler:subscription_expiration",
-            ttl_sec=max(60, self._interval_sec * 2),
-            fail_open_if_client_unavailable=True,
-        )
-        self._stop_event = asyncio.Event()
-        self._task: asyncio.Task | None = None
 
-    async def start(self) -> None:
-        if self._task is not None and not self._task.done():
-            return
-        if not self._enabled:
-            logger.info("subscription_expiration_disabled")
-        self._stop_event.clear()
-        self._task = asyncio.create_task(self._run())
-
-    async def stop(self) -> None:
-        if self._task is None:
-            return
-        self._stop_event.set()
-        await self._task
-        self._task = None
-
-    async def run_once(self) -> TickResult | None:
-        if not self._enabled:
-            return None
-        async with self._tick_lock.hold() as acquired:
-            if not acquired:
-                return None
-            return await self._execute_tick()
-
-    async def _run(self) -> None:
-        while not self._stop_event.is_set():
-            try:
-                await self.run_once()
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                logger.exception("subscription_expiration_tick_failed")
-
-            watchdog.heartbeat(
-                self.__class__.__name__,
-                max_silence_sec=self._interval_sec * 2 + 60,
-            )
-            try:
-                await asyncio.wait_for(self._stop_event.wait(), timeout=self._interval_sec)
-            except asyncio.TimeoutError:
-                continue
-
-    async def _execute_tick(self) -> TickResult:
+    async def tick(self) -> TickResult:
         async with self._session_maker() as session:
             sub_repo = SubscriptionRepository(session)
             key_repo = VpnKeyRepository(session)

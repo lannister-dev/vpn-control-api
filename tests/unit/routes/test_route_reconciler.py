@@ -30,21 +30,21 @@ class _TickLock:
 @pytest.mark.asyncio
 async def test_run_once_skips_when_tick_lock_not_acquired():
     reconciler = RouteWarmupReconciler(tick_lock=_TickLock(acquired=False))
-    reconciler._execute_tick = AsyncMock()
+    reconciler.tick = AsyncMock()
 
     out = await reconciler.run_once()
 
     assert out is None
-    reconciler._execute_tick.assert_not_awaited()
+    reconciler.tick.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_run_once_executes_when_tick_lock_acquired():
     reconciler = RouteWarmupReconciler(tick_lock=_TickLock(acquired=True))
     tick = SimpleNamespace(processed=1, advanced=1, finalized=0)
-    reconciler._execute_tick = AsyncMock(return_value=tick)
+    reconciler.tick = AsyncMock(return_value=tick)
 
     out = await reconciler.run_once()
 
     assert out is tick
-    reconciler._execute_tick.assert_awaited_once_with()
+    reconciler.tick.assert_awaited_once_with()

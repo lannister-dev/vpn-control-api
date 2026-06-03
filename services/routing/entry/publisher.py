@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 from uuid import UUID
 
@@ -8,51 +7,43 @@ from services.config import EntryRoutingConfig, NatsConfig, get_settings
 from services.routing.entry.constants import (
     KV_BUCKET,
     KV_KEY_PREFIX,
-    PUBLISHER_IDLE_WHEN_DISABLED_SEC,
 )
 from services.routing.entry.service import EntryRoutingService
 from shared.database.session import AsyncDatabase
 from shared.nats.client import NatsClient
-from shared.reconciler.watchdog import watchdog
+from shared.reconciler.base import Reconciler
+from shared.redis.lock import RedisTickLock
 from shared.utils.logger import StructuredLogger
 
 logger = StructuredLogger(logging.getLogger("entry-routing-publisher"))
 
 
-class EntryRoutingPublisher:
+class EntryRoutingPublisher(Reconciler):
+    name = "entry_routing_publisher"
+
     def __init__(
         self,
         *,
         routing_config: EntryRoutingConfig | None = None,
         nats_config: NatsConfig | None = None,
         nats_client: NatsClient | None = None,
+        tick_lock: RedisTickLock | None = None,
     ) -> None:
         settings = get_settings()
         self._cfg = routing_config or settings.entry_routing
         self._nats_cfg = nats_config or settings.nats
-        self._enabled = bool(self._cfg.enabled)
-        self._interval_sec = max(5, int(self._cfg.publisher_tick_sec))
+        super().__init__(
+            interval_sec=max(5, int(self._cfg.publisher_tick_sec)),
+            enabled=bool(self._cfg.enabled),
+            tick_lock=tick_lock,
+        )
         self._session_maker = AsyncDatabase.get_session_maker()
         self._nats: NatsClient | None = nats_client
         self._owns_nats = nats_client is None
-        self._stop_event = asyncio.Event()
-        self._task: asyncio.Task | None = None
         self._last_signatures: dict[UUID, str] = {}
 
-    async def start(self):
-        if self._task is not None and not self._task.done():
-            return
-        if not self._enabled:
-            logger.info("entry_routing_publisher_disabled")
-        self._stop_event.clear()
-        self._task = asyncio.create_task(self._run())
-
     async def stop(self):
-        if self._task is None:
-            return
-        self._stop_event.set()
-        await self._task
-        self._task = None
+        await super().stop()
         if self._owns_nats and self._nats is not None:
             await self._nats.close()
             self._nats = None
@@ -65,28 +56,7 @@ class EntryRoutingPublisher:
             await self._nats.ensure_kv_bucket(name=KV_BUCKET, history=1)
         return self._nats
 
-    async def _run(self):
-        while not self._stop_event.is_set():
-            sleep_sec = PUBLISHER_IDLE_WHEN_DISABLED_SEC
-            if self._enabled:
-                sleep_sec = self._interval_sec
-                try:
-                    await self._tick()
-                except asyncio.CancelledError:
-                    raise
-                except Exception:
-                    logger.exception("entry_routing_publish_tick_failed")
-
-            watchdog.heartbeat(
-                self.__class__.__name__,
-                max_silence_sec=sleep_sec * 2 + 60,
-            )
-            try:
-                await asyncio.wait_for(self._stop_event.wait(), timeout=sleep_sec)
-            except asyncio.TimeoutError:
-                continue
-
-    async def _tick(self):
+    async def tick(self):
         nats = await self._ensure_nats()
         async with self._session_maker() as session:
             service = EntryRoutingService(session, config=self._cfg)

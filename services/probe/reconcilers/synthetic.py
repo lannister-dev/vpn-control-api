@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
@@ -31,14 +30,16 @@ from services.vpn.keys.schemas import (
     VpnTransport,
 )
 from shared.database.session import AsyncDatabase
-from shared.reconciler.watchdog import watchdog
+from shared.reconciler.base import Reconciler
 from shared.redis.lock import RedisTickLock
 from shared.utils.logger import StructuredLogger
 
 logger = StructuredLogger(logging.getLogger("probe-synthetic-reconciler"))
 
 
-class ProbeSyntheticCredentialReconciler:
+class ProbeSyntheticCredentialReconciler(Reconciler):
+    name = "probe_synthetic_credentials"
+
     def __init__(
         self,
         *,
@@ -48,6 +49,11 @@ class ProbeSyntheticCredentialReconciler:
         tick_lock: RedisTickLock | None = None,
     ):
         settings = probe_settings or get_settings().probe
+        super().__init__(
+            interval_sec=SYNTHETIC_IDLE_WHEN_DISABLED_SEC,
+            tick_lock=tick_lock,
+            lock_ttl_sec=600,
+        )
         self._settings = settings
         self._synthetic_client_ids = ProbeSyntheticClientIds(
             reality=settings.synthetic_reality_client_id,
@@ -61,13 +67,6 @@ class ProbeSyntheticCredentialReconciler:
                 synthetic_client_ids=self._synthetic_client_ids,
             )
         )
-        self._tick_lock = tick_lock or RedisTickLock(
-            key="reconciler:probe_synthetic_credentials",
-            ttl_sec=600,
-            fail_open_if_client_unavailable=True,
-        )
-        self._stop_event = asyncio.Event()
-        self._task: asyncio.Task | None = None
 
     def _is_configured(self) -> bool:
         return (
@@ -75,62 +74,22 @@ class ProbeSyntheticCredentialReconciler:
             and bool(self._synthetic_client_ids.configured_transports())
         )
 
-    async def start(self) -> None:
-        if not self._is_configured():
-            logger.info(
-                "probe_synthetic_reconcile_not_configured",
-                synthetic_user_telegram_id=self._settings.synthetic_user_telegram_id,
-                reality_client_id=self._synthetic_client_ids.reality is not None,
-                ws_client_id=self._synthetic_client_ids.ws is not None,
-            )
-            return
-        if self._task is not None and not self._task.done():
-            return
-        self._stop_event.clear()
-        self._task = asyncio.create_task(self._run())
-
-    async def stop(self) -> None:
-        if self._task is None:
-            return
-        self._stop_event.set()
-        await self._task
-        self._task = None
-
-    async def run_once(self) -> ProbeSyntheticReconcileResult | None:
-        if not self._is_configured():
-            return None
+    async def _policy(self):
         async with self._session_maker() as session:
             policy = (await ProbePolicyRepository(session).list(limit=1))[0]
             await session.commit()
-        if not policy.synthetic_reconcile_enabled:
-            return None
-        async with self._tick_lock.hold() as acquired:
-            if not acquired:
-                return ProbeSyntheticReconcileResult()
-            return await self._execute_tick(policy)
+            return policy
 
-    async def _run(self) -> None:
-        while not self._stop_event.is_set():
-            sleep_sec = SYNTHETIC_IDLE_WHEN_DISABLED_SEC
-            try:
-                async with self._session_maker() as session:
-                    policy = (await ProbePolicyRepository(session).list(limit=1))[0]
-                    await session.commit()
-                sleep_sec = max(30, int(policy.synthetic_reconcile_tick_sec))
-                if policy.synthetic_reconcile_enabled:
-                    async with self._tick_lock.hold() as acquired:
-                        if acquired:
-                            await self._execute_tick(policy)
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                logger.exception("probe_synthetic_reconcile_tick_failed")
+    async def is_enabled(self) -> bool:
+        if not self._is_configured():
+            return False
+        return bool((await self._policy()).synthetic_reconcile_enabled)
 
-            watchdog.heartbeat(self.__class__.__name__, max_silence_sec=sleep_sec * 2 + 60)
-            try:
-                await asyncio.wait_for(self._stop_event.wait(), timeout=sleep_sec)
-            except asyncio.TimeoutError:
-                continue
+    async def interval_sec(self) -> int:
+        return max(30, int((await self._policy()).synthetic_reconcile_tick_sec))
+
+    async def tick(self) -> ProbeSyntheticReconcileResult:
+        return await self._execute_tick(await self._policy())
 
     async def _execute_tick(self, policy) -> ProbeSyntheticReconcileResult:
         async with self._session_maker() as session:

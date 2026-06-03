@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 from uuid import UUID
 
@@ -13,7 +12,8 @@ from services.wg.schemas import WgPubkeyKvPayload
 from services.wg.service import WgMeshService
 from shared.database.session import AsyncDatabase
 from shared.nats.client import NatsClient
-from shared.reconciler.watchdog import watchdog
+from shared.reconciler.base import Reconciler
+from shared.redis.lock import RedisTickLock
 from shared.utils.logger import StructuredLogger
 
 logger = StructuredLogger(logging.getLogger("wg-mesh-publisher"))
@@ -22,7 +22,9 @@ PUBLISHER_TICK_SEC_DEFAULT = 30
 PUBLISHER_IDLE_WHEN_DISABLED_SEC = 60
 
 
-class WgMeshPeerPublisher:
+class WgMeshPeerPublisher(Reconciler):
+    name = "wg_mesh_publisher"
+
     def __init__(
         self,
         *,
@@ -30,33 +32,23 @@ class WgMeshPeerPublisher:
         nats_config: NatsConfig | None = None,
         nats_client: NatsClient | None = None,
         tick_sec: int = PUBLISHER_TICK_SEC_DEFAULT,
+        tick_lock: RedisTickLock | None = None,
     ) -> None:
         settings = get_settings()
         self._cfg = wg_config or settings.wg_mesh
         self._nats_cfg = nats_config or settings.nats
-        self._enabled = bool(self._cfg.enabled)
-        self._interval_sec = max(5, int(tick_sec))
+        super().__init__(
+            interval_sec=max(5, int(tick_sec)),
+            enabled=bool(self._cfg.enabled),
+            tick_lock=tick_lock,
+        )
         self._session_maker = AsyncDatabase.get_session_maker()
         self._nats: NatsClient | None = nats_client
         self._owns_nats = nats_client is None
-        self._stop_event = asyncio.Event()
-        self._task: asyncio.Task | None = None
         self._last_signatures: dict[UUID, str] = {}
 
-    async def start(self) -> None:
-        if self._task is not None and not self._task.done():
-            return
-        if not self._enabled:
-            logger.info("wg_mesh_publisher_disabled")
-        self._stop_event.clear()
-        self._task = asyncio.create_task(self._run())
-
     async def stop(self) -> None:
-        if self._task is None:
-            return
-        self._stop_event.set()
-        await self._task
-        self._task = None
+        await super().stop()
         if self._owns_nats and self._nats is not None:
             await self._nats.close()
             self._nats = None
@@ -70,27 +62,7 @@ class WgMeshPeerPublisher:
             await self._nats.ensure_kv_bucket(name=KV_PUBKEYS_BUCKET, history=1)
         return self._nats
 
-    async def _run(self) -> None:
-        while not self._stop_event.is_set():
-            sleep_sec = PUBLISHER_IDLE_WHEN_DISABLED_SEC
-            if self._enabled:
-                sleep_sec = self._interval_sec
-                try:
-                    await self._tick()
-                except asyncio.CancelledError:
-                    raise
-                except Exception:
-                    logger.exception("wg_mesh_publish_tick_failed")
-            watchdog.heartbeat(
-                self.__class__.__name__,
-                max_silence_sec=sleep_sec * 2 + 60,
-            )
-            try:
-                await asyncio.wait_for(self._stop_event.wait(), timeout=sleep_sec)
-            except asyncio.TimeoutError:
-                continue
-
-    async def _tick(self) -> None:
+    async def tick(self) -> None:
         nats = await self._ensure_nats()
         async with self._session_maker() as session:
             await self._sync_pubkeys_from_kv(session=session, nats=nats)
