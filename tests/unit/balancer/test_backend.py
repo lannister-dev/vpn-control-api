@@ -57,6 +57,50 @@ async def test_assign_writes_least_loaded_when_no_current_tag():
 
 
 @pytest.mark.asyncio
+async def test_assign_pushes_to_agent_on_tag_change():
+    a, b = _node("a"), _node("b")
+    nodes_by_id = {a.id: a, b.id: b}
+    vpn_key = MagicMock()
+    vpn_key.entry_routing_override_backend_tag = None
+    repo = MagicMock()
+    repo.get_by_id = AsyncMock(return_value=vpn_key)
+    repo.update_by_id = AsyncMock()
+    transport = MagicMock()
+    transport.enqueue_for_key_state = AsyncMock()
+    balancer = BackendBalancer(nats=None, vpn_key_repository=repo, transport=transport)
+
+    key_id = uuid4()
+    loads = {"backend-a": 10, "backend-b": 0}
+    chosen = await balancer.assign_key_backend(
+        key_id=key_id, allowed_backend_ids=[a.id, b.id],
+        nodes_by_id=nodes_by_id, backend_loads=loads,
+    )
+    assert chosen == "backend-b"
+    transport.enqueue_for_key_state.assert_awaited_once_with(key_id=key_id, desired_state="active")
+
+
+@pytest.mark.asyncio
+async def test_assign_no_push_when_tag_unchanged():
+    a, b = _node("a"), _node("b")
+    nodes_by_id = {a.id: a, b.id: b}
+    vpn_key = MagicMock()
+    vpn_key.entry_routing_override_backend_tag = "backend-a"
+    repo = MagicMock()
+    repo.get_by_id = AsyncMock(return_value=vpn_key)
+    repo.update_by_id = AsyncMock()
+    transport = MagicMock()
+    transport.enqueue_for_key_state = AsyncMock()
+    balancer = BackendBalancer(nats=None, vpn_key_repository=repo, transport=transport)
+
+    loads = {"backend-a": 1, "backend-b": 0}
+    await balancer.assign_key_backend(
+        key_id=uuid4(), allowed_backend_ids=[a.id, b.id],
+        nodes_by_id=nodes_by_id, backend_loads=loads,
+    )
+    transport.enqueue_for_key_state.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_assign_keeps_current_when_gap_small_and_skips_write():
     a, b = _node("a"), _node("b")
     nodes_by_id = {a.id: a, b.id: b}
