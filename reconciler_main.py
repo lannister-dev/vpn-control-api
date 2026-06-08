@@ -11,7 +11,7 @@ from services.admin.transport.reconcilers.cleanup import AdminTransportCleanupRe
 from services.alerts.reconcilers.cleanup import AlertsCleanupReconciler
 from services.artifacts.models import ProfileArtifact  # noqa: F401
 from services.auth.admin.models import AdminAuditEvent, AdminSession, AdminUser  # noqa: F401
-from services.balancer.reconcilers.balance import BalanceReconciler
+from services.balancer.load_consumer import BackendLoadRebalanceConsumer
 from services.billing.models import BalanceTransaction, PaymentOrder  # noqa: F401
 from services.billing.reconcilers.expiration import BillingOrderExpirationReconciler
 from services.config import get_settings
@@ -101,7 +101,6 @@ def _build_reconcilers(notifications: NotificationService, nats_client: NatsClie
         EntryAutoDrainReconciler(),
         UpstreamFailoverReconciler(),
         EntryRoutingPublisher(),
-        BalanceReconciler(),
         WgMeshPeerPublisher(),
         NotificationsDigestReconciler(notifications=notifications),
         BroadcastSchedulerReconciler(nats_client=nats_client),
@@ -113,6 +112,7 @@ def _build_nats_runtimes(nats_settings, notifications: NotificationService) -> l
         NodeAgentRuntime(nats_settings, notifications=notifications),
         UserTrafficNatsConsumer(nats_settings),
         NodeTrafficNatsConsumer(nats_settings),
+        BackendLoadRebalanceConsumer(nats_settings),
         SupportInboundConsumer(nats_settings),
         SupportSentConsumer(nats_settings),
     ]

@@ -17,6 +17,7 @@ from nats.errors import (
     TimeoutError as NatsTimeoutError,
 )
 from nats.js.api import AckPolicy, ConsumerConfig, DeliverPolicy, StreamConfig
+from nats.js.errors import KeyNotFoundError, NoKeysError, NotFoundError
 
 from services.config import NatsConfig
 from shared.utils.logger import StructuredLogger
@@ -253,8 +254,6 @@ class NatsClient:
         return await kv.put(key, payload)
 
     async def kv_list_all(self, *, bucket: str) -> dict[str, bytes]:
-        from nats.js.errors import KeyNotFoundError, NoKeysError, NotFoundError
-
         try:
             kv = await self.jetstream().key_value(bucket)
         except NotFoundError:

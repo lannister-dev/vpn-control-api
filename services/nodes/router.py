@@ -137,16 +137,15 @@ async def update_node_by_id(
         payload: AdminNodeUpdateIn,
         service: VpnNodeService = Depends(get_vpn_node_service),
 ):
-    data = payload.model_dump(exclude_unset=True)
-    if not data:
+    if not payload.model_fields_set:
         raise HTTPException(status_code=422, detail="Empty payload")
-    if "zone" in data:
+    if "zone" in payload.model_fields_set:
         try:
-            data["zone"] = service._validated_zone(data["zone"])
+            payload.zone = service._validated_zone(payload.zone)
         except Exception as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
     try:
-        return await service.admin_update_node(node_id, data)
+        return await service.admin_update_node(node_id, payload)
     except AdminNodeNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -162,18 +161,17 @@ async def update_node_by_key(
         payload: AdminNodeUpdateIn,
         service: VpnNodeService = Depends(get_vpn_node_service),
 ):
-    data = payload.model_dump(exclude_unset=True)
-    if not data:
+    if not payload.model_fields_set:
         raise HTTPException(status_code=422, detail="Empty payload")
-    if "zone" in data:
+    if "zone" in payload.model_fields_set:
         try:
-            data["zone"] = service._validated_zone(data["zone"])
+            payload.zone = service._validated_zone(payload.zone)
         except Exception as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
     node = await service.vpn_node_repository.get_by_node_key(node_key)
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
     try:
-        return await service.admin_update_node(node.id, data)
+        return await service.admin_update_node(node.id, payload)
     except AdminNodeNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

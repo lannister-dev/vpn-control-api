@@ -12,11 +12,11 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 from fastapi import Depends, HTTPException, Request
-from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.balancer.entry import EntryBalancer
 from services.config import get_settings
 from services.entry.repository import EntryBackendAssignmentRepository
 from services.nodes.constants import ROLE_ENTRY, ROLE_WHITELIST_ENTRY
@@ -147,6 +147,10 @@ class SubscriptionService:
             get_weight=lambda item: item.selection_score,
             get_entry_key=lambda item: item.entry_node_id,
         )
+
+    @property
+    def entry_balancer(self) -> EntryBalancer:
+        return EntryBalancer(nats=self._nats, settings=self.settings)
 
     async def create(self, data: SubscriptionCreateIn) -> SubscriptionCreatedOut:
         user = await self.user_repository.get_by_id(data.user_id)
@@ -763,28 +767,6 @@ class SubscriptionService:
                 selected_routes=selected_routes,
                 now=now,
             )
-            # Auto-balance backend per key: pin user to the least-loaded backend
-            # via entry_routing_override_backend_tag. Entry-node sing-box picks
-            # this up via build_spec_for_node, so subsequent connections go
-            # directly to the chosen backend without urltest leastPing.
-            try:
-                backend_live_loads = await self._fetch_live_backend_loads()
-                nodes_by_id = await self._collect_backend_nodes_by_id(transport_results)
-                for tr in transport_results:
-                    route_backend_ids = await self.route_repository.list_backend_ids_with_entry_routes(
-                        key_transport=tr.key.transport,
-                    )
-                    route_constrained = tuple(
-                        bid for bid in tr.allowed_backend_ids if bid in set(route_backend_ids)
-                    )
-                    await self._rebalance_key_backend_override(
-                        key=tr.key,
-                        allowed_backend_ids=route_constrained or tr.allowed_backend_ids,
-                        backend_live_loads=backend_live_loads,
-                        nodes_by_id=nodes_by_id,
-                    )
-            except Exception:
-                logger_sub.exception("backend_rebalance_failed")
             SUBSCRIPTION_PAYLOAD_SIZE_BYTES.observe(payload_bytes)
             etag = self._calc_etag(
                 subscription,
@@ -927,7 +909,7 @@ class SubscriptionService:
             allow_dead_entry=True,
         )
         entry_nodes_by_id = await self._entry_nodes_by_id(route_rows=route_rows)
-        entries_by_zone = await self._safe_entries_by_zone()
+        entries_by_zone = await self.node_repository.list_healthy_entries_by_zone()
 
         has_allowed = any(
             self._as_uuid(node.id) in allowed_backend_ids
@@ -983,14 +965,7 @@ class SubscriptionService:
         backend_loads = await self._safe_call_counter(
             self.placement_repository.count_desired_active_by_backend_node
         )
-        # Live entry load = actual sing-box connections per entry-node,
-        # reported every ~10s by each node-agent into NATS KV
-        # `entry-routing-stats`. Falls back to persisted assignment counts
-        # when NATS is unavailable (gives reasonable distribution between
-        # subscription polls of the same user).
-        entry_loads = await self._fetch_live_entry_loads(
-            exclude_subscription_id=self._as_uuid(subscription.id),
-        )
+        entry_loads = await self.entry_balancer.live_entry_loads()
         entry_user_loads = entry_loads
 
         resolved_routes: list[ResolvedSubscriptionRoute] = []
@@ -1008,12 +983,12 @@ class SubscriptionService:
                 continue
 
             if raw_entry_node_id is not None:
-                entry_node = self._select_entry_for_backend(
+                entry_node = self.entry_balancer.select_entry_for_backend(
                     backend_node=node,
                     current_entry=raw_entry_node,
                     user_id=getattr(subscription, "user_id", None),
                     entries_by_zone=entries_by_zone,
-                    entry_user_loads=entry_user_loads,
+                    entry_loads=entry_user_loads,
                 )
                 if entry_node is not None:
                     entry_nodes_by_id[self._as_uuid(entry_node.id)] = entry_node
@@ -1305,18 +1280,19 @@ class SubscriptionService:
                 raw_entry_node = entry_nodes_by_id.get(raw_entry_node_id) if raw_entry_node_id else None
                 if raw_entry_node is None and raw_entry_node_id is not None:
                     try:
-                        raw_entry_node = await self.node_repository.get_by_id(raw_entry_node_id)
+                        rows = await self.node_repository.list_by_ids([raw_entry_node_id])
+                        raw_entry_node = rows[0] if rows else None
                     except Exception:
                         raw_entry_node = None
                     if raw_entry_node is not None:
                         entry_nodes_by_id[raw_entry_node_id] = raw_entry_node
 
-                entry_node = self._select_entry_for_backend(
+                entry_node = self.entry_balancer.select_entry_for_backend(
                     backend_node=node,
                     current_entry=raw_entry_node,
                     user_id=getattr(subscription, "user_id", None),
                     entries_by_zone=entries_by_zone,
-                    entry_user_loads=entry_user_loads,
+                    entry_loads=entry_user_loads,
                 )
                 if entry_node is None:
                     continue
@@ -1937,221 +1913,12 @@ class SubscriptionService:
         return None
 
     @staticmethod
-    def _is_entry_usable(entry) -> bool:
-        if entry is None:
-            return False
-        if not getattr(entry, "is_active", True):
-            return False
-        if not getattr(entry, "is_enabled", True):
-            return False
-        if getattr(entry, "is_draining", False):
-            return False
-        if getattr(entry, "is_virtual", False):
-            return True
-        try:
-            insp = sa_inspect(entry)
-        except Exception:
-            insp = None
-        if insp is None or "agent_state" not in getattr(insp, "unloaded", set()):
-            agent = getattr(entry, "agent_state", None)
-            if agent is not None and getattr(agent, "is_healthy", True) is False:
-                return False
-        return True
-
-    @staticmethod
     def _user_hash_index(user_id, size: int, bucket: int | None = None) -> int:
         if size <= 0:
             return 0
         seed = str(user_id) if bucket is None else f"{user_id}:{bucket}"
         digest = hashlib.sha256(seed.encode("utf-8")).digest()
         return int.from_bytes(digest[:8], "big") % size
-
-    def _current_entry_bucket(self) -> int | None:
-        bucket_sec = int(
-            getattr(
-                getattr(self.settings, "entry_relay", object()),
-                "user_entry_bucket_seconds",
-                0,
-            ) or 0
-        )
-        if bucket_sec <= 0:
-            return None
-        return int(time.time()) // bucket_sec
-
-    async def _safe_entries_by_zone(self) -> dict[str, list[VpnNode]]:
-        fn = getattr(self.node_repository, "list_healthy_entries_by_zone", None)
-        if fn is None:
-            return {}
-        try:
-            result = fn()
-            if hasattr(result, "__await__"):
-                result = await result
-        except Exception:
-            return {}
-        return result if isinstance(result, dict) else {}
-
-    def _select_entry_for_backend(
-            self,
-            *,
-            backend_node: VpnNode,
-            current_entry: VpnNode | None,
-            user_id,
-            entries_by_zone: dict[str, list[VpnNode]],
-            entry_user_loads: dict | None = None,
-    ) -> VpnNode | None:
-        zone = effective_zone(
-            explicit_zone=getattr(backend_node, "zone", None),
-            region=getattr(backend_node, "region", None),
-        )
-        candidates = list(entries_by_zone.get(zone) or [])
-        if self._is_entry_usable(current_entry) and current_entry not in candidates:
-            candidates.append(current_entry)
-        required_role = getattr(current_entry, "role", None) if current_entry is not None else None
-        if required_role:
-            candidates = [e for e in candidates if getattr(e, "role", None) == required_role]
-        candidates = [e for e in candidates if self._is_entry_usable(e)]
-        if not candidates:
-            return current_entry if self._is_entry_usable(current_entry) else None
-
-        loads = entry_user_loads or {}
-        bucket = self._current_entry_bucket()
-        return min(
-            candidates,
-            key=lambda c: (
-                int(loads.get(self._as_uuid(c.id), 0)),
-                self._entry_tiebreak(user_id=user_id, entry_id=c.id, bucket=bucket),
-            ),
-        )
-
-    async def _collect_backend_nodes_by_id(self, transport_results) -> dict:
-        backend_ids = set()
-        for tr in transport_results:
-            backend_ids.update(getattr(tr, "allowed_backend_ids", ()) or ())
-        if not backend_ids:
-            return {}
-        nodes = await self.node_repository.list_by_ids(list(backend_ids))
-        return {self._as_uuid(n.id): n for n in nodes}
-
-    async def _fetch_live_backend_loads(self) -> dict[str, int]:
-        """Return {backend_tag: live_connection_count} aggregated across all
-        entry-nodes from NATS KV (sing-box clash-API reports). Used to pin
-        each user to the least-loaded backend via key override."""
-        from services.routing.entry.constants import KV_STATS_BUCKET
-
-        out: dict[str, int] = {}
-        if self._nats is None:
-            return out
-        try:
-            entries = await self._nats.kv_list_all(bucket=KV_STATS_BUCKET)
-        except Exception:
-            logger_sub.exception("live_backend_loads_fetch_failed")
-            return out
-        for raw in entries.values():
-            try:
-                payload = json.loads(raw.decode("utf-8"))
-            except (UnicodeDecodeError, json.JSONDecodeError):
-                continue
-            for tag, count in (payload.get("by_backend") or {}).items():
-                out[tag] = out.get(tag, 0) + int(count)
-        return out
-
-    async def _rebalance_key_backend_override(
-            self,
-            *,
-            key,
-            allowed_backend_ids,
-            backend_live_loads: dict[str, int],
-            nodes_by_id: dict,
-    ) -> None:
-        if not allowed_backend_ids:
-            return
-        candidates: list[tuple[int, int, str]] = []
-        for bid in allowed_backend_ids:
-            node = nodes_by_id.get(bid)
-            if not node or not getattr(node, "is_enabled", True):
-                continue
-            if getattr(node, "is_draining", False):
-                continue
-            tag = f"backend-{node.name}"
-            load = int(backend_live_loads.get(tag, 0))
-            tiebreak = self._backend_tiebreak(key_id=key.vpn_key_id, backend_id=node.id)
-            candidates.append((load, tiebreak, tag))
-        if not candidates:
-            return
-        candidates.sort()
-        chosen_tag = candidates[0][2]
-        try:
-            vpn_key = await self.vpn_key_repository.get_by_id(key.vpn_key_id)
-            if vpn_key is None:
-                return
-            current_tag = vpn_key.entry_routing_override_backend_tag
-            current_in_candidates = any(c[2] == current_tag for c in candidates)
-            if current_in_candidates and current_tag:
-                current_load = next(c[0] for c in candidates if c[2] == current_tag)
-                best_load = candidates[0][0]
-                gap = current_load - best_load
-                relative = gap / max(1, current_load)
-                if gap <= 2 or relative < 0.30:
-                    chosen_tag = current_tag
-            if current_tag != chosen_tag:
-                await self.vpn_key_repository.update_by_id(
-                    key.vpn_key_id,
-                    {"entry_routing_override_backend_tag": chosen_tag},
-                )
-        except Exception:
-            logger_sub.exception("backend_override_update_failed", key_id=str(key.vpn_key_id))
-            return
-        backend_live_loads[chosen_tag] = backend_live_loads.get(chosen_tag, 0) + 1
-
-    async def _fetch_live_entry_loads(
-            self, *, exclude_subscription_id,
-    ) -> dict[UUID, int]:
-        """Return {entry_node_id: live_connection_count} from sing-box
-        clash-api reports cached in NATS KV. Falls back to DB-assignment
-        counts when NATS is unavailable or the bucket is empty."""
-        from services.routing.entry.constants import KV_STATS_BUCKET
-
-        live: dict[UUID, int] = {}
-        if self._nats is not None:
-            try:
-                entries = await self._nats.kv_list_all(bucket=KV_STATS_BUCKET)
-                for raw in entries.values():
-                    try:
-                        payload = json.loads(raw.decode("utf-8"))
-                    except (UnicodeDecodeError, json.JSONDecodeError):
-                        continue
-                    node_id_raw = payload.get("node_id")
-                    total = payload.get("total")
-                    if node_id_raw and total is not None:
-                        try:
-                            node_uuid = UUID(str(node_id_raw))
-                        except ValueError:
-                            continue
-                        live[node_uuid] = live.get(node_uuid, 0) + int(total)
-            except Exception:
-                logger_sub.exception("live_entry_loads_fetch_failed")
-
-        if live:
-            return live
-
-        # Fallback: persisted assignment counts (lower fidelity but always
-        # available; updates only on subscription fetch).
-        try:
-            return await self.subscription_repository.count_active_subs_by_entry(
-                exclude_subscription_id=exclude_subscription_id,
-            )
-        except Exception:
-            return {}
-
-    @staticmethod
-    def _entry_tiebreak(*, user_id, entry_id, bucket: int | None) -> int:
-        seed = f"{user_id}:{bucket}:{entry_id}" if bucket is not None else f"{user_id}:{entry_id}"
-        return int.from_bytes(hashlib.sha256(seed.encode()).digest()[:8], "big")
-
-    @staticmethod
-    def _backend_tiebreak(*, key_id, backend_id) -> int:
-        seed = f"{key_id}:{backend_id}"
-        return int.from_bytes(hashlib.sha256(seed.encode()).digest()[:8], "big")
 
     async def _set_placement_desired_state(
             self,
