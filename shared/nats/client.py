@@ -17,10 +17,10 @@ from nats.errors import (
     TimeoutError as NatsTimeoutError,
 )
 from nats.js.api import AckPolicy, ConsumerConfig, DeliverPolicy, StreamConfig
+from nats.js.errors import KeyNotFoundError, NoKeysError, NotFoundError
 
 from services.config import NatsConfig
 from shared.utils.logger import StructuredLogger
-from nats.js.errors import KeyNotFoundError, NoKeysError, NotFoundError
 
 logger_nats = StructuredLogger(logging.getLogger("nats-client"))
 
