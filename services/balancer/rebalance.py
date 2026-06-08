@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from services.balancer.backend import BackendBalancer
 from services.nodes.repository import VpnNodeRepository
 from services.placements.repository import UserPlacementRepository
+from services.placements.transport import NodeAgentPlacementTransport
 from services.vpn.keys.repository import VpnKeyRepository
 from shared.utils.logger import StructuredLogger
 
@@ -20,7 +21,11 @@ class BackendRebalancer:
         self._node_repository = VpnNodeRepository(session)
         self._key_repository = VpnKeyRepository(session)
         self._placement_repository = UserPlacementRepository(session)
-        self._backend = BackendBalancer(nats=nats, vpn_key_repository=self._key_repository)
+        self._backend = BackendBalancer(
+            nats=nats,
+            vpn_key_repository=self._key_repository,
+            transport=NodeAgentPlacementTransport(session),
+        )
 
     async def rebalance(self) -> int:
         backends = await self._node_repository.list_live_backends()

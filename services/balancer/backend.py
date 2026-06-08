@@ -6,6 +6,7 @@ import logging
 from pydantic import ValidationError
 
 from services.balancer.selection import BackendCandidate, choose_backend_tag
+from services.placements.schemas import PlacementDesiredState
 from services.routing.entry.constants import KV_STATS_BUCKET
 from services.routing.entry.schemas import EntryRoutingStatsKv
 from services.vpn.keys.schemas import VpnKeyRoutingOverrideUpdate
@@ -15,9 +16,10 @@ logger = StructuredLogger(logging.getLogger("balancer.backend"))
 
 
 class BackendBalancer:
-    def __init__(self, *, nats=None, vpn_key_repository):
+    def __init__(self, *, nats=None, vpn_key_repository, transport=None):
         self._nats = nats
         self._vpn_key_repository = vpn_key_repository
+        self._transport = transport
 
     @staticmethod
     async def fetch_backend_loads(nats) -> dict[str, int]:
@@ -90,6 +92,11 @@ class BackendBalancer:
                         entry_routing_override_backend_tag=chosen_tag,
                     ).model_dump(exclude_unset=True),
                 )
+                if self._transport is not None:
+                    await self._transport.enqueue_for_key_state(
+                        key_id=key_id,
+                        desired_state=PlacementDesiredState.active.value,
+                    )
         except Exception:
             logger.exception("backend_override_update_failed", key_id=str(key_id))
             return None
