@@ -35,6 +35,7 @@ from services.nodes.schemas import (
     AdminNodeCreateIn,
     AdminNodeCreateOut,
     AdminNodeRotateBootstrapOut,
+    AdminNodeUpdateIn,
     NodeAgentDetails,
     NodeAgentInitialOut,
     NodeAgentStateCreate,
@@ -533,46 +534,48 @@ class VpnNodeService:
             )
         return candidate
 
-    async def admin_update_node(self, node_id: UUID, data: dict) -> VpnNode:
+    async def admin_update_node(self, node_id: UUID, data: AdminNodeUpdateIn) -> VpnNode:
         node = await self.vpn_node_repository.get_by_id(node_id)
         if node is None:
             raise AdminNodeNotFoundError(f"node {node_id} not found")
 
+        fields_set = data.model_fields_set
         prev_role = node.role
-        new_role = data.get("role", prev_role)
+        new_role = data.role if "role" in fields_set else prev_role
         is_role_swap_off_backend = (
             prev_role == ROLE_BACKEND and new_role != ROLE_BACKEND
         )
         prev_serving = (
             node.role == ROLE_BACKEND and node.is_enabled and not node.is_draining
         )
-        new_is_enabled = data.get("is_enabled", node.is_enabled)
-        new_is_draining = data.get("is_draining", node.is_draining)
+        new_is_enabled = data.is_enabled if "is_enabled" in fields_set else node.is_enabled
+        new_is_draining = data.is_draining if "is_draining" in fields_set else node.is_draining
         will_serve = (
             new_role == ROLE_BACKEND and new_is_enabled and not new_is_draining
         )
         became_serving_backend = will_serve and not prev_serving
+        stopped_serving_backend = prev_serving and not will_serve
 
-        updated = await self.vpn_node_repository.update_by_id(node_id, data)
+        updated = await self.vpn_node_repository.update_by_id(
+            node_id, data.model_dump(exclude_unset=True),
+        )
 
-        if became_serving_backend:
-            import asyncio
+        if became_serving_backend or stopped_serving_backend:
+            from services.balancer.rebalance import BackendRebalancer
 
-            from services.balancer.service import BalancerService
-            from services.config import get_settings
-
-            async def _kick() -> None:
-                try:
-                    plan = await BalancerService(config=get_settings().balancer).run_once()
-                    logger_node.info(
-                        "balancer_kick_after_node_serving",
-                        node_id=str(node_id),
-                        moved=len(plan.moves),
-                    )
-                except Exception:
-                    logger_node.exception("balancer_kick_failed", node_id=str(node_id))
-
-            asyncio.create_task(_kick())
+            reason = "serving" if became_serving_backend else "stopped"
+            try:
+                moved = await BackendRebalancer(
+                    self.vpn_node_repository.session,
+                ).rebalance()
+                logger_node.info(
+                    "balancer_kick_after_backend_state_change",
+                    node_id=str(node_id),
+                    reason=reason,
+                    moved=moved,
+                )
+            except Exception:
+                logger_node.exception("balancer_kick_failed", node_id=str(node_id))
 
         if is_role_swap_off_backend:
             from sqlalchemy import delete as sa_delete

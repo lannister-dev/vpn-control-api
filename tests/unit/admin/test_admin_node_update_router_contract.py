@@ -41,7 +41,7 @@ def _make_service(*, get_by_id_return=None, get_by_node_key_return=None, update_
         if get_by_id_return is None and get_by_node_key_return is None:
             from services.nodes.exceptions import AdminNodeNotFoundError
             raise AdminNodeNotFoundError(f"node {node_id} not found")
-        return await repo.update_by_id(node_id, data)
+        return await repo.update_by_id(node_id, data.model_dump(exclude_unset=True))
 
     return SimpleNamespace(
         vpn_node_repository=repo,

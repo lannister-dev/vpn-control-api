@@ -120,6 +120,14 @@ class RoutingKeyRowOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class EntryRoutingStatsKv(BaseModel):
+    node_id: UUID | None = None
+    total: int = 0
+    by_backend: dict[str, int] = {}
+
+    model_config = ConfigDict(extra="ignore")
+
+
 class RoutingLiveStatsByBackend(BaseModel):
     tag: str
     connections: int

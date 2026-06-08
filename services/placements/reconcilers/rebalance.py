@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import functools
 import logging
+import time
+from sqlalchemy import text
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -105,7 +108,6 @@ class PlacementRebalanceReconciler(Reconciler):
     async def _deactivate_placements_on_draining_backends(
         self, session: AsyncSession,
     ) -> list[UUID]:
-        from sqlalchemy import text
         result = await session.execute(text("""
             UPDATE user_placement up
             SET desired_state = 'inactive',
@@ -145,3 +147,15 @@ class PlacementRebalanceReconciler(Reconciler):
         )
         result = await session.execute(stmt)
         return list(result.scalars().all())
+
+
+# def decorator(func):
+#     @functools.wraps(func)
+#     def wrapper(*args, **kwargs):
+#         time.
+#
+#
+#
+# @decorator
+# def example(param):
+#     return

@@ -57,6 +57,10 @@ class VpnKeyInternalCreate(BaseModel):
         return v.replace(tzinfo=timezone.utc)
 
 
+class VpnKeyRoutingOverrideUpdate(BaseModel):
+    entry_routing_override_backend_tag: str | None = None
+
+
 class VpnKeyInternalUpdate(BaseModel):
     valid_until: datetime | None = None
     traffic_limit_mb: int | None = None
