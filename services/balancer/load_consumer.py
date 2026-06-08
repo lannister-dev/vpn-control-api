@@ -34,16 +34,21 @@ class BackendLoadRebalanceConsumer:
             max_age=self._config.js_traffic_max_age_s,
             duplicate_window=self._config.js_traffic_duplicate_window_s,
         )
+        durable = f"{self._config.js_consumer_prefix}-balancer-load"
         await self._nats.jetstream_subscribe_durable(
             subject=self._config.nodes_traffic_subject,
-            durable="vpn-control-api-balancer-load",
-            queue="vpn-control-api-balancer-load",
+            durable=durable,
+            queue=durable,
             handler=self._handle_message,
             ack_wait_s=self._config.js_traffic_ack_wait_s,
             max_deliver=self._config.js_traffic_max_deliver,
         )
         self._running = True
-        logger.info("backend_load_consumer_started", subject=self._config.nodes_traffic_subject)
+        logger.info(
+            "backend_load_consumer_started",
+            subject=self._config.nodes_traffic_subject,
+            durable=durable,
+        )
 
     async def stop(self):
         if not self._running:
