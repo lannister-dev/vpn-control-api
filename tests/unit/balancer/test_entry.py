@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 from uuid import uuid4
@@ -12,7 +13,7 @@ def _balancer():
     return EntryBalancer(nats=None, settings=settings)
 
 
-def _entry(*, node_id=None, is_active=True, is_enabled=True, is_draining=False, is_healthy=True, role="entry", zone="europe", region="de"):
+def _entry(*, node_id=None, is_active=True, is_enabled=True, is_draining=False, is_healthy=True, last_seen_age_sec=5, role="entry", zone="europe", region="de"):
     e = MagicMock()
     e.id = node_id or uuid4()
     e.is_active = is_active
@@ -24,6 +25,10 @@ def _entry(*, node_id=None, is_active=True, is_enabled=True, is_draining=False, 
     e.region = region
     agent = MagicMock()
     agent.is_healthy = is_healthy
+    agent.last_seen_at = (
+        None if last_seen_age_sec is None
+        else datetime.now(timezone.utc) - timedelta(seconds=last_seen_age_sec)
+    )
     e.agent_state = agent
     return e
 
@@ -92,3 +97,37 @@ def test_different_users_spread_across_pool():
         for _ in range(200)
     }
     assert len(picks) == 4
+
+
+def test_entry_usable_rejects_stale_heartbeat():
+    # is_healthy still True but heartbeat is old → must NOT be issuable.
+    stale = _entry(is_healthy=True, last_seen_age_sec=600)
+    assert EntryBalancer._is_entry_usable(stale) is False
+
+
+def test_entry_usable_rejects_missing_heartbeat():
+    no_hb = _entry(is_healthy=True, last_seen_age_sec=None)
+    assert EntryBalancer._is_entry_usable(no_hb) is False
+
+
+def test_entry_usable_accepts_fresh_healthy():
+    fresh = _entry(is_healthy=True, last_seen_age_sec=5)
+    assert EntryBalancer._is_entry_usable(fresh) is True
+
+
+def test_entry_usable_rejects_unhealthy():
+    assert EntryBalancer._is_entry_usable(_entry(is_healthy=False)) is False
+
+
+def test_stale_current_entry_not_kept():
+    # sticky current_entry that went stale must be dropped, fresh pool used instead.
+    bal = _balancer()
+    backend = _backend()
+    stale_current = _entry(is_healthy=True, last_seen_age_sec=600)
+    fresh = _entry(is_healthy=True, last_seen_age_sec=5)
+    pool = {"europe": [fresh]}
+    picked = bal.select_entry_for_backend(
+        backend_node=backend, current_entry=stale_current, user_id=uuid4(), entries_by_zone=pool,
+    )
+    assert picked is not None
+    assert picked.id == fresh.id

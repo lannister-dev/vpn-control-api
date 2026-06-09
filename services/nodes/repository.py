@@ -1,13 +1,14 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from services.nodes.constants import ROLE_BACKEND, ROLE_ENTRY, ROLE_WHITELIST_ENTRY
 from services.nodes.models import NodeAgentIdentity, NodeAgentState, VpnNode
+from services.routing.entry.constants import ENTRY_HEARTBEAT_STALE_SEC
 from shared.database.base_repository import BaseRepository
 
 
@@ -77,6 +78,7 @@ class VpnNodeRepository(BaseRepository[VpnNode]):
     ) -> dict[str, list[VpnNode]]:
         from shared.utils.node_display import effective_zone
 
+        fresh_after = datetime.now(timezone.utc) - timedelta(seconds=ENTRY_HEARTBEAT_STALE_SEC)
         stmt = (
             select(self.model)
             .outerjoin(NodeAgentState, NodeAgentState.node_id == self.model.id)
@@ -88,7 +90,11 @@ class VpnNodeRepository(BaseRepository[VpnNode]):
                 self.model.is_draining.is_(False),
                 or_(
                     NodeAgentState.id.is_(None),
-                    NodeAgentState.is_healthy.is_(True),
+                    and_(
+                        NodeAgentState.is_healthy.is_(True),
+                        NodeAgentState.last_seen_at.is_not(None),
+                        NodeAgentState.last_seen_at >= fresh_after,
+                    ),
                 ),
             )
             .order_by(self.model.id.asc())

@@ -3,12 +3,13 @@ from __future__ import annotations
 import hashlib
 import logging
 import time
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from pydantic import ValidationError
 
 from services.nodes.models import VpnNode
-from services.routing.entry.constants import KV_STATS_BUCKET
+from services.routing.entry.constants import ENTRY_HEARTBEAT_STALE_SEC, KV_STATS_BUCKET
 from services.routing.entry.schemas import EntryRoutingStatsKv
 from shared.utils.logger import StructuredLogger
 from shared.utils.node_display import effective_zone
@@ -99,7 +100,13 @@ class EntryBalancer:
         if entry.is_virtual:
             return True
         agent = entry.agent_state
-        return agent is None or agent.is_healthy is not False
+        if agent is None:
+            return True
+        if agent.is_healthy is not True:
+            return False
+        if agent.last_seen_at is None:
+            return False
+        return agent.last_seen_at >= datetime.now(timezone.utc) - timedelta(seconds=ENTRY_HEARTBEAT_STALE_SEC)
 
     @staticmethod
     def _entry_tiebreak(*, user_id, entry_id, bucket: int | None) -> int:
