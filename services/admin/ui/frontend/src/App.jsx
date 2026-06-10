@@ -30,6 +30,11 @@ import { SettingsPage } from "./pages/Settings.jsx";
 import { TicketsPage } from "./pages/Tickets.jsx";
 import { SupportTemplatesPage } from "./pages/SupportTemplates.jsx";
 import { BroadcastsPage } from "./pages/Broadcasts.jsx";
+import { FinanceOverviewPage } from "./pages/FinanceOverview.jsx";
+import { FinanceIncomePage } from "./pages/FinanceIncome.jsx";
+import { FinanceExpensesPage } from "./pages/FinanceExpenses.jsx";
+import { FinanceMetricsPage } from "./pages/FinanceMetrics.jsx";
+import { FinanceRatesPage } from "./pages/FinanceRates.jsx";
 
 const PAGES = {
   overview: OverviewPage,
@@ -49,6 +54,11 @@ const PAGES = {
   tickets: TicketsPage,
   "support-templates": SupportTemplatesPage,
   broadcasts: BroadcastsPage,
+  "fin-overview": FinanceOverviewPage,
+  "fin-income": FinanceIncomePage,
+  "fin-expenses": FinanceExpensesPage,
+  "fin-metrics": FinanceMetricsPage,
+  "fin-rates": FinanceRatesPage,
 };
 
 const CRUMBS = {
@@ -62,6 +72,11 @@ const CRUMBS = {
   users: ["Workspace", "Бизнес", "Пользователи"],
   plans: ["Workspace", "Бизнес", "Тарифы"],
   subscriptions: ["Workspace", "Бизнес", "Подписки"],
+  "fin-overview": ["Workspace", "Финансы", "Обзор / P&L"],
+  "fin-income": ["Workspace", "Финансы", "Доходы"],
+  "fin-expenses": ["Workspace", "Финансы", "Расходы"],
+  "fin-metrics": ["Workspace", "Финансы", "Метрики"],
+  "fin-rates": ["Workspace", "Финансы", "Комиссии"],
   tickets: ["Workspace", "Поддержка", "Тикеты"],
   "support-templates": ["Workspace", "Поддержка", "Шаблоны"],
   broadcasts: ["Workspace", "Поддержка", "Рассылки"],

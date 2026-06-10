@@ -13,6 +13,13 @@ const GROUPS = [
     { id: "placements", label: "Плейсменты", icon: "map-pin" },
     { id: "transport", label: "Очередь", icon: "activity" },
   ]},
+  { title: "Финансы", items: [
+    { id: "fin-overview", label: "Обзор / P&L", icon: "pie-chart" },
+    { id: "fin-income", label: "Доходы", icon: "trending-up" },
+    { id: "fin-expenses", label: "Расходы", icon: "receipt" },
+    { id: "fin-metrics", label: "Метрики", icon: "activity" },
+    { id: "fin-rates", label: "Комиссии", icon: "percent" },
+  ]},
   { title: "Бизнес", items: [
     { id: "users", label: "Пользователи", icon: "users" },
     { id: "plans", label: "Тарифы", icon: "wallet" },
