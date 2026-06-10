@@ -5,9 +5,109 @@ import { Icon } from "../components/Icon.jsx";
 import { PeriodSelector, FinLoading, FinError, periodLabel, rangeFor } from "./finance/kit.jsx";
 import { fmtRub, fmtRubK, fmtCur } from "./finance/format.js";
 import { KIND_LABELS, KIND_COLORS, KIND_CHIP } from "./finance/labels.js";
+import { downloadCsv } from "./finance/csv.js";
 
 const KIND_OPTS = Object.keys(KIND_LABELS).map((v) => ({ v, l: KIND_LABELS[v] }));
 const CURRENCIES = ["RUB", "EUR", "USD", "GBP"];
+const PERIOD_OPTS = [{ v: "monthly", l: "Ежемесячно" }, { v: "yearly", l: "Ежегодно" }, { v: "weekly", l: "Еженедельно" }];
+
+function TemplateDrawer({ template, onClose, onSaved }) {
+  const editing = !!template;
+  const today = new Date().toISOString().slice(0, 10);
+  const [form, setForm] = useState(() => template
+    ? { name: template.name, kind: template.kind, amount: String(template.amount), currency: template.currency, fx_rate: template.fx_rate ? String(template.fx_rate) : "", period: template.period, next_run_at: (template.next_run_at || "").slice(0, 10) || today, vendor: template.vendor || "", region: template.region || "" }
+    : { name: "", kind: "infrastructure", amount: "", currency: "RUB", fx_rate: "", period: "monthly", next_run_at: today, vendor: "", region: "" });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState(null);
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const nonRub = form.currency !== "RUB";
+
+  const save = async () => {
+    setSaving(true); setErr(null);
+    const body = {
+      name: form.name, kind: form.kind, amount: parseFloat(form.amount),
+      currency: form.currency, fx_rate: nonRub ? parseFloat(form.fx_rate) : null,
+      period: form.period, next_run_at: `${form.next_run_at}T00:00:00Z`,
+      vendor: form.vendor || null, region: form.region || null,
+    };
+    try {
+      if (editing) await api.patch(`/finance/expense-templates/${template.id}`, body);
+      else await api.post("/finance/expense-templates", body);
+      onSaved();
+    } catch (e) { setErr(e.message || "ошибка"); setSaving(false); }
+  };
+
+  return (
+    <div className="slideover-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <aside className="slideover">
+        <div className="slideover-head">
+          <div className="slideover-title-main">
+            <div className="slideover-title"><Icon name="repeat" size={16} /> {editing ? "Изменить шаблон" : "Новый шаблон"}</div>
+            <div className="slideover-sub">Регулярный расход · авто-генерация по периоду</div>
+          </div>
+          <button className="btn btn-ghost btn-icon" onClick={onClose}><Icon name="x" size={15} /></button>
+        </div>
+        <div className="slideover-body">
+          <div className="form-field">
+            <label className="form-label">Название</label>
+            <input type="text" placeholder="Hetzner EU-кластер" value={form.name} onChange={(e) => set("name", e.target.value)} />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Категория</label>
+            <select value={form.kind} onChange={(e) => set("kind", e.target.value)}>
+              {KIND_OPTS.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
+            </select>
+          </div>
+          <div className="form-row">
+            <div className="form-field" style={{ marginBottom: 0 }}>
+              <label className="form-label">Сумма</label>
+              <input type="number" placeholder="0" value={form.amount} onChange={(e) => set("amount", e.target.value)} />
+            </div>
+            <div className="form-field" style={{ marginBottom: 0 }}>
+              <label className="form-label">Валюта</label>
+              <select value={form.currency} onChange={(e) => set("currency", e.target.value)}>
+                {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+          </div>
+          {nonRub && (
+            <div className="form-field" style={{ marginTop: 14 }}>
+              <label className="form-label">Курс к ₽</label>
+              <input type="number" placeholder="напр. 94.20" value={form.fx_rate} onChange={(e) => set("fx_rate", e.target.value)} />
+            </div>
+          )}
+          <div className="form-row" style={{ marginTop: 14 }}>
+            <div className="form-field" style={{ marginBottom: 0 }}>
+              <label className="form-label">Период</label>
+              <select value={form.period} onChange={(e) => set("period", e.target.value)}>
+                {PERIOD_OPTS.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
+              </select>
+            </div>
+            <div className="form-field" style={{ marginBottom: 0 }}>
+              <label className="form-label">Следующее списание</label>
+              <input type="date" value={form.next_run_at} onChange={(e) => set("next_run_at", e.target.value)} />
+            </div>
+          </div>
+          <div className="form-row">
+            <div className="form-field" style={{ marginBottom: 0 }}>
+              <label className="form-label">Вендор</label>
+              <input type="text" placeholder="Hetzner" value={form.vendor} onChange={(e) => set("vendor", e.target.value)} />
+            </div>
+            <div className="form-field" style={{ marginBottom: 0 }}>
+              <label className="form-label">Регион</label>
+              <input type="text" placeholder="DE / —" value={form.region} onChange={(e) => set("region", e.target.value)} />
+            </div>
+          </div>
+          {err && <div className="card-bad" style={{ borderRadius: 6 }}>{err}</div>}
+        </div>
+        <div className="slideover-foot">
+          <button className="btn btn-ghost" onClick={onClose}>Отмена</button>
+          <button className="btn btn-primary" disabled={saving || !form.name || !form.amount} onClick={save}><Icon name="check" size={13} /> {saving ? "Сохранение…" : "Сохранить"}</button>
+        </div>
+      </aside>
+    </div>
+  );
+}
 
 function AddExpenseDrawer({ onClose, onSaved }) {
   const today = new Date().toISOString().slice(0, 10);
@@ -105,6 +205,7 @@ function AddExpenseDrawer({ onClose, onSaved }) {
 export function FinanceExpensesPage() {
   const [period, setPeriod] = useState(() => localStorage.getItem("fin.period") || "30d");
   const [drawer, setDrawer] = useState(false);
+  const [tplDrawer, setTplDrawer] = useState(null);
   const [toast, setToast] = useState(null);
   const setP = (p) => { setPeriod(p); localStorage.setItem("fin.period", p); };
 
@@ -138,6 +239,14 @@ export function FinanceExpensesPage() {
     try { await api.del(`/finance/expense-templates/${id}`); templates.refetch(); ping("Шаблон удалён"); } catch (e) { ping("Ошибка: " + e.message); }
   };
 
+  const exportCsv = () => {
+    downloadCsv(
+      `expenses-${period}.csv`,
+      ["incurred_at", "kind", "vendor", "amount", "currency", "amount_rub", "region", "source", "description"],
+      rows.map((r2) => [r2.incurred_at, r2.kind, r2.vendor, r2.amount, r2.currency, r2.amount_rub, r2.region, r2.template_id ? "template" : "one-off", r2.description]),
+    );
+  };
+
   return (
     <div className="page">
       <div className="page-head">
@@ -146,6 +255,7 @@ export function FinanceExpensesPage() {
           <div className="page-subtitle">Операционные затраты · {periodLabel(period)} · источник: Expense API</div>
         </div>
         <div className="page-head-actions">
+          <button className="btn" onClick={exportCsv}><Icon name="download" size={13} /> Экспорт CSV</button>
           <PeriodSelector value={period} onChange={setP} />
           <button className="btn btn-primary" onClick={() => setDrawer(true)}><Icon name="plus" size={13} /> Добавить расход</button>
         </div>
@@ -209,21 +319,24 @@ export function FinanceExpensesPage() {
         </div>
       </div>
 
-      {tpls.length > 0 && (
-        <div className="sec">
-          <div className="sec-head">
-            <Icon name="repeat" size={14} />
-            <div className="sec-title">Регулярные платежи</div>
-            <div className="sec-sub">{tpls.length} шаблонов</div>
-          </div>
-          <div className="tpl-grid">
-            {tpls.map((t) => {
-              const monthly = t.currency === "RUB" ? Number(t.amount) : Math.round(Number(t.amount) * Number(t.fx_rate || 1));
-              return (
-                <div className="tpl-card" key={t.id}>
-                  <div className="tpl-actions">
-                    <button className="btn btn-ghost btn-icon" style={{ width: 24, height: 24 }} title="Удалить" onClick={() => delTemplate(t.id)}><Icon name="trash-2" size={13} /></button>
-                  </div>
+      <div className="sec">
+        <div className="sec-head">
+          <Icon name="repeat" size={14} />
+          <div className="sec-title">Регулярные платежи</div>
+          <div className="sec-sub">{tpls.length} шаблонов</div>
+          <div className="sec-spacer" />
+          <button className="btn btn-xs" onClick={() => setTplDrawer("new")}><Icon name="plus" size={11} /> Шаблон</button>
+        </div>
+        {tpls.length === 0 && <div className="empty-state">Нет шаблонов — добавьте регулярный расход</div>}
+        <div className="tpl-grid">
+          {tpls.map((t) => {
+            const monthly = t.currency === "RUB" ? Number(t.amount) : Math.round(Number(t.amount) * Number(t.fx_rate || 1));
+            return (
+              <div className="tpl-card" key={t.id}>
+                <div className="tpl-actions">
+                  <button className="btn btn-ghost btn-icon" style={{ width: 24, height: 24 }} title="Изменить" onClick={() => setTplDrawer(t)}><Icon name="edit" size={13} /></button>
+                  <button className="btn btn-ghost btn-icon" style={{ width: 24, height: 24 }} title="Удалить" onClick={() => delTemplate(t.id)}><Icon name="trash-2" size={13} /></button>
+                </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
                     <span className={`chip chip-${KIND_CHIP[t.kind] || "muted"}`}>{KIND_LABELS[t.kind] || t.kind}</span>
                   </div>
@@ -239,8 +352,8 @@ export function FinanceExpensesPage() {
             })}
           </div>
         </div>
-      )}
 
+      {tplDrawer && <TemplateDrawer template={tplDrawer === "new" ? null : tplDrawer} onClose={() => setTplDrawer(null)} onSaved={() => { setTplDrawer(null); templates.refetch(); ping("Шаблон сохранён"); }} />}
       {drawer && <AddExpenseDrawer onClose={() => setDrawer(false)} onSaved={(v) => { setDrawer(false); summary.refetch(); prevSummary.refetch(); list.refetch(); ping(`Расход добавлен · ${v || "без вендора"}`); }} />}
       {toast && <div className="toast-wrap"><div className="toast"><span className="status-dot ok" /> {toast}</div></div>}
     </div>

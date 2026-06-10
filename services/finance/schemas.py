@@ -203,3 +203,25 @@ class IncomeOut(BaseModel):
     topup_volume: float
     uncaptured_pct: float
     transactions: list[IncomeTxnOut]
+
+
+class MrrPointOut(BaseModel):
+    month: str
+    base: float
+    neu: float
+    exp: float
+    chu: float
+
+
+class MetricsOut(BaseModel):
+    mrr: float
+    arr: float
+    arpu: float
+    paying_users: int
+    new_paying_users: int
+    churn_rate: float
+    ltv: float
+    cac: float
+    ltv_cac: float | None
+    acquisition_cost: float
+    mrr_series: list[MrrPointOut]

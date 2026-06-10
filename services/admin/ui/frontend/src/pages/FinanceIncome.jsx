@@ -5,6 +5,7 @@ import { Icon } from "../components/Icon.jsx";
 import { Donut } from "./finance/charts.jsx";
 import { PeriodSelector, FinLoading, FinError, periodLabel, rangeFor } from "./finance/kit.jsx";
 import { fmtRub, fmtRubK } from "./finance/format.js";
+import { downloadCsv } from "./finance/csv.js";
 import {
   PROVIDER_LABELS, PROVIDER_COLORS,
   ORDER_TYPE_LABELS, ORDER_TYPE_COLORS,
@@ -51,6 +52,14 @@ export function FinanceIncomePage() {
   const fmtTime = (iso) => iso ? new Date(iso).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—";
   const sum = (arr) => arr.reduce((a, x) => a + x.value, 0);
 
+  const exportCsv = () => {
+    downloadCsv(
+      `income-${period}.csv`,
+      ["paid_at", "user", "provider", "order_type", "period_months", "amount_rub", "fee_rub", "net_rub", "status"],
+      rows.map((r) => [r.paid_at, r.user, r.provider, r.order_type, r.period_months, r.amount_rub, r.fee_rub, r.net_rub, r.status]),
+    );
+  };
+
   return (
     <div className="page">
       <div className="page-head">
@@ -58,7 +67,10 @@ export function FinanceIncomePage() {
           <h1 className="page-title">Доходы</h1>
           <div className="page-subtitle">Входящие платежи · {periodLabel(period)} · источник: PaymentOrder API</div>
         </div>
-        <div className="page-head-actions"><PeriodSelector value={period} onChange={setP} /></div>
+        <div className="page-head-actions">
+          <button className="btn" onClick={exportCsv}><Icon name="download" size={13} /> Экспорт CSV</button>
+          <PeriodSelector value={period} onChange={setP} />
+        </div>
       </div>
 
       {d.uncaptured_pct > 0 && (

@@ -13,6 +13,7 @@ from services.finance.schemas import (
     ExpenseSummaryOut,
     ExpenseUpdateIn,
     IncomeOut,
+    MetricsOut,
     OverviewOut,
     RecurringTemplateCreateIn,
     RecurringTemplateListOut,
@@ -63,6 +64,17 @@ async def finance_income(
 ):
     start, end = _default_range(date_from, date_to)
     return await service.income(start, end, txn_limit=limit)
+
+
+@router.get(
+    "/metrics",
+    response_model=MetricsOut,
+    summary="Unit-economics: MRR/ARR/ARPU/churn/LTV/CAC + MRR series",
+)
+async def finance_metrics(
+    service: FinanceService = Depends(get_finance_service),
+):
+    return await service.metrics()
 
 
 # ── Expenses ───────────────────────────────────────────────

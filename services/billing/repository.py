@@ -198,6 +198,27 @@ class OrderRepository(BaseRepository[PaymentOrder]):
         ).one()
         return float(row[0]), float(row[1])
 
+    async def new_paying_users(
+        self, date_from: datetime, date_to: datetime
+    ) -> int:
+        first_paid = (
+            select(
+                PaymentOrder.user_id,
+                func.min(PaymentOrder.paid_at).label("fp"),
+            )
+            .where(
+                PaymentOrder.status.in_(REVENUE_ORDER_STATUSES),
+                PaymentOrder.order_type != OrderTypeEnum.TOP_UP,
+                PaymentOrder.paid_at.isnot(None),
+            )
+            .group_by(PaymentOrder.user_id)
+            .subquery()
+        )
+        stmt = select(func.count()).select_from(first_paid).where(
+            first_paid.c.fp >= date_from, first_paid.c.fp < date_to
+        )
+        return int((await self.session.execute(stmt)).scalar() or 0)
+
     async def recent_revenue_orders(
         self, *, limit: int = 50
     ) -> list[tuple[PaymentOrder, str | None, int | None]]:

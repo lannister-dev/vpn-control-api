@@ -82,6 +82,22 @@ class ExpenseRepository(BaseRepository[Expense]):
         rows = await self.session.execute(stmt)
         return [(str(r[0]), float(r[1])) for r in rows.all()]
 
+    async def total_by_kinds(
+        self,
+        kinds,
+        *,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+    ) -> float:
+        stmt = select(func.coalesce(func.sum(Expense.amount_rub), 0)).where(
+            Expense.kind.in_(kinds)
+        )
+        if date_from is not None:
+            stmt = stmt.where(Expense.incurred_at >= date_from)
+        if date_to is not None:
+            stmt = stmt.where(Expense.incurred_at < date_to)
+        return float((await self.session.execute(stmt)).scalar() or 0)
+
     async def summary_by_kind(
         self,
         *,

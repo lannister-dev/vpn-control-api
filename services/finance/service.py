@@ -2,16 +2,22 @@ from __future__ import annotations
 
 import calendar
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from uuid import UUID
 
 from fastapi import Depends
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.billing.models import PaymentOrder
 from services.billing.repository import OrderRepository
-from services.finance.constants import MATERIALIZE_CATCHUP_LIMIT
+from services.finance.constants import (
+    ACQUISITION_EXPENSE_KINDS,
+    MATERIALIZE_CATCHUP_LIMIT,
+    METRICS_WINDOW_DAYS,
+    MONTH_LABELS_RU,
+)
 from services.finance.exceptions import ExpenseNotFound, TemplateNotFound
 from services.finance.repository import (
     ExpenseRepository,
@@ -29,6 +35,8 @@ from services.finance.schemas import (
     IncomeOut,
     IncomeTxnOut,
     KpiOut,
+    MetricsOut,
+    MrrPointOut,
     OverviewOut,
     RecurringTemplateCreateIn,
     RecurringTemplateListOut,
@@ -36,6 +44,9 @@ from services.finance.schemas import (
     RecurringTemplateUpdateIn,
     WaterfallItemOut,
 )
+from services.plans.models import Plan, PlanPeriod
+from services.vpn.subscriptions.models import Subscription
+from services.vpn.subscriptions.repository import SubscriptionRepository
 from shared.database.session import AsyncDatabase
 from shared.utils.logger import StructuredLogger
 
@@ -306,6 +317,97 @@ class FinanceService:
             topup_volume=topup,
             uncaptured_pct=round(uncaptured, 1),
             transactions=txns,
+        )
+
+    # ── Analytics: Metrics (unit-economics) ────────────────────
+
+    async def _mrr_and_paying(self, now: datetime) -> tuple[float, int]:
+        monthly = case(
+            (
+                PlanPeriod.price_rub.isnot(None),
+                PlanPeriod.price_rub / func.nullif(Subscription.period_months, 0),
+            ),
+            else_=Plan.price_rub,
+        )
+        stmt = (
+            select(
+                func.coalesce(func.sum(monthly), 0),
+                func.count(func.distinct(Subscription.user_id)),
+            )
+            .select_from(Subscription)
+            .join(Plan, Plan.id == Subscription.plan_id)
+            .outerjoin(
+                PlanPeriod,
+                and_(
+                    PlanPeriod.plan_id == Subscription.plan_id,
+                    PlanPeriod.months == Subscription.period_months,
+                    PlanPeriod.is_active.is_(True),
+                ),
+            )
+            .where(
+                Subscription.is_active.is_(True),
+                or_(Subscription.expires_at.is_(None), Subscription.expires_at > now),
+                Plan.price_rub > 0,
+            )
+        )
+        row = (await self.session.execute(stmt)).one()
+        return float(row[0]), int(row[1])
+
+    async def metrics(self) -> MetricsOut:
+        now = datetime.now(timezone.utc)
+        win_from = now - timedelta(days=METRICS_WINDOW_DAYS)
+
+        mrr, paying = await self._mrr_and_paying(now)
+        arpu = mrr / paying if paying else 0.0
+        arr = mrr * 12
+
+        new_paying = await self.order_repo.new_paying_users(win_from, now)
+        acq = await self.expense_repo.total_by_kinds(
+            list(ACQUISITION_EXPENSE_KINDS), date_from=win_from, date_to=now
+        )
+        cac = acq / new_paying if new_paying else 0.0
+
+        sub_repo = SubscriptionRepository(self.session)
+        _, active_now, expired_now = await sub_repo.count_stats()
+        live_now = max(0, active_now - expired_now)
+        _, active_prev, expired_prev = await sub_repo.count_stats_at(win_from)
+        live_prev = max(0, active_prev - expired_prev)
+        churned = max(0, live_prev + new_paying - live_now)
+        churn_rate = (churned / live_prev * 100) if live_prev else 0.0
+        ltv = (arpu / (churn_rate / 100)) if churn_rate > 0 else arpu * 36
+        ltv_cac = (ltv / cac) if cac else None
+
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        boundaries = [_add_months(month_start, -k) for k in range(12, -1, -1)]
+        live_at = []
+        for b in boundaries:
+            _, a, e = await sub_repo.count_stats_at(b)
+            live_at.append(max(0, a - e))
+        series = []
+        for m in range(12):
+            delta = live_at[m + 1] - live_at[m]
+            series.append(
+                MrrPointOut(
+                    month=MONTH_LABELS_RU[boundaries[m].month - 1],
+                    base=live_at[m + 1] * arpu,
+                    neu=max(0, delta) * arpu,
+                    exp=0.0,
+                    chu=max(0, -delta) * arpu,
+                )
+            )
+
+        return MetricsOut(
+            mrr=mrr,
+            arr=arr,
+            arpu=arpu,
+            paying_users=paying,
+            new_paying_users=new_paying,
+            churn_rate=round(churn_rate, 1),
+            ltv=ltv,
+            cac=cac,
+            ltv_cac=round(ltv_cac, 2) if ltv_cac is not None else None,
+            acquisition_cost=acq,
+            mrr_series=series,
         )
 
     # ── Materialization (called by reconciler) ─────────────────

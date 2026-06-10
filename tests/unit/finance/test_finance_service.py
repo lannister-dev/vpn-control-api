@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
@@ -183,6 +183,27 @@ class TestIncome:
         assert out.uncaptured_pct == 10.0
         assert out.transactions[0].user == "@user"
         assert out.transactions[0].is_top_up is False
+
+
+class TestMetrics:
+    async def test_unit_economics(self, service):
+        service._mrr_and_paying = AsyncMock(return_value=(10000.0, 50))
+        service.order_repo.new_paying_users = AsyncMock(return_value=10)
+        service.expense_repo.total_by_kinds = AsyncMock(return_value=13400.0)
+
+        with patch("services.finance.service.SubscriptionRepository") as SR:
+            inst = SR.return_value
+            inst.count_stats = AsyncMock(return_value=(100, 60, 10))
+            inst.count_stats_at = AsyncMock(return_value=(100, 60, 10))
+            out = await service.metrics()
+
+        assert out.arpu == 200.0
+        assert out.arr == 120000.0
+        assert out.cac == 1340.0
+        assert out.churn_rate == 20.0
+        assert round(out.ltv) == 1000
+        assert out.ltv_cac == 0.75
+        assert len(out.mrr_series) == 12
 
 
 class TestCreateTemplate:
