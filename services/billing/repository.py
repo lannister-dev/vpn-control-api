@@ -1,16 +1,23 @@
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.billing.constants import (
+    NON_GATEWAY_PROVIDERS,
+    REVENUE_ORDER_STATUSES,
+)
 from services.billing.models import (
     BalanceTransaction,
     PaymentOrder,
     PaymentProviderFee,
 )
+from services.billing.schemas import OrderTypeEnum
+from services.users.models import User
 from shared.database.base_repository import BaseRepository
 
 
@@ -95,6 +102,113 @@ class OrderRepository(BaseRepository[PaymentOrder]):
             select(PaymentOrder).where(PaymentOrder.status == status)
         )
         return list(result.scalars().all())
+
+    # ── Analytics aggregations (revenue = paid/completed, excl. top_up) ──
+
+    @staticmethod
+    def _revenue_where(date_from: datetime | None, date_to: datetime | None):
+        conds = [
+            PaymentOrder.status.in_(REVENUE_ORDER_STATUSES),
+            PaymentOrder.order_type != OrderTypeEnum.TOP_UP,
+        ]
+        if date_from is not None:
+            conds.append(PaymentOrder.paid_at >= date_from)
+        if date_to is not None:
+            conds.append(PaymentOrder.paid_at < date_to)
+        return conds
+
+    async def revenue_totals(
+        self, date_from: datetime | None, date_to: datetime | None
+    ) -> tuple[float, float, int]:
+        row = (
+            await self.session.execute(
+                select(
+                    func.coalesce(func.sum(PaymentOrder.amount_rub), 0),
+                    func.coalesce(func.sum(PaymentOrder.fee_rub), 0),
+                    func.count(PaymentOrder.id),
+                ).where(*self._revenue_where(date_from, date_to))
+            )
+        ).one()
+        return float(row[0]), float(row[1]), int(row[2])
+
+    async def revenue_daily(
+        self, date_from: datetime | None, date_to: datetime | None
+    ) -> list[tuple[str, float, float]]:
+        day = func.date(PaymentOrder.paid_at)
+        rows = await self.session.execute(
+            select(
+                day,
+                func.coalesce(func.sum(PaymentOrder.amount_rub), 0),
+                func.coalesce(func.sum(PaymentOrder.fee_rub), 0),
+            )
+            .where(*self._revenue_where(date_from, date_to))
+            .group_by(day)
+            .order_by(day)
+        )
+        return [(str(r[0]), float(r[1]), float(r[2])) for r in rows.all()]
+
+    async def revenue_by(
+        self, column, date_from: datetime | None, date_to: datetime | None
+    ) -> list[tuple[object, float]]:
+        rows = await self.session.execute(
+            select(column, func.coalesce(func.sum(PaymentOrder.amount_rub), 0))
+            .where(*self._revenue_where(date_from, date_to))
+            .group_by(column)
+            .order_by(func.sum(PaymentOrder.amount_rub).desc())
+        )
+        return [(r[0], float(r[1])) for r in rows.all()]
+
+    async def topup_total(
+        self, date_from: datetime | None, date_to: datetime | None
+    ) -> float:
+        conds = [
+            PaymentOrder.status.in_(REVENUE_ORDER_STATUSES),
+            PaymentOrder.order_type == OrderTypeEnum.TOP_UP,
+        ]
+        if date_from is not None:
+            conds.append(PaymentOrder.paid_at >= date_from)
+        if date_to is not None:
+            conds.append(PaymentOrder.paid_at < date_to)
+        row = await self.session.execute(
+            select(func.coalesce(func.sum(PaymentOrder.amount_rub), 0)).where(*conds)
+        )
+        return float(row.scalar() or 0)
+
+    async def uncaptured_commission(
+        self, date_from: datetime | None, date_to: datetime | None
+    ) -> tuple[float, float]:
+        row = (
+            await self.session.execute(
+                select(
+                    func.coalesce(func.sum(PaymentOrder.amount_rub), 0),
+                    func.coalesce(
+                        func.sum(
+                            case(
+                                (PaymentOrder.fee_rub.is_(None), PaymentOrder.amount_rub),
+                                else_=0,
+                            )
+                        ),
+                        0,
+                    ),
+                ).where(
+                    *self._revenue_where(date_from, date_to),
+                    PaymentOrder.provider.notin_(NON_GATEWAY_PROVIDERS),
+                )
+            )
+        ).one()
+        return float(row[0]), float(row[1])
+
+    async def recent_revenue_orders(
+        self, *, limit: int = 50
+    ) -> list[tuple[PaymentOrder, str | None, int | None]]:
+        rows = await self.session.execute(
+            select(PaymentOrder, User.username, User.telegram_id)
+            .join(User, User.id == PaymentOrder.user_id)
+            .where(PaymentOrder.status.in_(REVENUE_ORDER_STATUSES))
+            .order_by(PaymentOrder.paid_at.desc().nullslast())
+            .limit(limit)
+        )
+        return [(r[0], r[1], r[2]) for r in rows.all()]
 
     async def bulk_expire_pending(self, *, now, limit: int = 500) -> int:
         expired_ids_stmt = (

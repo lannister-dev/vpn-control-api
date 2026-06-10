@@ -142,3 +142,64 @@ class RecurringTemplateOut(BaseModel):
 
 class RecurringTemplateListOut(BaseModel):
     items: list[RecurringTemplateOut]
+
+
+# ── Analytics (Overview / Income) ─────────────────────────────
+
+class KpiOut(BaseModel):
+    value: float
+    delta_pct: float | None = None
+    tone: str = "flat"
+
+
+class DailyPointOut(BaseModel):
+    date: str
+    income: float
+    commissions: float
+    expense: float
+    profit: float
+
+
+class WaterfallItemOut(BaseModel):
+    key: str
+    type: str
+    value: float
+
+
+class OverviewOut(BaseModel):
+    gross: KpiOut
+    commissions: KpiOut
+    net: KpiOut
+    expenses: KpiOut
+    profit: KpiOut
+    margin: KpiOut
+    daily: list[DailyPointOut]
+    waterfall: list[WaterfallItemOut]
+
+
+class BreakdownItemOut(BaseModel):
+    key: str
+    value: float
+
+
+class IncomeTxnOut(BaseModel):
+    id: UUID
+    paid_at: datetime | None
+    user: str | None
+    provider: str
+    order_type: str
+    period_months: int
+    amount_rub: Decimal
+    fee_rub: Decimal | None
+    net_rub: Decimal | None
+    status: str
+    is_top_up: bool
+
+
+class IncomeOut(BaseModel):
+    by_provider: list[BreakdownItemOut]
+    by_order_type: list[BreakdownItemOut]
+    by_period: list[BreakdownItemOut]
+    topup_volume: float
+    uncaptured_pct: float
+    transactions: list[IncomeTxnOut]

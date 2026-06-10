@@ -52,6 +52,36 @@ class ExpenseRepository(BaseRepository[Expense]):
         ).scalars().all()
         return list(rows), total
 
+    async def total(
+        self,
+        *,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+    ) -> float:
+        stmt = self._apply_filters(
+            select(func.coalesce(func.sum(Expense.amount_rub), 0)),
+            date_from=date_from,
+            date_to=date_to,
+            kind=None,
+        )
+        return float((await self.session.execute(stmt)).scalar() or 0)
+
+    async def daily(
+        self,
+        *,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+    ) -> list[tuple[str, float]]:
+        day = func.date(Expense.incurred_at)
+        stmt = self._apply_filters(
+            select(day, func.coalesce(func.sum(Expense.amount_rub), 0)),
+            date_from=date_from,
+            date_to=date_to,
+            kind=None,
+        ).group_by(day).order_by(day)
+        rows = await self.session.execute(stmt)
+        return [(str(r[0]), float(r[1])) for r in rows.all()]
+
     async def summary_by_kind(
         self,
         *,

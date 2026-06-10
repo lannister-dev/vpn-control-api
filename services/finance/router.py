@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -12,6 +12,8 @@ from services.finance.schemas import (
     ExpenseOut,
     ExpenseSummaryOut,
     ExpenseUpdateIn,
+    IncomeOut,
+    OverviewOut,
     RecurringTemplateCreateIn,
     RecurringTemplateListOut,
     RecurringTemplateOut,
@@ -19,9 +21,48 @@ from services.finance.schemas import (
 )
 from services.finance.service import FinanceService, get_finance_service
 
+
+def _default_range(
+    date_from: datetime | None, date_to: datetime | None
+) -> tuple[datetime, datetime]:
+    end = date_to or datetime.now(timezone.utc)
+    start = date_from or (end - timedelta(days=30))
+    return start, end
+
 router = APIRouter(
     prefix="/finance", tags=["Finance"], dependencies=[Depends(admin_auth)]
 )
+
+
+# ── Analytics ──────────────────────────────────────────────
+
+@router.get(
+    "/overview",
+    response_model=OverviewOut,
+    summary="P&L overview: KPIs, daily series, profit waterfall",
+)
+async def finance_overview(
+    date_from: datetime | None = Query(default=None),
+    date_to: datetime | None = Query(default=None),
+    service: FinanceService = Depends(get_finance_service),
+):
+    start, end = _default_range(date_from, date_to)
+    return await service.overview(start, end)
+
+
+@router.get(
+    "/income",
+    response_model=IncomeOut,
+    summary="Income breakdowns + recent transactions",
+)
+async def finance_income(
+    date_from: datetime | None = Query(default=None),
+    date_to: datetime | None = Query(default=None),
+    limit: int = Query(50, ge=1, le=200),
+    service: FinanceService = Depends(get_finance_service),
+):
+    start, end = _default_range(date_from, date_to)
+    return await service.income(start, end, txn_limit=limit)
 
 
 # ── Expenses ───────────────────────────────────────────────

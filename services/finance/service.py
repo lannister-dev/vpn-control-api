@@ -9,6 +9,8 @@ from uuid import UUID
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.billing.models import PaymentOrder
+from services.billing.repository import OrderRepository
 from services.finance.constants import MATERIALIZE_CATCHUP_LIMIT
 from services.finance.exceptions import ExpenseNotFound, TemplateNotFound
 from services.finance.repository import (
@@ -16,16 +18,23 @@ from services.finance.repository import (
     RecurringExpenseTemplateRepository,
 )
 from services.finance.schemas import (
+    BreakdownItemOut,
+    DailyPointOut,
     ExpenseCreateIn,
     ExpenseKindSummaryOut,
     ExpenseListOut,
     ExpenseOut,
     ExpenseSummaryOut,
     ExpenseUpdateIn,
+    IncomeOut,
+    IncomeTxnOut,
+    KpiOut,
+    OverviewOut,
     RecurringTemplateCreateIn,
     RecurringTemplateListOut,
     RecurringTemplateOut,
     RecurringTemplateUpdateIn,
+    WaterfallItemOut,
 )
 from shared.database.session import AsyncDatabase
 from shared.utils.logger import StructuredLogger
@@ -64,6 +73,7 @@ class FinanceService:
         self.session = session
         self.expense_repo = ExpenseRepository(session)
         self.template_repo = RecurringExpenseTemplateRepository(session)
+        self.order_repo = OrderRepository(session)
 
     # ── Expenses ───────────────────────────────────────────────
 
@@ -175,6 +185,128 @@ class FinanceService:
         if existing is None:
             raise TemplateNotFound(f"Template {template_id} not found")
         await self.template_repo.delete_by_id(template_id)
+
+    # ── Analytics: Overview / Income ───────────────────────────
+
+    @staticmethod
+    def _kpi(cur: float, prev: float, *, higher_better: bool = True) -> KpiOut:
+        delta = ((cur - prev) / prev * 100) if prev else None
+        if delta is None or abs(delta) < 0.05:
+            tone = "flat"
+        else:
+            good = delta > 0 if higher_better else delta < 0
+            tone = "up" if good else "down"
+        return KpiOut(
+            value=cur,
+            delta_pct=round(delta, 1) if delta is not None else None,
+            tone=tone,
+        )
+
+    async def overview(self, date_from: datetime, date_to: datetime) -> OverviewOut:
+        span = date_to - date_from
+        prev_from, prev_to = date_from - span, date_from
+
+        gross, fee, _ = await self.order_repo.revenue_totals(date_from, date_to)
+        net = gross - fee
+        exp = await self.expense_repo.total(date_from=date_from, date_to=date_to)
+        profit = net - exp
+        margin = (profit / gross * 100) if gross else 0.0
+
+        pg, pf, _ = await self.order_repo.revenue_totals(prev_from, prev_to)
+        pnet = pg - pf
+        pexp = await self.expense_repo.total(date_from=prev_from, date_to=prev_to)
+        pprofit = pnet - pexp
+        pmargin = (pprofit / pg * 100) if pg else 0.0
+
+        rev = {
+            d: (g, f) for d, g, f in await self.order_repo.revenue_daily(date_from, date_to)
+        }
+        expd = dict(await self.expense_repo.daily(date_from=date_from, date_to=date_to))
+        daily = []
+        for d in sorted(set(rev) | set(expd)):
+            g, f = rev.get(d, (0.0, 0.0))
+            e = expd.get(d, 0.0)
+            daily.append(
+                DailyPointOut(date=d, income=g, commissions=f, expense=e, profit=g - f - e)
+            )
+
+        kinds = await self.expense_repo.summary_by_kind(
+            date_from=date_from, date_to=date_to
+        )
+        waterfall = [
+            WaterfallItemOut(key="gross", type="total", value=gross),
+            WaterfallItemOut(key="commissions", type="neg", value=-fee),
+        ]
+        for kind, total_rub, _ in sorted(kinds, key=lambda r: float(r[1]), reverse=True):
+            waterfall.append(
+                WaterfallItemOut(key=kind, type="neg", value=-float(total_rub))
+            )
+        waterfall.append(WaterfallItemOut(key="profit", type="result", value=profit))
+
+        return OverviewOut(
+            gross=self._kpi(gross, pg),
+            commissions=self._kpi(fee, pf, higher_better=False),
+            net=self._kpi(net, pnet),
+            expenses=self._kpi(exp, pexp, higher_better=False),
+            profit=self._kpi(profit, pprofit),
+            margin=self._kpi(margin, pmargin),
+            daily=daily,
+            waterfall=waterfall,
+        )
+
+    async def income(
+        self, date_from: datetime, date_to: datetime, *, txn_limit: int = 50
+    ) -> IncomeOut:
+        by_provider = [
+            BreakdownItemOut(key=str(k), value=v)
+            for k, v in await self.order_repo.revenue_by(
+                PaymentOrder.provider, date_from, date_to
+            )
+        ]
+        by_type = [
+            BreakdownItemOut(key=str(k), value=v)
+            for k, v in await self.order_repo.revenue_by(
+                PaymentOrder.order_type, date_from, date_to
+            )
+        ]
+        by_period = [
+            BreakdownItemOut(key=str(k), value=v)
+            for k, v in await self.order_repo.revenue_by(
+                PaymentOrder.period_months, date_from, date_to
+            )
+        ]
+        topup = await self.order_repo.topup_total(date_from, date_to)
+        gw_gross, gw_unknown = await self.order_repo.uncaptured_commission(
+            date_from, date_to
+        )
+        uncaptured = (gw_unknown / gw_gross * 100) if gw_gross else 0.0
+
+        rows = await self.order_repo.recent_revenue_orders(limit=txn_limit)
+        txns = [
+            IncomeTxnOut(
+                id=order.id,
+                paid_at=order.paid_at,
+                user=username or (str(telegram_id) if telegram_id else None),
+                provider=order.provider,
+                order_type=order.order_type,
+                period_months=order.period_months,
+                amount_rub=order.amount_rub,
+                fee_rub=order.fee_rub,
+                net_rub=order.net_rub,
+                status=order.status,
+                is_top_up=order.order_type == "top_up",
+            )
+            for order, username, telegram_id in rows
+        ]
+
+        return IncomeOut(
+            by_provider=by_provider,
+            by_order_type=by_type,
+            by_period=by_period,
+            topup_volume=topup,
+            uncaptured_pct=round(uncaptured, 1),
+            transactions=txns,
+        )
 
     # ── Materialization (called by reconciler) ─────────────────
 

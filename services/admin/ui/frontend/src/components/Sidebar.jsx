@@ -41,7 +41,7 @@ export function Sidebar({ activeTab, onTab, collapsed, onToggle, onOpenPalette, 
       {mobileOpen && <div className="sidebar-backdrop" onClick={onMobileClose} />}
       <aside className="sidebar" data-collapsed={collapsed} data-mobile-open={mobileOpen || undefined}>
       <div className="workspace" onClick={onToggle} title={collapsed ? "Развернуть" : "Свернуть"}>
-        <div className="workspace-logo">V</div>
+        <div className="workspace-logo" style={{ background: "#0a0a0a", color: "oklch(0.72 0.19 48)" }}>R</div>
         <div className="workspace-text">
           <div className="workspace-name">VPN Control</div>
           <div className="workspace-env">prod · admin</div>
