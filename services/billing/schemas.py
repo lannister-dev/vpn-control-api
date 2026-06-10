@@ -100,6 +100,8 @@ class OrderInternalUpdate(BaseModel):
     completed_at: datetime | None = None
     provider_meta: str | None = None
     subscription_id: UUID | None = None
+    fee_rub: Decimal | None = None
+    net_rub: Decimal | None = None
 
     model_config = ConfigDict(exclude_none=True)
 
@@ -129,6 +131,8 @@ class OrderOut(BaseModel):
     order_type: str = "plan_purchase"
     device_slots_qty: int = 0
     period_months: int = 1
+    fee_rub: Decimal | None = None
+    net_rub: Decimal | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -152,6 +156,27 @@ class OrderPreviewOut(BaseModel):
 class OrderRefundIn(BaseModel):
     reason: str = Field(min_length=1, max_length=512)
     deactivate_subscription: bool = True
+
+
+class ProviderFeeUpsertIn(BaseModel):
+    provider: str = Field(min_length=1, max_length=16)
+    payment_method: int | None = None
+    fee_percent: Decimal = Field(ge=0, le=100)
+
+
+class ProviderFeeOut(BaseModel):
+    id: UUID
+    provider: str
+    payment_method: int | None
+    fee_percent: Decimal
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProviderFeeListOut(BaseModel):
+    items: list[ProviderFeeOut]
 
 
 # ── Balance I/O ───────────────────────────────────────────────

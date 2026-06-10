@@ -17,6 +17,10 @@ from services.billing.reconcilers.expiration import BillingOrderExpirationReconc
 from services.config import get_settings
 from services.entry.models import EntryBackendAssignment  # noqa: F401
 from services.entry.reconcilers.auto_drain import EntryAutoDrainReconciler
+from services.finance.models import Expense, RecurringExpenseTemplate  # noqa: F401
+from services.finance.reconcilers.materialize_templates import (
+    FinanceMaterializeTemplatesReconciler,
+)
 from services.nodes.agent.models import (  # noqa: F401
     NodeTransportEventLog,
     NodeTransportOutbox,
@@ -80,7 +84,7 @@ logger = StructuredLogger(logging.getLogger("reconciler-worker"))
 _METRICS_EXPORT_INTERVAL_SEC = 10
 
 
-def _build_reconcilers(notifications: NotificationService, nats_client: NatsClient | None) -> list:
+def _build_reconcilers(notifications: NotificationService, nats_client: NatsClient | None, snapshot_trigger=None) -> list:
     return [
         RouteWarmupReconciler(),
         RouteAutoCreateReconciler(),
@@ -98,8 +102,9 @@ def _build_reconcilers(notifications: NotificationService, nats_client: NatsClie
         VpnKeyExpirationReconciler(),
         SubscriptionExpirationReconciler(),
         BillingOrderExpirationReconciler(),
+        FinanceMaterializeTemplatesReconciler(),
         EntryAutoDrainReconciler(),
-        UpstreamFailoverReconciler(),
+        UpstreamFailoverReconciler(snapshot_trigger=snapshot_trigger),
         EntryRoutingPublisher(),
         WgMeshPeerPublisher(),
         NotificationsDigestReconciler(notifications=notifications),
@@ -107,9 +112,9 @@ def _build_reconcilers(notifications: NotificationService, nats_client: NatsClie
     ]
 
 
-def _build_nats_runtimes(nats_settings, notifications: NotificationService) -> list:
+def _build_nats_runtimes(node_agent_runtime: NodeAgentRuntime, nats_settings) -> list:
     return [
-        NodeAgentRuntime(nats_settings, notifications=notifications),
+        node_agent_runtime,
         UserTrafficNatsConsumer(nats_settings),
         NodeTrafficNatsConsumer(nats_settings),
         BackendLoadRebalanceConsumer(nats_settings),
@@ -146,8 +151,13 @@ async def lifespan(app: FastAPI):
     notifications = NotificationService(notifications_nats)
     app.state.notifications = notifications
 
-    reconcilers = _build_reconcilers(notifications, notifications_nats)
-    runtimes = _build_nats_runtimes(settings.nats, notifications)
+    node_agent_runtime = NodeAgentRuntime(settings.nats, notifications=notifications)
+    reconcilers = _build_reconcilers(
+        notifications,
+        notifications_nats,
+        snapshot_trigger=node_agent_runtime.trigger_snapshot_for_node,
+    )
+    runtimes = _build_nats_runtimes(node_agent_runtime, settings.nats)
 
     for r in reconcilers:
         await r.start()

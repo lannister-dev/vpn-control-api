@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from uuid import UUID, uuid4
 
 from fastapi import Depends, Request
@@ -32,7 +32,11 @@ from services.billing.exceptions import (
 from services.billing.models import BalanceTransaction, PaymentOrder
 from services.billing.providers.base import PaymentProvider
 from services.billing.providers.registry import PROVIDERS
-from services.billing.repository import OrderRepository, TransactionRepository
+from services.billing.repository import (
+    OrderRepository,
+    ProviderFeeRepository,
+    TransactionRepository,
+)
 from services.billing.schemas import (
     BalanceCreditIn,
     BalanceOut,
@@ -42,6 +46,9 @@ from services.billing.schemas import (
     OrderListOut,
     OrderOut,
     OrderPreviewOut,
+    ProviderFeeListOut,
+    ProviderFeeOut,
+    ProviderFeeUpsertIn,
     TransactionInternalCreate,
     TransactionListOut,
     TransactionOut,
@@ -80,6 +87,7 @@ class BillingService:
         self.session = session
         self.order_repo = OrderRepository(session)
         self.tx_repo = TransactionRepository(session)
+        self.fee_repo = ProviderFeeRepository(session)
         self.user_repo = UserRepository(session)
         self.plan_repo = PlanRepository(session)
         self.sub_repo = SubscriptionRepository(session)
@@ -603,6 +611,27 @@ class BillingService:
             items=[OrderOut.model_validate(o) for o in rows], total=total
         )
 
+    # ── Provider fees (admin-editable commission rates) ────────
+
+    async def list_provider_fees(self) -> ProviderFeeListOut:
+        rows = await self.fee_repo.list_all()
+        return ProviderFeeListOut(
+            items=[ProviderFeeOut.model_validate(row) for row in rows]
+        )
+
+    async def upsert_provider_fee(self, data: ProviderFeeUpsertIn) -> ProviderFeeOut:
+        existing = await self.fee_repo.get_match(data.provider, data.payment_method)
+        if existing is None:
+            row = await self.fee_repo.create(data.model_dump())
+        else:
+            row = await self.fee_repo.update_by_id(
+                existing.id, {"fee_percent": data.fee_percent}
+            )
+        return ProviderFeeOut.model_validate(row)
+
+    async def delete_provider_fee(self, fee_id: UUID) -> None:
+        await self.fee_repo.delete_by_id(fee_id)
+
     # ── Webhook processing ────────────────────────────────────
 
     async def process_webhook(self, provider_name: str, request: Request) -> None:
@@ -644,7 +673,14 @@ class BillingService:
             )
             return
 
-        await self._fulfill_order_locked(order, provider_name, provider_meta=webhook.provider_meta)
+        webhook_fee = getattr(webhook, "fee_rub", None)
+        await self._fulfill_order_locked(
+            order,
+            provider_name,
+            provider_meta=webhook.provider_meta,
+            fee_rub=Decimal(str(webhook_fee)) if webhook_fee is not None else None,
+            payment_method=getattr(webhook, "payment_method", None),
+        )
 
     # ── Stars confirmation (called by bot after successful_payment) ──
 
@@ -669,12 +705,27 @@ class BillingService:
 
     # ── Order fulfillment (shared by webhook + stars confirm) ──────
 
+    async def _resolve_fee_rub(
+        self,
+        provider_name: str,
+        payment_method: int | None,
+        amount_rub: Decimal,
+    ) -> Decimal | None:
+        rule = await self.fee_repo.resolve(provider_name, payment_method)
+        if rule is None:
+            return None
+        return (amount_rub * rule.fee_percent / Decimal("100")).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+
     async def _fulfill_order_locked(
         self,
         order: PaymentOrder,
         provider_name: str,
         *,
         provider_meta: str | None = None,
+        fee_rub: Decimal | None = None,
+        payment_method: int | None = None,
     ) -> None:
         if order.status in ORDER_FINAL_STATUSES:
             log.info(
@@ -716,12 +767,20 @@ class BillingService:
 
         now = datetime.now(timezone.utc)
 
+        if fee_rub is None:
+            fee_rub = await self._resolve_fee_rub(
+                provider_name, payment_method, order.amount_rub
+            )
+        net_rub = order.amount_rub - fee_rub if fee_rub is not None else None
+
         await self.order_repo.update_by_id(
             order.id,
             OrderInternalUpdate(
                 status="paid",
                 paid_at=now,
                 provider_meta=self._merge_meta_strings(order.provider_meta, provider_meta),
+                fee_rub=fee_rub,
+                net_rub=net_rub,
             ).model_dump(exclude_none=True),
         )
 

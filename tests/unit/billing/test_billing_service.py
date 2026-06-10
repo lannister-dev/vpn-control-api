@@ -114,6 +114,8 @@ def service(async_session):
     svc = BillingService(async_session)
     svc.order_repo = AsyncMock()
     svc.tx_repo = AsyncMock()
+    svc.fee_repo = AsyncMock()
+    svc.fee_repo.resolve = AsyncMock(return_value=None)
     svc.user_repo = AsyncMock()
     svc.plan_repo = AsyncMock()
     svc.sub_repo = AsyncMock()
@@ -245,6 +247,48 @@ class TestProcessWebhook:
 
         service._update_user_balance.assert_awaited()
         service._record_transaction.assert_awaited()
+
+    async def test_webhook_freezes_commission_from_rate(self, service):
+        user = _make_user(balance=Decimal("0"))
+        order = _make_order(
+            status="pending",
+            amount_rub=Decimal("299.00"),
+            provider="platega",
+        )
+
+        service.order_repo.get_by_external_id_for_update.return_value = order
+        service.order_repo.update_by_id.return_value = order
+        service.order_repo.get_by_id.return_value = order
+        service.plan_repo.get_by_id.return_value = None
+        service.fee_repo.resolve = AsyncMock(
+            return_value=SimpleNamespace(fee_percent=Decimal("11.0000"))
+        )
+
+        service._lock_user = AsyncMock(return_value=user)
+        service._update_user_balance = AsyncMock()
+        service._record_transaction = AsyncMock()
+        service._auto_purchase = AsyncMock()
+
+        mock_provider = AsyncMock()
+        mock_provider.verify_webhook.return_value = SimpleNamespace(
+            external_id=order.external_id,
+            amount_rub=299.0,
+            provider_meta=None,
+            payment_method=2,
+        )
+
+        request = MagicMock()
+        with patch.object(BillingService, "_get_provider", return_value=mock_provider):
+            await service.process_webhook("platega", request)
+
+        service.fee_repo.resolve.assert_awaited_once_with("platega", 2)
+        paid_update = next(
+            call.args[1]
+            for call in service.order_repo.update_by_id.await_args_list
+            if call.args[1].get("status") == "paid"
+        )
+        assert paid_update["fee_rub"] == Decimal("32.89")
+        assert paid_update["net_rub"] == Decimal("266.11")
 
     async def test_webhook_idempotency_skip(self, service):
         order = _make_order(status="completed")

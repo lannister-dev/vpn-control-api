@@ -118,12 +118,18 @@ class PlategaProvider(BaseApiClient, PaymentProvider):
         if currency and currency != "RUB":
             raise WebhookVerificationFailed("Unsupported Platega webhook currency")
 
+        try:
+            payment_method = int(body.get("paymentMethod"))
+        except (TypeError, ValueError):
+            payment_method = None
+
         return WebhookResult(
             external_id=str(external_id).strip(),
             amount_rub=float(Decimal(str(amount))),
             provider_meta=json.dumps(body, default=str),
             should_fulfill=status == "CONFIRMED",
             provider_status=status,
+            payment_method=payment_method,
         )
 
     @staticmethod

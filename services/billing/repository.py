@@ -6,7 +6,11 @@ from sqlalchemy import func, select
 from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.billing.models import BalanceTransaction, PaymentOrder
+from services.billing.models import (
+    BalanceTransaction,
+    PaymentOrder,
+    PaymentProviderFee,
+)
 from shared.database.base_repository import BaseRepository
 
 
@@ -113,6 +117,42 @@ class OrderRepository(BaseRepository[PaymentOrder]):
             .values(status="expired", updated_at=now)
         )
         return len(ids)
+
+
+class ProviderFeeRepository(BaseRepository[PaymentProviderFee]):
+    def __init__(self, session: AsyncSession):
+        super().__init__(PaymentProviderFee, session)
+
+    async def list_all(self) -> list[PaymentProviderFee]:
+        result = await self.session.execute(
+            select(PaymentProviderFee).order_by(
+                PaymentProviderFee.provider.asc(),
+                PaymentProviderFee.payment_method.asc().nullsfirst(),
+            )
+        )
+        return list(result.scalars().all())
+
+    async def get_match(
+        self, provider: str, payment_method: int | None
+    ) -> PaymentProviderFee | None:
+        result = await self.session.execute(
+            select(PaymentProviderFee).where(
+                PaymentProviderFee.provider == provider,
+                PaymentProviderFee.payment_method.is_(None)
+                if payment_method is None
+                else PaymentProviderFee.payment_method == payment_method,
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def resolve(
+        self, provider: str, payment_method: int | None
+    ) -> PaymentProviderFee | None:
+        if payment_method is not None:
+            exact = await self.get_match(provider, payment_method)
+            if exact is not None:
+                return exact
+        return await self.get_match(provider, None)
 
 
 class TransactionRepository(BaseRepository[BalanceTransaction]):
