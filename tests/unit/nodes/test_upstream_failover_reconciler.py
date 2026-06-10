@@ -102,3 +102,43 @@ async def test_run_once_resyncs_dead_entries_to_live_backend():
     for call in route_service.sync_entry_upstream.await_args_list:
         assert call.kwargs["backend_node_id"] == live[0].id
     session.commit.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_run_once_triggers_snapshot_for_each_failed_over_entry():
+    session = AsyncMock()
+    route_service = SimpleNamespace(sync_entry_upstream=AsyncMock())
+    dead = [_entry(upstream_id=uuid4()), _entry(upstream_id=uuid4())]
+    snapshot_trigger = AsyncMock()
+    with _repo_patch(dead=dead, live=[_backend()]):
+        reconciler = UpstreamFailoverReconciler(
+            session_maker=_SessionMaker(session),
+            route_service_factory=lambda _: route_service,
+            snapshot_trigger=snapshot_trigger,
+        )
+        applied = await reconciler.run_once()
+
+    assert applied == 2
+    assert snapshot_trigger.await_count == 2
+    triggered_ids = {call.kwargs["node_id"] for call in snapshot_trigger.await_args_list}
+    assert triggered_ids == {dead[0].id, dead[1].id}
+    for call in snapshot_trigger.await_args_list:
+        assert call.kwargs["reason"] == "upstream_failover"
+
+
+@pytest.mark.asyncio
+async def test_run_once_snapshot_failure_does_not_break_failover():
+    session = AsyncMock()
+    route_service = SimpleNamespace(sync_entry_upstream=AsyncMock())
+    dead = [_entry(upstream_id=uuid4())]
+    snapshot_trigger = AsyncMock(side_effect=RuntimeError("nats down"))
+    with _repo_patch(dead=dead, live=[_backend()]):
+        reconciler = UpstreamFailoverReconciler(
+            session_maker=_SessionMaker(session),
+            route_service_factory=lambda _: route_service,
+            snapshot_trigger=snapshot_trigger,
+        )
+        applied = await reconciler.run_once()
+
+    assert applied == 1
+    session.commit.assert_awaited()
