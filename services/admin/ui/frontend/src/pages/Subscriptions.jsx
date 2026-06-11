@@ -210,7 +210,7 @@ function SubMobileCard({ s, plan, onOpen }) {
         </div>
         <div className="m-card-row">
           <span className="m-card-label">Устройства</span>
-          <span className="mono">{s.max_devices != null ? `${s.paid_device_slots ?? 0}/${s.max_devices}` : "—"}</span>
+          <span className="mono">{s.max_devices != null ? `${s.device_count ?? 0}/${s.max_devices}` : "—"}</span>
         </div>
         <div className="m-card-row">
           <span className="m-card-label">Создана</span>
@@ -245,7 +245,7 @@ function SubRow({ s, plan, onOpen }) {
       <td><DaysCountdown days={days} /></td>
       <td className="mono small">{s.preferred_region || "—"}</td>
       <td className="tbl-num mono">
-        {s.max_devices != null ? `${s.paid_device_slots ?? 0}/${s.max_devices}` : "—"}
+        {s.max_devices != null ? `${s.device_count ?? 0}/${s.max_devices}` : "—"}
       </td>
       <td className="small muted">{fmtDate(s.created_at)}</td>
       <td style={{ width: 32, textAlign: "right", paddingRight: 12 }}>

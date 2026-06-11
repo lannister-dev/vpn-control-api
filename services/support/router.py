@@ -315,6 +315,18 @@ async def cancel_broadcast(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
 
 
+@router.post("/broadcasts/{broadcast_id}/repeat", response_model=BroadcastOut, status_code=status.HTTP_201_CREATED)
+async def repeat_broadcast(
+    broadcast_id: UUID,
+    service: SupportService = Depends(get_support_service),
+    actor_admin_id: UUID | None = Depends(current_admin_user_id),
+):
+    try:
+        return await service.repeat_broadcast(broadcast_id, actor_admin_id=actor_admin_id)
+    except BroadcastNotFound:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Broadcast not found")
+
+
 @router.get("/broadcasts/audience-size", response_model=BroadcastAudienceCount)
 async def audience_size(
     audience: BroadcastAudience,

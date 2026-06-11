@@ -672,6 +672,24 @@ class SupportService:
         ids = await self._resolve_audience(audience, plan_id)
         return BroadcastAudienceCount(count=len(ids))
 
+    async def repeat_broadcast(
+        self, broadcast_id: UUID, *, actor_admin_id: UUID | None = None
+    ) -> BroadcastOut:
+        src = await self.broadcasts.get_by_id(broadcast_id)
+        if src is None:
+            raise BroadcastNotFound("Broadcast not found")
+        return await self.create_broadcast(
+            audience=BroadcastAudience(src.audience),
+            plan_id=src.plan_id,
+            text=src.text_body or "",
+            buttons=src.inline_buttons,
+            media_kind=src.media_kind,
+            media_url=src.media_url,
+            status=BroadcastStatus.SENDING,
+            scheduled_at=None,
+            actor_admin_id=actor_admin_id,
+        )
+
     async def create_broadcast(
         self,
         *,

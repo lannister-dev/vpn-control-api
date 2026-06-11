@@ -462,6 +462,20 @@ function BroadcastDetail({ broadcast: b, onClose, onChanged }) {
       setBusy(false);
     }
   };
+  const canRepeat = b.status === "sent" || b.status === "failed";
+  const repeat = async () => {
+    if (!window.confirm(`Повторить рассылку сейчас? Уйдёт аудитории «${b.audience_label || b.audience}».`)) return;
+    setBusy(true);
+    try {
+      await api.post(`/support/broadcasts/${b.id}/repeat`);
+      toast.ok("Рассылка отправлена повторно");
+      onChanged?.();
+    } catch (e) {
+      toast.err(e?.message || "Не удалось повторить");
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <Modal title={`Рассылка · ${new Date(b.sent_at || b.created_at).toLocaleString("ru-RU")}`} onClose={onClose}>
       <div className="kv-table-wrap" style={{ marginBottom: 14 }}>
@@ -489,11 +503,18 @@ function BroadcastDetail({ broadcast: b, onClose, onChanged }) {
           dangerouslySetInnerHTML={{ __html: b.text_body || b.preview || "<span style='color:var(--text-muted)'>пусто</span>" }}
         />
       </div>
-      {canCancel && (
-        <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
-          <button className="btn btn-ghost btn-sm" onClick={cancel} disabled={busy}>
-            {busy ? "Отменяется…" : "Отменить рассылку"}
-          </button>
+      {(canRepeat || canCancel) && (
+        <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          {canRepeat && (
+            <button className="btn btn-sm" onClick={repeat} disabled={busy}>
+              <Icon name="send" size={12} /> {busy ? "Отправка…" : "Повторить"}
+            </button>
+          )}
+          {canCancel && (
+            <button className="btn btn-ghost btn-sm" onClick={cancel} disabled={busy}>
+              {busy ? "Отменяется…" : "Отменить рассылку"}
+            </button>
+          )}
         </div>
       )}
       {Array.isArray(b.inline_buttons) && b.inline_buttons.length > 0 && (

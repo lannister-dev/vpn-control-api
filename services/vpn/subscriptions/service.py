@@ -447,7 +447,12 @@ class SubscriptionService:
         rows, total = await self.subscription_repository.list_paginated(
             active_only=active_only, plan_id=plan_id, limit=limit, offset=offset,
         )
-        return [self._sub_to_out(r) for r in rows], total
+        counts = await self.device_repository.count_active_by_subscription_ids(
+            [r.id for r in rows]
+        )
+        return [
+            self._sub_to_out(r, device_count=counts.get(r.id, 0)) for r in rows
+        ], total
 
     async def rotate_token(
             self,
