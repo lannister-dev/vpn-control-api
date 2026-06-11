@@ -29,6 +29,7 @@ from services.nodes.agent.models import (  # noqa: F401
 from services.nodes.agent.runtime import NodeAgentRuntime
 from services.nodes.models import NodeAgentIdentity, NodeAgentState, VpnNode  # noqa: F401
 from services.nodes.reconcilers.placement import NodePlacementReconciler
+from services.nodes.reconcilers.snapshot_freshness import NodeSnapshotFreshnessReconciler
 from services.nodes.reconcilers.upstream_failover import UpstreamFailoverReconciler
 from services.notifications.reconciller.digest import NotificationsDigestReconciler
 from services.notifications.service import NotificationService
@@ -105,6 +106,7 @@ def _build_reconcilers(notifications: NotificationService, nats_client: NatsClie
         FinanceMaterializeTemplatesReconciler(),
         EntryAutoDrainReconciler(),
         UpstreamFailoverReconciler(snapshot_trigger=snapshot_trigger),
+        NodeSnapshotFreshnessReconciler(snapshot_trigger=snapshot_trigger),
         EntryRoutingPublisher(),
         WgMeshPeerPublisher(),
         NotificationsDigestReconciler(notifications=notifications),
