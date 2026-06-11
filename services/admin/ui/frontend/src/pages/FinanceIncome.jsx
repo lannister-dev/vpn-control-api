@@ -14,7 +14,27 @@ import {
 
 function q(period) {
   const r = rangeFor(period);
-  return `?date_from=${encodeURIComponent(r.date_from)}&date_to=${encodeURIComponent(r.date_to)}&limit=100`;
+  return `?date_from=${encodeURIComponent(r.date_from)}&date_to=${encodeURIComponent(r.date_to)}&limit=200`;
+}
+
+const TYPE_FILTERS = [
+  { key: "plan_purchase", label: "Покупка" },
+  { key: "subscription_renewal", label: "Продление" },
+  { key: "device_slots", label: "Слоты" },
+  { key: "top_up", label: "Пополнение" },
+];
+const PROVIDER_FILTERS = [
+  { key: "platega", label: "Platega" },
+  { key: "crypto", label: "Crypto" },
+  { key: "stars", label: "Stars" },
+  { key: "freekassa", label: "FreeKassa" },
+  { key: "balance", label: "С баланса" },
+  { key: "free", label: "Пробный" },
+];
+
+function loadSet(storeKey) {
+  try { return new Set(JSON.parse(localStorage.getItem(storeKey) || "[]")); }
+  catch { return new Set(); }
 }
 
 function ProvCell({ provider }) {
@@ -30,9 +50,23 @@ function ProvCell({ provider }) {
 
 export function FinanceIncomePage() {
   const [period, setPeriod] = useState(() => localStorage.getItem("fin.period") || "30d");
-  const [hideTopup, setHideTopup] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [exTypes, setExTypes] = useState(() => loadSet("fin.income.exType"));
+  const [exProvs, setExProvs] = useState(() => loadSet("fin.income.exProv"));
   const setP = (p) => { setPeriod(p); localStorage.setItem("fin.period", p); };
+
+  const makeToggle = (setter, storeKey) => (key) => setter((prev) => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    localStorage.setItem(storeKey, JSON.stringify([...next]));
+    return next;
+  });
+  const toggleType = makeToggle(setExTypes, "fin.income.exType");
+  const toggleProv = makeToggle(setExProvs, "fin.income.exProv");
+  const resetFilters = () => {
+    setExTypes(new Set()); setExProvs(new Set());
+    localStorage.removeItem("fin.income.exType"); localStorage.removeItem("fin.income.exProv");
+  };
 
   const inc = useQuery(() => api.get("/finance/income" + q(period)), { deps: [period] });
   if (inc.loading && !inc.data) return <FinLoading />;
@@ -46,9 +80,15 @@ export function FinanceIncomePage() {
   const byType = map(d.by_order_type, ORDER_TYPE_LABELS, ORDER_TYPE_COLORS);
   const byPeriod = map(d.by_period, PERIOD_LABELS, PERIOD_COLORS);
 
-  let rows = d.transactions || [];
-  if (hideTopup) rows = rows.filter((r) => !r.is_top_up);
-  if (statusFilter !== "all") rows = rows.filter((r) => r.status === statusFilter);
+  const allRows = d.transactions || [];
+  const rows = allRows.filter((r) =>
+    !exTypes.has(r.order_type) &&
+    !exProvs.has(r.provider) &&
+    (statusFilter === "all" || r.status === statusFilter)
+  );
+  const excludedCount = exTypes.size + exProvs.size;
+  const subtotalGross = rows.reduce((a, r) => a + Number(r.amount_rub || 0), 0);
+  const subtotalNet = rows.reduce((a, r) => a + Number(r.net_rub ?? r.amount_rub ?? 0), 0);
   const fmtTime = (iso) => iso ? new Date(iso).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—";
   const sum = (arr) => arr.reduce((a, x) => a + x.value, 0);
 
@@ -116,15 +156,23 @@ export function FinanceIncomePage() {
           <div className="card-head">
             <Icon name="list" size={14} />
             <div className="sec-title">Транзакции</div>
-            <span className="pill muted">{rows.length}</span>
+            <span className="pill muted">{rows.length}{excludedCount ? ` из ${allRows.length}` : ""}</span>
             <div className="sec-spacer" />
             <select className="select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ minWidth: 130 }}>
               <option value="all">Все статусы</option>
               {Object.keys(STATUS_META).map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
-            <label className="form-check" style={{ fontSize: 12.5 }}>
-              <input type="checkbox" checked={hideTopup} onChange={(e) => setHideTopup(e.target.checked)} /> Скрыть пополнения
-            </label>
+          </div>
+          <div className="fin-filterbar">
+            <span className="ff-label">Исключить:</span>
+            {TYPE_FILTERS.map((t) => (
+              <button key={t.key} type="button" className="ff-chip" data-off={exTypes.has(t.key) || undefined} onClick={() => toggleType(t.key)}>{t.label}</button>
+            ))}
+            <span className="ff-sep" />
+            {PROVIDER_FILTERS.map((p) => (
+              <button key={p.key} type="button" className="ff-chip" data-off={exProvs.has(p.key) || undefined} onClick={() => toggleProv(p.key)}>{p.label}</button>
+            ))}
+            {excludedCount > 0 && <button className="btn btn-ghost btn-xs" onClick={resetFilters}>Сбросить</button>}
           </div>
           <div style={{ overflowX: "auto" }}>
             <table className="tbl">
@@ -157,9 +205,13 @@ export function FinanceIncomePage() {
               </tbody>
             </table>
           </div>
-          <div style={{ padding: "10px 14px", borderTop: "1px solid var(--border)", display: "flex", gap: 14, flexWrap: "wrap" }}>
-            <div className="footnote"><span className="fn-mark">*</span> Строки «пополнение» приглушены — это предоплата, не выручка.</div>
-            <div className="footnote"><span className="fn-mark">†</span> «— н/д» в комиссии — провайдер не вернул fee_rub; net оценочный.</div>
+          <div style={{ padding: "10px 14px", borderTop: "1px solid var(--border)", display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
+            <div className="footnote" style={{ fontWeight: 500, color: "var(--text)" }}>
+              Выборка: {rows.length} · gross {fmtRub(subtotalGross)} · net {fmtRub(subtotalNet)}
+            </div>
+            <div className="sec-spacer" />
+            <div className="footnote"><span className="fn-mark">*</span> Клик по виду исключает его из выборки и подытога. Диаграммы выше — за весь период, без учёта фильтра.</div>
+            <div className="footnote"><span className="fn-mark">†</span> «— н/д» — провайдер не вернул fee_rub; net оценочный.</div>
           </div>
         </div>
       </div>
