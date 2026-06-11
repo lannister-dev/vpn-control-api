@@ -101,3 +101,57 @@ def test_message_sender_enum():
     assert MessageSenderKind("user") == MessageSenderKind.USER
     assert MessageSenderKind("operator") == MessageSenderKind.OPERATOR
     assert MessageSenderKind("system") == MessageSenderKind.SYSTEM
+
+
+def _claimed_broadcast(**overrides):
+    base = dict(
+        id=uuid4(), audience="all", plan_id=None, text_body="hi",
+        media_kind=None, media_url=None, inline_buttons=None, attempts=0,
+    )
+    base.update(overrides)
+    return SimpleNamespace(**base)
+
+
+def _bc_service(*, delivered: int, claimed):
+    from unittest.mock import AsyncMock
+
+    from services.support.service import SupportService
+    svc = SupportService.__new__(SupportService)
+    svc.session = AsyncMock()
+    svc.broadcasts = AsyncMock()
+    svc.broadcasts.claim_for_send = AsyncMock(return_value=claimed)
+    svc._resolve_audience = AsyncMock(return_value=[uuid4()])
+    svc._fan_out_broadcast = AsyncMock(return_value=delivered)
+    return svc
+
+
+@pytest.mark.asyncio
+async def test_broadcast_zero_delivered_reschedules():
+    claimed = _claimed_broadcast(attempts=0)
+    svc = _bc_service(delivered=0, claimed=claimed)
+    ok = await svc.send_scheduled_broadcast(claimed.id)
+    assert ok is False
+    svc.broadcasts.reschedule_for_retry.assert_awaited_once()
+    assert svc.broadcasts.reschedule_for_retry.await_args.kwargs["attempts"] == 1
+    svc.broadcasts.mark_sent.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_broadcast_delivered_marks_sent():
+    claimed = _claimed_broadcast()
+    svc = _bc_service(delivered=5, claimed=claimed)
+    ok = await svc.send_scheduled_broadcast(claimed.id)
+    assert ok is True
+    svc.broadcasts.mark_sent.assert_awaited_once()
+    svc.broadcasts.reschedule_for_retry.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_broadcast_exhausted_marks_failed():
+    from services.support.constants import MAX_BROADCAST_DISPATCH_ATTEMPTS
+    claimed = _claimed_broadcast(attempts=MAX_BROADCAST_DISPATCH_ATTEMPTS - 1)
+    svc = _bc_service(delivered=0, claimed=claimed)
+    ok = await svc.send_scheduled_broadcast(claimed.id)
+    assert ok is False
+    svc.broadcasts.mark_failed.assert_awaited_once()
+    svc.broadcasts.reschedule_for_retry.assert_not_awaited()

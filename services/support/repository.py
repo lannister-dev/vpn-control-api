@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import and_, desc, func, select, update
+from sqlalchemy import and_, desc, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.billing.models import PaymentOrder
@@ -299,30 +299,64 @@ class BroadcastRepository(BaseRepository[Broadcast]):
         result = await self.session.execute(stmt)
         return result.scalars().one_or_none()
 
-    async def pick_due_scheduled(self, *, now: datetime, limit: int) -> list[Broadcast]:
+    async def pick_due_scheduled(
+        self, *, now: datetime, limit: int, stale_before: datetime
+    ) -> list[Broadcast]:
         stmt = (
             select(Broadcast)
             .where(
-                Broadcast.status == "scheduled",
-                Broadcast.scheduled_at.is_not(None),
-                Broadcast.scheduled_at <= now,
+                or_(
+                    and_(
+                        Broadcast.status == "scheduled",
+                        Broadcast.scheduled_at.is_not(None),
+                        Broadcast.scheduled_at <= now,
+                    ),
+                    and_(
+                        Broadcast.status == "sending",
+                        Broadcast.updated_at < stale_before,
+                    ),
+                )
             )
-            .order_by(Broadcast.scheduled_at.asc())
+            .order_by(Broadcast.scheduled_at.asc().nullsfirst())
             .limit(limit)
         )
         return list((await self.session.execute(stmt)).scalars().all())
 
-    async def claim_for_send(self, broadcast_id: UUID) -> Broadcast | None:
+    async def claim_for_send(
+        self, broadcast_id: UUID, *, now: datetime, stale_before: datetime
+    ) -> Broadcast | None:
         stmt = (
             update(Broadcast)
             .where(
                 Broadcast.id == broadcast_id,
-                Broadcast.status == "scheduled",
+                or_(
+                    and_(
+                        Broadcast.status == "scheduled",
+                        or_(
+                            Broadcast.scheduled_at.is_(None),
+                            Broadcast.scheduled_at <= now,
+                        ),
+                    ),
+                    and_(
+                        Broadcast.status == "sending",
+                        Broadcast.updated_at < stale_before,
+                    ),
+                ),
             )
-            .values(status="sending")
+            .values(status="sending", updated_at=now)
             .returning(Broadcast)
         )
         return (await self.session.execute(stmt)).scalars().one_or_none()
+
+    async def reschedule_for_retry(
+        self, broadcast_id: UUID, *, next_at: datetime, attempts: int
+    ) -> None:
+        stmt = (
+            update(Broadcast)
+            .where(Broadcast.id == broadcast_id)
+            .values(status="scheduled", scheduled_at=next_at, attempts=attempts)
+        )
+        await self.session.execute(stmt)
 
     async def mark_sent(
         self,

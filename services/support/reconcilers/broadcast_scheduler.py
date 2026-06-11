@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from services.support.constants import SUPPORT_OUTBOUND_SUBJECT
+from services.support.constants import (
+    BROADCAST_SENDING_STALE_SEC,
+    SUPPORT_OUTBOUND_SUBJECT,
+)
 from services.support.repository import BroadcastRepository
 from services.support.service import SupportService
 from shared.database.session import AsyncDatabase
@@ -33,9 +36,12 @@ class BroadcastSchedulerReconciler(Reconciler):
 
     async def tick(self) -> int:
         now = datetime.now(timezone.utc)
+        stale_before = now - timedelta(seconds=BROADCAST_SENDING_STALE_SEC)
         async with self._session_maker() as session:
             repo = BroadcastRepository(session)
-            due = await repo.pick_due_scheduled(now=now, limit=self._batch_size)
+            due = await repo.pick_due_scheduled(
+                now=now, limit=self._batch_size, stale_before=stale_before
+            )
             if not due:
                 return 0
             service = SupportService(
