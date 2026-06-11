@@ -14,7 +14,11 @@ logger_support = StructuredLogger(logging.getLogger("support-service"))
 from services.auth.admin.repository import AdminUserRepository
 from services.billing.models import BalanceTransaction
 from services.billing.repository import OrderRepository
+from services.config import get_settings
 from services.support.constants import (
+    BROADCAST_RETRY_BACKOFF_SEC,
+    BROADCAST_SENDING_STALE_SEC,
+    MAX_BROADCAST_DISPATCH_ATTEMPTS,
     SUBJECT_PREVIEW_LEN,
     SUPPORT_OUTBOUND_SUBJECT,
 )
@@ -540,7 +544,11 @@ class SupportService:
         await self.session.commit()
 
     async def send_scheduled_broadcast(self, broadcast_id: UUID) -> bool:
-        claimed = await self.broadcasts.claim_for_send(broadcast_id)
+        now = datetime.now(timezone.utc)
+        stale_before = now - timedelta(seconds=BROADCAST_SENDING_STALE_SEC)
+        claimed = await self.broadcasts.claim_for_send(
+            broadcast_id, now=now, stale_before=stale_before
+        )
         if claimed is None:
             return False
         await self.session.commit()
@@ -557,11 +565,15 @@ class SupportService:
                 media_url=claimed.media_url,
                 buttons=claimed.inline_buttons,
             )
-            errors = max(0, len(target_ids) - delivered)
+            # Wholesale dispatch failure (e.g. NATS/JetStream unavailable):
+            # nothing reached the bot — retry later instead of marking it sent.
+            if target_ids and delivered == 0:
+                return await self._retry_or_fail(claimed, reason="zero_delivered")
+
             await self.broadcasts.mark_sent(
                 claimed.id,
                 delivered=delivered,
-                errors=errors,
+                errors=max(0, len(target_ids) - delivered),
                 sent_at=datetime.now(timezone.utc),
             )
             await self.session.commit()
@@ -569,9 +581,34 @@ class SupportService:
         except Exception:
             logger_support.exception("broadcast_dispatch_failed", broadcast_id=str(broadcast_id))
             await self.session.rollback()
-            await self.broadcasts.mark_failed(broadcast_id)
+            return await self._retry_or_fail(claimed, reason="exception")
+
+    async def _retry_or_fail(self, claimed, *, reason: str) -> bool:
+        attempts = (claimed.attempts or 0) + 1
+        now = datetime.now(timezone.utc)
+        if attempts < MAX_BROADCAST_DISPATCH_ATTEMPTS:
+            next_at = now + timedelta(seconds=BROADCAST_RETRY_BACKOFF_SEC * attempts)
+            await self.broadcasts.reschedule_for_retry(
+                claimed.id, next_at=next_at, attempts=attempts
+            )
             await self.session.commit()
+            logger_support.warning(
+                "broadcast_dispatch_retry",
+                broadcast_id=str(claimed.id),
+                reason=reason,
+                attempt=attempts,
+                next_at=next_at.isoformat(),
+            )
             return False
+        await self.broadcasts.mark_failed(claimed.id)
+        await self.session.commit()
+        logger_support.error(
+            "broadcast_dispatch_exhausted",
+            broadcast_id=str(claimed.id),
+            reason=reason,
+            attempts=attempts,
+        )
+        return False
 
     async def cancel_broadcast(self, broadcast_id: UUID) -> BroadcastOut:
         existing = await self.broadcasts.get_by_id(broadcast_id)
@@ -700,6 +737,25 @@ class SupportService:
             created_at=b.created_at,
         )
 
+    async def _ensure_outbound_stream(self) -> None:
+        if self._nats is None:
+            return
+        try:
+            s = get_settings().nats
+            await self._nats.ensure_stream(
+                name=s.js_support_stream,
+                subjects=[
+                    s.support_inbound_subject,
+                    s.support_outbound_subject,
+                    s.support_sent_subject,
+                ],
+                max_msgs_per_subject=s.js_support_max_msgs_per_subject,
+                max_age=s.js_support_max_age_s,
+                duplicate_window=s.js_support_duplicate_window_s,
+            )
+        except Exception:
+            logger_support.warning("broadcast_ensure_stream_failed")
+
     async def _fan_out_broadcast(
         self, broadcast_id: UUID, user_ids: list[UUID], text: str,
         *,
@@ -713,6 +769,8 @@ class SupportService:
         targets = [(str(u.id), int(u.telegram_id)) for u in users if u.telegram_id]
         if not targets:
             return 0
+
+        await self._ensure_outbound_stream()
 
         media_payload: list[SupportOutboundAttachmentMsg] = []
         if media_url and media_kind:
