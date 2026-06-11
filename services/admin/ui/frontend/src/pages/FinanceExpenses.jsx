@@ -2,6 +2,7 @@ import { useState } from "react";
 import { api } from "../api/client.js";
 import { useQuery } from "../hooks/useQuery.js";
 import { Icon } from "../components/Icon.jsx";
+import { ConfirmModal } from "../components/ConfirmModal.jsx";
 import { PeriodSelector, FinLoading, FinError, periodLabel, rangeFor } from "./finance/kit.jsx";
 import { fmtRub, fmtRubK, fmtCur } from "./finance/format.js";
 import { KIND_LABELS, KIND_COLORS, KIND_CHIP } from "./finance/labels.js";
@@ -109,9 +110,12 @@ function TemplateDrawer({ template, onClose, onSaved }) {
   );
 }
 
-function AddExpenseDrawer({ onClose, onSaved }) {
+function AddExpenseDrawer({ expense, onClose, onSaved }) {
+  const editing = !!expense;
   const today = new Date().toISOString().slice(0, 10);
-  const [form, setForm] = useState({ kind: "infrastructure", amount: "", currency: "RUB", fx_rate: "", incurred_at: today, vendor: "", region: "", description: "" });
+  const [form, setForm] = useState(() => expense
+    ? { kind: expense.kind, amount: String(expense.amount), currency: expense.currency, fx_rate: expense.fx_rate ? String(expense.fx_rate) : "", incurred_at: (expense.incurred_at || "").slice(0, 10) || today, vendor: expense.vendor || "", region: expense.region || "", description: expense.description || "" }
+    : { kind: "infrastructure", amount: "", currency: "RUB", fx_rate: "", incurred_at: today, vendor: "", region: "", description: "" });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState(null);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -120,17 +124,19 @@ function AddExpenseDrawer({ onClose, onSaved }) {
 
   const save = async () => {
     setSaving(true); setErr(null);
+    const body = {
+      kind: form.kind,
+      amount: parseFloat(form.amount),
+      currency: form.currency,
+      fx_rate: nonRub ? parseFloat(form.fx_rate) : null,
+      incurred_at: `${form.incurred_at}T00:00:00Z`,
+      vendor: form.vendor || null,
+      region: form.region || null,
+      description: form.description || null,
+    };
     try {
-      await api.post("/finance/expenses", {
-        kind: form.kind,
-        amount: parseFloat(form.amount),
-        currency: form.currency,
-        fx_rate: nonRub ? parseFloat(form.fx_rate) : null,
-        incurred_at: `${form.incurred_at}T00:00:00Z`,
-        vendor: form.vendor || null,
-        region: form.region || null,
-        description: form.description || null,
-      });
+      if (editing) await api.patch(`/finance/expenses/${expense.id}`, body);
+      else await api.post("/finance/expenses", body);
       onSaved(form.vendor);
     } catch (e) {
       setErr(e.message || "ошибка"); setSaving(false);
@@ -142,7 +148,7 @@ function AddExpenseDrawer({ onClose, onSaved }) {
       <aside className="slideover">
         <div className="slideover-head">
           <div className="slideover-title-main">
-            <div className="slideover-title"><Icon name="plus" size={16} /> Новый расход</div>
+            <div className="slideover-title"><Icon name={editing ? "edit" : "plus"} size={16} /> {editing ? "Изменить расход" : "Новый расход"}</div>
             <div className="slideover-sub">Разовая операция · нормализуется в ₽</div>
           </div>
           <button className="btn btn-ghost btn-icon" onClick={onClose} title="Закрыть"><Icon name="x" size={15} /></button>
@@ -204,8 +210,10 @@ function AddExpenseDrawer({ onClose, onSaved }) {
 
 export function FinanceExpensesPage() {
   const [period, setPeriod] = useState(() => localStorage.getItem("fin.period") || "30d");
-  const [drawer, setDrawer] = useState(false);
+  const [expDrawer, setExpDrawer] = useState(null);
   const [tplDrawer, setTplDrawer] = useState(null);
+  const [confirmDel, setConfirmDel] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const [toast, setToast] = useState(null);
   const setP = (p) => { setPeriod(p); localStorage.setItem("fin.period", p); };
 
@@ -247,6 +255,17 @@ export function FinanceExpensesPage() {
     );
   };
 
+  const doDeleteExpense = async () => {
+    if (!confirmDel) return;
+    setDeleting(true);
+    try {
+      await api.del(`/finance/expenses/${confirmDel.id}`);
+      setConfirmDel(null); setDeleting(false);
+      summary.refetch(); prevSummary.refetch(); list.refetch();
+      ping("Расход удалён");
+    } catch (e) { setDeleting(false); ping("Ошибка: " + e.message); }
+  };
+
   return (
     <div className="page">
       <div className="page-head">
@@ -257,7 +276,7 @@ export function FinanceExpensesPage() {
         <div className="page-head-actions">
           <button className="btn" onClick={exportCsv}><Icon name="download" size={13} /> Экспорт CSV</button>
           <PeriodSelector value={period} onChange={setP} />
-          <button className="btn btn-primary" onClick={() => setDrawer(true)}><Icon name="plus" size={13} /> Добавить расход</button>
+          <button className="btn btn-primary" onClick={() => setExpDrawer("new")}><Icon name="plus" size={13} /> Добавить расход</button>
         </div>
       </div>
 
@@ -296,7 +315,7 @@ export function FinanceExpensesPage() {
                 <tr>
                   <th>Дата</th><th>Категория</th><th>Вендор</th>
                   <th style={{ textAlign: "right" }}>Сумма</th><th style={{ textAlign: "right" }}>В ₽</th>
-                  <th>Регион</th><th>Источник</th><th>Описание</th>
+                  <th>Регион</th><th>Источник</th><th>Описание</th><th style={{ width: 66 }}></th>
                 </tr>
               </thead>
               <tbody>
@@ -310,6 +329,12 @@ export function FinanceExpensesPage() {
                     <td className="mono" style={{ fontSize: 12 }}>{r2.region || "—"}</td>
                     <td>{r2.template_id ? <span className="pill accent"><Icon name="repeat" size={10} /> шаблон</span> : <span className="pill muted">разовый</span>}</td>
                     <td className="muted" style={{ fontSize: 12, maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r2.description || ""}</td>
+                    <td className="row-actions">
+                      <div style={{ display: "flex", gap: 2, justifyContent: "flex-end" }}>
+                        <button className="btn btn-ghost btn-icon" style={{ width: 26, height: 26 }} title="Изменить" onClick={() => setExpDrawer(r2)}><Icon name="edit" size={13} /></button>
+                        <button className="btn btn-ghost btn-icon" style={{ width: 26, height: 26 }} title="Удалить" onClick={() => setConfirmDel(r2)}><Icon name="trash-2" size={13} /></button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -354,7 +379,21 @@ export function FinanceExpensesPage() {
         </div>
 
       {tplDrawer && <TemplateDrawer template={tplDrawer === "new" ? null : tplDrawer} onClose={() => setTplDrawer(null)} onSaved={() => { setTplDrawer(null); templates.refetch(); ping("Шаблон сохранён"); }} />}
-      {drawer && <AddExpenseDrawer onClose={() => setDrawer(false)} onSaved={(v) => { setDrawer(false); summary.refetch(); prevSummary.refetch(); list.refetch(); ping(`Расход добавлен · ${v || "без вендора"}`); }} />}
+      {expDrawer && <AddExpenseDrawer
+        expense={expDrawer === "new" ? null : expDrawer}
+        onClose={() => setExpDrawer(null)}
+        onSaved={(v) => { const wasNew = expDrawer === "new"; setExpDrawer(null); summary.refetch(); prevSummary.refetch(); list.refetch(); ping(wasNew ? `Расход добавлен · ${v || "без вендора"}` : "Расход обновлён"); }}
+      />}
+      {confirmDel && <ConfirmModal
+        title="Удалить расход?"
+        tone="danger"
+        icon="trash-2"
+        confirmLabel="Удалить"
+        loading={deleting}
+        onConfirm={doDeleteExpense}
+        onClose={() => { if (!deleting) setConfirmDel(null); }}
+        body={<>Удалить «{confirmDel.vendor || KIND_LABELS[confirmDel.kind] || confirmDel.kind}» на {fmtRub(confirmDel.amount_rub)}? Действие необратимо.</>}
+      />}
       {toast && <div className="toast-wrap"><div className="toast"><span className="status-dot ok" /> {toast}</div></div>}
     </div>
   );
