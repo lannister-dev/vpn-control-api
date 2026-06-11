@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -21,14 +21,7 @@ from services.finance.schemas import (
     RecurringTemplateUpdateIn,
 )
 from services.finance.service import FinanceService, get_finance_service
-
-
-def _default_range(
-    date_from: datetime | None, date_to: datetime | None
-) -> tuple[datetime, datetime]:
-    end = date_to or datetime.now(timezone.utc)
-    start = date_from or (end - timedelta(days=30))
-    return start, end
+from services.finance.utils import default_range
 
 router = APIRouter(
     prefix="/finance", tags=["Finance"], dependencies=[Depends(admin_auth)]
@@ -47,7 +40,7 @@ async def finance_overview(
     date_to: datetime | None = Query(default=None),
     service: FinanceService = Depends(get_finance_service),
 ):
-    start, end = _default_range(date_from, date_to)
+    start, end = default_range(date_from, date_to)
     return await service.overview(start, end)
 
 
@@ -62,7 +55,7 @@ async def finance_income(
     limit: int = Query(50, ge=1, le=200),
     service: FinanceService = Depends(get_finance_service),
 ):
-    start, end = _default_range(date_from, date_to)
+    start, end = default_range(date_from, date_to)
     return await service.income(start, end, txn_limit=limit)
 
 

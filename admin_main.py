@@ -20,8 +20,10 @@ from services.admin.ui.router_v2 import STATIC_V2_DIR
 from services.admin.ui.router_v2 import router as admin_ui_v2_router
 from services.alerts.admin_router import router as admin_alerts_router
 from services.auth.admin.router import router as admin_auth_router
+from services.billing.router import router as billing_router
 from services.config import get_settings
 from services.entry.router import router as entry_router
+from services.finance.router import router as finance_router
 from services.nodes.policy.router import router as node_policy_router
 from services.nodes.router import router as node_router
 from services.placements.router import router as placements_router
@@ -87,6 +89,8 @@ api_router.include_router(zones_router)
 api_router.include_router(users_router)
 api_router.include_router(subscriptions_router)
 api_router.include_router(support_router)
+api_router.include_router(billing_router)
+api_router.include_router(finance_router)
 
 app.include_router(api_router)
 

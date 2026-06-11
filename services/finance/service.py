@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import calendar
 import logging
 from datetime import datetime, timedelta, timezone
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 from uuid import UUID
 
 from fastapi import Depends
-from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.billing.models import PaymentOrder
@@ -22,6 +20,7 @@ from services.finance.exceptions import ExpenseNotFound, TemplateNotFound
 from services.finance.repository import (
     ExpenseRepository,
     RecurringExpenseTemplateRepository,
+    SubscriptionMetricsRepository,
 )
 from services.finance.schemas import (
     BreakdownItemOut,
@@ -44,39 +43,12 @@ from services.finance.schemas import (
     RecurringTemplateUpdateIn,
     WaterfallItemOut,
 )
-from services.plans.models import Plan, PlanPeriod
-from services.vpn.subscriptions.models import Subscription
+from services.finance.utils import add_months, advance_period, normalize_to_rub
 from services.vpn.subscriptions.repository import SubscriptionRepository
 from shared.database.session import AsyncDatabase
 from shared.utils.logger import StructuredLogger
 
 log = StructuredLogger(logging.getLogger("finance"))
-
-
-def _add_months(dt: datetime, months: int) -> datetime:
-    month_index = dt.month - 1 + months
-    year = dt.year + month_index // 12
-    month = month_index % 12 + 1
-    day = min(dt.day, calendar.monthrange(year, month)[1])
-    return dt.replace(year=year, month=month, day=day)
-
-
-def _advance(dt: datetime, period: str) -> datetime:
-    if period == "weekly":
-        return dt + timedelta(weeks=1)
-    if period == "yearly":
-        return _add_months(dt, 12)
-    return _add_months(dt, 1)
-
-
-def _normalize_to_rub(
-    amount: Decimal, currency: str, fx_rate: Decimal | None
-) -> Decimal:
-    if currency.upper() == "RUB":
-        return amount
-    if fx_rate is None or fx_rate <= 0:
-        raise ValueError("fx_rate is required and must be > 0 for non-RUB currency")
-    return (amount * fx_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 class FinanceService:
@@ -85,6 +57,7 @@ class FinanceService:
         self.expense_repo = ExpenseRepository(session)
         self.template_repo = RecurringExpenseTemplateRepository(session)
         self.order_repo = OrderRepository(session)
+        self.metrics_repo = SubscriptionMetricsRepository(session)
 
     # ── Expenses ───────────────────────────────────────────────
 
@@ -92,7 +65,7 @@ class FinanceService:
         payload = data.model_dump()
         payload["kind"] = data.kind.value
         payload["currency"] = payload["currency"].upper()
-        payload["amount_rub"] = _normalize_to_rub(
+        payload["amount_rub"] = normalize_to_rub(
             data.amount, payload["currency"], data.fx_rate
         )
         row = await self.expense_repo.create(payload)
@@ -146,7 +119,7 @@ class FinanceService:
         amount = patch.get("amount", existing.amount)
         currency = patch.get("currency", existing.currency)
         fx_rate = patch.get("fx_rate", existing.fx_rate)
-        patch["amount_rub"] = _normalize_to_rub(amount, currency, fx_rate)
+        patch["amount_rub"] = normalize_to_rub(amount, currency, fx_rate)
 
         row = await self.expense_repo.update_by_id(expense_id, patch)
         return ExpenseOut.model_validate(row)
@@ -321,43 +294,11 @@ class FinanceService:
 
     # ── Analytics: Metrics (unit-economics) ────────────────────
 
-    async def _mrr_and_paying(self, now: datetime) -> tuple[float, int]:
-        monthly = case(
-            (
-                PlanPeriod.price_rub.isnot(None),
-                PlanPeriod.price_rub / func.nullif(Subscription.period_months, 0),
-            ),
-            else_=Plan.price_rub,
-        )
-        stmt = (
-            select(
-                func.coalesce(func.sum(monthly), 0),
-                func.count(func.distinct(Subscription.user_id)),
-            )
-            .select_from(Subscription)
-            .join(Plan, Plan.id == Subscription.plan_id)
-            .outerjoin(
-                PlanPeriod,
-                and_(
-                    PlanPeriod.plan_id == Subscription.plan_id,
-                    PlanPeriod.months == Subscription.period_months,
-                    PlanPeriod.is_active.is_(True),
-                ),
-            )
-            .where(
-                Subscription.is_active.is_(True),
-                or_(Subscription.expires_at.is_(None), Subscription.expires_at > now),
-                Plan.price_rub > 0,
-            )
-        )
-        row = (await self.session.execute(stmt)).one()
-        return float(row[0]), int(row[1])
-
     async def metrics(self) -> MetricsOut:
         now = datetime.now(timezone.utc)
         win_from = now - timedelta(days=METRICS_WINDOW_DAYS)
 
-        mrr, paying = await self._mrr_and_paying(now)
+        mrr, paying = await self.metrics_repo.mrr_and_paying(now)
         arpu = mrr / paying if paying else 0.0
         arr = mrr * 12
 
@@ -378,7 +319,7 @@ class FinanceService:
         ltv_cac = (ltv / cac) if cac else None
 
         month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        boundaries = [_add_months(month_start, -k) for k in range(12, -1, -1)]
+        boundaries = [add_months(month_start, -k) for k in range(12, -1, -1)]
         live_at = []
         for b in boundaries:
             _, a, e = await sub_repo.count_stats_at(b)
@@ -424,7 +365,7 @@ class FinanceService:
                         "kind": tpl.kind,
                         "amount": tpl.amount,
                         "currency": tpl.currency,
-                        "amount_rub": _normalize_to_rub(
+                        "amount_rub": normalize_to_rub(
                             tpl.amount, tpl.currency, tpl.fx_rate
                         ),
                         "fx_rate": tpl.fx_rate,
@@ -436,7 +377,7 @@ class FinanceService:
                     }
                 )
                 created += 1
-                run_at = _advance(run_at, tpl.period)
+                run_at = advance_period(run_at, tpl.period)
                 guard += 1
             await self.template_repo.update_by_id(tpl.id, {"next_run_at": run_at})
         return created
