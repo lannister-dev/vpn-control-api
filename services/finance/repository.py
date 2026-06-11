@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.finance.models import Expense, RecurringExpenseTemplate
+from services.plans.models import Plan, PlanPeriod
+from services.vpn.subscriptions.models import Subscription
 from shared.database.base_repository import BaseRepository
 
 
@@ -116,6 +118,43 @@ class ExpenseRepository(BaseRepository[Expense]):
         ).group_by(Expense.kind)
         rows = await self.session.execute(stmt)
         return [(row[0], row[1], row[2]) for row in rows.all()]
+
+
+class SubscriptionMetricsRepository:
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def mrr_and_paying(self, now: datetime) -> tuple[float, int]:
+        monthly = case(
+            (
+                PlanPeriod.price_rub.isnot(None),
+                PlanPeriod.price_rub / func.nullif(Subscription.period_months, 0),
+            ),
+            else_=Plan.price_rub,
+        )
+        stmt = (
+            select(
+                func.coalesce(func.sum(monthly), 0),
+                func.count(func.distinct(Subscription.user_id)),
+            )
+            .select_from(Subscription)
+            .join(Plan, Plan.id == Subscription.plan_id)
+            .outerjoin(
+                PlanPeriod,
+                and_(
+                    PlanPeriod.plan_id == Subscription.plan_id,
+                    PlanPeriod.months == Subscription.period_months,
+                    PlanPeriod.is_active.is_(True),
+                ),
+            )
+            .where(
+                Subscription.is_active.is_(True),
+                or_(Subscription.expires_at.is_(None), Subscription.expires_at > now),
+                Plan.price_rub > 0,
+            )
+        )
+        row = (await self.session.execute(stmt)).one()
+        return float(row[0]), int(row[1])
 
 
 class RecurringExpenseTemplateRepository(BaseRepository[RecurringExpenseTemplate]):

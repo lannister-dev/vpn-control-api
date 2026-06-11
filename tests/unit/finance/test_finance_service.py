@@ -12,7 +12,8 @@ from services.finance.schemas import (
     RecurringPeriodEnum,
     RecurringTemplateCreateIn,
 )
-from services.finance.service import FinanceService, _add_months, _normalize_to_rub
+from services.finance.service import FinanceService
+from services.finance.utils import add_months, normalize_to_rub
 
 
 def _row(**overrides):
@@ -48,19 +49,19 @@ def service():
 
 class TestNormalize:
     def test_rub_passthrough(self):
-        assert _normalize_to_rub(Decimal("199.00"), "RUB", None) == Decimal("199.00")
+        assert normalize_to_rub(Decimal("199.00"), "RUB", None) == Decimal("199.00")
 
     def test_eur_uses_fx(self):
-        assert _normalize_to_rub(Decimal("40.00"), "EUR", Decimal("100")) == Decimal(
+        assert normalize_to_rub(Decimal("40.00"), "EUR", Decimal("100")) == Decimal(
             "4000.00"
         )
 
     def test_non_rub_without_fx_raises(self):
         with pytest.raises(ValueError):
-            _normalize_to_rub(Decimal("40.00"), "EUR", None)
+            normalize_to_rub(Decimal("40.00"), "EUR", None)
 
     def test_add_months_clamps_day(self):
-        assert _add_months(
+        assert add_months(
             datetime(2026, 1, 31, tzinfo=timezone.utc), 1
         ) == datetime(2026, 2, 28, tzinfo=timezone.utc)
 
@@ -187,7 +188,7 @@ class TestIncome:
 
 class TestMetrics:
     async def test_unit_economics(self, service):
-        service._mrr_and_paying = AsyncMock(return_value=(10000.0, 50))
+        service.metrics_repo.mrr_and_paying = AsyncMock(return_value=(10000.0, 50))
         service.order_repo.new_paying_users = AsyncMock(return_value=10)
         service.expense_repo.total_by_kinds = AsyncMock(return_value=13400.0)
 
