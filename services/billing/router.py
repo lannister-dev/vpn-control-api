@@ -22,6 +22,9 @@ from services.billing.schemas import (
     OrderListOut,
     OrderOut,
     OrderRefundIn,
+    ProviderFeeListOut,
+    ProviderFeeOut,
+    ProviderFeeUpsertIn,
     TransactionListOut,
 )
 from services.billing.service import BillingService, get_billing_service
@@ -282,3 +285,44 @@ async def list_transactions(
     service: BillingService = Depends(get_billing_service),
 ):
     return await service.list_transactions(user_id, limit=limit, offset=offset)
+
+
+# ── Provider fees (admin-editable commission rates) ─────────
+
+@router.get(
+    "/provider-fees",
+    response_model=ProviderFeeListOut,
+    summary="List payment provider commission rates",
+    dependencies=[Depends(admin_auth)],
+)
+async def list_provider_fees(
+    service: BillingService = Depends(get_billing_service),
+):
+    return await service.list_provider_fees()
+
+
+@router.put(
+    "/provider-fees",
+    response_model=ProviderFeeOut,
+    summary="Create or update a provider commission rate",
+    dependencies=[Depends(admin_auth)],
+)
+async def upsert_provider_fee(
+    data: ProviderFeeUpsertIn,
+    service: BillingService = Depends(get_billing_service),
+):
+    return await service.upsert_provider_fee(data)
+
+
+@router.delete(
+    "/provider-fees/{fee_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a provider commission rate",
+    dependencies=[Depends(admin_auth)],
+)
+async def delete_provider_fee(
+    fee_id: UUID,
+    service: BillingService = Depends(get_billing_service),
+):
+    await service.delete_provider_fee(fee_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

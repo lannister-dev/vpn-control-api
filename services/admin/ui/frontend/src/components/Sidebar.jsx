@@ -13,6 +13,13 @@ const GROUPS = [
     { id: "placements", label: "Плейсменты", icon: "map-pin" },
     { id: "transport", label: "Очередь", icon: "activity" },
   ]},
+  { title: "Финансы", items: [
+    { id: "fin-overview", label: "Обзор / P&L", icon: "pie-chart" },
+    { id: "fin-income", label: "Доходы", icon: "trending-up" },
+    { id: "fin-expenses", label: "Расходы", icon: "receipt" },
+    { id: "fin-metrics", label: "Метрики", icon: "activity" },
+    { id: "fin-rates", label: "Комиссии", icon: "percent" },
+  ]},
   { title: "Бизнес", items: [
     { id: "users", label: "Пользователи", icon: "users" },
     { id: "plans", label: "Тарифы", icon: "wallet" },
@@ -41,7 +48,7 @@ export function Sidebar({ activeTab, onTab, collapsed, onToggle, onOpenPalette, 
       {mobileOpen && <div className="sidebar-backdrop" onClick={onMobileClose} />}
       <aside className="sidebar" data-collapsed={collapsed} data-mobile-open={mobileOpen || undefined}>
       <div className="workspace" onClick={onToggle} title={collapsed ? "Развернуть" : "Свернуть"}>
-        <div className="workspace-logo">V</div>
+        <div className="workspace-logo" style={{ background: "#0a0a0a", color: "oklch(0.72 0.19 48)" }}>R</div>
         <div className="workspace-text">
           <div className="workspace-name">VPN Control</div>
           <div className="workspace-env">prod · admin</div>

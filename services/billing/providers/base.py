@@ -20,6 +20,8 @@ class WebhookResult:
     provider_meta: str | None = None
     should_fulfill: bool = True
     provider_status: str | None = None
+    fee_rub: float | None = None
+    payment_method: int | None = None
 
 
 class PaymentProvider(ABC):

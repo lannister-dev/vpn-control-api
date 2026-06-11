@@ -46,6 +46,8 @@ class PaymentOrder(Base):
     period_months: Mapped[int] = mapped_column(
         Integer, default=1, server_default=text("1"), nullable=False
     )
+    fee_rub: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    net_rub: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
 
     __table_args__ = (
         Index("ix_payment_order_user_id", "user_id"),
@@ -74,4 +76,28 @@ class BalanceTransaction(Base):
         Index("ix_balance_transaction_user_id", "user_id"),
         Index("ix_balance_transaction_type", "type"),
         Index("ix_balance_transaction_created_at", "created_at"),
+    )
+
+
+class PaymentProviderFee(Base):
+    __tablename__ = "payment_provider_fee"
+
+    provider: Mapped[str] = mapped_column(String(16), nullable=False)
+    payment_method: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fee_percent: Mapped[Decimal] = mapped_column(Numeric(6, 4), nullable=False)
+
+    __table_args__ = (
+        Index(
+            "uq_payment_provider_fee_method",
+            "provider",
+            "payment_method",
+            unique=True,
+            postgresql_where=text("payment_method IS NOT NULL"),
+        ),
+        Index(
+            "uq_payment_provider_fee_default",
+            "provider",
+            unique=True,
+            postgresql_where=text("payment_method IS NULL"),
+        ),
     )

@@ -34,6 +34,7 @@ from services.alerts.models import AlertEvent
 from services.artifacts.models import ProfileArtifact
 from services.auth.admin.models import AdminAuditEvent, AdminSession, AdminUser
 from services.billing.models import BalanceTransaction, PaymentOrder
+from services.finance.models import Expense, RecurringExpenseTemplate
 from services.nodes.agent.models import (
     NodeTransportEventLog,
     NodeTransportOutbox,

@@ -26,6 +26,7 @@ from services.bot_api.router import router as bot_api_router
 from services.config import get_settings
 from services.connect.router import router as connect_router
 from services.entry.router import router as entry_router
+from services.finance.router import router as finance_router
 from services.nodes.router import router as node_router
 from services.placements.router import router as placements_router
 from services.plans.router import router as plans_router
@@ -86,6 +87,7 @@ api_router.include_router(plans_router)
 api_router.include_router(users_router)
 api_router.include_router(subscriptions_router)
 api_router.include_router(billing_router)
+api_router.include_router(finance_router)
 api_router.include_router(bot_api_router)
 api_router.include_router(support_router)
 
