@@ -118,3 +118,35 @@ async def test_assign_keeps_current_when_gap_small_and_skips_write():
     )
     assert chosen == "backend-a"
     repo.update_by_id.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_fetch_backend_loads_excludes_non_live_tags():
+    raw = '{"by_backend": {"backend-zrh": 5, "backend-hel": 3, "backend-var-entry": 69, "backend-rix": 13}}'
+    nats = AsyncMock()
+    nats.kv_list_all = AsyncMock(return_value={"node.1": raw})
+    loads = await BackendBalancer.fetch_backend_loads(
+        nats, allowed_tags={"backend-zrh", "backend-hel"},
+    )
+    assert loads == {"backend-zrh": 5, "backend-hel": 3}
+
+
+@pytest.mark.asyncio
+async def test_fetch_backend_loads_without_filter_keeps_all():
+    raw = '{"by_backend": {"backend-zrh": 5, "backend-var-entry": 69}}'
+    nats = AsyncMock()
+    nats.kv_list_all = AsyncMock(return_value={"node.1": raw})
+    loads = await BackendBalancer.fetch_backend_loads(nats)
+    assert loads == {"backend-zrh": 5, "backend-var-entry": 69}
+
+
+@pytest.mark.asyncio
+async def test_fetch_backend_loads_sums_across_entries_filtered():
+    raw1 = '{"by_backend": {"backend-zrh": 5, "backend-var-entry": 10}}'
+    raw2 = '{"by_backend": {"backend-zrh": 2, "backend-hel": 4}}'
+    nats = AsyncMock()
+    nats.kv_list_all = AsyncMock(return_value={"node.1": raw1, "node.2": raw2})
+    loads = await BackendBalancer.fetch_backend_loads(
+        nats, allowed_tags={"backend-zrh", "backend-hel"},
+    )
+    assert loads == {"backend-zrh": 7, "backend-hel": 4}

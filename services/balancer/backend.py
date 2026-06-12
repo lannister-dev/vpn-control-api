@@ -22,7 +22,7 @@ class BackendBalancer:
         self._transport = transport
 
     @staticmethod
-    async def fetch_backend_loads(nats) -> dict[str, int]:
+    async def fetch_backend_loads(nats, *, allowed_tags: set[str] | None = None) -> dict[str, int]:
         loads: dict[str, int] = {}
         if nats is None:
             return loads
@@ -37,6 +37,8 @@ class BackendBalancer:
             except ValidationError:
                 continue
             for tag, count in stats.by_backend.items():
+                if allowed_tags is not None and tag not in allowed_tags:
+                    continue
                 loads[tag] = loads.get(tag, 0) + count
         return loads
 
