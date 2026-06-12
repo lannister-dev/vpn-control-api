@@ -8,6 +8,7 @@ import { ConfirmModal } from "../components/ConfirmModal.jsx";
 const RUB = "₽";
 const AUDIENCE_LABEL = { all: "Все", no_subscription: "Без подписки", has_subscription: "С подпиской", by_plan: "По тарифам" };
 const APPLIES_SHORT = { any: "Любой", new_purchase: "Новая", renewal: "Продление" };
+const APPLIES_LABEL = { any: "Любой", new_purchase: "Новая покупка", renewal: "Продление" };
 const STATUS_META = {
   active: { dot: "ok", label: "Активен" },
   disabled: { dot: "muted", label: "Выключен" },
@@ -188,79 +189,124 @@ function PromoList({ promos, plans, loading, onOpen, onCreate, onEdit, onToggle,
   );
 }
 
+const ACT_PAGE = 12;
+
 function PromoDetail({ promo, onBack, onEdit, onToggle, onDelete }) {
-  const stats = useQuery(() => api.get(`/promo/${promo.id}/stats`), { deps: [promo.id] });
-  const acts = useQuery(() => api.get(`/promo/${promo.id}/activations?limit=50`), { deps: [promo.id] });
-  const s = stats.data;
+  const statsQ = useQuery(() => api.get(`/promo/${promo.id}/stats`), { deps: [promo.id] });
+  const acts = useQuery(() => api.get(`/promo/${promo.id}/activations?limit=200`), { deps: [promo.id] });
+  const [page, setPage] = useState(0);
+  const s = statsQ.data;
   const rows = acts.data?.items || [];
+  const total = acts.data?.total ?? rows.length;
+  const pages = Math.max(1, Math.ceil(rows.length / ACT_PAGE));
+  const slice = rows.slice(page * ACT_PAGE, page * ACT_PAGE + ACT_PAGE);
   const st = deriveStatus(promo);
+  const active = promo.is_active && !isExpired(promo);
   const unlimited = promo.max_activations == null;
   const pct = unlimited ? 0 : Math.min(100, Math.round((promo.activation_count / promo.max_activations) * 100));
+  const planNames = (promo.plan_ids || []).map((id) => id).filter(Boolean);
+  const copyCode = () => { try { navigator.clipboard?.writeText(promo.code); } catch { /* */ } toast.ok("Код " + promo.code + " скопирован"); };
 
   return (
     <div className="page">
-      <div className="page-head">
+      <div className="page-head" style={{ alignItems: "flex-start" }}>
         <div className="page-head-main">
-          <button className="btn btn-ghost btn-xs" onClick={onBack} style={{ marginBottom: 8 }}><Icon name="chevron-left" size={13} /> К списку</button>
-          <h1 className="page-title" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span className="promo-code" style={{ fontSize: 20 }}>{promo.code}</span>
-            <span className="status-cell"><span className={"status-dot " + STATUS_META[st].dot} />{STATUS_META[st].label}</span>
-          </h1>
-          {promo.description && <div className="page-subtitle">{promo.description}</div>}
+          <button className="detail-back" onClick={onBack}><Icon name="chevron-left" size={15} />Все промокоды</button>
+          <div className="detail-title-row">
+            <span className="detail-code">{promo.code}</span>
+            <span className="disc-chip">{fmtDiscount(promo)}{promo.max_discount_rub != null && <span className="disc-cap">до {fmtRub(promo.max_discount_rub)}</span>}</span>
+            <span className="status-cell" style={{ fontSize: 13 }}><span className={"status-dot " + STATUS_META[st].dot} />{STATUS_META[st].label}</span>
+          </div>
+          {promo.description && <div className="page-subtitle" style={{ marginTop: 6 }}>{promo.description}</div>}
         </div>
         <div className="page-head-actions">
+          <button className="btn" onClick={copyCode}><Icon name="copy" size={13} /> Скопировать код</button>
+          <button className="btn" onClick={() => onToggle(promo)}><Icon name="power" size={13} /> {active ? "Выключить" : "Включить"}</button>
           <button className="btn" onClick={() => onEdit(promo)}><Icon name="edit" size={13} /> Изменить</button>
-          <button className="btn" onClick={() => onToggle(promo)}><Icon name="power" size={13} /> {promo.is_active ? "Выключить" : "Включить"}</button>
-          <button className="btn btn-danger" onClick={() => onDelete(promo)}><Icon name="trash-2" size={13} /> Удалить</button>
+          <button className="btn btn-icon" title="Удалить" style={{ color: "var(--bad)" }} onClick={() => onDelete(promo)}><Icon name="trash-2" size={14} /></button>
         </div>
       </div>
 
-      <div className="sec">
-        <div className="kpi-hero" data-cells="4">
-          <div className="kpi-cell primary"><div className="kpi-label"><Icon name="activity" size={12} /> Активаций</div><div className="kpi-value tnum">{s ? fmtNum(s.activations) : "—"}</div></div>
-          <div className="kpi-cell"><div className="kpi-label"><Icon name="users" size={11} /> Уникальных юзеров</div><div className="kpi-value tnum">{s ? fmtNum(s.unique_users) : "—"}</div></div>
-          <div className="kpi-cell"><div className="kpi-label"><Icon name="receipt" size={11} /> Отдано скидок</div><div className="kpi-value tnum" style={{ color: "var(--warn)" }}>{s ? fmtRub(s.total_discount_rub) : "—"}</div></div>
-          <div className="kpi-cell"><div className="kpi-label"><Icon name="trending-up" size={11} /> Выручка с промо</div><div className="kpi-value tnum" style={{ color: "var(--ok)" }}>{s ? fmtRub(s.revenue_after_rub) : "—"}</div></div>
+      <div className="promo-detail-kpi" style={{ marginBottom: 16 }}>
+        <div className="kpi-cell"><div className="kpi-label"><Icon name="activity" size={11} /> Активаций</div><div className="kpi-value tnum" style={{ color: "var(--accent-text)" }}>{s ? fmtNum(s.activations) : "—"}</div></div>
+        <div className="kpi-cell"><div className="kpi-label"><Icon name="users" size={11} /> Уникальных юзеров</div><div className="kpi-value tnum">{s ? fmtNum(s.unique_users) : "—"}</div></div>
+        <div className="kpi-cell"><div className="kpi-label"><Icon name="receipt" size={11} /> Отдано скидок</div><div className="kpi-value tnum">{s ? fmtRub(s.total_discount_rub) : "—"}</div></div>
+        <div className="kpi-cell"><div className="kpi-label"><Icon name="trending-up" size={11} /> Выручка с промо</div><div className="kpi-value tnum">{s ? fmtRub(s.revenue_after_rub) : "—"}</div></div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card-body">
+          <div className="sec-head" style={{ marginBottom: 12 }}>
+            <span className="sec-title">Использование</span>
+            <div className="sec-spacer" />
+            <span className="muted text-xs">{unlimited ? "без лимита активаций" : pct + "% израсходовано"}</span>
+          </div>
+          {unlimited ? (
+            <div className="usage-bar-meta" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Icon name="infinity" size={16} style={{ color: "var(--text-muted)" }} />
+              {fmtNum(promo.activation_count)} активаций · лимит не задан
+            </div>
+          ) : (
+            <div className="usage-bar-wrap">
+              <div className="usage-bar-track"><div className="usage-bar-fill" style={{ width: pct + "%", background: pct >= 100 ? "var(--bad)" : pct >= 80 ? "var(--warn)" : undefined }} /></div>
+              <span className="usage-bar-meta">{fmtNum(promo.activation_count)} / {fmtNum(promo.max_activations)}</span>
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="sec split-2">
+      <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 16, alignItems: "start" }} className="promo-detail-grid">
         <div className="card">
-          <div className="card-head"><Icon name="sliders" size={14} /><div className="sec-title">Параметры</div></div>
+          <div className="card-head"><span className="sec-title">Параметры</span></div>
           <div className="card-body">
             <dl className="kv">
-              <dt>Скидка</dt><dd><span className="disc-chip">{fmtDiscount(promo)}{promo.max_discount_rub != null && <span className="disc-cap">до {fmtRub(promo.max_discount_rub)}</span>}</span></dd>
-              <dt>Аудитория</dt><dd>{AUDIENCE_LABEL[promo.audience]}</dd>
-              <dt>Применение</dt><dd>{APPLIES_SHORT[promo.applies_to]}</dd>
+              <dt>Скидка</dt><dd>{promo.discount_type === "percent" ? promo.discount_value + "%" : fmtRub(promo.discount_value)}{promo.max_discount_rub != null && <span className="muted"> (до {fmtRub(promo.max_discount_rub)})</span>}</dd>
+              <dt>Аудитория</dt><dd><span className={"pill " + (promo.audience === "all" ? "muted" : "info")}>{AUDIENCE_LABEL[promo.audience]}</span></dd>
+              {promo.audience === "by_plan" && <><dt>Тарифы</dt><dd className="mono" style={{ fontSize: 12 }}>{planNames.join(", ") || "—"}</dd></>}
+              <dt>Применение</dt><dd>{APPLIES_LABEL[promo.applies_to]}</dd>
               <dt>Мин. сумма</dt><dd className="mono">{promo.min_amount_rub != null ? fmtRub(promo.min_amount_rub) : "—"}</dd>
-              <dt>На юзера</dt><dd className="mono">{promo.max_per_user}</dd>
-              <dt>Окно</dt><dd>{promo.starts_at || promo.expires_at ? `${fmtDate(promo.starts_at)} → ${promo.expires_at ? fmtDate(promo.expires_at) : "бессрочно"}` : "бессрочно"}</dd>
+              <dt>На пользователя</dt><dd className="mono">{promo.max_per_user}</dd>
+              <dt>Всего активаций</dt><dd className="mono">{unlimited ? "∞" : fmtNum(promo.max_activations)}</dd>
+              <dt>Начало</dt><dd className="mono">{promo.starts_at ? fmtDate(promo.starts_at) : "—"}</dd>
+              <dt>Окончание</dt><dd>{promo.expires_at ? <span className={"mono" + (isExpired(promo) ? " win-expired" : "")}>{fmtDate(promo.expires_at)}</span> : <span className="muted">бессрочно</span>}</dd>
+              <dt>Создан</dt><dd className="mono">{fmtDate(promo.created_at)}</dd>
             </dl>
-            <div className="usage-bar-wrap" style={{ marginTop: 14 }}>
-              {!unlimited && <div className="usage-bar-track"><div className="usage-bar-fill" style={{ width: pct + "%" }} /></div>}
-              <span className="usage-bar-meta">{fmtNum(promo.activation_count)} / {unlimited ? "∞" : fmtNum(promo.max_activations)}</span>
-            </div>
           </div>
         </div>
+
         <div className="card">
-          <div className="card-head"><Icon name="activity" size={14} /><div className="sec-title">Активации</div><span className="pill muted">{acts.data?.total ?? rows.length}</span></div>
-          <div style={{ overflowX: "auto", maxHeight: 360 }}>
-            <table className="tbl">
-              <thead><tr><th>Дата</th><th>Юзер</th><th style={{ textAlign: "right" }}>Было</th><th style={{ textAlign: "right" }}>Скидка</th><th style={{ textAlign: "right" }}>Стало</th></tr></thead>
-              <tbody>
-                {rows.map((a) => (
-                  <tr key={a.id}>
-                    <td className="mono" style={{ fontSize: 12 }}>{fmtDateTime(a.created_at)}</td>
-                    <td className="mono" style={{ fontSize: 12 }}>{a.user_id}</td>
-                    <td className="tbl-num">{fmtRub(a.amount_before)}</td>
-                    <td className="tbl-num" style={{ color: "var(--warn)" }}>{fmtRub(a.discount_applied)}</td>
-                    <td className="tbl-num" style={{ color: "var(--ok)", fontWeight: 500 }}>{fmtRub(a.amount_after)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {!rows.length && <div className="empty-state">Активаций ещё не было</div>}
-          </div>
+          <div className="card-head"><span className="sec-title">Активации</span><span className="pill muted">{fmtNum(total)}</span></div>
+          {rows.length === 0 ? (
+            <div className="empty-state">Активаций пока нет — появятся, как только код применят при оплате.</div>
+          ) : (
+            <>
+              <div style={{ overflowX: "auto" }}>
+                <table className="tbl">
+                  <thead><tr><th>Дата</th><th>Пользователь</th><th>Заказ</th><th style={{ textAlign: "right" }}>Было</th><th style={{ textAlign: "right" }}>Скидка</th><th style={{ textAlign: "right" }}>Стало</th></tr></thead>
+                  <tbody>
+                    {slice.map((a) => (
+                      <tr key={a.id}>
+                        <td className="mono" style={{ fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{fmtDateTime(a.created_at)}</td>
+                        <td className="mono" style={{ fontSize: 12 }}>{a.user || a.user_id}</td>
+                        <td className="mono" style={{ fontSize: 12, color: "var(--text-muted)" }}>{a.order_id || "—"}</td>
+                        <td className="tbl-num">{fmtRub(a.amount_before)}</td>
+                        <td className="tbl-num" style={{ color: "var(--ok)" }}>−{fmtRub(a.discount_applied)}</td>
+                        <td className="tbl-num" style={{ fontWeight: 600 }}>{fmtRub(a.amount_after)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {pages > 1 && (
+                <div className="pager">
+                  <span>{page * ACT_PAGE + 1}–{Math.min(rows.length, page * ACT_PAGE + ACT_PAGE)} из {fmtNum(rows.length)}</span>
+                  <button className="btn btn-xs" disabled={page === 0} onClick={() => setPage(page - 1)}><Icon name="chevron-left" size={13} /></button>
+                  <span className="mono" style={{ fontSize: 12 }}>{page + 1} / {pages}</span>
+                  <button className="btn btn-xs" disabled={page >= pages - 1} onClick={() => setPage(page + 1)}><Icon name="chevron-right" size={13} /></button>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -353,7 +399,7 @@ function PromoForm({ promo, existingCodes, plans, onClose, onSaved }) {
           <div className="form-field">
             <label className="form-label">Код <span className="form-hint">верхний регистр</span></label>
             <input type="text" value={d.code} placeholder="WELCOME25" disabled={editing}
-              className={"mono" + (errors.code ? " is-error" : "")}
+              className={"mono-input" + (errors.code ? " is-error" : "")}
               onChange={(e) => { set("code", e.target.value.toUpperCase()); if (errors.code) setErrors((x) => ({ ...x, code: null })); }} />
             {errors.code && <div className="field-error"><Icon name="alert-circle" size={12} /> {errors.code}</div>}
           </div>
