@@ -10,6 +10,7 @@ from services.plans.models import Plan
 from services.support.models import (
     Broadcast,
     BroadcastLog,
+    RecurringBroadcastSchedule,
     SupportAttachment,
     SupportMessage,
     SupportTemplate,
@@ -434,6 +435,30 @@ class BroadcastRepository(BaseRepository[Broadcast]):
             return []
         rows = (await self.session.execute(stmt)).scalars().all()
         return list(rows)
+
+
+class RecurringBroadcastRepository(BaseRepository[RecurringBroadcastSchedule]):
+    def __init__(self, session: AsyncSession):
+        super().__init__(RecurringBroadcastSchedule, session)
+
+    async def list_all(self) -> list[RecurringBroadcastSchedule]:
+        res = await self.session.execute(
+            select(RecurringBroadcastSchedule).order_by(
+                RecurringBroadcastSchedule.created_at.desc()
+            )
+        )
+        return list(res.scalars().all())
+
+    async def list_due(self, now) -> list[RecurringBroadcastSchedule]:
+        res = await self.session.execute(
+            select(RecurringBroadcastSchedule)
+            .where(
+                RecurringBroadcastSchedule.is_active.is_(True),
+                RecurringBroadcastSchedule.next_run_at <= now,
+            )
+            .with_for_update(skip_locked=True)
+        )
+        return list(res.scalars().all())
 
 
 class BroadcastLogRepository(BaseRepository[BroadcastLog]):

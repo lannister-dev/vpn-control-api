@@ -48,6 +48,7 @@ from services.routes.models import Route, TransportProfile
 from services.support.models import (
     Broadcast,
     BroadcastLog,
+    RecurringBroadcastSchedule,
     SupportAttachment,
     SupportMessage,
     SupportTemplate,

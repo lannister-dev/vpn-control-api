@@ -155,3 +155,47 @@ async def test_broadcast_exhausted_marks_failed():
     assert ok is False
     svc.broadcasts.mark_failed.assert_awaited_once()
     svc.broadcasts.reschedule_for_retry.assert_not_awaited()
+
+
+def test_next_run_daily():
+    from datetime import datetime, timezone
+
+    from services.support.service import SupportService
+    after = datetime(2026, 6, 13, 10, 0, tzinfo=timezone.utc)
+    # 08:00 already passed today → tomorrow
+    assert SupportService._compute_next_run("daily", "08:00", None, after) == datetime(2026, 6, 14, 8, 0, tzinfo=timezone.utc)
+    # 18:00 still ahead today
+    assert SupportService._compute_next_run("daily", "18:00", None, after) == datetime(2026, 6, 13, 18, 0, tzinfo=timezone.utc)
+
+
+def test_next_run_weekly():
+    from datetime import datetime, timezone
+
+    from services.support.service import SupportService
+    after = datetime(2026, 6, 13, 10, 0, tzinfo=timezone.utc)
+    nxt = SupportService._compute_next_run("weekly", "09:00", [0], after)
+    assert nxt.weekday() == 0 and nxt.hour == 9 and nxt > after
+
+
+@pytest.mark.asyncio
+async def test_materialize_recurring_dispatches():
+    from datetime import datetime, timezone
+    from unittest.mock import AsyncMock
+
+    from services.support.service import SupportService
+    svc = SupportService.__new__(SupportService)
+    svc.session = AsyncMock()
+    sched = SimpleNamespace(
+        id=uuid4(), text_body="hi", promo_code_id=None, audience="all", plan_id=None,
+        inline_buttons=None, media_kind=None, media_url=None,
+        cadence="daily", time_of_day="08:00", weekdays=None, created_by_admin_id=None,
+    )
+    svc.recurring = AsyncMock()
+    svc.recurring.list_due = AsyncMock(return_value=[sched])
+    svc.recurring.update_by_id = AsyncMock()
+    svc.create_broadcast = AsyncMock()
+    n = await svc.materialize_due_recurring(datetime(2026, 6, 13, 10, 0, tzinfo=timezone.utc))
+    assert n == 1
+    svc.create_broadcast.assert_awaited_once()
+    upd = svc.recurring.update_by_id.await_args.args[1]
+    assert "next_run_at" in upd and "last_run_at" in upd

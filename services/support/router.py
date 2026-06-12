@@ -10,6 +10,7 @@ from fastapi import (
     Form,
     HTTPException,
     Query,
+    Response,
     UploadFile,
     status,
 )
@@ -35,6 +36,10 @@ from services.support.schemas import (
     BroadcastStatus,
     MessageListOut,
     MessageOut,
+    RecurringBroadcastCreateIn,
+    RecurringBroadcastListOut,
+    RecurringBroadcastOut,
+    RecurringBroadcastUpdateIn,
     TemplateCreateIn,
     TemplateListOut,
     TemplateOut,
@@ -325,6 +330,44 @@ async def repeat_broadcast(
         return await service.repeat_broadcast(broadcast_id, actor_admin_id=actor_admin_id)
     except BroadcastNotFound:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Broadcast not found")
+
+
+@router.get("/recurring-broadcasts", response_model=RecurringBroadcastListOut)
+async def list_recurring_broadcasts(service: SupportService = Depends(get_support_service)):
+    return await service.list_recurring()
+
+
+@router.post("/recurring-broadcasts", response_model=RecurringBroadcastOut, status_code=status.HTTP_201_CREATED)
+async def create_recurring_broadcast(
+    data: RecurringBroadcastCreateIn,
+    service: SupportService = Depends(get_support_service),
+    actor_admin_id: UUID | None = Depends(current_admin_user_id),
+):
+    return await service.create_recurring(data, actor_admin_id=actor_admin_id)
+
+
+@router.patch("/recurring-broadcasts/{schedule_id}", response_model=RecurringBroadcastOut)
+async def update_recurring_broadcast(
+    schedule_id: UUID,
+    data: RecurringBroadcastUpdateIn,
+    service: SupportService = Depends(get_support_service),
+):
+    try:
+        return await service.update_recurring(schedule_id, data)
+    except BroadcastNotFound:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Schedule not found")
+
+
+@router.delete("/recurring-broadcasts/{schedule_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_recurring_broadcast(
+    schedule_id: UUID,
+    service: SupportService = Depends(get_support_service),
+):
+    try:
+        await service.delete_recurring(schedule_id)
+    except BroadcastNotFound:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Schedule not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/broadcasts/audience-size", response_model=BroadcastAudienceCount)

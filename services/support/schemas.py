@@ -267,6 +267,85 @@ class BroadcastAudienceCount(BaseModel):
     count: int
 
 
+class RecurringCadence(str, Enum):
+    DAILY = "daily"
+    WEEKLY = "weekly"
+
+
+_HHMM = r"^([01]\d|2[0-3]):[0-5]\d$"
+
+
+class RecurringBroadcastCreateIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    audience: BroadcastAudience = BroadcastAudience.ALL
+    plan_id: UUID | None = None
+    text_body: str = Field(min_length=1)
+    media_kind: str | None = None
+    media_url: str | None = None
+    inline_buttons: list[dict] | None = None
+    promo_code_id: UUID | None = None
+    cadence: RecurringCadence = RecurringCadence.DAILY
+    time_of_day: str = Field(pattern=_HHMM)
+    weekdays: list[int] | None = None
+
+
+class RecurringBroadcastUpdateIn(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    audience: BroadcastAudience | None = None
+    plan_id: UUID | None = None
+    text_body: str | None = Field(default=None, min_length=1)
+    media_kind: str | None = None
+    media_url: str | None = None
+    inline_buttons: list[dict] | None = None
+    promo_code_id: UUID | None = None
+    cadence: RecurringCadence | None = None
+    time_of_day: str | None = Field(default=None, pattern=_HHMM)
+    weekdays: list[int] | None = None
+    is_active: bool | None = None
+
+
+class RecurringBroadcastInternalCreate(BaseModel):
+    name: str
+    audience: str
+    plan_id: UUID | None = None
+    text_body: str
+    media_kind: str | None = None
+    media_url: str | None = None
+    inline_buttons: list[dict] | None = None
+    promo_code_id: UUID | None = None
+    cadence: str
+    time_of_day: str
+    weekdays: list[int] | None = None
+    next_run_at: datetime
+    created_by_admin_id: UUID | None = None
+
+
+class RecurringBroadcastOut(BaseModel):
+    id: UUID
+    name: str
+    audience: str
+    plan_id: UUID | None
+    text_body: str
+    media_kind: str | None
+    media_url: str | None
+    inline_buttons: list[dict] | None
+    promo_code_id: UUID | None
+    cadence: str
+    time_of_day: str
+    weekdays: list[int] | None
+    next_run_at: datetime
+    last_run_at: datetime | None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RecurringBroadcastListOut(BaseModel):
+    items: list[RecurringBroadcastOut]
+
+
 class SupportInboundAttachmentMsg(BaseModel):
     kind: str
     tg_file_id: str
