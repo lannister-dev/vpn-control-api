@@ -68,11 +68,11 @@
 .hbar-val { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12px; text-align: right; }
 
 /* Waterfall */
-.wf-row { display: grid; grid-template-columns: 150px 1fr 110px; gap: 12px; align-items: center; padding: 5px 0; }
-.wf-label { font-size: 12.5px; display: inline-flex; align-items: center; gap: 6px; }
-.wf-track { position: relative; height: 22px; }
-.wf-bar { position: absolute; top: 2px; height: 18px; border-radius: 3px; }
-.wf-val { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12px; text-align: right; }
+.wf-row { display: grid; grid-template-columns: minmax(120px, 160px) minmax(80px, 1fr) 96px; gap: 10px; align-items: center; padding: 5px 0; }
+.wf-label { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.wf-track { position: relative; height: 22px; min-width: 60px; }
+.wf-bar { position: absolute; top: 2px; height: 18px; border-radius: 3px; max-width: 100%; }
+.wf-val { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12px; text-align: right; white-space: nowrap; }
 
 /* Recurring template cards */
 .tpl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(248px, 1fr)); gap: 12px; }

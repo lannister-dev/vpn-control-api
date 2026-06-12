@@ -35,6 +35,7 @@ import { FinanceIncomePage } from "./pages/FinanceIncome.jsx";
 import { FinanceExpensesPage } from "./pages/FinanceExpenses.jsx";
 import { FinanceMetricsPage } from "./pages/FinanceMetrics.jsx";
 import { FinanceRatesPage } from "./pages/FinanceRates.jsx";
+import { PromoPage } from "./pages/Promo.jsx";
 
 const PAGES = {
   overview: OverviewPage,
@@ -47,6 +48,7 @@ const PAGES = {
   users: UsersPage,
   plans: PlansPage,
   subscriptions: SubscriptionsPage,
+  promo: PromoPage,
   zones: ZonesPage,
   "admin-users": AdminUsersPage,
   ops: OpsPage,
@@ -72,6 +74,7 @@ const CRUMBS = {
   users: ["Workspace", "Бизнес", "Пользователи"],
   plans: ["Workspace", "Бизнес", "Тарифы"],
   subscriptions: ["Workspace", "Бизнес", "Подписки"],
+  promo: ["Workspace", "Бизнес", "Промокоды"],
   "fin-overview": ["Workspace", "Финансы", "Обзор / P&L"],
   "fin-income": ["Workspace", "Финансы", "Доходы"],
   "fin-expenses": ["Workspace", "Финансы", "Расходы"],

@@ -43,10 +43,12 @@ from services.nodes.agent.models import (
 from services.nodes.models import NodeAgentIdentity, NodeAgentState, VpnNode
 from services.placements.models import UserPlacement
 from services.probe.models import ProbeSignal
+from services.promo.models import PromoActivation, PromoCode
 from services.routes.models import Route, TransportProfile
 from services.support.models import (
     Broadcast,
     BroadcastLog,
+    RecurringBroadcastSchedule,
     SupportAttachment,
     SupportMessage,
     SupportTemplate,

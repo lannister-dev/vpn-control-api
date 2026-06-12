@@ -161,10 +161,54 @@ class Broadcast(Base):
     attempts: Mapped[int] = mapped_column(
         Integer, default=0, server_default=text("0"), nullable=False
     )
+    promo_code_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("promo_code.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     created_by_admin_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("admin_user.id", ondelete="SET NULL"),
         nullable=True,
+    )
+
+
+class RecurringBroadcastSchedule(Base):
+    __tablename__ = "recurring_broadcast_schedule"
+
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    audience: Mapped[str] = mapped_column(String(20), nullable=False)
+    plan_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("plan.id", ondelete="SET NULL"), nullable=True
+    )
+    text_body: Mapped[str] = mapped_column(Text, nullable=False)
+    media_kind: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    media_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    inline_buttons: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    promo_code_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("promo_code.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    cadence: Mapped[str] = mapped_column(
+        String(8), default="daily", server_default=text("'daily'"), nullable=False
+    )
+    time_of_day: Mapped[str] = mapped_column(String(5), nullable=False)
+    weekdays: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    next_run_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    last_run_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_by_admin_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("admin_user.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    __table_args__ = (
+        Index("ix_recurring_broadcast_next_run_at", "next_run_at"),
     )
 
 

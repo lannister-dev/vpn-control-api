@@ -74,11 +74,20 @@ export function FinLoading() {
   return <div className="page"><div style={{ padding: 48, color: "var(--text-muted)" }}>Загрузка…</div></div>;
 }
 
+function errText(error) {
+  const m = error?.message;
+  if (typeof m === "string") return m;
+  // FastAPI 422 detail is an array of { loc, msg, type }
+  if (Array.isArray(m)) return m.map((e) => e.msg || JSON.stringify(e)).join("; ");
+  if (m && typeof m === "object") return m.msg || JSON.stringify(m);
+  return "неизвестная ошибка";
+}
+
 export function FinError({ error }) {
   return (
     <div className="page">
       <div className="card card-bad" style={{ marginTop: 24 }}>
-        Не удалось загрузить данные: {error?.message || "ошибка"}
+        Не удалось загрузить данные: {errText(error)}
       </div>
     </div>
   );

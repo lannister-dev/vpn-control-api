@@ -292,8 +292,7 @@ class FinanceService:
             transactions=txns,
         )
 
-    # ── Analytics: Metrics (unit-economics) ────────────────────
-
+    # ── Analytics: Metrics (unit-economics) ─────────────────
     async def metrics(self) -> MetricsOut:
         now = datetime.now(timezone.utc)
         win_from = now - timedelta(days=METRICS_WINDOW_DAYS)

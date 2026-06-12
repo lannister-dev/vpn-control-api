@@ -41,13 +41,18 @@ from services.probe.models import ProbeSignal  # noqa: F401
 from services.probe.reconcilers.auto_drain import ProbeAutoDrainReconciler
 from services.probe.reconcilers.cleanup import ProbeSignalCleanupReconciler
 from services.probe.reconcilers.synthetic import ProbeSyntheticCredentialReconciler
+from services.promo.models import PromoActivation, PromoCode  # noqa: F401
 from services.routes.models import Route, TransportProfile  # noqa: F401
 from services.routes.reconcilers.auto_create import RouteAutoCreateReconciler
 from services.routes.reconcilers.warmup import RouteWarmupReconciler
 from services.routing.entry.publisher import EntryRoutingPublisher
 from services.support.consumer import SupportInboundConsumer, SupportSentConsumer
-from services.support.models import SupportTicket  # noqa: F401
+from services.support.models import (  # noqa: F401
+    RecurringBroadcastSchedule,
+    SupportTicket,
+)
 from services.support.reconcilers.broadcast_scheduler import BroadcastSchedulerReconciler
+from services.support.reconcilers.recurring_broadcast import RecurringBroadcastReconciler
 from services.traffic.nodes.consumer import NodeTrafficNatsConsumer
 from services.traffic.nodes.models import NodeTrafficUsage  # noqa: F401
 from services.traffic.nodes.reconcilers.cleanup import NodeTrafficHistoryCleanupReconciler
@@ -111,6 +116,7 @@ def _build_reconcilers(notifications: NotificationService, nats_client: NatsClie
         WgMeshPeerPublisher(),
         NotificationsDigestReconciler(notifications=notifications),
         BroadcastSchedulerReconciler(nats_client=nats_client),
+        RecurringBroadcastReconciler(nats_client=nats_client),
     ]
 
 

@@ -60,6 +60,7 @@ class OrderCreateIn(BaseModel):
     period_months: int = 1
     subscription_id: UUID | None = None
     payment_method: PlategaPaymentMethodEnum | None = None
+    promo_code: str | None = None
 
     @model_validator(mode="after")
     def validate_provider_requirements(self) -> "OrderCreateIn":
@@ -92,6 +93,8 @@ class OrderInternalCreate(BaseModel):
     order_type: str = "plan_purchase"
     device_slots_qty: int = 0
     period_months: int = 1
+    promo_code_id: UUID | None = None
+    discount_rub: Decimal | None = None
 
 
 class OrderInternalUpdate(BaseModel):
@@ -133,6 +136,7 @@ class OrderOut(BaseModel):
     period_months: int = 1
     fee_rub: Decimal | None = None
     net_rub: Decimal | None = None
+    discount_rub: Decimal | None = None
     created_at: datetime
     updated_at: datetime
 

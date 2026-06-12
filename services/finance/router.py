@@ -52,7 +52,7 @@ async def finance_overview(
 async def finance_income(
     date_from: datetime | None = Query(default=None),
     date_to: datetime | None = Query(default=None),
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(50, ge=1, le=500),
     service: FinanceService = Depends(get_finance_service),
 ):
     start, end = default_range(date_from, date_to)

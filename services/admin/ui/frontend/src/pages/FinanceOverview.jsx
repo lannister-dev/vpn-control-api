@@ -14,9 +14,7 @@ function q(period) {
 
 export function FinanceOverviewPage() {
   const [period, setPeriod] = useState(() => localStorage.getItem("fin.period") || "30d");
-  const [basis, setBasis] = useState(() => localStorage.getItem("fin.basis") || "cash");
   const setP = (p) => { setPeriod(p); localStorage.setItem("fin.period", p); };
-  const setB = (b) => { setBasis(b); localStorage.setItem("fin.basis", b); };
 
   const ov = useQuery(() => api.get("/finance/overview" + q(period)), { deps: [period] });
   const inc = useQuery(() => api.get("/finance/income" + q(period) + "&limit=1"), { deps: [period] });
@@ -50,7 +48,7 @@ export function FinanceOverviewPage() {
       <div className="page-head">
         <div className="page-head-main">
           <h1 className="page-title">Финансы · Обзор</h1>
-          <div className="page-subtitle">P&L и юнит-экономика · период {periodLabel(period)} · {basis === "cash" ? "по дате оплаты" : "признанная выручка"}</div>
+          <div className="page-subtitle">P&L и юнит-экономика · период {periodLabel(period)} · по дате оплаты</div>
         </div>
         <div className="page-head-actions">
           <PeriodSelector value={period} onChange={setP} />
@@ -77,11 +75,6 @@ export function FinanceOverviewPage() {
               <span className="lg"><span className="lg-swatch" style={{ background: "var(--accent)" }} /> Доход</span>
               <span className="lg"><span className="lg-swatch" style={{ background: "var(--spend)" }} /> Расход</span>
               <span className="lg"><span className="lg-line" style={{ background: "var(--ok)" }} /> Прибыль</span>
-            </div>
-            <div className="sec-spacer" />
-            <div className="seg" title="Cash — по дате оплаты. Признанная — годовые платежи амортизированы помесячно.">
-              <button data-active={basis === "cash"} onClick={() => setB("cash")}>Cash</button>
-              <button data-active={basis === "recognized"} onClick={() => setB("recognized")}>Признанная</button>
             </div>
           </div>
           <div className="card-body">

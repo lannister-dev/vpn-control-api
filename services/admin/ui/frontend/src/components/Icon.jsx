@@ -113,6 +113,7 @@ const PATHS = {
   "scale": <><path d="M12 3v18"/><path d="M5 7h14"/><path d="M6.5 7L3 14h7z"/><path d="M17.5 7L14 14h7z"/><path d="M8 21h8"/></>,
   "trending-flat": <><line x1="3" y1="12" x2="21" y2="12"/><polyline points="16 7 21 12 16 17"/></>,
   "banknote": <><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></>,
+  "infinity": <><path d="M18.6 6.62a4.6 4.6 0 1 0 0 10.76c1.56 0 2.78-.74 3.7-1.85L12 6.62a4.6 4.6 0 0 0-3.7-1.85 4.6 4.6 0 1 0 0 9.2"/></>,
 };
 
 export function Icon({ name, size = 16, className, style, strokeWidth = 2 }) {

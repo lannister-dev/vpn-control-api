@@ -31,6 +31,7 @@ from services.nodes.router import router as node_router
 from services.placements.router import router as placements_router
 from services.plans.router import router as plans_router
 from services.probe.router import router as probe_router
+from services.promo.router import router as promo_router
 from services.routes.router import router as routes_router
 from services.support.router import router as support_router
 from services.traffic.nodes.router import router as nodes_traffic_admin_router
@@ -88,6 +89,7 @@ api_router.include_router(users_router)
 api_router.include_router(subscriptions_router)
 api_router.include_router(billing_router)
 api_router.include_router(finance_router)
+api_router.include_router(promo_router)
 api_router.include_router(bot_api_router)
 api_router.include_router(support_router)
 

@@ -15,6 +15,7 @@ from services.auth.admin.repository import AdminUserRepository
 from services.billing.models import BalanceTransaction
 from services.billing.repository import OrderRepository
 from services.config import get_settings
+from services.promo.repository import PromoCodeRepository
 from services.support.constants import (
     BROADCAST_RETRY_BACKOFF_SEC,
     BROADCAST_SENDING_STALE_SEC,
@@ -39,6 +40,7 @@ from services.support.models import (
 from services.support.repository import (
     BroadcastLogRepository,
     BroadcastRepository,
+    RecurringBroadcastRepository,
     SupportAttachmentRepository,
     SupportMessageRepository,
     SupportTemplateRepository,
@@ -56,6 +58,11 @@ from services.support.schemas import (
     MessageListOut,
     MessageOut,
     MessageSenderKind,
+    RecurringBroadcastCreateIn,
+    RecurringBroadcastInternalCreate,
+    RecurringBroadcastListOut,
+    RecurringBroadcastOut,
+    RecurringBroadcastUpdateIn,
     SupportAttachmentCreate,
     SupportMessageCreate,
     SupportOutboundAttachmentMsg,
@@ -107,6 +114,7 @@ class SupportService:
         self.templates = SupportTemplateRepository(session)
         self.broadcasts = BroadcastRepository(session)
         self.broadcast_log = BroadcastLogRepository(session)
+        self.recurring = RecurringBroadcastRepository(session)
         self.users = UserRepository(session)
         self.admins = AdminUserRepository(session)
         self.subscriptions = SubscriptionRepository(session)
@@ -665,6 +673,117 @@ class SupportService:
                 )
             )
         return BroadcastListOut(items=items)
+
+    # ── Recurring broadcast schedules (cron) ───────────────────
+
+    @staticmethod
+    def _compute_next_run(cadence: str, time_of_day: str, weekdays, after: datetime) -> datetime:
+        hh, mm = (int(x) for x in time_of_day.split(":"))
+        base = after.replace(hour=hh, minute=mm, second=0, microsecond=0)
+        if cadence == "weekly":
+            wd = weekdays or [0]
+            for i in range(0, 8):
+                cand = base + timedelta(days=i)
+                if cand > after and cand.weekday() in wd:
+                    return cand
+            return base + timedelta(days=7)
+        return base if base > after else base + timedelta(days=1)
+
+    async def create_recurring(
+        self, data: RecurringBroadcastCreateIn, *, actor_admin_id: UUID | None = None
+    ) -> RecurringBroadcastOut:
+        now = datetime.now(timezone.utc)
+        internal = RecurringBroadcastInternalCreate(
+            name=data.name,
+            audience=data.audience.value,
+            plan_id=data.plan_id,
+            text_body=data.text_body,
+            media_kind=data.media_kind,
+            media_url=data.media_url,
+            inline_buttons=data.inline_buttons,
+            promo_code_id=data.promo_code_id,
+            cadence=data.cadence.value,
+            time_of_day=data.time_of_day,
+            weekdays=data.weekdays,
+            next_run_at=self._compute_next_run(
+                data.cadence.value, data.time_of_day, data.weekdays, now
+            ),
+            created_by_admin_id=actor_admin_id,
+        )
+        row = await self.recurring.create(internal.model_dump())
+        await self.session.commit()
+        return RecurringBroadcastOut.model_validate(row)
+
+    async def list_recurring(self) -> RecurringBroadcastListOut:
+        rows = await self.recurring.list_all()
+        return RecurringBroadcastListOut(
+            items=[RecurringBroadcastOut.model_validate(r) for r in rows]
+        )
+
+    async def update_recurring(
+        self, schedule_id: UUID, data: RecurringBroadcastUpdateIn
+    ) -> RecurringBroadcastOut:
+        existing = await self.recurring.get_by_id(schedule_id)
+        if existing is None:
+            raise BroadcastNotFound("Recurring schedule not found")
+        patch = data.model_dump(exclude_unset=True)
+        for key in ("audience", "cadence"):
+            if patch.get(key) is not None:
+                patch[key] = patch[key].value
+        if any(k in patch for k in ("cadence", "time_of_day", "weekdays")):
+            patch["next_run_at"] = self._compute_next_run(
+                patch.get("cadence", existing.cadence),
+                patch.get("time_of_day", existing.time_of_day),
+                patch.get("weekdays", existing.weekdays),
+                datetime.now(timezone.utc),
+            )
+        row = await self.recurring.update_by_id(schedule_id, patch)
+        await self.session.commit()
+        return RecurringBroadcastOut.model_validate(row)
+
+    async def delete_recurring(self, schedule_id: UUID) -> None:
+        existing = await self.recurring.get_by_id(schedule_id)
+        if existing is None:
+            raise BroadcastNotFound("Recurring schedule not found")
+        await self.recurring.delete_by_id(schedule_id)
+        await self.session.commit()
+
+    async def materialize_due_recurring(self, now: datetime) -> int:
+        due = await self.recurring.list_due(now)
+        created = 0
+        for sched in due:
+            text = sched.text_body or ""
+            if sched.promo_code_id and "{promo}" in text:
+                promo = await PromoCodeRepository(self.session).get_by_id(
+                    sched.promo_code_id
+                )
+                if promo is not None:
+                    text = text.replace("{promo}", promo.code)
+            try:
+                await self.create_broadcast(
+                    audience=BroadcastAudience(sched.audience),
+                    plan_id=sched.plan_id,
+                    text=text,
+                    buttons=sched.inline_buttons,
+                    media_kind=sched.media_kind,
+                    media_url=sched.media_url,
+                    status=BroadcastStatus.SENDING,
+                    scheduled_at=None,
+                    actor_admin_id=sched.created_by_admin_id,
+                )
+                created += 1
+            except Exception:
+                logger_support.exception(
+                    "recurring_broadcast_dispatch_failed", schedule_id=str(sched.id)
+                )
+            next_run = self._compute_next_run(
+                sched.cadence, sched.time_of_day, sched.weekdays, now
+            )
+            await self.recurring.update_by_id(
+                sched.id, {"next_run_at": next_run, "last_run_at": now}
+            )
+        await self.session.commit()
+        return created
 
     async def audience_size(
         self, audience: BroadcastAudience, plan_id: UUID | None
