@@ -20,8 +20,6 @@ from shared.utils.logger import StructuredLogger
 logger = StructuredLogger(logging.getLogger("snapshot-freshness-reconciler"))
 
 TICK_SEC = 60
-# A node whose desired state changed within this window is still settling — wait
-# before snapshotting so a burst of changes collapses into a single snapshot.
 SETTLE_SEC = 30
 
 

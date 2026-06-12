@@ -32,6 +32,7 @@ class BackendRebalancer:
         if len(backends) < 2:
             return 0
         nodes_by_id = {b.id: b for b in backends}
+        live_tags = {f"backend-{b.name}" for b in backends}
 
         keys = await self._key_repository.list_all_active()
         if not keys:
@@ -41,12 +42,12 @@ class BackendRebalancer:
             key_ids=[k.id for k in keys],
         )
 
-        loads = await BackendBalancer.fetch_backend_loads(self._nats)
+        loads = await BackendBalancer.fetch_backend_loads(self._nats, allowed_tags=live_tags)
         if not loads:
             loads = Counter(
                 k.entry_routing_override_backend_tag
                 for k in keys
-                if k.entry_routing_override_backend_tag
+                if k.entry_routing_override_backend_tag in live_tags
             )
 
         moved = 0
