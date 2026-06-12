@@ -24,6 +24,7 @@ const GROUPS = [
     { id: "users", label: "Пользователи", icon: "users" },
     { id: "plans", label: "Тарифы", icon: "wallet" },
     { id: "subscriptions", label: "Подписки", icon: "key" },
+    { id: "promo", label: "Промокоды", icon: "tag" },
   ]},
   { title: "Поддержка", items: [
     { id: "tickets", label: "Тикеты", icon: "message-square", attentionKey: "unanswered" },
