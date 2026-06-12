@@ -65,7 +65,7 @@
 }
 .slideover-back:hover { background: var(--surface-hover); }
 
-@media (max-width: 768px) {
+@media (max-width: 640px) {
   .slideover-backdrop { background: var(--bg); animation: fadeIn 200ms ease; }
   .slideover {
     width: 100vw !important;

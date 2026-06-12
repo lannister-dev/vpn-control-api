@@ -9,7 +9,7 @@ import { UserAvatar } from "../users/UserAvatar.jsx";
 import { BalancePill } from "../users/BalancePill.jsx";
 import { DaysCountdown, daysLeft } from "../users/DaysCountdown.jsx";
 import { UserDrawer } from "../UserDrawer.jsx";
-import { BottomSheet, BottomSheetItem } from "../BottomSheet.jsx";
+import { ActionMenu } from "../ActionMenu.jsx";
 import {
   TicketStatusPill, PriorityDot, CategoryTag,
   MessageBubble, Lightbox, Composer,
@@ -37,7 +37,6 @@ function fmtDateTime(iso) {
 export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
   const [openUser, setOpenUser] = useState(null);
   const [ctxOpen, setCtxOpen] = useState(false);
-  const [actionsSheet, setActionsSheet] = useState(false);
   const [lightbox, setLightbox] = useState(null); // { media, index }
   const [confirmAction, setConfirmAction] = useState(null);
   const [pending, setPending] = useState([]); // optimistic outbound messages
@@ -288,14 +287,24 @@ export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
     </div>
   );
 
+  const actionItems = [
+    { icon: "user", label: "Открыть профиль", onClick: () => setOpenUser(user) },
+    { icon: "plus", label: "Дать день бесплатно", sub: "Продлевает подписку на 24ч", onClick: grantDay },
+    { icon: "rotate-cw", label: "Возврат", sub: "На баланс пользователя", onClick: refund },
+    (live.status !== "in_progress" && live.status !== "closed")
+      ? { icon: "check", label: "В работу", onClick: () => updateTicket({ status: "in_progress" }) }
+      : null,
+    live.status !== "closed"
+      ? { icon: "lock", label: "Закрыть тикет", danger: true, onClick: closeTicket }
+      : { icon: "rotate-cw", label: "Переоткрыть", onClick: () => updateTicket({ status: "in_progress" }) },
+  ];
+
   const actions = (
     <>
       <button className="btn btn-ghost tk-act-profile" onClick={() => setOpenUser(user)} title="Профиль пользователя">
         <Icon name="user" size={13} /> Профиль
       </button>
-      <button className="btn btn-ghost btn-icon" title="Действия" onClick={() => setActionsSheet(true)}>
-        <Icon name="more-vertical" size={15} />
-      </button>
+      <ActionMenu title="Действия" items={actionItems} />
     </>
   );
 
@@ -452,46 +461,6 @@ export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
       {confirmAction && (
         <ConfirmAction action={confirmAction} onClose={() => setConfirmAction(null)} />
       )}
-      <BottomSheet open={actionsSheet} onClose={() => setActionsSheet(false)} title="Действия">
-        <BottomSheetItem
-          icon="user"
-          label="Открыть профиль"
-          onClick={() => { setActionsSheet(false); setOpenUser(user); }}
-        />
-        <BottomSheetItem
-          icon="plus"
-          label="Дать день бесплатно"
-          sub="Продлевает подписку на 24ч"
-          onClick={() => { setActionsSheet(false); grantDay(); }}
-        />
-        <BottomSheetItem
-          icon="rotate-cw"
-          label="Возврат"
-          sub="На баланс пользователя"
-          onClick={() => { setActionsSheet(false); refund(); }}
-        />
-        {live.status !== "in_progress" && live.status !== "closed" && (
-          <BottomSheetItem
-            icon="check"
-            label="В работу"
-            onClick={() => { setActionsSheet(false); updateTicket({ status: "in_progress" }); }}
-          />
-        )}
-        {live.status !== "closed" ? (
-          <BottomSheetItem
-            icon="lock"
-            label="Закрыть тикет"
-            danger
-            onClick={() => { setActionsSheet(false); closeTicket(); }}
-          />
-        ) : (
-          <BottomSheetItem
-            icon="rotate-cw"
-            label="Переоткрыть"
-            onClick={() => { setActionsSheet(false); updateTicket({ status: "in_progress" }); }}
-          />
-        )}
-      </BottomSheet>
     </>
   );
 }
