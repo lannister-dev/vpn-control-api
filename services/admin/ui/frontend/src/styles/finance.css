@@ -108,6 +108,9 @@
   transition: all 100ms ease; line-height: 1.4;
 }
 .ff-chip:hover { border-color: var(--accent); color: var(--text); }
+.ff-chip[data-on="true"] {
+  background: var(--accent); color: #fff; border-color: var(--accent);
+}
 .ff-chip[data-off="true"] {
   background: var(--surface-2); color: var(--text-faint);
   border-color: var(--border); text-decoration: line-through; opacity: 0.75;
