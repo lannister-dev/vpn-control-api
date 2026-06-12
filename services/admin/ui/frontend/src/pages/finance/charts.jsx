@@ -136,13 +136,15 @@ export function Waterfall({ data }) {
           width = (Math.abs(d.value) / maxV) * 100;
           color = "var(--spend)";
         }
+        const safeLeft = Math.max(0, Math.min(100, left));
+        const safeWidth = Math.max(0.6, Math.min(width, 100 - safeLeft));
         return (
           <div className="wf-row" key={i}>
             <span className="wf-label" style={{ fontWeight: d.type === "total" || d.type === "result" ? 600 : 500, color: d.type === "result" ? "var(--ok)" : d.type === "total" ? "var(--text)" : "var(--text-secondary)" }}>
               {d.label}
             </span>
             <div className="wf-track">
-              <div className="wf-bar" style={{ left: `${left}%`, width: `${Math.max(width, 0.6)}%`, background: color, opacity: d.type === "neg" ? 0.7 : 1 }} />
+              <div className="wf-bar" style={{ left: `${safeLeft}%`, width: `${safeWidth}%`, background: color, opacity: d.type === "neg" ? 0.7 : 1 }} />
             </div>
             <span className="wf-val" style={{ color: d.type === "result" ? "var(--ok)" : d.type === "neg" ? "var(--spend)" : "var(--text)" }}>
               {fmtRub(d.value)}
