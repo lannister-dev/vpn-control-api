@@ -48,6 +48,32 @@ class PromoCodeCreateIn(BaseModel):
         return self
 
 
+class PromoCodeInternalCreate(BaseModel):
+    code: str
+    description: str | None = None
+    discount_type: str
+    discount_value: Decimal
+    max_discount_rub: Decimal | None = None
+    audience: str = "all"
+    plan_ids: list[str] | None = None
+    applies_to: str = "any"
+    min_amount_rub: Decimal | None = None
+    max_activations: int | None = None
+    max_per_user: int = 1
+    starts_at: datetime | None = None
+    expires_at: datetime | None = None
+    created_by_admin_id: UUID | None = None
+
+
+class PromoActivationInternalCreate(BaseModel):
+    promo_code_id: UUID
+    user_id: UUID
+    order_id: UUID | None = None
+    amount_before: Decimal
+    discount_applied: Decimal
+    amount_after: Decimal
+
+
 class PromoCodeUpdateIn(BaseModel):
     description: str | None = Field(default=None, max_length=256)
     discount_type: DiscountType | None = None

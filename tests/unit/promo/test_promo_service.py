@@ -84,3 +84,45 @@ class TestGuards:
         svc.sub_repo.list_by_user_id = AsyncMock(return_value=[])
         q = await _quote(svc, _promo(audience="no_subscription"))
         assert q.amount_after == Decimal("100.00")
+
+
+class TestCreateAndActivation:
+    async def test_create_normalizes_via_schema(self, svc):
+        from decimal import Decimal as D
+
+        from services.promo.schemas import (
+            DiscountType,
+            PromoAudience,
+            PromoCodeCreateIn,
+        )
+        svc.promo_repo.get_by_code = AsyncMock(return_value=None)
+        _now = datetime.now(timezone.utc)
+        svc.promo_repo.create = AsyncMock(return_value=_promo(
+            code="LETO50", description=None, created_at=_now, updated_at=_now,
+        ))
+        plan = uuid4()
+        await svc.create_promo(
+            PromoCodeCreateIn(
+                code="leto50", discount_type=DiscountType.PERCENT,
+                discount_value=D("25"), audience=PromoAudience.BY_PLAN, plan_ids=[plan],
+            ),
+            actor_admin_id=None,
+        )
+        payload = svc.promo_repo.create.await_args.args[0]
+        assert payload["code"] == "LETO50"          # uppercased
+        assert payload["discount_type"] == "percent"  # enum -> value
+        assert payload["audience"] == "by_plan"
+        assert payload["plan_ids"] == [str(plan)]     # UUID -> str
+
+    async def test_record_activation_payload(self, svc):
+        from decimal import Decimal as D
+        svc.activation_repo.create = AsyncMock()
+        svc.promo_repo.increment_activation = AsyncMock()
+        pid, uid, oid = uuid4(), uuid4(), uuid4()
+        await svc.record_activation(
+            promo_code_id=pid, user_id=uid, order_id=oid,
+            amount_before=D("200"), discount_applied=D("50"), amount_after=D("150"),
+        )
+        p = svc.activation_repo.create.await_args.args[0]
+        assert p["promo_code_id"] == pid and p["amount_after"] == D("150")
+        svc.promo_repo.increment_activation.assert_awaited_once_with(pid)

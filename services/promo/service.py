@@ -19,9 +19,11 @@ from services.promo.repository import (
     PromoCodeRepository,
 )
 from services.promo.schemas import (
+    PromoActivationInternalCreate,
     PromoActivationListOut,
     PromoActivationOut,
     PromoCodeCreateIn,
+    PromoCodeInternalCreate,
     PromoCodeListOut,
     PromoCodeOut,
     PromoCodeUpdateIn,
@@ -46,14 +48,23 @@ class PromoService:
     ) -> PromoCodeOut:
         if await self.promo_repo.get_by_code(data.code) is not None:
             raise PromoCodeExists(f"Promo code {data.code} already exists")
-        payload = data.model_dump()
-        payload["code"] = data.code.upper()
-        payload["discount_type"] = data.discount_type.value
-        payload["audience"] = data.audience.value
-        payload["applies_to"] = data.applies_to.value
-        payload["plan_ids"] = [str(p) for p in data.plan_ids] if data.plan_ids else None
-        payload["created_by_admin_id"] = actor_admin_id
-        row = await self.promo_repo.create(payload)
+        internal = PromoCodeInternalCreate(
+            code=data.code.upper(),
+            description=data.description,
+            discount_type=data.discount_type.value,
+            discount_value=data.discount_value,
+            max_discount_rub=data.max_discount_rub,
+            audience=data.audience.value,
+            plan_ids=[str(p) for p in data.plan_ids] if data.plan_ids else None,
+            applies_to=data.applies_to.value,
+            min_amount_rub=data.min_amount_rub,
+            max_activations=data.max_activations,
+            max_per_user=data.max_per_user,
+            starts_at=data.starts_at,
+            expires_at=data.expires_at,
+            created_by_admin_id=actor_admin_id,
+        )
+        row = await self.promo_repo.create(internal.model_dump())
         return PromoCodeOut.model_validate(row)
 
     async def list_promos(self) -> PromoCodeListOut:
@@ -168,14 +179,14 @@ class PromoService:
         amount_after: Decimal,
     ) -> None:
         await self.activation_repo.create(
-            {
-                "promo_code_id": promo_code_id,
-                "user_id": user_id,
-                "order_id": order_id,
-                "amount_before": amount_before,
-                "discount_applied": discount_applied,
-                "amount_after": amount_after,
-            }
+            PromoActivationInternalCreate(
+                promo_code_id=promo_code_id,
+                user_id=user_id,
+                order_id=order_id,
+                amount_before=amount_before,
+                discount_applied=discount_applied,
+                amount_after=amount_after,
+            ).model_dump()
         )
         await self.promo_repo.increment_activation(promo_code_id)
 
