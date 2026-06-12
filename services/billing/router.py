@@ -30,6 +30,7 @@ from services.billing.schemas import (
 from services.billing.service import BillingService, get_billing_service
 from services.billing.utils import map_provider_error_to_http_status
 from services.config import get_settings
+from services.promo.exceptions import PromoError
 
 router = APIRouter(prefix="/billing", tags=["Billing"])
 
@@ -49,6 +50,8 @@ async def create_order(
 ):
     try:
         return await service.create_order(data)
+    except PromoError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except PlanNotPurchasable as e:
         raise HTTPException(status_code=422, detail=str(e))
     except InsufficientBalance as e:

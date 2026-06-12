@@ -57,6 +57,7 @@ from services.bot_api.notify.service import TelegramBotNotifyService
 from services.config import get_settings
 from services.notifications.service import NotificationService
 from services.plans.repository import PlanRepository
+from services.promo.service import PromoService
 from services.users.models import User
 from services.users.repository import UserRepository
 from services.vpn.subscriptions.repository import SubscriptionRepository
@@ -88,6 +89,7 @@ class BillingService:
         self.order_repo = OrderRepository(session)
         self.tx_repo = TransactionRepository(session)
         self.fee_repo = ProviderFeeRepository(session)
+        self.promo_service = PromoService(session)
         self.user_repo = UserRepository(session)
         self.plan_repo = PlanRepository(session)
         self.sub_repo = SubscriptionRepository(session)
@@ -224,6 +226,21 @@ class BillingService:
         if plan_due < 0:
             plan_due = Decimal("0")
         amount_rub = plan_due + extra_devices * device_price
+
+        promo_code_id = None
+        discount_rub = None
+        if getattr(data, "promo_code", None) and amount_rub > 0:
+            quote = await self.promo_service.validate_and_quote(
+                code=data.promo_code,
+                user_id=data.user_id,
+                plan_id=plan.id,
+                order_type=data.order_type.value,
+                amount_rub=amount_rub,
+            )
+            promo_code_id = quote.promo_code_id
+            discount_rub = quote.discount_rub
+            amount_rub = quote.amount_after
+
         expires_at = datetime.now(timezone.utc) + timedelta(
             minutes=self.settings.order_ttl_minutes
         )
@@ -242,6 +259,8 @@ class BillingService:
                 amount_rub=amount_rub,
                 extra_devices=extra_devices,
                 period_months=period_months,
+                promo_code_id=promo_code_id,
+                discount_rub=discount_rub,
             )
 
         if data.provider.value == "stars":
@@ -279,6 +298,8 @@ class BillingService:
                 order_type=data.order_type.value,
                 device_slots_qty=extra_devices,
                 period_months=period_months,
+                promo_code_id=promo_code_id,
+                discount_rub=discount_rub,
             ).model_dump()
         )
 
@@ -481,6 +502,8 @@ class BillingService:
         amount_rub: Decimal,
         extra_devices: int,
         period_months: int = 1,
+        promo_code_id: UUID | None = None,
+        discount_rub: Decimal | None = None,
     ) -> OrderOut:
         now = datetime.now(timezone.utc)
         order = await self.order_repo.create(
@@ -498,6 +521,8 @@ class BillingService:
                 order_type=data.order_type.value,
                 device_slots_qty=extra_devices,
                 period_months=period_months,
+                promo_code_id=promo_code_id,
+                discount_rub=discount_rub,
             ).model_dump()
         )
         await self._auto_purchase(user, plan, order, now, strict_balance=True)
@@ -506,6 +531,7 @@ class BillingService:
             OrderInternalUpdate(status="completed", paid_at=now, completed_at=now).model_dump(exclude_none=True),
         )
         BILLING_ORDER_TOTAL.labels(provider="balance", status="completed").inc()
+        await self._record_promo_activation(order)
         refreshed = await self.order_repo.get_by_id(order.id)
         return OrderOut.model_validate(refreshed)
 
@@ -718,6 +744,21 @@ class BillingService:
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
 
+    async def _record_promo_activation(self, order: PaymentOrder) -> None:
+        promo_id = getattr(order, "promo_code_id", None)
+        discount = getattr(order, "discount_rub", None)
+        if promo_id is None or discount is None:
+            return
+        amount_after = order.amount_rub
+        await self.promo_service.record_activation(
+            promo_code_id=promo_id,
+            user_id=order.user_id,
+            order_id=order.id,
+            amount_before=amount_after + discount,
+            discount_applied=discount,
+            amount_after=amount_after,
+        )
+
     async def _fulfill_order_locked(
         self,
         order: PaymentOrder,
@@ -800,6 +841,8 @@ class BillingService:
             description=f"Payment via {provider_name}",
         )
         BILLING_BALANCE_OPERATION_TOTAL.labels(type="payment").inc()
+
+        await self._record_promo_activation(order)
 
         if getattr(order, "order_type", "plan_purchase") == "device_slots":
             await self._fulfill_device_slots(user, order, now)

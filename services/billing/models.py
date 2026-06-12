@@ -48,6 +48,10 @@ class PaymentOrder(Base):
     )
     fee_rub: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     net_rub: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    promo_code_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("promo_code.id", ondelete="SET NULL"), nullable=True
+    )
+    discount_rub: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
 
     __table_args__ = (
         Index("ix_payment_order_user_id", "user_id"),
