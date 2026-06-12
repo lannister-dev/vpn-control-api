@@ -24,7 +24,7 @@ const AUDIENCE_PRESETS = [
 ];
 
 export function BroadcastsPage({ initialAction, onActionConsumed }) {
-  const [showHistory, setShowHistory] = useState(false);
+  const [tab, setTab] = useState("new");
 
   useEffect(() => {
     if (initialAction === "new-broadcast") {
@@ -37,20 +37,24 @@ export function BroadcastsPage({ initialAction, onActionConsumed }) {
       <div className="page-head">
         <div className="page-head-main">
           <h1 className="page-title">Рассылки</h1>
-          <div className="page-subtitle">Создавайте сообщения, выбирайте аудиторию и отправляйте сразу или по расписанию.</div>
+          <div className="page-subtitle">Создавайте сообщения, выбирайте аудиторию и отправляйте сразу, по расписанию или регулярно.</div>
         </div>
         <div className="page-head-actions">
-          <div className="seg" style={{ width: 220 }}>
-            <button data-active={!showHistory} onClick={() => setShowHistory(false)}>Новая</button>
-            <button data-active={showHistory} onClick={() => setShowHistory(true)}>История</button>
+          <div className="seg" style={{ width: 300 }}>
+            <button data-active={tab === "new"} onClick={() => setTab("new")}>Новая</button>
+            <button data-active={tab === "recurring"} onClick={() => setTab("recurring")}>Регулярные</button>
+            <button data-active={tab === "history"} onClick={() => setTab("history")}>История</button>
           </div>
         </div>
       </div>
 
-      <div style={{ display: showHistory ? "none" : "block" }}>
+      <div style={{ display: tab === "new" ? "block" : "none" }}>
         <BroadcastComposer />
       </div>
-      <div style={{ display: showHistory ? "block" : "none" }}>
+      <div style={{ display: tab === "recurring" ? "block" : "none" }}>
+        <RecurringBroadcasts />
+      </div>
+      <div style={{ display: tab === "history" ? "block" : "none" }}>
         <BroadcastHistory />
       </div>
     </div>
@@ -573,4 +577,155 @@ function buildMockBroadcasts() {
     { id: "b4", sent_at: null, audience: "by_plan", audience_label: "Тариф Business · 84", preview: "Технические работы в субботу с 02:00 до 04:00 МСК", delivered: 0, errors: 0, clicks: 0, status: "scheduled" },
     { id: "b5", sent_at: null, audience: "all", audience_label: "Все", preview: "Черновик про обновление приложения", delivered: 0, errors: 0, clicks: 0, status: "draft" },
   ];
+}
+
+/* ─────────────── Recurring (cron) schedules ─────────────── */
+const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+const AUD_LABEL = Object.fromEntries(AUDIENCE_PRESETS.map((p) => [p.id, p.label]));
+
+function cadenceLabel(s) {
+  if (s.cadence === "weekly") {
+    const days = (s.weekdays || []).map((d) => WEEKDAYS[d]).join(", ") || "—";
+    return `Еженедельно (${days}) в ${s.time_of_day} UTC`;
+  }
+  return `Ежедневно в ${s.time_of_day} UTC`;
+}
+
+function RecurringForm({ schedule, promos, plans, onClose, onSaved }) {
+  const editing = !!schedule;
+  const [f, setF] = useState(() => schedule ? {
+    name: schedule.name, audience: schedule.audience, plan_id: schedule.plan_id || "",
+    text_body: schedule.text_body, promo_code_id: schedule.promo_code_id || "",
+    cadence: schedule.cadence, time_of_day: schedule.time_of_day, weekdays: schedule.weekdays || [],
+  } : { name: "", audience: "all", plan_id: "", text_body: "", promo_code_id: "", cadence: "daily", time_of_day: "10:00", weekdays: [] });
+  const [saving, setSaving] = useState(false);
+  const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
+  const toggleDay = (d) => setF((s) => ({ ...s, weekdays: s.weekdays.includes(d) ? s.weekdays.filter((x) => x !== d) : [...s.weekdays, d].sort() }));
+
+  const save = async () => {
+    if (!f.name.trim() || !f.text_body.trim()) { toast.bad("Укажите название и текст"); return; }
+    if (f.audience === "by_plan" && !f.plan_id) { toast.bad("Выберите тариф"); return; }
+    const body = {
+      name: f.name.trim(), audience: f.audience, plan_id: f.audience === "by_plan" ? f.plan_id : null,
+      text_body: f.text_body, promo_code_id: f.promo_code_id || null,
+      cadence: f.cadence, time_of_day: f.time_of_day, weekdays: f.cadence === "weekly" ? f.weekdays : null,
+    };
+    setSaving(true);
+    try {
+      if (editing) await api.patch(`/support/recurring-broadcasts/${schedule.id}`, body);
+      else await api.post("/support/recurring-broadcasts", body);
+      toast.ok(editing ? "Расписание обновлено" : "Расписание создано");
+      onSaved();
+    } catch (e) { toast.bad(e?.message || "Ошибка"); setSaving(false); }
+  };
+
+  return (
+    <Modal title={editing ? "Изменить расписание" : "Новое расписание"} onClose={onClose} wide>
+      <Field label="Название"><input value={f.name} onChange={(e) => set("name", e.target.value)} placeholder="Утренний оффер" /></Field>
+      <Field label="Текст (можно вставить {promo})">
+        <textarea rows={3} value={f.text_body} onChange={(e) => set("text_body", e.target.value)} placeholder="Лови скидку по коду {promo} 🎁" />
+      </Field>
+      <div className="form-row">
+        <Field label="Аудитория">
+          <select value={f.audience} onChange={(e) => set("audience", e.target.value)}>
+            {AUDIENCE_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+          </select>
+        </Field>
+        {f.audience === "by_plan" && (
+          <Field label="Тариф">
+            <select value={f.plan_id} onChange={(e) => set("plan_id", e.target.value)}>
+              <option value="">— выбрать —</option>
+              {plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </Field>
+        )}
+      </div>
+      <Field label="Промокод (подставится в {promo})">
+        <select value={f.promo_code_id} onChange={(e) => set("promo_code_id", e.target.value)}>
+          <option value="">— без промокода —</option>
+          {promos.map((p) => <option key={p.id} value={p.id}>{p.code}</option>)}
+        </select>
+      </Field>
+      <div className="form-row">
+        <Field label="Периодичность">
+          <div className="seg">
+            <button type="button" data-active={f.cadence === "daily"} onClick={() => set("cadence", "daily")}>Ежедневно</button>
+            <button type="button" data-active={f.cadence === "weekly"} onClick={() => set("cadence", "weekly")}>Еженедельно</button>
+          </div>
+        </Field>
+        <Field label="Время (UTC)"><input type="time" value={f.time_of_day} onChange={(e) => set("time_of_day", e.target.value)} /></Field>
+      </div>
+      {f.cadence === "weekly" && (
+        <Field label="Дни недели">
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+            {WEEKDAYS.map((w, i) => (
+              <button key={i} type="button" className="ff-chip" data-on={f.weekdays.includes(i) || undefined} onClick={() => toggleDay(i)}>{w}</button>
+            ))}
+          </div>
+        </Field>
+      )}
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+        <button className="btn btn-ghost" onClick={onClose} disabled={saving}>Отмена</button>
+        <button className="btn btn-primary" onClick={save} disabled={saving}><Icon name="check" size={13} /> {saving ? "Сохранение…" : "Сохранить"}</button>
+      </div>
+    </Modal>
+  );
+}
+
+function RecurringBroadcasts() {
+  const q = useQuery(() => api.get("/support/recurring-broadcasts").catch(() => ({ items: [] })), { interval: 30000 });
+  const promosQ = useQuery(() => api.get("/promo").catch(() => ({ items: [] })), {});
+  const plansQ = useQuery(() => api.get("/plans").catch(() => ({ items: [] })), {});
+  const [form, setForm] = useState(null); // null | "new" | schedule
+  const items = q.data?.items || [];
+  const promos = promosQ.data?.items || [];
+  const plans = plansQ.data?.items || [];
+  const promoCode = (id) => promos.find((p) => p.id === id)?.code;
+
+  const toggle = async (s) => {
+    try { await api.patch(`/support/recurring-broadcasts/${s.id}`, { is_active: !s.is_active }); toast.ok(s.is_active ? "Выключено" : "Включено"); q.refetch(); }
+    catch (e) { toast.bad(e?.message || "Ошибка"); }
+  };
+  const del = async (s) => {
+    if (!window.confirm(`Удалить расписание «${s.name}»?`)) return;
+    try { await api.del(`/support/recurring-broadcasts/${s.id}`); toast.ok("Удалено"); q.refetch(); }
+    catch (e) { toast.bad(e?.message || "Ошибка"); }
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+        <button className="btn btn-primary" onClick={() => setForm("new")}><Icon name="plus" size={13} /> Новое расписание</button>
+      </div>
+      <div className="card">
+        {items.length === 0 ? (
+          <Empty icon="clock" title="Регулярных рассылок нет" hint="Создайте расписание — рассылка будет уходить автоматически (ежедневно/еженедельно)." />
+        ) : (
+          <table className="tbl">
+            <thead><tr><th>Название</th><th>Периодичность</th><th>Аудитория</th><th>Промокод</th><th>Следующая</th><th>Статус</th><th /></tr></thead>
+            <tbody>
+              {items.map((s) => (
+                <tr key={s.id}>
+                  <td style={{ fontWeight: 500 }}>{s.name}<div className="muted truncate" style={{ fontSize: 11, maxWidth: 240 }}>{s.text_body}</div></td>
+                  <td className="small">{cadenceLabel(s)}</td>
+                  <td><span className="pill muted">{AUD_LABEL[s.audience] || s.audience}</span></td>
+                  <td>{s.promo_code_id ? <span className="promo-code">{promoCode(s.promo_code_id) || "—"}</span> : <span className="muted">—</span>}</td>
+                  <td className="mono small">{s.next_run_at ? new Date(s.next_run_at).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—"}</td>
+                  <td><span className="status-cell"><span className={"status-dot " + (s.is_active ? "ok" : "muted")} />{s.is_active ? "Активно" : "Выключено"}</span></td>
+                  <td className="row-actions">
+                    <div style={{ display: "inline-flex", gap: 2 }}>
+                      <button className="btn btn-ghost btn-icon btn-xs" title="Изменить" onClick={() => setForm(s)}><Icon name="edit" size={13} /></button>
+                      <button className="btn btn-ghost btn-icon btn-xs" title={s.is_active ? "Выключить" : "Включить"} onClick={() => toggle(s)}><Icon name="power" size={13} /></button>
+                      <button className="btn btn-ghost btn-icon btn-xs" title="Удалить" style={{ color: "var(--bad)" }} onClick={() => del(s)}><Icon name="trash-2" size={13} /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+      {form && <RecurringForm schedule={form === "new" ? null : form} promos={promos} plans={plans} onClose={() => setForm(null)} onSaved={() => { setForm(null); q.refetch(); }} />}
+    </div>
+  );
 }
