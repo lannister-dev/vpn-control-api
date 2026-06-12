@@ -72,6 +72,19 @@ export const KIND_CHIP = {
   other: "muted",
 };
 
+export const FUNDING = {
+  cash: { label: "Живые деньги", color: "var(--ok)" },
+  balance: { label: "С баланса", color: "var(--info)" },
+  free: { label: "Пробные", color: "var(--text-muted)" },
+};
+const PROVIDER_FUNDING = {
+  platega: "cash", crypto: "cash", freekassa: "cash", stars: "cash",
+  balance: "balance", free: "free",
+};
+export function fundingOf(provider) {
+  return PROVIDER_FUNDING[provider] || "cash";
+}
+
 export const STATUS_META = {
   completed: { label: "completed", cls: "ok" },
   paid: { label: "paid", cls: "info" },
