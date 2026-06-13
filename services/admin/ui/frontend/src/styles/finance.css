@@ -23,11 +23,6 @@
   border-radius: 3px; padding: 1px 5px;
 }
 
-/* Segmented control */
-.seg { display: inline-grid; grid-auto-flow: column; gap: 2px; padding: 2px; background: var(--surface-2); border-radius: 6px; }
-.seg button { border: 0; background: transparent; color: var(--text-secondary); padding: 5px 10px; border-radius: 4px; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; }
-.seg button[data-active="true"] { background: var(--bg-elevated); color: var(--text); box-shadow: var(--shadow-sm); }
-
 /* chip variants not in base */
 .chip-info  { background: var(--info-soft);  color: var(--info); }
 .chip-accent{ background: var(--accent-soft); color: var(--accent-text); }
