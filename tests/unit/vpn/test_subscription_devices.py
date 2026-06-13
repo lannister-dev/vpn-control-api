@@ -7,7 +7,10 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 
-from services.vpn.subscriptions.exceptions import SubscriptionNotFound
+from services.vpn.subscriptions.exceptions import (
+    SubscriptionDeviceLimitReached,
+    SubscriptionNotFound,
+)
 from services.vpn.subscriptions.service import SubscriptionService
 
 
@@ -177,3 +180,72 @@ async def test_revoke_device_idempotent(async_session, redis_client):
     svc.device_repository.update_by_id.assert_not_awaited()
     svc.placement_repository.set_desired_state_for_key.assert_awaited_once()
     svc.node_agent_transport.enqueue_for_key_state.assert_awaited_once()
+
+
+def _limited_subscription(max_devices):
+    sub = _subscription()
+    sub.plan = None
+    sub.plan_id = None
+    sub.paid_device_slots = 0
+    sub.max_devices = max_devices
+    return sub
+
+
+@pytest.mark.asyncio
+async def test_restore_device_success(async_session, redis_client):
+    sub = _limited_subscription(max_devices=5)
+    dev = _device(sub.id)
+    dev.is_active = False
+    primary_key_id = uuid4()
+
+    key = MagicMock()
+    key.id = primary_key_id
+    key.transport = "reality"
+    key.is_revoked = True
+
+    svc = SubscriptionService(async_session, redis_client)
+    svc.subscription_repository = AsyncMock()
+    svc.device_repository = AsyncMock()
+    svc.device_key_repository = AsyncMock()
+    svc.vpn_key_repository = AsyncMock()
+    svc.placement_repository = AsyncMock()
+    svc.node_agent_transport = AsyncMock()
+    svc.device_repository.count_active_for_subscription = AsyncMock(return_value=1)
+    svc.device_key_repository.list_by_device_ids = AsyncMock(return_value=[
+        _device_key_binding(dev.id, primary_key_id, "reality", is_primary=True),
+    ])
+
+    svc.subscription_repository.get_by_id.return_value = sub
+    svc.device_repository.get_by_id_for_subscription.return_value = dev
+    svc.vpn_key_repository.list_by_ids = AsyncMock(return_value=[key])
+
+    changed = await svc.restore_device(sub.id, dev.id)
+
+    assert changed is True
+    assert key.is_revoked is False
+    svc.device_repository.update_by_id.assert_awaited_once()
+    svc.placement_repository.set_desired_state_for_key.assert_awaited_once()
+    svc.node_agent_transport.enqueue_for_key_state.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_restore_device_limit_reached(async_session, redis_client):
+    sub = _limited_subscription(max_devices=2)
+    dev = _device(sub.id)
+    dev.is_active = False
+
+    svc = SubscriptionService(async_session, redis_client)
+    svc.subscription_repository = AsyncMock()
+    svc.device_repository = AsyncMock()
+    svc.device_key_repository = AsyncMock()
+    svc.vpn_key_repository = AsyncMock()
+    svc.placement_repository = AsyncMock()
+    svc.node_agent_transport = AsyncMock()
+    svc.device_repository.count_active_for_subscription = AsyncMock(return_value=2)
+
+    svc.subscription_repository.get_by_id.return_value = sub
+    svc.device_repository.get_by_id_for_subscription.return_value = dev
+
+    with pytest.raises(SubscriptionDeviceLimitReached):
+        await svc.restore_device(sub.id, dev.id)
+    svc.device_repository.update_by_id.assert_not_awaited()

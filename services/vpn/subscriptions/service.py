@@ -648,6 +648,66 @@ class SubscriptionService:
         await self._invalidate_payload_cache_by_token_hash(subscription.token_hash)
         return changed
 
+    async def _effective_device_limit(self, subscription) -> int:
+        plan = subscription.plan if hasattr(subscription, "plan") else None
+        if plan is None and subscription.plan_id:
+            from services.plans.repository import PlanRepository
+            plan_repo = PlanRepository(self.session)
+            plan = await plan_repo.get_by_id(subscription.plan_id)
+        plan_based = (plan.included_devices + (subscription.paid_device_slots or 0)) if plan else 0
+        override = subscription.max_devices or 0
+        return max(override, plan_based) or self.settings.subscriptions.max_devices_default
+
+    async def restore_device(self, subscription_id: UUID, device_id: UUID) -> bool:
+        """
+        Re-activate a previously revoked device: reclaim its slot and un-revoke keys.
+
+        Mirror of revoke_device. Returns True if key state changed
+        (revoked -> active), False when keys were already active.
+        Raises SubscriptionDeviceLimitReached when no free slot remains.
+        """
+        subscription = await self.subscription_repository.get_by_id(subscription_id)
+        if not subscription:
+            raise SubscriptionNotFound(subscription_id)
+
+        device = await self.device_repository.get_by_id_for_subscription(
+            subscription_id=subscription_id,
+            device_id=device_id,
+        )
+        if not device:
+            raise HTTPException(status_code=404, detail="Device not found")
+
+        now = datetime.now(timezone.utc)
+        if not device.is_active:
+            limit = await self._effective_device_limit(subscription)
+            current = await self.device_repository.count_active_for_subscription(
+                subscription.id
+            )
+            if current >= limit:
+                raise SubscriptionDeviceLimitReached()
+            await self.device_repository.update_by_id(
+                device.id,
+                SubscriptionDeviceInternalUpdate(
+                    is_active=True,
+                    updated_at=now,
+                ).model_dump(exclude_none=True),
+            )
+
+        changed = False
+        bundle = await self._load_device_bundle(device)
+        for resolved_key in bundle.keys:
+            key = resolved_key.key
+            if key.is_revoked:
+                key.is_revoked = False
+                changed = True
+            await self._set_placement_desired_state(
+                key_id=key.id,
+                desired_state=PlacementDesiredState.active,
+                reason="subscription_device_restore",
+            )
+        await self._invalidate_payload_cache_by_token_hash(subscription.token_hash)
+        return changed
+
     async def build_payload(
             self,
             raw_token: str,

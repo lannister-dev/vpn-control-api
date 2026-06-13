@@ -376,3 +376,23 @@ async def revoke_subscription_device(
         return {"status": "revoked_device", "revoked_key": changed}
     except SubscriptionNotFound:
         raise HTTPException(status_code=404, detail="Subscription not found")
+
+
+@router.post(
+    "/{subscription_id}/devices/{device_id}/restore",
+    status_code=status.HTTP_200_OK,
+    summary="Restore a revoked device and re-claim its slot",
+    dependencies=[Depends(admin_auth)],
+)
+async def restore_subscription_device(
+        subscription_id: UUID,
+        device_id: UUID,
+        service: SubscriptionService = Depends(get_subscription_service),
+):
+    try:
+        changed = await service.restore_device(subscription_id, device_id)
+        return {"status": "restored_device", "restored_key": changed}
+    except SubscriptionNotFound:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+    except SubscriptionDeviceLimitReached:
+        raise HTTPException(status_code=409, detail="Device limit reached")
