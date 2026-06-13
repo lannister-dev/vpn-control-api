@@ -231,6 +231,15 @@ function DevicesTab({ subs, plansById, onOpenSub }) {
       toast.bad(e.message || String(e));
     }
   };
+  const onRestore = async (device) => {
+    try {
+      await api.post(`/subscriptions/${device.subscription_id}/devices/${device.id}/restore`);
+      toast.ok("Устройство возвращено");
+      allDevices.refetch();
+    } catch (e) {
+      toast.bad(e.message || String(e));
+    }
+  };
   const onCopy = (device) => {
     navigator.clipboard?.writeText(device.hwid_hash || device.id);
     toast.ok("HWID скопирован");
@@ -266,13 +275,14 @@ function DevicesTab({ subs, plansById, onOpenSub }) {
           onOpenSub={onOpenSub}
           onCopy={onCopy}
           onRevoke={onRevoke}
+          onRestore={onRestore}
         />
       ))}
     </div>
   );
 }
 
-function DeviceGroup({ sub, plan, devices, onOpenSub, onCopy, onRevoke }) {
+function DeviceGroup({ sub, plan, devices, onOpenSub, onCopy, onRevoke, onRestore }) {
   const planName = plan?.name || (sub?.plan_id ? `plan ${String(sub.plan_id).slice(0, 6)}…` : "—");
   const subId = sub ? String(sub.id).slice(0, 8) : "—";
   return (
@@ -290,7 +300,7 @@ function DeviceGroup({ sub, plan, devices, onOpenSub, onCopy, onRevoke }) {
         )}
       </div>
       {devices.map((d) => (
-        <DeviceCard key={d.id} device={d} onCopy={onCopy} onRevoke={onRevoke} />
+        <DeviceCard key={d.id} device={d} onCopy={onCopy} onRevoke={onRevoke} onRestore={onRestore} />
       ))}
     </div>
   );

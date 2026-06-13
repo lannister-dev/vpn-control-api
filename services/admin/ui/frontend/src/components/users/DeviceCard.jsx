@@ -32,7 +32,7 @@ function deviceTitle(device) {
   return "Устройство";
 }
 
-export function DeviceCard({ device, onCopy, onRevoke }) {
+export function DeviceCard({ device, onCopy, onRevoke, onRestore }) {
   const title = deviceTitle(device);
   const osLine = [device.platform, device.os_version].filter((v) => v && v.trim()).join(" ");
 
@@ -66,6 +66,11 @@ export function DeviceCard({ device, onCopy, onRevoke }) {
         {device.is_active && onRevoke && (
           <button className="btn btn-ghost btn-icon btn-sm" onClick={() => onRevoke(device)} title="Отозвать">
             <Icon name="shield-off" size={12} />
+          </button>
+        )}
+        {!device.is_active && onRestore && (
+          <button className="btn btn-ghost btn-icon btn-sm" onClick={() => onRestore(device)} title="Вернуть устройство">
+            <Icon name="rotate-cw" size={12} />
           </button>
         )}
       </div>
