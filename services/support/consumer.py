@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from services.admin.transport.repository import NatsMessageDedupRepository
 from services.config import NatsConfig
+from services.notifications.service import NotificationService
 from services.support.repository import SupportMessageRepository
 from services.support.schemas import SupportInboundMessage, SupportSentAck
 from services.support.service import SupportService
@@ -102,7 +103,7 @@ class SupportInboundConsumer:
                 }
                 for a in parsed.attachments
             ]
-            ticket, message = await svc.ingest_user_message(
+            ticket, message, is_new_ticket = await svc.ingest_user_message(
                 user_id=user.id,
                 text=parsed.text,
                 attachments_payload=attachments_payload or None,
@@ -117,6 +118,17 @@ class SupportInboundConsumer:
                 message_id=str(message.id),
                 telegram_id=parsed.telegram_id,
             )
+
+            if is_new_ticket:
+                try:
+                    await NotificationService(self._nats).publish_support_message(
+                        ticket_id=str(ticket.id),
+                        telegram_id=parsed.telegram_id,
+                        username=getattr(user, "username", None),
+                        text=parsed.text or "",
+                    )
+                except Exception:
+                    logger.exception("support_msg_notify_failed", ticket_id=str(ticket.id))
         await msg.ack()
 
     @staticmethod

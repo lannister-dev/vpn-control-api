@@ -99,6 +99,14 @@ class BalanceTopupEvent(_Base):
     balance_after_rub: float
 
 
+class SupportMessageEvent(_Base):
+    kind: Literal["support_message"] = "support_message"
+    ticket_id: str
+    telegram_id: int
+    username: str | None = None
+    text: str
+
+
 class DigestDailyEvent(_Base):
     kind: Literal["digest_daily"] = "digest_daily"
     period_start: datetime
@@ -135,6 +143,7 @@ NotificationEvent = Union[
     TrialStartedEvent,
     PurchaseEvent,
     BalanceTopupEvent,
+    SupportMessageEvent,
     DigestDailyEvent,
     DigestWeeklyEvent,
 ]

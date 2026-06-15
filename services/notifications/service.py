@@ -28,6 +28,7 @@ from services.notifications.schemas import (
     PurchaseEvent,
     RouteBlockedEvent,
     RouteRecoveredEvent,
+    SupportMessageEvent,
     TrialStartedEvent,
     UserRegisteredEvent,
 )
@@ -275,6 +276,23 @@ class NotificationService:
             amount_rub=amount_rub,
             provider=provider,
             balance_after_rub=balance_after_rub,
+        ))
+
+    async def publish_support_message(
+        self,
+        *,
+        ticket_id: str,
+        telegram_id: int,
+        username: str | None,
+        text: str,
+    ) -> None:
+        await self.publish(SupportMessageEvent(
+            event_id=_new_id(),
+            emitted_at=_now(),
+            ticket_id=ticket_id,
+            telegram_id=telegram_id,
+            username=username,
+            text=text,
         ))
 
     async def publish_digest_daily(
