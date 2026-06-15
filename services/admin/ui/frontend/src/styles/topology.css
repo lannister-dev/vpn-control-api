@@ -430,3 +430,13 @@
   background-clip: padding-box;
 }
 .accent-swatch[data-active="true"] { border-color: var(--text); }
+
+@media (max-width: 640px) {
+  .topo { grid-template-columns: 1fr; gap: 12px; min-height: 0; }
+  .topo-v2 { grid-template-columns: 1fr; min-height: 0; }
+  .topo-v2-header-left, .topo-v2-header-right,
+  .topo-v2-nodes-left, .topo-v2-nodes-right { grid-column: 1; }
+  .topo-svg, .topo-v2-svg { display: none; }
+  .route-detail-grid, .matrix-detail-grid { grid-template-columns: 1fr; }
+  .tweaks { display: none; }
+}

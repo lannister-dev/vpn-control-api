@@ -207,3 +207,8 @@
 :root[data-theme="dark"] .tf-bar-fill {
   background: linear-gradient(90deg, var(--accent), oklch(0.72 0.15 290));
 }
+
+@media (max-width: 640px) {
+  .tf-bar-cell { min-width: 96px; }
+  .tf-region-list { grid-template-columns: 1fr; }
+}

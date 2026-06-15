@@ -176,7 +176,7 @@ export function FinanceIncomePage() {
             {kpis.map((k, i) => (
               <div key={k.label} className="kpi-cell" style={{ borderRight: i < 3 ? "1px solid var(--border)" : "none" }}>
                 <div className="kpi-label"><Icon name={k.icon} size={12} /> <span>{k.label}</span></div>
-                <div className="kpi-value tnum" style={{ fontSize: 24, color: k.color }}>{k.value}</div>
+                <div className="kpi-value tnum" style={{ fontSize: "clamp(17px, 5vw, 24px)", color: k.color }}>{k.value}</div>
                 <div className="text-xs muted mt-1">{k.sub}</div>
               </div>
             ))}
