@@ -481,9 +481,10 @@ class SupportService:
         user_id: UUID,
         text: str,
         attachments_payload: list[dict] | None = None,
-    ) -> tuple[SupportTicket, SupportMessage]:
+    ) -> tuple[SupportTicket, SupportMessage, bool]:
         now = datetime.now(timezone.utc)
         ticket = await self.tickets.find_open_by_user(user_id)
+        is_new_ticket = ticket is None
         if ticket is None:
             # Closed tickets stay closed. New user message always opens a fresh ticket.
             ticket = await self.tickets.create(
@@ -520,7 +521,7 @@ class SupportService:
             )
 
         await self.session.commit()
-        return ticket, msg
+        return ticket, msg, is_new_ticket
 
     async def list_templates(self) -> TemplateListOut:
         rows = await self.templates.list_all()

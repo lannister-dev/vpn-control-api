@@ -91,13 +91,13 @@ export function FinanceIncomePage() {
     (typeSel.size === 0 || typeSel.has(r.order_type)) &&
     (statusFilter === "all" || r.status === statusFilter)
   );
-  // Revenue = recognised purchases (exclude balance top-ups).
-  const revRows = rows.filter((r) => !r.is_top_up);
+  const revRows = rows.filter((r) => fundingOf(r.provider) === "cash");
+  const balanceRows = rows.filter((r) => fundingOf(r.provider) === "balance");
 
-  const cashSum = revRows.filter((r) => fundingOf(r.provider) === "cash").reduce((a, r) => a + Number(r.amount_rub || 0), 0);
-  const balanceSum = revRows.filter((r) => fundingOf(r.provider) === "balance").reduce((a, r) => a + Number(r.amount_rub || 0), 0);
+  const cashSum = revRows.reduce((a, r) => a + Number(r.amount_rub || 0), 0);
+  const balanceSum = balanceRows.reduce((a, r) => a + Number(r.amount_rub || 0), 0);
   const trialCount = rows.filter((r) => fundingOf(r.provider) === "free").length;
-  const topupSum = rows.filter((r) => r.is_top_up).reduce((a, r) => a + Number(r.amount_rub || 0), 0);
+  const topupSum = revRows.filter((r) => r.is_top_up).reduce((a, r) => a + Number(r.amount_rub || 0), 0);
 
   const byProvider = groupDonut(revRows, (r) => r.provider, PROVIDER_LABELS, PROVIDER_COLORS);
   const byType = groupDonut(revRows, (r) => r.order_type, ORDER_TYPE_LABELS, ORDER_TYPE_COLORS);
@@ -105,7 +105,11 @@ export function FinanceIncomePage() {
     revRows.filter((r) => [1, 3, 6, 12].includes(r.period_months)),
     (r) => r.period_months, PERIOD_LABELS, PERIOD_COLORS,
   );
-  const byFunding = groupDonut(revRows, (r) => fundingOf(r.provider), Object.fromEntries(Object.entries(FUNDING).map(([k, v]) => [k, v.label])), Object.fromEntries(Object.entries(FUNDING).map(([k, v]) => [k, v.color])));
+  const byCashKind = groupDonut(
+    revRows, (r) => (r.is_top_up ? "topup" : "direct"),
+    { direct: "Прямые оплаты", topup: "Пополнения" },
+    { direct: "var(--ok)", topup: "var(--info)" },
+  );
 
   const subtotalNet = revRows.reduce((a, r) => a + Number(r.net_rub ?? r.amount_rub ?? 0), 0);
   const fmtTime = (iso) => iso ? new Date(iso).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—";
@@ -120,10 +124,10 @@ export function FinanceIncomePage() {
   };
 
   const kpis = [
-    { label: "Живые деньги", value: fmtRub(cashSum), sub: "оплачено через платёжки", color: "var(--ok)", icon: "dollar-sign" },
-    { label: "С баланса", value: fmtRub(balanceSum), sub: "списано с баланса (вкл. рефералку)", color: "var(--info)", icon: "wallet" },
+    { label: "Живые деньги", value: fmtRub(cashSum), sub: "поступило в платёжку (вкл. пополнения)", color: "var(--ok)", icon: "dollar-sign" },
+    { label: "С баланса", value: fmtRub(balanceSum), sub: "списано с баланса · не новые деньги", color: "var(--text-muted)", icon: "wallet" },
     { label: "Пробные", value: fmtNum(trialCount), sub: "бесплатных активаций", color: "var(--text-muted)", icon: "zap" },
-    { label: "Пополнения", value: fmtRub(topupSum), sub: "top-up · обязательство, не доход", color: "var(--text-muted)", icon: "credit-card" },
+    { label: "из них пополнения", value: fmtRub(topupSum), sub: "top-up в составе живых денег", color: "var(--info)", icon: "credit-card" },
   ];
 
   return (
@@ -131,7 +135,7 @@ export function FinanceIncomePage() {
       <div className="page-head">
         <div className="page-head-main">
           <h1 className="page-title">Доходы</h1>
-          <div className="page-subtitle">Входящие платежи · {periodLabel(period)} · «живые деньги» = реальная оплата, «с баланса» — не новые деньги</div>
+          <div className="page-subtitle">Поступления в платёжную систему · {periodLabel(period)} · доход = живые деньги (вкл. пополнения); «с баланса» — не новые деньги</div>
         </div>
         <div className="page-head-actions">
           <button className="btn" onClick={exportCsv}><Icon name="download" size={13} /> Экспорт CSV</button>
@@ -182,8 +186,8 @@ export function FinanceIncomePage() {
 
       <div className="sec split-3">
         <div className="card">
-          <div className="card-head"><Icon name="dollar-sign" size={14} /><div className="sec-title">По источнику</div></div>
-          <div className="card-body"><Donut data={byFunding} size={120} centerValue={fmtRubK(sum(byFunding))} centerLabel="выручка" /></div>
+          <div className="card-head"><Icon name="dollar-sign" size={14} /><div className="sec-title">Состав поступлений</div></div>
+          <div className="card-body"><Donut data={byCashKind} size={120} centerValue={fmtRubK(sum(byCashKind))} centerLabel="в платёжку" /></div>
         </div>
         <div className="card">
           <div className="card-head"><Icon name="credit-card" size={14} /><div className="sec-title">По провайдерам</div></div>
@@ -222,7 +226,7 @@ export function FinanceIncomePage() {
                 {rows.map((r) => {
                   const f = fundingOf(r.provider);
                   return (
-                    <tr key={r.id} data-muted={r.is_top_up || undefined}>
+                    <tr key={r.id} data-muted={f === "balance" || undefined}>
                       <td className="mono" style={{ fontSize: 12, color: "var(--text-secondary)" }}>{fmtTime(r.paid_at)}</td>
                       <td style={{ fontWeight: 500 }}>{r.user || "—"}</td>
                       <td><ProvCell provider={r.provider} /></td>
@@ -232,9 +236,9 @@ export function FinanceIncomePage() {
                           ? <span className="chip chip-muted">пополнение</span>
                           : <span style={{ fontSize: 12.5 }}>{ORDER_TYPE_LABELS[r.order_type] || r.order_type}{r.period_months ? <span className="muted"> · {r.period_months}м</span> : ""}</span>}
                       </td>
-                      <td className="tbl-num" style={{ color: r.is_top_up ? "var(--text-muted)" : "var(--text)" }}>{fmtRub(r.amount_rub)}</td>
+                      <td className="tbl-num" style={{ color: f === "balance" ? "var(--text-muted)" : "var(--text)" }}>{fmtRub(r.amount_rub)}</td>
                       <td className="tbl-num" style={{ color: r.fee_rub == null ? "var(--text-faint)" : "var(--warn)" }}>{r.fee_rub == null ? "— н/д" : fmtRub(r.fee_rub)}</td>
-                      <td className="tbl-num" style={{ color: r.net_rub == null ? "var(--text-faint)" : (r.is_top_up ? "var(--text-muted)" : "var(--ok)"), fontWeight: 500 }}>{r.net_rub == null ? "≈" + fmtRub(r.amount_rub) : fmtRub(r.net_rub)}</td>
+                      <td className="tbl-num" style={{ color: r.net_rub == null ? "var(--text-faint)" : (f === "balance" ? "var(--text-muted)" : "var(--ok)"), fontWeight: 500 }}>{r.net_rub == null ? "≈" + fmtRub(r.amount_rub) : fmtRub(r.net_rub)}</td>
                       <td><span className={`pill ${(STATUS_META[r.status] || STATUS_META.completed).cls}`}>{r.status}</span></td>
                     </tr>
                   );
@@ -244,7 +248,7 @@ export function FinanceIncomePage() {
           </div>
           <div style={{ padding: "10px 14px", borderTop: "1px solid var(--border)", display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
             <div className="footnote" style={{ fontWeight: 500, color: "var(--text)" }}>
-              Выручка по выборке: <span style={{ color: "var(--ok)" }}>живые {fmtRub(cashSum)}</span> · с баланса {fmtRub(balanceSum)} · net {fmtRub(subtotalNet)}
+              Поступило в платёжку: <span style={{ color: "var(--ok)" }}>{fmtRub(cashSum)}</span> · из них пополнения {fmtRub(topupSum)} · с баланса (не доход) {fmtRub(balanceSum)} · net {fmtRub(subtotalNet)}
             </div>
             <div className="sec-spacer" />
             <div className="footnote"><span className="fn-mark">*</span> Фильтр включающий: кликни источник/тип, чтобы оставить только их. Колёса и KPI пересчитываются под фильтр.</div>

@@ -5,7 +5,7 @@ from collections.abc import Iterable
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.admin.status.service import AdminStatusService
@@ -14,6 +14,7 @@ from services.billing.schemas import OrderCreateIn, OrderOut, OrderTypeEnum, Pay
 from services.billing.service import BillingService
 from services.billing.utils import map_provider_error_to_http_status
 from services.config import get_settings
+from services.notifications.service import NotificationService
 from services.plans.repository import PlanRepository
 from services.plans.schemas import PlanOut
 from services.referral.schemas import BotReferralInfoOut
@@ -70,15 +71,20 @@ log = logging.getLogger(__name__)
 
 
 class BotApiService:
-    def __init__(self, session: AsyncSession, redis: RedisClient):
+    def __init__(
+        self,
+        session: AsyncSession,
+        redis: RedisClient,
+        notifications: NotificationService | None = None,
+    ):
         self.session = session
         self.user_repository = UserRepository(session)
         self.order_repository = OrderRepository(session)
         self.plan_repository = PlanRepository(session)
         self.subscription_repository = SubscriptionRepository(session)
         self.device_repository = SubscriptionDeviceRepository(session)
-        self.user_service = UserService(session)
-        self.billing_service = BillingService(session)
+        self.user_service = UserService(session, notifications)
+        self.billing_service = BillingService(session, notifications=notifications)
         self.subscription_service = SubscriptionService(session, redis)
         self.admin_status_service = AdminStatusService(session)
         self.settings = get_settings()
@@ -906,7 +912,9 @@ class BotApiService:
 
 
 def get_bot_api_service(
+    request: Request,
     session: AsyncSession = Depends(AsyncDatabase.get_session),
     redis: RedisClient = Depends(get_redis_client),
 ) -> BotApiService:
-    return BotApiService(session, redis)
+    notifications = getattr(request.app.state, "notifications", None)
+    return BotApiService(session, redis, notifications)

@@ -103,13 +103,11 @@ class OrderRepository(BaseRepository[PaymentOrder]):
         )
         return list(result.scalars().all())
 
-    # ── Analytics aggregations (revenue = paid/completed, excl. top_up) ──
-
     @staticmethod
     def _revenue_where(date_from: datetime | None, date_to: datetime | None):
         conds = [
             PaymentOrder.status.in_(REVENUE_ORDER_STATUSES),
-            PaymentOrder.order_type != OrderTypeEnum.TOP_UP,
+            PaymentOrder.provider.notin_(NON_GATEWAY_PROVIDERS),
         ]
         if date_from is not None:
             conds.append(PaymentOrder.paid_at >= date_from)
@@ -190,10 +188,7 @@ class OrderRepository(BaseRepository[PaymentOrder]):
                         ),
                         0,
                     ),
-                ).where(
-                    *self._revenue_where(date_from, date_to),
-                    PaymentOrder.provider.notin_(NON_GATEWAY_PROVIDERS),
-                )
+                ).where(*self._revenue_where(date_from, date_to))
             )
         ).one()
         return float(row[0]), float(row[1])
