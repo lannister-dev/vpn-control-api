@@ -145,6 +145,7 @@
 .u-subcard-plan { display: flex; align-items: center; gap: 8px; }
 .u-subcard-plan-name { font-weight: 600; font-size: 13px; color: var(--text, #e5e7eb); }
 .u-subcard-id { font-size: 10px; color: var(--text-faint, #525866); }
+.u-subcard-sub { margin-top: -6px; }
 .u-subcard-meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .u-subcard-micro { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-faint, #525866); margin-bottom: 3px; }
 .u-subcard-micro-val { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text, #e5e7eb); font-weight: 500; }

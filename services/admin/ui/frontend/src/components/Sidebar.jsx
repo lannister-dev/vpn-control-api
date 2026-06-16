@@ -1,5 +1,12 @@
-// REPLACE frontend/src/components/Sidebar.jsx with this file.
+import { useState } from "react";
 import { Icon } from "./Icon.jsx";
+
+const COLLAPSE_KEY = "sidebar.collapsedGroups";
+
+function loadCollapsed() {
+  try { return new Set(JSON.parse(localStorage.getItem(COLLAPSE_KEY) || "[]")); }
+  catch { return new Set(); }
+}
 
 const GROUPS = [
   { title: "Мониторинг", items: [
@@ -40,10 +47,17 @@ const GROUPS = [
 ];
 
 export function Sidebar({ activeTab, onTab, collapsed, onToggle, onOpenPalette, counts = {}, user, onLogout, mobileOpen, onMobileClose }) {
+  const [collapsedGroups, setCollapsedGroups] = useState(loadCollapsed);
   const pick = (id) => {
     onTab(id);
     onMobileClose?.();
   };
+  const toggleGroup = (title) => setCollapsedGroups((prev) => {
+    const next = new Set(prev);
+    if (next.has(title)) next.delete(title); else next.add(title);
+    localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...next]));
+    return next;
+  });
   return (
     <>
       {mobileOpen && <div className="sidebar-backdrop" onClick={onMobileClose} />}
@@ -67,10 +81,22 @@ export function Sidebar({ activeTab, onTab, collapsed, onToggle, onOpenPalette, 
       </div>
 
       <nav className="side-nav">
-        {GROUPS.map((g) => (
-          <div key={g.title} className="side-group">
-            <div className="side-group-title">{g.title}</div>
-            {g.items.map((it) => {
+        {GROUPS.map((g) => {
+          const hasActive = g.items.some((it) => it.id === activeTab);
+          const open = collapsed || hasActive || !collapsedGroups.has(g.title);
+          return (
+          <div key={g.title} className="side-group" data-open={open || undefined}>
+            {!collapsed && (
+              <button
+                className="side-group-title"
+                onClick={() => toggleGroup(g.title)}
+                aria-expanded={open}
+              >
+                <span>{g.title}</span>
+                <Icon className="side-group-chevron" name="chevron-right" size={12} />
+              </button>
+            )}
+            {open && g.items.map((it) => {
               const count = counts[it.id];
               const isAttention = it.attentionKey && count != null && count > 0;
               return (
@@ -95,7 +121,8 @@ export function Sidebar({ activeTab, onTab, collapsed, onToggle, onOpenPalette, 
               );
             })}
           </div>
-        ))}
+          );
+        })}
       </nav>
 
       <div className="side-footer">

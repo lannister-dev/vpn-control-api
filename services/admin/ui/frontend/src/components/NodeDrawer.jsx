@@ -199,7 +199,7 @@ function SshHintModal({ node, onClose }) {
 }
 
 function NodeOverview({ node, routesCount, transportData, liveConnections, onSshClick, onMigrateClick }) {
-  const load = nodeLoad(node, { liveConnections });
+  const load = nodeLoad(node, { cpuPct: node.cpu_pct, bandwidthPct: node.bandwidth_pct, liveConnections });
   const loadPct = load.pct;
   const loadTone = load.tone;
   const loadBarWidth = loadPct == null ? 0 : Math.min(100, loadPct);
@@ -226,8 +226,8 @@ function NodeOverview({ node, routesCount, transportData, liveConnections, onSsh
               </div>
             </div>
             <div className="muted small" style={{ marginTop: 6 }}>
-              {load.used} / {load.capacity ?? "—"} placements
-              {load.capacity == null && <span style={{ marginLeft: 6 }}>· capacity не задан</span>}
+              {node.placements_backend ?? 0} / {node.capacity ?? "—"} placements
+              {node.capacity == null && <span style={{ marginLeft: 6 }}>· capacity не задан</span>}
             </div>
           </div>
         </div>
