@@ -382,6 +382,13 @@ class BroadcastRepository(BaseRepository[Broadcast]):
         )
         await self.session.execute(stmt)
 
+    async def increment_clicks(self, broadcast_id: UUID) -> None:
+        await self.session.execute(
+            update(Broadcast)
+            .where(Broadcast.id == broadcast_id)
+            .values(clicks=Broadcast.clicks + 1)
+        )
+
     async def resolve_audience_user_ids(
         self,
         audience: BroadcastAudience,
@@ -464,3 +471,32 @@ class RecurringBroadcastRepository(BaseRepository[RecurringBroadcastSchedule]):
 class BroadcastLogRepository(BaseRepository[BroadcastLog]):
     def __init__(self, session: AsyncSession):
         super().__init__(BroadcastLog, session)
+
+    async def register_click(
+        self, broadcast_id: UUID, user_id: UUID, now: datetime
+    ) -> bool:
+        res = await self.session.execute(
+            select(BroadcastLog)
+            .where(
+                BroadcastLog.broadcast_id == broadcast_id,
+                BroadcastLog.user_id == user_id,
+            )
+            .limit(1)
+        )
+        row = res.scalar_one_or_none()
+        if row is None:
+            self.session.add(
+                BroadcastLog(
+                    broadcast_id=broadcast_id,
+                    user_id=user_id,
+                    delivered=False,
+                    clicked=True,
+                    clicked_at=now,
+                )
+            )
+            return True
+        if not row.clicked:
+            row.clicked = True
+            row.clicked_at = now
+            return True
+        return False

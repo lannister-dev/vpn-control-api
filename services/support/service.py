@@ -921,6 +921,17 @@ class SupportService:
             if t and u:
                 button_payload.append(SupportOutboundInlineButton(text=t, url=u))
 
+        bcast = await self.broadcasts.get_by_id(broadcast_id)
+        username = (get_settings().referral.bot_username or "").strip()
+        if bcast is not None and bcast.promo_code_id is not None and username:
+            promo_url = f"https://t.me/{username}?start=pm_{broadcast_id}"
+            if not any(b.url == promo_url for b in button_payload):
+                button_payload.append(
+                    SupportOutboundInlineButton(
+                        text="🎟 Ввести промокод", url=promo_url
+                    )
+                )
+
         sem = asyncio.Semaphore(20)
 
         async def _one(_user_id: str, tg_id: int) -> bool:

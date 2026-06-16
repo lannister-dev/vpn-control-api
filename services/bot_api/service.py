@@ -17,6 +17,8 @@ from services.config import get_settings
 from services.notifications.service import NotificationService
 from services.plans.repository import PlanRepository
 from services.plans.schemas import PlanOut
+from services.promo.exceptions import PromoExhausted, PromoInvalid, PromoNotEligible
+from services.promo.service import PromoService
 from services.referral.schemas import BotReferralInfoOut
 from services.referral.service import ReferralService
 from services.users.repository import UserRepository
@@ -46,6 +48,10 @@ from .schemas import (
     BotPlanListOut,
     BotPlanOut,
     BotPlanPeriodOut,
+    BotPromoClickIn,
+    BotPromoClickOut,
+    BotPromoQuoteOut,
+    BotPromoValidateIn,
     BotRenewOfferOut,
     BotRenewOrderIn,
     BotServiceHealth,
@@ -176,8 +182,13 @@ class BotApiService:
                     device_slots_qty=extra,
                     period_months=getattr(payload, "period_months", 1) or 1,
                     payment_method=getattr(payload, "payment_method", None),
+                    promo_code=getattr(payload, "promo_code", None),
                 )
             )
+        except (PromoInvalid, PromoNotEligible) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except PromoExhausted as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except TrialAlreadyUsed:
             raise HTTPException(status_code=409, detail="Trial already used")
         except (ActiveSubscriptionExists, TrialUnavailable):
@@ -329,6 +340,73 @@ class BotApiService:
             current_plan_name=current_plan_name,
             current_expires_at=current_expires_at,
         )
+
+    async def validate_promo(
+        self, *, telegram_id: int, payload: BotPromoValidateIn
+    ) -> BotPromoQuoteOut:
+        from services.billing.exceptions import PlanNotPurchasable
+
+        user = await self._require_user_by_telegram_id(telegram_id)
+        try:
+            preview = await self.billing_service.preview_order_amount(
+                user_id=user.id,
+                plan_id=payload.plan_id,
+                period_months=payload.period_months,
+            )
+        except PlanNotPurchasable as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        try:
+            quote = await PromoService(self.session).validate_and_quote(
+                code=payload.code,
+                user_id=user.id,
+                plan_id=payload.plan_id,
+                order_type=payload.order_type,
+                amount_rub=preview.amount_due,
+            )
+        except (PromoInvalid, PromoNotEligible) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except PromoExhausted as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return BotPromoQuoteOut(
+            code=quote.code,
+            amount_before=quote.amount_before,
+            discount_rub=quote.discount_rub,
+            amount_after=quote.amount_after,
+        )
+
+    async def register_promo_click(
+        self, *, telegram_id: int, payload: BotPromoClickIn
+    ) -> BotPromoClickOut:
+        from services.promo.repository import PromoCodeRepository
+        from services.support.repository import (
+            BroadcastLogRepository,
+            BroadcastRepository,
+        )
+
+        user = await self._require_user_by_telegram_id(telegram_id)
+        broadcasts = BroadcastRepository(self.session)
+        broadcast = await broadcasts.get_by_id(payload.broadcast_id)
+        if broadcast is None:
+            raise HTTPException(status_code=404, detail="Broadcast not found")
+
+        now = datetime.now(timezone.utc)
+        newly = await BroadcastLogRepository(self.session).register_click(
+            payload.broadcast_id, user.id, now
+        )
+        if newly:
+            await broadcasts.increment_clicks(payload.broadcast_id)
+        await self.session.commit()
+
+        code: str | None = None
+        promo_active = False
+        if broadcast.promo_code_id is not None:
+            promo = await PromoCodeRepository(self.session).get_by_id(
+                broadcast.promo_code_id
+            )
+            if promo is not None:
+                code = promo.code
+                promo_active = bool(promo.is_active)
+        return BotPromoClickOut(code=code, promo_active=promo_active)
 
     async def create_renew_order(self, *, telegram_id: int, payload: BotRenewOrderIn) -> BotOrderActionOut:
         user = await self._require_user_by_telegram_id(telegram_id)
