@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Icon } from "./Icon.jsx";
 
 const COLLAPSE_KEY = "sidebar.collapsedGroups";
@@ -52,12 +52,25 @@ export function Sidebar({ activeTab, onTab, collapsed, onToggle, onOpenPalette, 
     onTab(id);
     onMobileClose?.();
   };
+  const persist = (next) => {
+    localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...next]));
+    return next;
+  };
   const toggleGroup = (title) => setCollapsedGroups((prev) => {
     const next = new Set(prev);
     if (next.has(title)) next.delete(title); else next.add(title);
-    localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...next]));
-    return next;
+    return persist(next);
   });
+  useEffect(() => {
+    const activeGroup = GROUPS.find((g) => g.items.some((it) => it.id === activeTab));
+    if (!activeGroup) return;
+    setCollapsedGroups((prev) => {
+      if (!prev.has(activeGroup.title)) return prev;
+      const next = new Set(prev);
+      next.delete(activeGroup.title);
+      return persist(next);
+    });
+  }, [activeTab]);
   return (
     <>
       {mobileOpen && <div className="sidebar-backdrop" onClick={onMobileClose} />}
@@ -82,8 +95,7 @@ export function Sidebar({ activeTab, onTab, collapsed, onToggle, onOpenPalette, 
 
       <nav className="side-nav">
         {GROUPS.map((g) => {
-          const hasActive = g.items.some((it) => it.id === activeTab);
-          const open = collapsed || hasActive || !collapsedGroups.has(g.title);
+          const open = collapsed || !collapsedGroups.has(g.title);
           return (
           <div key={g.title} className="side-group" data-open={open || undefined}>
             {!collapsed && (

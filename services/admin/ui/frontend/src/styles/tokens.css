@@ -139,11 +139,17 @@ button { font-family: inherit; }
 .side-nav::-webkit-scrollbar,
 .slideover-body::-webkit-scrollbar,
 .palette-list::-webkit-scrollbar { width: 8px; height: 8px; }
-.side-nav::-webkit-scrollbar-thumb,
 .slideover-body::-webkit-scrollbar-thumb,
 .palette-list::-webkit-scrollbar-thumb {
   background: var(--border-strong);
   border-radius: 4px;
 }
+
+/* Sidebar nav: overlay-style scrollbar — hidden at rest, appears on hover. */
+.side-nav { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+.side-nav::-webkit-scrollbar { width: 6px; }
+.side-nav::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
+.side-nav:hover { scrollbar-color: var(--border) transparent; }
+.side-nav:hover::-webkit-scrollbar-thumb { background: var(--border-strong); }
 
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
