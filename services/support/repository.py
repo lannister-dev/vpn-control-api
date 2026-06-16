@@ -382,6 +382,13 @@ class BroadcastRepository(BaseRepository[Broadcast]):
         )
         await self.session.execute(stmt)
 
+    async def increment_clicks(self, broadcast_id: UUID) -> None:
+        await self.session.execute(
+            update(Broadcast)
+            .where(Broadcast.id == broadcast_id)
+            .values(clicks=Broadcast.clicks + 1)
+        )
+
     async def resolve_audience_user_ids(
         self,
         audience: BroadcastAudience,
@@ -464,3 +471,64 @@ class RecurringBroadcastRepository(BaseRepository[RecurringBroadcastSchedule]):
 class BroadcastLogRepository(BaseRepository[BroadcastLog]):
     def __init__(self, session: AsyncSession):
         super().__init__(BroadcastLog, session)
+
+    async def register_click(
+        self, broadcast_id: UUID, user_id: UUID, now: datetime
+    ) -> bool:
+        res = await self.session.execute(
+            select(BroadcastLog)
+            .where(
+                BroadcastLog.broadcast_id == broadcast_id,
+                BroadcastLog.user_id == user_id,
+            )
+            .limit(1)
+        )
+        row = res.scalar_one_or_none()
+        if row is None:
+            self.session.add(
+                BroadcastLog(
+                    broadcast_id=broadcast_id,
+                    user_id=user_id,
+                    delivered=False,
+                    clicked=True,
+                    clicked_at=now,
+                )
+            )
+            return True
+        if not row.clicked:
+            row.clicked = True
+            row.clicked_at = now
+            return True
+        return False
+
+    async def count_clicked(self, broadcast_id: UUID) -> int:
+        res = await self.session.execute(
+            select(func.count(func.distinct(BroadcastLog.user_id))).where(
+                BroadcastLog.broadcast_id == broadcast_id,
+                BroadcastLog.clicked.is_(True),
+            )
+        )
+        return int(res.scalar() or 0)
+
+    async def count_applied(
+        self,
+        broadcast_id: UUID,
+        promo_code_id: UUID,
+        since: datetime | None,
+    ) -> int:
+        from services.promo.models import PromoActivation
+
+        clicked_users = select(BroadcastLog.user_id).where(
+            BroadcastLog.broadcast_id == broadcast_id,
+            BroadcastLog.clicked.is_(True),
+        )
+        conds = [
+            PromoActivation.promo_code_id == promo_code_id,
+            PromoActivation.user_id.in_(clicked_users),
+        ]
+        if since is not None:
+            conds.append(PromoActivation.created_at >= since)
+        res = await self.session.execute(
+            select(func.count(func.distinct(PromoActivation.user_id))).where(*conds)
+        )
+        return int(res.scalar() or 0)

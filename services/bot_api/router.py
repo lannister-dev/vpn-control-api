@@ -16,6 +16,10 @@ from .schemas import (
     BotOrderPreviewOut,
     BotOrderUpdateIn,
     BotPlanListOut,
+    BotPromoClickIn,
+    BotPromoClickOut,
+    BotPromoQuoteOut,
+    BotPromoValidateIn,
     BotRenewOfferOut,
     BotRenewOrderIn,
     BotSessionOut,
@@ -82,6 +86,32 @@ async def bot_create_order(
     service: BotApiService = Depends(get_bot_api_service),
 ):
     return await service.create_order(telegram_id=telegram_id, payload=payload)
+
+
+@router.post(
+    "/users/{telegram_id}/promo/validate",
+    response_model=BotPromoQuoteOut,
+    summary="Validate a promo code and preview the discount for a Telegram bot user",
+)
+async def bot_validate_promo(
+    telegram_id: int,
+    payload: BotPromoValidateIn,
+    service: BotApiService = Depends(get_bot_api_service),
+):
+    return await service.validate_promo(telegram_id=telegram_id, payload=payload)
+
+
+@router.post(
+    "/users/{telegram_id}/promo/click",
+    response_model=BotPromoClickOut,
+    summary="Register a promo deep-link click from a broadcast and resolve the code",
+)
+async def bot_promo_click(
+    telegram_id: int,
+    payload: BotPromoClickIn,
+    service: BotApiService = Depends(get_bot_api_service),
+):
+    return await service.register_promo_click(telegram_id=telegram_id, payload=payload)
 
 
 @router.get(

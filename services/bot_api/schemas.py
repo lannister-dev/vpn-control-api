@@ -60,6 +60,7 @@ class BotOrderCreateIn(BaseModel):
     extra_devices: int = Field(default=0, ge=0)
     period_months: int = Field(default=1, ge=1)
     payment_method: PlategaPaymentMethodEnum | None = None
+    promo_code: str | None = Field(default=None, max_length=64)
 
     @model_validator(mode="after")
     def validate_provider_requirements(self) -> BotOrderCreateIn:
@@ -68,6 +69,29 @@ class BotOrderCreateIn(BaseModel):
             payment_method=self.payment_method,
         )
         return self
+
+
+class BotPromoValidateIn(BaseModel):
+    code: str = Field(min_length=1, max_length=64)
+    plan_id: UUID
+    period_months: int = Field(default=1, ge=1)
+    order_type: str = "plan_purchase"
+
+
+class BotPromoQuoteOut(BaseModel):
+    code: str
+    amount_before: Decimal
+    discount_rub: Decimal
+    amount_after: Decimal
+
+
+class BotPromoClickIn(BaseModel):
+    broadcast_id: UUID
+
+
+class BotPromoClickOut(BaseModel):
+    code: str | None = None
+    promo_active: bool = False
 
 
 class BotStarsConfirmIn(BaseModel):

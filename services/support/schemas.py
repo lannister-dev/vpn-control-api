@@ -252,6 +252,7 @@ class BroadcastOut(BaseModel):
     errors: int = 0
     clicks: int = 0
     target_count: int = 0
+    promo_code_id: UUID | None = None
     sent_at: datetime | None = None
     scheduled_at: datetime | None = None
     created_at: datetime
@@ -261,6 +262,17 @@ class BroadcastOut(BaseModel):
 
 class BroadcastListOut(BaseModel):
     items: list[BroadcastOut]
+
+
+class BroadcastFunnelOut(BaseModel):
+    broadcast_id: UUID
+    has_promo: bool = False
+    target_count: int = 0
+    delivered: int = 0
+    clicked: int = 0
+    applied: int = 0
+    click_rate: float = 0.0
+    apply_rate: float = 0.0
 
 
 class BroadcastAudienceCount(BaseModel):

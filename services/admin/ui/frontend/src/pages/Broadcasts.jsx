@@ -447,9 +447,28 @@ function BroadcastHistory() {
   );
 }
 
+function FunnelRow({ label, value, pct, sub, color }) {
+  return (
+    <div className="funnel-row">
+      <div className="funnel-row-head">
+        <span className="funnel-row-label">{label}</span>
+        <span className="funnel-row-val mono">{(value ?? 0).toLocaleString("ru-RU")}{sub ? <span className="muted"> · {sub}</span> : null}</span>
+      </div>
+      <div className="funnel-track">
+        <div className="funnel-fill" style={{ width: Math.max(0, Math.min(100, pct || 0)) + "%", background: color }} />
+      </div>
+    </div>
+  );
+}
+
 function BroadcastDetail({ broadcast: b, onClose, onChanged }) {
   const total = (b.delivered || 0) + (b.errors || 0);
   const clickRate = total > 0 ? Math.round(((b.clicks || 0) / total) * 1000) / 10 : null;
+  const funnelQ = useQuery(
+    () => (b.promo_code_id ? api.get(`/support/broadcasts/${b.id}/funnel`) : Promise.resolve(null)),
+    { deps: [b.id] },
+  );
+  const funnel = funnelQ.data;
   const [busy, setBusy] = useState(false);
   const canCancel = b.status === "scheduled";
   const cancel = async () => {
@@ -492,6 +511,16 @@ function BroadcastDetail({ broadcast: b, onClose, onChanged }) {
           {b.scheduled_at && <><dt>Запланирована</dt><dd>{new Date(b.scheduled_at).toLocaleString("ru-RU")}</dd></>}
         </dl>
       </div>
+      {b.promo_code_id && funnel?.has_promo && (
+        <div className="card" style={{ padding: "12px 14px", marginBottom: 14 }}>
+          <div className="small muted" style={{ marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+            <Icon name="filter" size={12} /> Воронка промокода
+          </div>
+          <FunnelRow label="Доставлено" value={funnel.delivered} pct={100} color="var(--text-muted)" />
+          <FunnelRow label="Перешли по кнопке" value={funnel.clicked} pct={funnel.click_rate} sub={`${funnel.click_rate}%`} color="var(--info)" />
+          <FunnelRow label="Применили при оплате" value={funnel.applied} pct={funnel.apply_rate} sub={`${funnel.apply_rate}%`} color="var(--ok)" />
+        </div>
+      )}
       {b.media_url && (
         <div style={{ marginBottom: 12 }}>
           {b.media_kind === "image"
