@@ -51,6 +51,7 @@ from services.support.schemas import (
     BroadcastAudience,
     BroadcastAudienceCount,
     BroadcastCreate,
+    BroadcastFunnelOut,
     BroadcastListOut,
     BroadcastOut,
     BroadcastStatus,
@@ -644,9 +645,39 @@ class SupportService:
             errors=target.errors,
             clicks=target.clicks,
             target_count=target.target_count,
+            promo_code_id=target.promo_code_id,
             sent_at=target.sent_at,
             scheduled_at=target.scheduled_at,
             created_at=target.created_at,
+        )
+
+    async def get_broadcast_funnel(self, broadcast_id: UUID) -> BroadcastFunnelOut:
+        broadcast = await self.broadcasts.get_by_id(broadcast_id)
+        if broadcast is None:
+            raise BroadcastNotFound(str(broadcast_id))
+        if broadcast.promo_code_id is None:
+            return BroadcastFunnelOut(
+                broadcast_id=broadcast_id,
+                has_promo=False,
+                target_count=broadcast.target_count,
+                delivered=broadcast.delivered,
+            )
+        clicked = await self.broadcast_log.count_clicked(broadcast_id)
+        applied = await self.broadcast_log.count_applied(
+            broadcast_id, broadcast.promo_code_id, broadcast.sent_at
+        )
+        base = broadcast.delivered or broadcast.target_count
+        click_rate = round(clicked / base * 100, 1) if base else 0.0
+        apply_rate = round(applied / base * 100, 1) if base else 0.0
+        return BroadcastFunnelOut(
+            broadcast_id=broadcast_id,
+            has_promo=True,
+            target_count=broadcast.target_count,
+            delivered=broadcast.delivered,
+            clicked=clicked,
+            applied=applied,
+            click_rate=click_rate,
+            apply_rate=apply_rate,
         )
 
     async def list_broadcasts(self) -> BroadcastListOut:
@@ -668,6 +699,7 @@ class SupportService:
                     errors=b.errors,
                     clicks=b.clicks,
                     target_count=b.target_count,
+                    promo_code_id=b.promo_code_id,
                     sent_at=b.sent_at,
                     scheduled_at=b.scheduled_at,
                     created_at=b.created_at,
@@ -870,6 +902,7 @@ class SupportService:
             errors=max(0, len(target_ids) - delivered) if status == BroadcastStatus.SENDING else 0,
             clicks=0,
             target_count=len(target_ids),
+            promo_code_id=b.promo_code_id,
             sent_at=sent_at,
             scheduled_at=scheduled_at,
             created_at=b.created_at,

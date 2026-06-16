@@ -31,6 +31,7 @@ from services.support.exceptions import (
 from services.support.schemas import (
     BroadcastAudience,
     BroadcastAudienceCount,
+    BroadcastFunnelOut,
     BroadcastListOut,
     BroadcastOut,
     BroadcastStatus,
@@ -328,6 +329,17 @@ async def repeat_broadcast(
 ):
     try:
         return await service.repeat_broadcast(broadcast_id, actor_admin_id=actor_admin_id)
+    except BroadcastNotFound:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Broadcast not found")
+
+
+@router.get("/broadcasts/{broadcast_id}/funnel", response_model=BroadcastFunnelOut)
+async def get_broadcast_funnel(
+    broadcast_id: UUID,
+    service: SupportService = Depends(get_support_service),
+):
+    try:
+        return await service.get_broadcast_funnel(broadcast_id)
     except BroadcastNotFound:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Broadcast not found")
 

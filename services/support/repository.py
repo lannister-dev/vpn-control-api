@@ -500,3 +500,35 @@ class BroadcastLogRepository(BaseRepository[BroadcastLog]):
             row.clicked_at = now
             return True
         return False
+
+    async def count_clicked(self, broadcast_id: UUID) -> int:
+        res = await self.session.execute(
+            select(func.count(func.distinct(BroadcastLog.user_id))).where(
+                BroadcastLog.broadcast_id == broadcast_id,
+                BroadcastLog.clicked.is_(True),
+            )
+        )
+        return int(res.scalar() or 0)
+
+    async def count_applied(
+        self,
+        broadcast_id: UUID,
+        promo_code_id: UUID,
+        since: datetime | None,
+    ) -> int:
+        from services.promo.models import PromoActivation
+
+        clicked_users = select(BroadcastLog.user_id).where(
+            BroadcastLog.broadcast_id == broadcast_id,
+            BroadcastLog.clicked.is_(True),
+        )
+        conds = [
+            PromoActivation.promo_code_id == promo_code_id,
+            PromoActivation.user_id.in_(clicked_users),
+        ]
+        if since is not None:
+            conds.append(PromoActivation.created_at >= since)
+        res = await self.session.execute(
+            select(func.count(func.distinct(PromoActivation.user_id))).where(*conds)
+        )
+        return int(res.scalar() or 0)
