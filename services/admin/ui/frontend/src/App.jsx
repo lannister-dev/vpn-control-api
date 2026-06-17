@@ -26,6 +26,7 @@ import { SubscriptionsPage } from "./pages/Subscriptions.jsx";
 import { ZonesPage } from "./pages/Zones.jsx";
 import { AdminUsersPage } from "./pages/AdminUsers.jsx";
 import { OpsPage } from "./pages/Ops.jsx";
+import { AuditPage } from "./pages/Audit.jsx";
 import { SettingsPage } from "./pages/Settings.jsx";
 import { TicketsPage } from "./pages/Tickets.jsx";
 import { SupportTemplatesPage } from "./pages/SupportTemplates.jsx";
@@ -52,6 +53,7 @@ const PAGES = {
   zones: ZonesPage,
   "admin-users": AdminUsersPage,
   ops: OpsPage,
+  audit: AuditPage,
   settings: SettingsPage,
   tickets: TicketsPage,
   "support-templates": SupportTemplatesPage,
@@ -86,6 +88,7 @@ const CRUMBS = {
   zones: ["Workspace", "Система", "Зоны"],
   "admin-users": ["Workspace", "Система", "Админы"],
   ops: ["Workspace", "Система", "Операции"],
+  audit: ["Workspace", "Система", "Журнал действий"],
   settings: ["Workspace", "Система", "Настройки"],
 };
 

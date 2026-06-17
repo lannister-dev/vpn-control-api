@@ -3,7 +3,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import PlainTextResponse
 
-from services.auth.dependencies import admin_auth
+from services.admin.audit.service import AdminAuditService, get_admin_audit_service
+from services.auth.dependencies import admin_auth, current_admin_actor
 from services.billing.dependencies import _required_redirect
 from services.billing.exceptions import (
     FulfillmentFailed,
@@ -17,6 +18,7 @@ from services.billing.exceptions import (
 )
 from services.billing.schemas import (
     BalanceCreditIn,
+    BalanceDebitIn,
     BalanceOut,
     OrderCreateIn,
     OrderListOut,
@@ -242,11 +244,50 @@ async def credit_balance(
     user_id: UUID,
     data: BalanceCreditIn,
     service: BillingService = Depends(get_billing_service),
+    actor: str = Depends(current_admin_actor),
+    audit: AdminAuditService = Depends(get_admin_audit_service),
 ):
     try:
-        return await service.credit_balance(user_id, data)
+        result = await service.credit_balance(user_id, data)
     except OrderNotFound:
         raise HTTPException(status_code=404, detail="User not found")
+    await audit.record(
+        actor=actor,
+        action="balance_credit",
+        target=str(user_id),
+        summary=f"пополнение баланса +{data.amount} ₽",
+        details={"amount": str(data.amount), "description": data.description, "balance_after": str(result.balance)},
+    )
+    return result
+
+
+@router.post(
+    "/balance/{user_id}/debit",
+    response_model=BalanceOut,
+    summary="Manual balance debit",
+    dependencies=[Depends(admin_auth)],
+)
+async def debit_balance(
+    user_id: UUID,
+    data: BalanceDebitIn,
+    service: BillingService = Depends(get_billing_service),
+    actor: str = Depends(current_admin_actor),
+    audit: AdminAuditService = Depends(get_admin_audit_service),
+):
+    try:
+        result = await service.debit_balance(user_id, data)
+    except OrderNotFound:
+        raise HTTPException(status_code=404, detail="User not found")
+    except InsufficientBalance as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    await audit.record(
+        actor=actor,
+        action="balance_debit",
+        target=str(user_id),
+        summary=f"списание с баланса −{data.amount} ₽ · {data.reason}",
+        details={"amount": str(data.amount), "reason": data.reason, "balance_after": str(result.balance)},
+    )
+    return result
 
 
 @router.post(

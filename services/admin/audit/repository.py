@@ -14,6 +14,7 @@ class AdminAuditRepository(BaseRepository[AdminAuditRecord]):
         *,
         action: str | None = None,
         actor: str | None = None,
+        target: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[AdminAuditRecord], int]:
@@ -22,6 +23,8 @@ class AdminAuditRepository(BaseRepository[AdminAuditRecord]):
             base = base.where(AdminAuditRecord.action == action)
         if actor:
             base = base.where(AdminAuditRecord.actor == actor)
+        if target:
+            base = base.where(AdminAuditRecord.target == target)
 
         count_stmt = select(func.count()).select_from(base.subquery())
         total = int((await self.session.execute(count_stmt)).scalar_one())

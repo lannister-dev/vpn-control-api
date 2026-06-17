@@ -38,11 +38,12 @@ class AdminAuditService:
         *,
         action: str | None = None,
         actor: str | None = None,
+        target: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> AdminAuditListOut:
         rows, total = await self.repo.list_paginated(
-            action=action, actor=actor, limit=limit, offset=offset,
+            action=action, actor=actor, target=target, limit=limit, offset=offset,
         )
         return AdminAuditListOut(
             items=[AdminAuditRecordOut.model_validate(r) for r in rows],

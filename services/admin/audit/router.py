@@ -20,8 +20,9 @@ router = APIRouter(
 async def list_audit(
     action: str | None = Query(None, max_length=64),
     actor: str | None = Query(None, max_length=128),
+    target: str | None = Query(None, max_length=255),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     service: AdminAuditService = Depends(get_admin_audit_service),
 ) -> AdminAuditListOut:
-    return await service.list_recent(action=action, actor=actor, limit=limit, offset=offset)
+    return await service.list_recent(action=action, actor=actor, target=target, limit=limit, offset=offset)

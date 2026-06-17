@@ -249,6 +249,23 @@ class SubscriptionService:
         )
         return self._sub_to_out(updated)
 
+    async def extend_subscription(
+        self, subscription_id: UUID, days: int,
+    ) -> SubscriptionOut:
+        sub = await self.subscription_repository.get_by_id(subscription_id)
+        if not sub:
+            raise SubscriptionNotFound(subscription_id)
+        now = datetime.now(timezone.utc)
+        base = sub.expires_at if sub.expires_at and sub.expires_at > now else now
+        new_expires = base + timedelta(days=days)
+        update_data = SubscriptionInternalUpdate(expires_at=new_expires, is_active=True)
+        updated = await self.subscription_repository.update_by_id(
+            subscription_id, update_data.model_dump(exclude_unset=True),
+        )
+        if sub.token_hash:
+            await self._invalidate_payload_cache_by_token_hash(sub.token_hash)
+        return self._sub_to_out(updated)
+
     async def list_route_assignments(self, subscription_id) -> list:
         from services.vpn.subscriptions.schemas import (
             SubscriptionNodeRef,

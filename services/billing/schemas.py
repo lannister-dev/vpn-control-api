@@ -37,6 +37,7 @@ class TransactionType(str, Enum):
     PAYMENT = "payment"
     PURCHASE = "purchase"
     MANUAL_CREDIT = "manual_credit"
+    MANUAL_DEBIT = "manual_debit"
     REFUND = "refund"
     DEVICE_SLOT_PURCHASE = "device_slot_purchase"
 
@@ -188,6 +189,11 @@ class ProviderFeeListOut(BaseModel):
 class BalanceCreditIn(BaseModel):
     amount: Decimal = Field(gt=0, le=Decimal("99999999.99"))
     description: str | None = Field(default=None, max_length=256)
+
+
+class BalanceDebitIn(BaseModel):
+    amount: Decimal = Field(gt=0, le=Decimal("99999999.99"))
+    reason: str = Field(min_length=1, max_length=256)
 
 
 class BalanceOut(BaseModel):
