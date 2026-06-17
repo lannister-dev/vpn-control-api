@@ -39,6 +39,7 @@ from services.billing.repository import (
 )
 from services.billing.schemas import (
     BalanceCreditIn,
+    BalanceDebitIn,
     BalanceOut,
     OrderCreateIn,
     OrderInternalCreate,
@@ -1009,6 +1010,26 @@ class BillingService:
         )
         BILLING_BALANCE_OPERATION_TOTAL.labels(type="manual_credit").inc()
         log.info("balance_credited", user_id=str(user_id), amount=str(data.amount))
+        return BalanceOut(user_id=user.id, balance=new_balance)
+
+    async def debit_balance(self, user_id: UUID, data: BalanceDebitIn) -> BalanceOut:
+        user = await self._lock_user(user_id)
+        if not user:
+            raise OrderNotFound("User not found")
+        if user.balance < data.amount:
+            raise InsufficientBalance("Недостаточно средств на балансе")
+
+        new_balance = user.balance - data.amount
+        await self._update_user_balance(user.id, new_balance)
+        await self._record_transaction(
+            user_id=user.id,
+            amount=-data.amount,
+            balance_after=new_balance,
+            tx_type="manual_debit",
+            description=data.reason,
+        )
+        BILLING_BALANCE_OPERATION_TOTAL.labels(type="manual_debit").inc()
+        log.info("balance_debited", user_id=str(user_id), amount=str(data.amount))
         return BalanceOut(user_id=user.id, balance=new_balance)
 
     async def list_transactions(

@@ -3,7 +3,10 @@ import { api } from "../api/client.js";
 import { useQuery } from "../hooks/useQuery.js";
 import { Drawer } from "./Drawer.jsx";
 import { Icon } from "./Icon.jsx";
+import { Modal } from "./Modal.jsx";
+import { Field } from "./Field.jsx";
 import { toast } from "./Toast.jsx";
+import { AuditRow } from "../pages/Audit.jsx";
 import { SubscriptionDrawer } from "./SubscriptionDrawer.jsx";
 import { SubscriptionCreateModal } from "./SubscriptionCreateModal.jsx";
 import { UserAvatar } from "./users/UserAvatar.jsx";
@@ -24,6 +27,8 @@ export function UserDrawer({ user, onClose }) {
   const [tab, setTab] = useState("overview");
   const [openSub, setOpenSub] = useState(null);
   const [creatingSub, setCreatingSub] = useState(false);
+  const [balanceOpen, setBalanceOpen] = useState(false);
+  const [extendOpen, setExtendOpen] = useState(false);
 
   const detail = useQuery(() => api.get(`/users/${user.id}`), { interval: 0, deps: [user.id] });
   const subs = useQuery(() => api.get(`/subscriptions/by-user/${user.id}`), { interval: 30000, deps: [user.id] });
@@ -42,6 +47,7 @@ export function UserDrawer({ user, onClose }) {
     { id: "overview", label: "Обзор" },
     { id: "subs", label: `Подписки · ${subsList.length}` },
     { id: "devices", label: "Устройства" },
+    { id: "audit", label: "Журнал" },
   ];
 
   const head = (
@@ -59,8 +65,11 @@ export function UserDrawer({ user, onClose }) {
             expiringSub={expiringSub}
             onCreateSub={() => setCreatingSub(true)}
             onOpenSub={setOpenSub}
+            onBalance={() => setBalanceOpen(true)}
+            onExtend={() => setExtendOpen(true)}
           />
         )}
+        {tab === "audit" && <AuditTab userId={d.id} />}
         {tab === "subs" && (
           <SubsTab
             subs={subsList}
@@ -88,7 +97,130 @@ export function UserDrawer({ user, onClose }) {
           onCreated={() => { setCreatingSub(false); subs.refetch(); detail.refetch(); }}
         />
       )}
+      {balanceOpen && (
+        <BalanceModal
+          userId={d.id}
+          balance={d.balance}
+          onClose={() => setBalanceOpen(false)}
+          onDone={() => { setBalanceOpen(false); detail.refetch(); }}
+        />
+      )}
+      {extendOpen && (
+        <ExtendModal
+          subs={subsList}
+          plansById={plansById}
+          onClose={() => setExtendOpen(false)}
+          onDone={() => { setExtendOpen(false); subs.refetch(); }}
+        />
+      )}
     </>
+  );
+}
+
+function BalanceModal({ userId, balance, onClose, onDone }) {
+  const [mode, setMode] = useState("debit");
+  const [amount, setAmount] = useState("");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const submit = async () => {
+    const amt = Number(amount);
+    if (!(amt > 0)) { setErr("Сумма должна быть больше 0"); return; }
+    if (mode === "debit" && !reason.trim()) { setErr("Укажите причину списания"); return; }
+    setBusy(true); setErr("");
+    try {
+      if (mode === "debit") {
+        await api.post(`/billing/balance/${userId}/debit`, { amount: amt, reason: reason.trim() });
+        toast.ok("Списано с баланса");
+      } else {
+        await api.post(`/billing/balance/${userId}/credit`, { amount: amt, description: reason.trim() || null });
+        toast.ok("Баланс пополнен");
+      }
+      onDone();
+    } catch (e) { setErr(e.message || String(e)); toast.bad(e.message || "Ошибка"); }
+    finally { setBusy(false); }
+  };
+  return (
+    <Modal
+      title="Баланс пользователя"
+      onClose={onClose}
+      footer={<><button className="btn btn-ghost" onClick={onClose} disabled={busy}>Отмена</button>
+        <button className={`btn ${mode === "debit" ? "btn-danger" : "btn-primary"}`} onClick={submit} disabled={busy}>
+          {busy ? "…" : (mode === "debit" ? "Списать" : "Пополнить")}
+        </button></>}
+    >
+      {err && <div className="form-error">{err}</div>}
+      <div className="seg" style={{ width: 220, marginBottom: 12 }}>
+        <button data-active={mode === "debit"} onClick={() => setMode("debit")}>Списать</button>
+        <button data-active={mode === "credit"} onClick={() => setMode("credit")}>Пополнить</button>
+      </div>
+      <Field label="Сумма, ₽" hint={`текущий баланс: ${Number(balance || 0).toLocaleString("ru-RU")} ₽`}>
+        <input type="number" min="1" step="1" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="например 199" />
+      </Field>
+      <Field label={mode === "debit" ? "Причина (обязательно)" : "Комментарий"} hint="попадёт в журнал действий">
+        <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={256} placeholder={mode === "debit" ? "напр. возврат ошибочного начисления" : "напр. бонус"} />
+      </Field>
+    </Modal>
+  );
+}
+
+function ExtendModal({ subs, plansById, onClose, onDone }) {
+  const [subId, setSubId] = useState(subs[0]?.id || "");
+  const [days, setDays] = useState(30);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const submit = async () => {
+    if (!subId) { setErr("Выберите подписку"); return; }
+    const n = Number(days);
+    if (!(n > 0)) { setErr("Дней должно быть больше 0"); return; }
+    if (!reason.trim()) { setErr("Укажите причину"); return; }
+    setBusy(true); setErr("");
+    try {
+      await api.post(`/subscriptions/${subId}/extend`, { days: n, reason: reason.trim() });
+      toast.ok(`Подписка продлена на ${n} дн.`);
+      onDone();
+    } catch (e) { setErr(e.message || String(e)); toast.bad(e.message || "Ошибка"); }
+    finally { setBusy(false); }
+  };
+  return (
+    <Modal
+      title="Продлить подписку"
+      onClose={onClose}
+      footer={<><button className="btn btn-ghost" onClick={onClose} disabled={busy}>Отмена</button>
+        <button className="btn btn-primary" onClick={submit} disabled={busy}>{busy ? "…" : "Продлить"}</button></>}
+    >
+      {err && <div className="form-error">{err}</div>}
+      {!subs.length && <div className="muted small">У пользователя нет подписок</div>}
+      <Field label="Подписка">
+        <select value={subId} onChange={(e) => setSubId(e.target.value)}>
+          {subs.map((s) => (
+            <option key={s.id} value={s.id}>
+              {(plansById[s.plan_id]?.name || String(s.id).slice(0, 8))} · до {s.expires_at ? new Date(s.expires_at).toLocaleDateString("ru-RU") : "—"}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field label="Дней" hint="1–3650">
+        <input type="number" min="1" max="3650" value={days} onChange={(e) => setDays(e.target.value)} />
+      </Field>
+      <Field label="Причина (обязательно)" hint="попадёт в журнал действий">
+        <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={256} placeholder="напр. компенсация за простой" />
+      </Field>
+    </Modal>
+  );
+}
+
+function AuditTab({ userId }) {
+  const q = useQuery(() => api.get(`/admin/audit?target=${userId}&limit=100`), { interval: 20000, deps: [userId] });
+  const items = q.data?.items || [];
+  return (
+    <div className="u-section">
+      <div className="u-section-head"><span>Действия с пользователем · {q.data?.total ?? 0}</span></div>
+      {q.loading && !items.length && <div className="muted small" style={{ padding: 8 }}>Загрузка…</div>}
+      {!q.loading && !items.length && <div className="muted small" style={{ padding: 8 }}>Нет действий.</div>}
+      {items.map((r) => <AuditRow key={r.id} r={r} />)}
+    </div>
   );
 }
 
@@ -122,9 +254,17 @@ function UserHero({ d, subsCount }) {
   );
 }
 
-function Overview({ user, subs, plansById, expiringSub, onCreateSub, onOpenSub }) {
+function Overview({ user, subs, plansById, expiringSub, onCreateSub, onOpenSub, onBalance, onExtend }) {
   return (
     <div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+        <button className="btn btn-sm" onClick={onBalance}>
+          <Icon name="wallet" size={12} /> Баланс
+        </button>
+        <button className="btn btn-sm" onClick={onExtend} disabled={!subs.length}>
+          <Icon name="calendar" size={12} /> Продлить подписку
+        </button>
+      </div>
       {expiringSub && (
         <div className="u-action-card">
           <div>

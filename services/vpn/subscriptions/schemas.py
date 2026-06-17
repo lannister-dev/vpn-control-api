@@ -48,6 +48,11 @@ class SubscriptionSetMaxDevicesIn(BaseModel):
     max_devices: int = Field(gt=0, le=100)
 
 
+class SubscriptionExtendIn(BaseModel):
+    days: int = Field(gt=0, le=3650)
+    reason: str = Field(min_length=1, max_length=256)
+
+
 class SubscriptionCountersOut(BaseModel):
     total: int
     active: int

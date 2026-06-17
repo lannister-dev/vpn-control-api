@@ -9,7 +9,8 @@ from fastapi import (
     status,
 )
 
-from services.auth.dependencies import admin_auth
+from services.admin.audit.service import AdminAuditService, get_admin_audit_service
+from services.auth.dependencies import admin_auth, current_admin_actor
 from services.vpn.subscriptions.adapter import SubscriptionPublicAdapter
 from services.vpn.subscriptions.dependencies import get_subscription_public_adapter
 from services.vpn.subscriptions.exceptions import (
@@ -28,6 +29,7 @@ from services.vpn.subscriptions.schemas import (
     SubscriptionCreatedOut,
     SubscriptionCreateIn,
     SubscriptionDeviceOut,
+    SubscriptionExtendIn,
     SubscriptionListOut,
     SubscriptionOut,
     SubscriptionRotateOut,
@@ -286,6 +288,39 @@ async def set_max_devices(
         return await service.set_max_devices(subscription_id, data.max_devices)
     except SubscriptionNotFound:
         raise HTTPException(status_code=404, detail="Subscription not found")
+
+
+@router.post(
+    "/{subscription_id}/extend",
+    response_model=SubscriptionOut,
+    status_code=status.HTTP_200_OK,
+    summary="Manually extend a subscription by N days",
+    dependencies=[Depends(admin_auth)],
+)
+async def extend_subscription(
+    subscription_id: UUID,
+    data: SubscriptionExtendIn,
+    service: SubscriptionService = Depends(get_subscription_service),
+    actor: str = Depends(current_admin_actor),
+    audit: AdminAuditService = Depends(get_admin_audit_service),
+):
+    try:
+        result = await service.extend_subscription(subscription_id, data.days)
+    except SubscriptionNotFound:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+    await audit.record(
+        actor=actor,
+        action="subscription_extend",
+        target=str(result.user_id),
+        summary=f"продление подписки +{data.days} дн. · {data.reason}",
+        details={
+            "subscription_id": str(subscription_id),
+            "days": data.days,
+            "reason": data.reason,
+            "expires_at": result.expires_at.isoformat() if result.expires_at else None,
+        },
+    )
+    return result
 
 
 @router.post(
