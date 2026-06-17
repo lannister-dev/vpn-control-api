@@ -64,8 +64,10 @@ export function BroadcastsPage({ initialAction, onActionConsumed }) {
 /* ─────────────── Composer ─────────────── */
 function BroadcastComposer() {
   const plans = useQuery(() => api.get("/plans").catch(() => ({ items: [] })), { interval: 60000 });
+  const promos = useQuery(() => api.get("/promo").catch(() => ({ items: [] })), { interval: 60000 });
   const [audience, setAudience] = useState("all");
   const [planId, setPlanId] = useState("");
+  const [promoId, setPromoId] = useState("");
   const [text, setText] = useState("");
   const [file, setFile] = useState(null);
   const [buttons, setButtons] = useState([]); // [{text, url}]
@@ -111,13 +113,14 @@ function BroadcastComposer() {
       fd.append("text", htmlForTelegram(text));
       fd.append("buttons", JSON.stringify(buttons.filter((b) => b.text && b.url)));
       if (file) fd.append("media", file);
+      if (promoId) fd.append("promo_code_id", promoId);
       fd.append("status", isDraft ? "draft" : (schedule === "now" ? "sending" : "scheduled"));
       if (schedule === "schedule" && scheduledAt) fd.append("scheduled_at", new Date(scheduledAt).toISOString());
 
       await api.raw("/support/broadcasts", { method: "POST", headers: {}, body: fd });
       toast.ok(isDraft ? "Черновик сохранён" : (schedule === "now" ? "Рассылка отправлена" : "Рассылка запланирована"));
       if (!isDraft) {
-        setText(""); setFile(null); setButtons([]); setSchedule("now"); setScheduledAt("");
+        setText(""); setFile(null); setButtons([]); setSchedule("now"); setScheduledAt(""); setPromoId("");
       }
     } catch (e) {
       toast.bad(e?.message || "Не удалось сохранить рассылку");
@@ -224,6 +227,25 @@ function BroadcastComposer() {
               </button>
             </div>
           ))}
+        </section>
+
+        <section className="card br-section">
+          <div className="br-section-head">
+            <Icon name="tag" size={14} /> Промокод
+            <span className="muted small">опционально</span>
+          </div>
+          <select className="select" value={promoId} onChange={(e) => setPromoId(e.target.value)} style={{ width: "100%" }}>
+            <option value="">— без промокода —</option>
+            {(promos.data?.items || []).map((p) => (
+              <option key={p.id} value={p.id}>{p.code}</option>
+            ))}
+          </select>
+          {promoId && (
+            <div className="muted small" style={{ marginTop: 8, lineHeight: 1.5 }}>
+              К посту автоматически добавится кнопка <b>«🎟 Ввести промокод»</b> (deep-link в бота).
+              Вставь <code>{"{promo}"}</code> в текст — подставится сам код. Применения считаются в воронке рассылки.
+            </div>
+          )}
         </section>
 
         <section className="card br-section">

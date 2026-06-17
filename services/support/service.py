@@ -785,24 +785,18 @@ class SupportService:
         due = await self.recurring.list_due(now)
         created = 0
         for sched in due:
-            text = sched.text_body or ""
-            if sched.promo_code_id and "{promo}" in text:
-                promo = await PromoCodeRepository(self.session).get_by_id(
-                    sched.promo_code_id
-                )
-                if promo is not None:
-                    text = text.replace("{promo}", promo.code)
             try:
                 await self.create_broadcast(
                     audience=BroadcastAudience(sched.audience),
                     plan_id=sched.plan_id,
-                    text=text,
+                    text=sched.text_body or "",
                     buttons=sched.inline_buttons,
                     media_kind=sched.media_kind,
                     media_url=sched.media_url,
                     status=BroadcastStatus.SENDING,
                     scheduled_at=None,
                     actor_admin_id=sched.created_by_admin_id,
+                    promo_code_id=sched.promo_code_id,
                 )
                 created += 1
             except Exception:
@@ -840,6 +834,7 @@ class SupportService:
             status=BroadcastStatus.SENDING,
             scheduled_at=None,
             actor_admin_id=actor_admin_id,
+            promo_code_id=src.promo_code_id,
         )
 
     async def create_broadcast(
@@ -854,7 +849,12 @@ class SupportService:
         status: BroadcastStatus,
         scheduled_at: datetime | None,
         actor_admin_id: UUID | None,
+        promo_code_id: UUID | None = None,
     ) -> BroadcastOut:
+        if promo_code_id is not None and "{promo}" in (text or ""):
+            promo = await PromoCodeRepository(self.session).get_by_id(promo_code_id)
+            if promo is not None:
+                text = text.replace("{promo}", promo.code)
         target_ids = await self._resolve_audience(audience, plan_id)
         b = await self.broadcasts.create(
             BroadcastCreate(
@@ -867,6 +867,7 @@ class SupportService:
                 status=status,
                 scheduled_at=scheduled_at,
                 target_count=len(target_ids),
+                promo_code_id=promo_code_id,
                 created_by_admin_id=actor_admin_id,
             ).model_dump()
         )
