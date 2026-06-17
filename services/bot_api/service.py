@@ -430,6 +430,10 @@ class BotApiService:
         if payload.provider == PaymentProviderEnum.STARS and not self.billing_service._resolve_period_price_stars(plan, renew_months):
             raise HTTPException(status_code=400, detail="Stars not available for current plan")
 
+        promo_code = getattr(payload, "promo_code", None)
+        if payload.provider == PaymentProviderEnum.STARS:
+            promo_code = None
+
         try:
             order = await self.billing_service.create_order(
                 OrderCreateIn(
@@ -440,8 +444,13 @@ class BotApiService:
                     subscription_id=subscription.id,
                     period_months=getattr(payload, "period_months", 1) or 1,
                     payment_method=getattr(payload, "payment_method", None),
+                    promo_code=promo_code,
                 )
             )
+        except (PromoInvalid, PromoNotEligible) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except PromoExhausted as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except InsufficientBalance as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except ProviderError as exc:
