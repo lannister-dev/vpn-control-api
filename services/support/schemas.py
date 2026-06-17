@@ -138,6 +138,7 @@ class BroadcastCreate(BaseModel):
     status: BroadcastStatus = BroadcastStatus.DRAFT
     scheduled_at: datetime | None = None
     target_count: int = 0
+    promo_code_id: UUID | None = None
     created_by_admin_id: UUID | None = None
 
 

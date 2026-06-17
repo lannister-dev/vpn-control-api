@@ -399,6 +399,7 @@ async def create_broadcast(
     plan_id: Annotated[UUID | None, Form()] = None,
     buttons: Annotated[str | None, Form()] = None,
     scheduled_at: Annotated[datetime | None, Form()] = None,
+    promo_code_id: Annotated[UUID | None, Form()] = None,
     media: UploadFile | None = File(None),
     service: SupportService = Depends(get_support_service),
     actor_admin_id: UUID | None = Depends(current_admin_user_id),
@@ -441,4 +442,5 @@ async def create_broadcast(
         status=status_,
         scheduled_at=scheduled_at,
         actor_admin_id=actor_admin_id,
+        promo_code_id=promo_code_id,
     )
