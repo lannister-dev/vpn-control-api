@@ -103,6 +103,7 @@ class BotRenewOrderIn(BaseModel):
     provider: PaymentProviderEnum
     period_months: int = Field(default=1, ge=1)
     payment_method: PlategaPaymentMethodEnum | None = None
+    promo_code: str | None = Field(default=None, max_length=64)
 
     @model_validator(mode="after")
     def validate_provider_requirements(self) -> BotRenewOrderIn:
