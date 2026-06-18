@@ -103,15 +103,19 @@ class ProbeIngestionService:
             is_entry_scope = route.entry_node_id == payload.node_id
             if not (is_backend_scope or is_entry_scope):
                 raise HTTPException(status_code=409, detail="Route does not belong to node")
-            target = self._build_probe_target(
-                route=route,
-                node=route_node,
-                transport_profile=transport_profile,
-                include_disabled=True,
-                include_draining=True,
-            )
-            if target is None:
-                raise HTTPException(status_code=409, detail="Route is not probeable")
+            if is_entry_scope and not is_backend_scope:
+                if self._transport_kind_for_profile(transport_profile) is None:
+                    raise HTTPException(status_code=409, detail="Route is not probeable")
+            else:
+                target = self._build_probe_target(
+                    route=route,
+                    node=route_node,
+                    transport_profile=transport_profile,
+                    include_disabled=True,
+                    include_draining=True,
+                )
+                if target is None:
+                    raise HTTPException(status_code=409, detail="Route is not probeable")
 
         create_data = ProbeSignalInternalCreate(
             node_id=payload.node_id,
