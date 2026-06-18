@@ -19,20 +19,10 @@ const ROUTE_HEALTH_TONE = {
   healthy: "ok", warming_up: "info", degraded: "warn", suspected: "warn", blocked: "bad",
 };
 
-function relTime(iso) {
-  if (!iso) return "—";
-  const s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
-  if (s < 60) return `${s}s`;
-  if (s < 3600) return `${Math.floor(s / 60)}m`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h`;
-  return `${Math.floor(s / 86400)}d`;
-}
-
 export function OpsPage() {
   const status = useQuery(() => api.get("/admin/status"), { interval: 30000 });
   const routes = useQuery(() => api.get("/routes?limit=500"), { interval: 30000 });
   const readiness = useQuery(() => api.get("/admin/readiness"), { interval: 15000 });
-  const audit = useQuery(() => api.get("/admin/audit?limit=20"), { interval: 15000 });
 
   const nodes = status.data?.nodes || [];
   const backends = nodes.filter((n) => n.role === "backend");
@@ -46,10 +36,10 @@ export function OpsPage() {
       <div className="page-head">
         <div className="page-head-main">
           <h1 className="page-title">Операции</h1>
-          <div className="page-subtitle">Действия оператора и их история · настройки политик → раздел «Настройки»</div>
+          <div className="page-subtitle">Действия оператора · история → раздел «Журнал» · политики → «Настройки»</div>
         </div>
         <div className="page-head-actions">
-          <button className="btn btn-ghost" onClick={() => { status.refetch(); routes.refetch(); readiness.refetch(); audit.refetch(); }}>
+          <button className="btn btn-ghost" onClick={() => { status.refetch(); routes.refetch(); readiness.refetch(); }}>
             <Icon name="refresh" size={13} /> Обновить
           </button>
         </div>
@@ -77,12 +67,6 @@ export function OpsPage() {
             value={routesList.length}
             hint={`${routesList.filter((r) => r.health_status === "blocked").length} blocked · ${routesList.filter((r) => ["degraded","suspected"].includes(r.health_status)).length} degraded`}
           />
-          <ReadinessCell
-            icon="activity"
-            label="Админ-действий 24h"
-            value={audit.data?.items?.filter((a) => Date.now() - new Date(a.created_at).getTime() < 86400000).length ?? 0}
-            hint="миграции, health-override, policy изменения"
-          />
         </div>
 
         {!readinessReady && failed > 0 && (
@@ -99,13 +83,8 @@ export function OpsPage() {
 
       {/* Action forms */}
       <div className="split-2">
-        <MigrateForm backends={backends} onDone={audit.refetch} />
-        <RouteHealthForm routes={routesList} onDone={audit.refetch} />
-      </div>
-
-      {/* Audit feed */}
-      <div className="sec" style={{ marginTop: 20 }}>
-        <AuditFeed items={audit.data?.items || []} loading={audit.loading} />
+        <MigrateForm backends={backends} />
+        <RouteHealthForm routes={routesList} />
       </div>
     </div>
   );
@@ -288,49 +267,6 @@ function RouteHealthForm({ routes, onDone }) {
           Применить
         </button>
       </div>
-    </div>
-  );
-}
-
-const AUDIT_ACTION_META = {
-  migrate_backend:     { icon: "arrow-right",   tone: "info",   label: "Миграция" },
-  set_route_health:    { icon: "shield-check",  tone: "warn",   label: "Route health" },
-  probe_policy_update: { icon: "sliders",       tone: "accent", label: "Policy" },
-};
-
-function AuditFeed({ items, loading }) {
-  return (
-    <div className="card">
-      <div className="card-head">
-        <Icon name="activity" size={14} />
-        <div className="sec-title">Недавние действия</div>
-        <div className="sec-sub">аудит лог мутаций за последние 24ч</div>
-        <div className="sec-spacer" />
-        <span className="muted text-xs">{items.length} записей</span>
-      </div>
-      {loading && !items.length && <div className="muted" style={{ padding: 14 }}>Загрузка…</div>}
-      {!loading && !items.length && <div className="muted" style={{ padding: 14 }}>Нет записей. Действия появятся здесь автоматически.</div>}
-      {items.map((r) => {
-        const meta = AUDIT_ACTION_META[r.action] || { icon: "activity", tone: "", label: r.action };
-        return (
-          <div key={r.id} className="activity" style={{ borderBottom: "1px solid var(--border)" }}>
-            <div className={`activity-dot ${meta.tone === "accent" ? "ok" : meta.tone}`} />
-            <div className="activity-main">
-              <div className="activity-text">
-                <span className={`pill ${meta.tone}`} style={{ marginRight: 8 }}>
-                  <Icon name={meta.icon} size={11} /> {meta.label}
-                </span>
-                {r.summary || r.action}
-              </div>
-              <div className="activity-meta">
-                <strong>{r.actor}</strong>
-                {r.target && <> · <span className="mono">{String(r.target).slice(0, 12)}…</span></>}
-                {" · "}{relTime(r.created_at)} назад
-              </div>
-            </div>
-          </div>
-        );
-      })}
     </div>
   );
 }
