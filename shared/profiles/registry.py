@@ -15,6 +15,8 @@ from shared.profiles.schemas import (
     RealityTcpProfileIn,
     WsTlsProfile,
     WsTlsProfileIn,
+    XHttpProfile,
+    XHttpProfileIn,
 )
 
 ProfileInAdapter = TypeAdapter(ProfileIn)
@@ -22,7 +24,7 @@ ProfileInAdapter = TypeAdapter(ProfileIn)
 @dataclass(frozen=True)
 class ProfileConfig:
     key: str
-    profile: WsTlsProfile | RealityTcpProfile
+    profile: WsTlsProfile | RealityTcpProfile | XHttpProfile
 
 
 profile_registry_lock = asyncio.Lock()
@@ -47,6 +49,8 @@ class ProfileRegistry:
             profile = WsTlsProfile.model_validate(raw)
         elif ptype == ProfileType.reality_tcp.value:
             profile = RealityTcpProfile.model_validate(raw)
+        elif ptype == ProfileType.xhttp.value:
+            profile = XHttpProfile.model_validate(raw)
         else:
             raise ProfileRegistryError(f"Unknown profile type for key={key}: {ptype}")
 
@@ -119,6 +123,12 @@ class ProfileRegistry:
                 elif isinstance(profile_in, RealityTcpProfileIn):
                     profile = RealityTcpProfile(
                         type=ProfileType.reality_tcp,
+                        client=profile_in.client,
+                        metadata=metadata,
+                    )
+                elif isinstance(profile_in, XHttpProfileIn):
+                    profile = XHttpProfile(
+                        type=ProfileType.xhttp,
                         client=profile_in.client,
                         metadata=metadata,
                     )
