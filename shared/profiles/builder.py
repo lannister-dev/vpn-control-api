@@ -10,6 +10,8 @@ from shared.profiles.schemas import (
     RealityTcpQuery,
     WsTlsProfile,
     WsTlsQuery,
+    XHttpProfile,
+    XHttpQuery,
 )
 from shared.profiles.transport import VlessUri
 
@@ -20,7 +22,7 @@ class VlessUriBuilder:
         *,
         client_id: str,
         node: NodePublic,
-        profile: WsTlsProfile | RealityTcpProfile,
+        profile: WsTlsProfile | RealityTcpProfile | XHttpProfile,
     ) -> str:
         if (
             profile.metadata.region_support
@@ -46,7 +48,42 @@ class VlessUriBuilder:
                 profile=profile,
             )
 
+        if profile.type == ProfileType.xhttp:
+            return VlessUriBuilder._build_xhttp(
+                client_id=client_id,
+                node=node,
+                profile=profile,
+            )
+
         raise ProfileBuildError(f"Unsupported profile type: {profile.type}")
+
+    @staticmethod
+    def _build_xhttp(
+        *,
+        client_id: str,
+        node: NodePublic,
+        profile: XHttpProfile,
+    ) -> str:
+        client = profile.client
+        query = XHttpQuery(
+            sni=client.sni,
+            host=client.host,
+            path=client.path,
+            mode=client.mode,
+            fp=client.fingerprint,
+            alpn=client.alpn,
+            extra=client.extra,
+        )
+        host = VlessUriBuilder._format_host(node.domain)
+        remark = node.remark or profile.metadata.display_name
+        return VlessUri(
+            client_id=client_id,
+            host=host,
+            port=node.port,
+            query=query.to_query(),
+            remark=remark,
+            server_description=node.server_description,
+        ).render()
 
     @staticmethod
     def _build_ws_tls(

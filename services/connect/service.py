@@ -31,7 +31,13 @@ from services.vpn.keys.repository import VpnKeyRepository
 from services.vpn.keys.schemas import VpnKeyInternalCreate, VpnProtocol, VpnTransport
 from shared.database.session import AsyncDatabase
 from shared.profiles.builder import VlessUriBuilder
-from shared.profiles.constants import WS_TLS_DEFAULT_PATH
+from shared.profiles.constants import (
+    WS_TLS_DEFAULT_PATH,
+    XHTTP_DEFAULT_ALPN,
+    XHTTP_DEFAULT_EXTRA,
+    XHTTP_DEFAULT_MODE,
+    XHTTP_DEFAULT_PATH,
+)
 from shared.profiles.schemas import (
     NodePublic,
     ProfileMetadata,
@@ -39,6 +45,8 @@ from shared.profiles.schemas import (
     RealityTcpProfile,
     WsTlsClientConfig,
     WsTlsProfile,
+    XHttpClientConfig,
+    XHttpProfile,
 )
 from shared.profiles.transport import VlessUri
 from shared.redis.client import RedisClient, get_redis_client
@@ -404,7 +412,7 @@ class ConnectService:
             transport_profile,
             fallback_domain: str,
             region: str | None,
-    ) -> WsTlsProfile | RealityTcpProfile | None:
+    ) -> WsTlsProfile | RealityTcpProfile | XHttpProfile | None:
         network = (transport_profile.network or "").strip().lower()
         security = (transport_profile.security or "").strip().lower()
 
@@ -438,6 +446,19 @@ class ConnectService:
                     path=WS_TLS_DEFAULT_PATH,
                     host=fallback_domain,
                     sni=fallback_domain,
+                ),
+            )
+
+        if security == "tls" and network == "xhttp":
+            return XHttpProfile(
+                metadata=metadata,
+                client=XHttpClientConfig(
+                    path=XHTTP_DEFAULT_PATH,
+                    host=fallback_domain,
+                    sni=fallback_domain,
+                    mode=XHTTP_DEFAULT_MODE,
+                    alpn=XHTTP_DEFAULT_ALPN,
+                    extra=dict(XHTTP_DEFAULT_EXTRA),
                 ),
             )
 

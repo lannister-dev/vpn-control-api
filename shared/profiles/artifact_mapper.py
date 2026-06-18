@@ -13,6 +13,7 @@ from shared.profiles.schemas import (
     ProfileIn,
     RealityTcpProfileIn,
     WsTlsProfileIn,
+    XHttpProfileIn,
 )
 
 ProfileInAdapter = TypeAdapter(ProfileIn)
@@ -24,14 +25,18 @@ class ArtifactProfileMapper:
             *,
             include_reality_tcp: bool = True,
             include_ws_tls: bool = False,
+            include_xhttp: bool = True,
             default_reality_port: int = 443,
             default_ws_port: int = 443,
+            default_xhttp_port: int = 443,
             profile_port_overrides: Mapping[str, int] | None = None,
     ):
         self.include_reality_tcp = include_reality_tcp
         self.include_ws_tls = include_ws_tls
+        self.include_xhttp = include_xhttp
         self.default_reality_port = int(default_reality_port)
         self.default_ws_port = int(default_ws_port)
+        self.default_xhttp_port = int(default_xhttp_port)
         self.profile_port_overrides = dict(profile_port_overrides or {})
 
     def map(self, artifact_payload: Mapping[str, Any]) -> ArtifactProfileMapResult:
@@ -94,6 +99,30 @@ class ArtifactProfileMapper:
                         name=transport_name,
                         protocol="vless",
                         network="ws",
+                        security="tls",
+                        flow=None,
+                        reality_public_key=None,
+                        reality_short_id=None,
+                        reality_server_name=None,
+                        tls_fingerprint="chrome",
+                        grpc_service_name=None,
+                        port=port,
+                    )
+                )
+                used_names.add(transport_name)
+                continue
+
+            if isinstance(profile_in, XHttpProfileIn):
+                if not self.include_xhttp:
+                    skipped.append(f"{key}: skipped by include_xhttp=false")
+                    continue
+                port = int(self.profile_port_overrides.get(key, self.default_xhttp_port))
+                desired.append(
+                    ArtifactProfile(
+                        artifact_key=key,
+                        name=transport_name,
+                        protocol="vless",
+                        network="xhttp",
                         security="tls",
                         flow=None,
                         reality_public_key=None,
