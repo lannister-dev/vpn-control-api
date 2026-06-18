@@ -58,6 +58,7 @@ class ProbeSyntheticCredentialReconciler(Reconciler):
         self._synthetic_client_ids = ProbeSyntheticClientIds(
             reality=settings.synthetic_reality_client_id,
             ws=settings.synthetic_ws_client_id,
+            xhttp=settings.synthetic_xhttp_client_id,
         )
         self._session_maker = session_maker or AsyncDatabase.get_session_maker()
         self._service_factory = service_factory or (
@@ -252,6 +253,8 @@ class _ProbeSyntheticCredentialService:
             host = node.public_domain
             if host:
                 return "ws"
+        if security == "tls" and network == "xhttp":
+            return "xhttp"
         return None
 
     async def _ensure_probe_user(self):
