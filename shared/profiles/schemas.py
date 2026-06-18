@@ -67,6 +67,23 @@ class RealityTcpClientConfig(BaseModel):
         return "xtls-rprx-vision"
 
 
+class XHttpClientConfig(BaseModel):
+    path: str = Field(min_length=1, max_length=256)
+    host: str = Field(min_length=1, max_length=255)
+    sni: str = Field(min_length=1, max_length=255)
+    mode: str = Field(default="packet-up", min_length=1, max_length=32)
+    fingerprint: str = Field(default="chrome", min_length=1, max_length=64)
+    alpn: str = Field(default="h2,http/1.1", min_length=1, max_length=64)
+    extra: dict = Field(default_factory=dict)
+
+    @field_validator("path")
+    @classmethod
+    def normalize_path(cls, v: str) -> str:
+        if not v.startswith("/"):
+            v = "/" + v
+        return v
+
+
 class BaseProfile(BaseModel):
     type: ProfileType
     metadata: ProfileMetadata
@@ -80,6 +97,11 @@ class WsTlsProfile(BaseProfile):
 class RealityTcpProfile(BaseProfile):
     type: ProfileType = ProfileType.reality_tcp
     client: RealityTcpClientConfig
+
+
+class XHttpProfile(BaseProfile):
+    type: ProfileType = ProfileType.xhttp
+    client: XHttpClientConfig
 
 
 class NodePublic(BaseModel):
@@ -147,6 +169,28 @@ class RealityTcpQuery(BaseModel):
         return self.model_dump(exclude_none=True)
 
 
+class XHttpQuery(BaseModel):
+    type: str = Field(default="xhttp")
+    security: str = Field(default="tls")
+    encryption: str = Field(default="none")
+
+    sni: str
+    host: str
+    path: str
+    mode: str = Field(default="packet-up")
+    fp: str = Field(default="chrome")
+    alpn: str = Field(default="h2,http/1.1")
+    extra: dict = Field(default_factory=dict, exclude=True)
+
+    def to_query(self) -> dict[str, str]:
+        import json
+
+        q = self.model_dump(exclude_none=True, exclude={"extra"})
+        if self.extra:
+            q["extra"] = json.dumps(self.extra, separators=(",", ":"))
+        return q
+
+
 class WsTlsProfileIn(BaseModel):
     type: Literal["ws_tls"]
     display_name: str
@@ -159,8 +203,14 @@ class RealityTcpProfileIn(BaseModel):
     client: RealityTcpClientConfig
 
 
+class XHttpProfileIn(BaseModel):
+    type: Literal["xhttp"]
+    display_name: str
+    client: XHttpClientConfig
+
+
 ProfileIn = Annotated[
-    WsTlsProfileIn | RealityTcpProfileIn,
+    WsTlsProfileIn | RealityTcpProfileIn | XHttpProfileIn,
     Field(discriminator="type"),
 ]
 
