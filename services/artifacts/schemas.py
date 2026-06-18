@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from shared.profiles.schemas import RealityTcpProfileIn, WsTlsProfileIn
+from shared.profiles.schemas import RealityTcpProfileIn, WsTlsProfileIn, XHttpProfileIn
 
 
 class ProfileArtifactPublishIn(BaseModel):
@@ -60,6 +60,8 @@ class ProfileArtifactPublishIn(BaseModel):
                     WsTlsProfileIn.model_validate(raw)
                 elif ptype == "reality_tcp":
                     RealityTcpProfileIn.model_validate(raw)
+                elif ptype == "xhttp":
+                    XHttpProfileIn.model_validate(raw)
                 else:
                     raise ValueError(f"unknown profile type: {ptype}")
             except (ValidationError, ValueError) as exc:
