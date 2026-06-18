@@ -224,6 +224,7 @@ class ProbeConfig:
     target_port: int = 443
     synthetic_reality_client_id: str | None = None
     synthetic_ws_client_id: str | None = None
+    synthetic_xhttp_client_id: str | None = None
     synthetic_user_telegram_id: int = 0
     synthetic_user_username: str = "probe-synthetic"
 
@@ -510,6 +511,7 @@ def get_settings() -> Settings:
         target_port=env.int("PROBE_TARGET_PORT", default=443),
         synthetic_reality_client_id=env.str("PROBE_SYNTHETIC_REALITY_CLIENT_ID", default=""),
         synthetic_ws_client_id=env.str("PROBE_SYNTHETIC_WS_CLIENT_ID", default=""),
+        synthetic_xhttp_client_id=env.str("PROBE_SYNTHETIC_XHTTP_CLIENT_ID", default=""),
         synthetic_user_telegram_id=env.int("PROBE_SYNTHETIC_USER_TELEGRAM_ID", default=0),
         synthetic_user_username=env.str("PROBE_SYNTHETIC_USER_USERNAME", default="probe-synthetic"),
     )

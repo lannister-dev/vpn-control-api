@@ -35,7 +35,13 @@ from services.routes.state_machine import resolve_probe_block, resolve_probe_rec
 from services.vpn.keys.repository import VpnKeyRepository
 from shared.database.session import AsyncDatabase
 from shared.monitoring.metrics import PROBE_REPORT_TOTAL
-from shared.profiles.constants import WS_TLS_DEFAULT_PATH
+from shared.profiles.constants import (
+    WS_TLS_DEFAULT_PATH,
+    XHTTP_DEFAULT_ALPN,
+    XHTTP_DEFAULT_EXTRA,
+    XHTTP_DEFAULT_MODE,
+    XHTTP_DEFAULT_PATH,
+)
 from shared.utils.logger import StructuredLogger
 
 logger_probe = StructuredLogger(logging.getLogger("probe-ingestion-service"))
@@ -663,25 +669,51 @@ class ProbeIngestionService:
             return []
 
         targets: list[ProbeTargetOut] = []
-        seen_backends: set[UUID] = set()
+        seen: set[tuple[UUID, str]] = set()
         for row in entry_routes:
             route, backend, transport_profile, _agent_state = row
-            if getattr(transport_profile, "security", None) != "reality":
-                continue
-            if getattr(transport_profile, "network", None) != "tcp":
+            transport_kind = self._transport_kind_for_profile(transport_profile)
+            if transport_kind not in {"reality", "xhttp"}:
                 continue
             if not backend.is_active or not backend.is_enabled:
                 continue
             if not include_draining and backend.is_draining:
                 continue
-            if backend.id in seen_backends:
+            if (backend.id, transport_kind) in seen:
                 continue
-            probe_client_id = probe_client_ids_by_target.get((backend.id, "reality"))
+            probe_client_id = probe_client_ids_by_target.get((backend.id, transport_kind))
             if not probe_client_id:
                 continue
-            if not (transport_profile.reality_public_key and transport_profile.reality_short_id and transport_profile.reality_server_name):
+
+            if transport_kind == "reality":
+                if not (transport_profile.reality_public_key and transport_profile.reality_short_id and transport_profile.reality_server_name):
+                    continue
+                seen.add((backend.id, transport_kind))
+                targets.append(
+                    ProbeTargetOut(
+                        node_id=entry_node.id,
+                        route_id=route.id,
+                        route_name=f"{entry_node.name}→{backend.name}·pool",
+                        transport_profile_id=None,
+                        transport_profile_name=transport_profile.name,
+                        transport_kind="reality",
+                        probe_kind="synthetic_vpn",
+                        node_name=entry_node.name,
+                        region=entry_node.region,
+                        probe_client_id=probe_client_id,
+                        target_host=entry_host,
+                        target_port=self.target_port,
+                        tls_sni=transport_profile.reality_server_name,
+                        tls_fingerprint=transport_profile.tls_fingerprint or "chrome",
+                        reality_public_key=transport_profile.reality_public_key,
+                        reality_short_id=transport_profile.reality_short_id,
+                        reality_server_name=transport_profile.reality_server_name,
+                        flow=transport_profile.flow,
+                    )
+                )
                 continue
-            seen_backends.add(backend.id)
+
+            seen.add((backend.id, transport_kind))
             targets.append(
                 ProbeTargetOut(
                     node_id=entry_node.id,
@@ -689,19 +721,20 @@ class ProbeIngestionService:
                     route_name=f"{entry_node.name}→{backend.name}·pool",
                     transport_profile_id=None,
                     transport_profile_name=transport_profile.name,
-                    transport_kind="reality",
+                    transport_kind="xhttp",
                     probe_kind="synthetic_vpn",
                     node_name=entry_node.name,
                     region=entry_node.region,
                     probe_client_id=probe_client_id,
                     target_host=entry_host,
                     target_port=self.target_port,
-                    tls_sni=transport_profile.reality_server_name,
-                    tls_fingerprint=transport_profile.tls_fingerprint or "chrome",
-                    reality_public_key=transport_profile.reality_public_key,
-                    reality_short_id=transport_profile.reality_short_id,
-                    reality_server_name=transport_profile.reality_server_name,
-                    flow=transport_profile.flow,
+                    tls_sni=entry_host,
+                    tls_fingerprint="chrome",
+                    xhttp_host=entry_host,
+                    xhttp_path=XHTTP_DEFAULT_PATH,
+                    xhttp_mode=XHTTP_DEFAULT_MODE,
+                    xhttp_alpn=XHTTP_DEFAULT_ALPN,
+                    xhttp_extra=dict(XHTTP_DEFAULT_EXTRA),
                 )
             )
         return targets
@@ -790,6 +823,8 @@ class ProbeIngestionService:
             return "reality"
         if security == "tls" and network == "ws":
             return "ws"
+        if security == "tls" and network == "xhttp":
+            return "xhttp"
         return None
 
     @staticmethod
@@ -821,5 +856,6 @@ def get_probe_ingestion_service(
         synthetic_probe_client_ids=ProbeSyntheticClientIds(
             reality=probe_settings.synthetic_reality_client_id,
             ws=probe_settings.synthetic_ws_client_id,
+            xhttp=probe_settings.synthetic_xhttp_client_id,
         ),
     )

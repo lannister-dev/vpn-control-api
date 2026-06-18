@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 ProbeDetailsValue: TypeAlias = str | int | float | bool | None
 ProbeDetails: TypeAlias = dict[str, ProbeDetailsValue]
-ProbeTransportKind: TypeAlias = Literal["reality", "ws"]
+ProbeTransportKind: TypeAlias = Literal["reality", "ws", "xhttp"]
 ProbeKind: TypeAlias = Literal["tcp_connect", "synthetic_vpn"]
 ProbeTargetRole: TypeAlias = Literal["backend", "whitelist_entry", "entry", "all"]
 ProbeErrorPhase: TypeAlias = Literal[
@@ -107,6 +107,11 @@ class ProbeTargetOut(BaseModel):
     tls_fingerprint: str | None = None
     ws_host: str | None = None
     ws_path: str | None = None
+    xhttp_host: str | None = None
+    xhttp_path: str | None = None
+    xhttp_mode: str | None = None
+    xhttp_alpn: str | None = None
+    xhttp_extra: dict | None = None
     reality_public_key: str | None = None
     reality_short_id: str | None = None
     reality_server_name: str | None = None
@@ -124,8 +129,9 @@ class ProbeStatsOut(BaseModel):
 class ProbeSyntheticClientIds(BaseModel):
     reality: str | None = None
     ws: str | None = None
+    xhttp: str | None = None
 
-    @field_validator("reality", "ws", mode="before")
+    @field_validator("reality", "ws", "xhttp", mode="before")
     @classmethod
     def normalize_optional_client_id(cls, value: str | None):
         if value is None:
@@ -138,6 +144,7 @@ class ProbeSyntheticClientIds(BaseModel):
         for transport_kind, client_id in (
             ("reality", self.reality),
             ("ws", self.ws),
+            ("xhttp", self.xhttp),
         ):
             if client_id is not None:
                 configured[transport_kind] = client_id
