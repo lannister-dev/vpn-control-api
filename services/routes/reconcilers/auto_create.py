@@ -17,10 +17,10 @@ from shared.utils.logger import StructuredLogger
 
 
 class RouteAutoCreateReconciler(Reconciler):
-    """Ensures every active+enabled entry_backend_assignment has a matching
-    Route(entry, backend, transport_profile) — Reality only for now. Reactivates
-    routes whose assignment came back; deactivates routes whose assignment was
-    removed. Removes the need to hand-INSERT routes on every node rotation.
+    """Creates a missing Route(entry, backend, reality) for every active+enabled
+    entry_backend_assignment, and deactivates reality routes whose assignment was
+    removed. Does not reactivate routes deactivated in the admin panel — admin
+    deactivation is authoritative.
     """
 
     name = "route_auto_create"
@@ -84,11 +84,6 @@ class RouteAutoCreateReconciler(Reconciler):
                         is_active=True,
                     ))
                     created += 1
-                    announce.append((entry_id, backend_id))
-                elif not route.is_active:
-                    route.is_active = True
-                    route.health_status = "healthy"
-                    reactivated += 1
                     announce.append((entry_id, backend_id))
 
             existing_stmt = select(Route).where(
