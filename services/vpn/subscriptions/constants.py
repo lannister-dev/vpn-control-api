@@ -36,21 +36,21 @@ HAPP_COLOR_PROFILE_EMBER = {
     ],
     "elipseColors": [
         "#FF6B1A45",
-        "#F0601E22",
+        "#FF6B1A22",
         "#0A0B0D00",
     ],
     "subsHeaderColor": "#0C0D10FF",
     "subscriptionInfoBackgroundColor": "#15161BCC",
-    "subscriptionTrafficBackgroundColor": "#F0601EFF",
+    "subscriptionTrafficBackgroundColor": "#FF6B1AFF",
     "subscriptionInfoTextColor": "#C7C9CFFF",
     "serverRowBackgroundColor": "#15161BCC",
-    "selectedServerRowColor": "#F0601E26",
+    "selectedServerRowColor": "#FF6B1A26",
     "serverRowTitleTextColor": "#F3F4F6FF",
     "serverRowSubTitleTextColor": "#9A9CA4FF",
     "serverRowChevronColor": "#62646CFF",
     "disclosureHeaderTextColor": "#F3F4F6FF",
     "disclosureSubHeaderTextColor": "#9A9CA4FF",
-    "buttonColor": "#F0601EFF",
+    "buttonColor": "#FF6B1AFF",
     "buttonTextColor": "#FFFFFFFF",
     "buttonTimerColor": "#FFC9A4FF",
     "buttonImageType": "dark",
@@ -60,7 +60,7 @@ HAPP_COLOR_PROFILE_EMBER = {
     "additionalOptionsButtonColor": "#AEB0B7FF",
     "supportIconColor": "#FF7A30FF",
     "profileWebPageIconColor": "#9A9CA4FF",
-    "settingsControlsTintColor": "#F0601EFF",
+    "settingsControlsTintColor": "#FF6B1AFF",
 }
 
 HAPP_COLOR_PROFILE_GRAPHITE = {
@@ -93,13 +93,13 @@ HAPP_COLOR_PROFILE_GRAPHITE = {
     "buttonTextColor": "#E8E9ECFF",
     "buttonTimerColor": "#85878EFF",
     "buttonImageType": "dark",
-    "powerIconColor": "#F0601EFF",
+    "powerIconColor": "#FF6B1AFF",
     "topBarButtonsColor": "#C8CAD0FF",
     "subHeaderButtonColor": "#C4C6CCFF",
     "additionalOptionsButtonColor": "#AAACB3FF",
     "supportIconColor": "#E0762FFF",
     "profileWebPageIconColor": "#9698A0FF",
-    "settingsControlsTintColor": "#F0601EFF",
+    "settingsControlsTintColor": "#FF6B1AFF",
 }
 
 HAPP_COLOR_PROFILE_GRAPHITE_JSON = json.dumps(HAPP_COLOR_PROFILE_GRAPHITE, separators=(",", ":"))
