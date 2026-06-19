@@ -3,17 +3,13 @@ from __future__ import annotations
 import logging
 import time
 
-from services.balancer.backend import BackendBalancer
 from services.balancer.rebalance import BackendRebalancer
 from services.config import BackendRebalanceConfig, NatsConfig, get_settings
-from services.nodes.repository import VpnNodeRepository
 from shared.database.session import AsyncDatabase
 from shared.nats.client import NatsClient
 from shared.utils.logger import StructuredLogger
 
 logger = StructuredLogger(logging.getLogger("balancer-load-consumer"))
-
-LIVE_TAGS_TTL_SEC = 30.0
 
 
 class BackendLoadRebalanceConsumer:
@@ -23,8 +19,6 @@ class BackendLoadRebalanceConsumer:
         self._nats = NatsClient(config)
         self._running = False
         self._last_rebalance_monotonic = 0.0
-        self._live_tags: set[str] = set()
-        self._live_tags_monotonic = 0.0
 
     async def start(self):
         if not self._config.enabled:
@@ -68,13 +62,8 @@ class BackendLoadRebalanceConsumer:
         now = time.monotonic()
         if now - self._last_rebalance_monotonic < self._cfg.debounce_sec:
             return
-
-        live_tags = await self._live_backend_tags()
-        loads = await BackendBalancer.fetch_backend_loads(self._nats, allowed_tags=live_tags)
-        if not self._is_imbalanced(loads):
-            return
-
         self._last_rebalance_monotonic = now
+
         try:
             session_maker = AsyncDatabase.get_session_maker()
             async with session_maker() as session:
@@ -84,26 +73,6 @@ class BackendLoadRebalanceConsumer:
                 else:
                     await session.rollback()
             if moved:
-                logger.info("backend_load_rebalance_applied", moved=moved, loads=loads)
+                logger.info("backend_load_rebalance_applied", moved=moved)
         except Exception:
             logger.exception("backend_load_rebalance_failed")
-
-    def _is_imbalanced(self, loads: dict[str, int]) -> bool:
-        if len(loads) < 2:
-            return False
-        values = list(loads.values())
-        return (max(values) - min(values)) >= self._cfg.min_spread
-
-    async def _live_backend_tags(self) -> set[str]:
-        now = time.monotonic()
-        if self._live_tags and now - self._live_tags_monotonic < LIVE_TAGS_TTL_SEC:
-            return self._live_tags
-        try:
-            session_maker = AsyncDatabase.get_session_maker()
-            async with session_maker() as session:
-                backends = await VpnNodeRepository(session).list_live_backends()
-            self._live_tags = {f"backend-{b.name}" for b in backends}
-            self._live_tags_monotonic = now
-        except Exception:
-            logger.exception("live_backend_tags_fetch_failed")
-        return self._live_tags

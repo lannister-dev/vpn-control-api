@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from contextlib import asynccontextmanager
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -8,70 +9,61 @@ from services.balancer.load_consumer import BackendLoadRebalanceConsumer
 from services.config import BackendRebalanceConfig, NatsConfig
 
 
-def _consumer(*, min_spread=5, debounce_sec=60):
-    cfg = NatsConfig()
+def _consumer(*, debounce_sec=60):
     return BackendLoadRebalanceConsumer(
-        cfg, rebalance_config=BackendRebalanceConfig(debounce_sec=debounce_sec, min_spread=min_spread),
+        NatsConfig(), rebalance_config=BackendRebalanceConfig(debounce_sec=debounce_sec),
     )
 
 
-def test_is_imbalanced_below_threshold():
-    c = _consumer(min_spread=5)
-    assert c._is_imbalanced({"backend-a": 10, "backend-b": 7}) is False
+def _session_maker():
+    session = AsyncMock()
+    session.has_pending_writes = MagicMock(return_value=False)
 
+    @asynccontextmanager
+    async def _cm():
+        yield session
 
-def test_is_imbalanced_at_threshold():
-    c = _consumer(min_spread=5)
-    assert c._is_imbalanced({"backend-a": 12, "backend-b": 7}) is True
-
-
-def test_is_imbalanced_single_backend():
-    c = _consumer(min_spread=1)
-    assert c._is_imbalanced({"backend-a": 99}) is False
-
-
-async def _one_session(*_a, **_k):
-    yield AsyncMock()
+    return MagicMock(side_effect=lambda: _cm()), session
 
 
 @pytest.mark.asyncio
-async def test_handle_skips_rebalance_within_debounce():
+async def test_handle_skips_within_debounce():
     c = _consumer(debounce_sec=60)
     c._last_rebalance_monotonic = 1_000_000.0
     msg = AsyncMock()
     with patch("services.balancer.load_consumer.time.monotonic", return_value=1_000_010.0), \
-         patch("services.balancer.load_consumer.BackendBalancer.fetch_backend_loads", new=AsyncMock()) as loads, \
          patch("services.balancer.load_consumer.BackendRebalancer") as rb:
         await c._handle_message(b"{}", msg)
     msg.ack.assert_awaited_once()
-    loads.assert_not_awaited()
     rb.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_handle_rebalances_when_imbalanced():
-    c = _consumer(debounce_sec=60, min_spread=5)
+async def test_handle_runs_rebalance_after_debounce():
+    c = _consumer(debounce_sec=60)
     c._last_rebalance_monotonic = 0.0
     msg = AsyncMock()
+    maker, session = _session_maker()
     rebalance = AsyncMock(return_value=3)
     with patch("services.balancer.load_consumer.time.monotonic", return_value=1_000_000.0), \
-         patch("services.balancer.load_consumer.BackendBalancer.fetch_backend_loads",
-               new=AsyncMock(return_value={"backend-a": 20, "backend-b": 2})), \
-         patch("services.balancer.load_consumer.AsyncDatabase.get_session", new=_one_session), \
+         patch("services.balancer.load_consumer.AsyncDatabase.get_session_maker", return_value=maker), \
          patch("services.balancer.load_consumer.BackendRebalancer") as rb:
         rb.return_value.rebalance = rebalance
         await c._handle_message(b"{}", msg)
     rebalance.assert_awaited_once()
     assert c._last_rebalance_monotonic == 1_000_000.0
+    session.rollback.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_handle_skips_when_balanced():
-    c = _consumer(debounce_sec=60, min_spread=5)
+async def test_handle_sets_debounce_even_when_no_moves():
+    c = _consumer(debounce_sec=60)
+    c._last_rebalance_monotonic = 0.0
     msg = AsyncMock()
-    with patch("services.balancer.load_consumer.time.monotonic", return_value=1_000_000.0), \
-         patch("services.balancer.load_consumer.BackendBalancer.fetch_backend_loads",
-               new=AsyncMock(return_value={"backend-a": 10, "backend-b": 9})), \
+    maker, _ = _session_maker()
+    with patch("services.balancer.load_consumer.time.monotonic", return_value=500.0), \
+         patch("services.balancer.load_consumer.AsyncDatabase.get_session_maker", return_value=maker), \
          patch("services.balancer.load_consumer.BackendRebalancer") as rb:
+        rb.return_value.rebalance = AsyncMock(return_value=0)
         await c._handle_message(b"{}", msg)
-    rb.assert_not_called()
+    assert c._last_rebalance_monotonic == 500.0

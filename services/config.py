@@ -173,8 +173,14 @@ class EntryRoutingConfig:
 
 @dataclass
 class BackendRebalanceConfig:
-    debounce_sec: int = 60
+    debounce_sec: int = 150
     min_spread: int = 5
+    weight_bandwidth: float = 0.5
+    weight_cpu: float = 0.3
+    weight_conn: float = 0.2
+    score_spread_threshold: float = 0.15
+    traffic_window_min: int = 15
+    move_cap: int = 15
 
 
 @dataclass
@@ -668,8 +674,14 @@ def get_settings() -> Settings:
         telegram_oidc_proxy=env.str("ADMIN_TELEGRAM_OIDC_PROXY", default=""),
     )
     backend_rebalance = BackendRebalanceConfig(
-            debounce_sec=max(5, env.int("BACKEND_REBALANCE_DEBOUNCE_SEC", default=60)),
+            debounce_sec=max(5, env.int("BACKEND_REBALANCE_DEBOUNCE_SEC", default=150)),
             min_spread=max(1, env.int("BACKEND_REBALANCE_MIN_SPREAD", default=5)),
+            weight_bandwidth=env.float("BACKEND_REBALANCE_WEIGHT_BANDWIDTH", default=0.5),
+            weight_cpu=env.float("BACKEND_REBALANCE_WEIGHT_CPU", default=0.3),
+            weight_conn=env.float("BACKEND_REBALANCE_WEIGHT_CONN", default=0.2),
+            score_spread_threshold=env.float("BACKEND_REBALANCE_SCORE_SPREAD", default=0.15),
+            traffic_window_min=max(1, env.int("BACKEND_REBALANCE_TRAFFIC_WINDOW_MIN", default=15)),
+            move_cap=max(1, env.int("BACKEND_REBALANCE_MOVE_CAP", default=15)),
     )
 
     return Settings(
