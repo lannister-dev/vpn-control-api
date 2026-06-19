@@ -47,6 +47,8 @@ from services.support.repository import (
     SupportTicketRepository,
 )
 from services.support.schemas import (
+    AgentListOut,
+    AgentOut,
     AttachmentOut,
     BroadcastAudience,
     BroadcastAudienceCount,
@@ -132,6 +134,7 @@ class SupportService:
         priority: TicketPriority | None,
         assignee_admin_id: UUID | None,
         unanswered_minutes: int | None,
+        exclude_closed: bool = False,
         limit: int,
         offset: int,
     ) -> TicketListOut:
@@ -142,6 +145,7 @@ class SupportService:
             priority=priority.value if priority else None,
             assignee_admin_id=assignee_admin_id,
             unanswered_minutes=unanswered_minutes,
+            exclude_closed=exclude_closed,
             limit=limit,
             offset=offset,
         )
@@ -174,6 +178,12 @@ class SupportService:
                 )
             )
         return TicketListOut(items=items, total=total)
+
+    async def list_agents(self) -> AgentListOut:
+        users, _ = await self.admins.list_users(is_active=True, limit=100)
+        return AgentListOut(
+            items=[AgentOut(id=u.id, username=u.username, role=u.role) for u in users]
+        )
 
     async def stats(self) -> TicketStatsOut:
         s = await self.tickets.stats()

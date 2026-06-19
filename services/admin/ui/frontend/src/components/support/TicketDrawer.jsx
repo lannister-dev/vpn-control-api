@@ -59,6 +59,10 @@ export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
     () => api.get(`/support/tickets/${ticket.id}/messages?limit=200`).catch(() => ({ items: buildMockMessages(ticket) })),
     { interval: 5000, deps: [ticket.id] },
   );
+  const agentsQ = useQuery(
+    () => api.get("/support/agents").catch(() => ({ items: [] })),
+    { interval: 0 },
+  );
 
   const live = { ...ticket, ...(detail.data || {}) };
   const user = live.user || {};
@@ -257,9 +261,6 @@ export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
         toast.ok("Тикет закрыт");
       },
     });
-  const assignToMe = async () => {
-    await updateTicket({ assignee: "me" });
-  };
 
   const head = (
     <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0 }}>
@@ -391,6 +392,16 @@ export function TicketDrawer({ ticket, templates = [], onClose, onChanged }) {
             value={live.category}
             options={categoryOptions()}
             onChange={(v) => updateTicket({ category: v })}
+          />
+          <MetaDropdown
+            label="Назначен"
+            value={live.assignee || ""}
+            options={[
+              { id: "", label: "Не назначен" },
+              { id: "__me__", label: "Себе" },
+              ...(agentsQ.data?.items || []).map((a) => ({ id: a.username, label: `@${a.username}` })),
+            ]}
+            onChange={(v) => updateTicket({ assignee: v === "" ? "unassigned" : v === "__me__" ? "me" : v })}
           />
           <div className="tk-meta-cell">
             <div className="tk-meta-label">Создан</div>

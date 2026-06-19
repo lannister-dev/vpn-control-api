@@ -88,6 +88,18 @@ class TicketListOut(BaseModel):
     total: int
 
 
+class AgentOut(BaseModel):
+    id: UUID
+    username: str
+    role: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AgentListOut(BaseModel):
+    items: list[AgentOut]
+
+
 class TicketStatsRaw(BaseModel):
     open: int = 0
     unanswered: int = 0

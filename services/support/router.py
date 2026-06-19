@@ -29,6 +29,7 @@ from services.support.exceptions import (
     TicketNotFound,
 )
 from services.support.schemas import (
+    AgentListOut,
     BroadcastAudience,
     BroadcastAudienceCount,
     BroadcastFunnelOut,
@@ -74,6 +75,7 @@ async def list_tickets(
     priority: TicketPriority | None = Query(None),
     assignee: str | None = Query(None),
     unanswered_minutes: int | None = Query(None, ge=1),
+    archived: bool = Query(False),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     service: SupportService = Depends(get_support_service),
@@ -90,6 +92,11 @@ async def list_tickets(
                 assignee_id = UUID(assignee)
             except ValueError:
                 assignee_id = await service._resolve_admin_id(assignee)
+    exclude_closed = False
+    if archived:
+        status_ = TicketStatus.CLOSED
+    elif status_ is None:
+        exclude_closed = True
     return await service.list_tickets(
         search=search,
         status=status_,
@@ -97,9 +104,15 @@ async def list_tickets(
         priority=priority,
         assignee_admin_id=assignee_id,
         unanswered_minutes=unanswered_minutes,
+        exclude_closed=exclude_closed,
         limit=limit,
         offset=offset,
     )
+
+
+@router.get("/agents", response_model=AgentListOut)
+async def list_agents(service: SupportService = Depends(get_support_service)):
+    return await service.list_agents()
 
 
 @router.post("/tickets", response_model=TicketOut, status_code=status.HTTP_201_CREATED)

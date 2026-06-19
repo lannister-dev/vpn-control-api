@@ -40,6 +40,7 @@ class SupportTicketRepository(BaseRepository[SupportTicket]):
         priority: str | None = None,
         assignee_admin_id: UUID | None = None,
         unanswered_minutes: int | None = None,
+        exclude_closed: bool = False,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[list[SupportTicket], int]:
@@ -49,6 +50,8 @@ class SupportTicketRepository(BaseRepository[SupportTicket]):
         conds = []
         if status:
             conds.append(SupportTicket.status == status.value)
+        if exclude_closed:
+            conds.append(SupportTicket.status != TicketStatus.CLOSED.value)
         if category:
             conds.append(SupportTicket.category == category)
         if priority:

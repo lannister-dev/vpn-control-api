@@ -21,7 +21,7 @@ const PRESETS = [
   { id: "mine",      label: "Мои",                       icon: "user" },
   { id: "new",       label: "Новые",                     icon: "inbox" },
   { id: "unanswered",label: "Без ответа > 1ч",           icon: "clock" },
-  { id: "closed",    label: "Закрытые",                  icon: "archive" },
+  { id: "closed",    label: "Архив",                     icon: "archive" },
 ];
 
 function applyPreset(preset, qs) {
@@ -29,7 +29,7 @@ function applyPreset(preset, qs) {
     case "mine":       qs.set("assignee", "me"); break;
     case "new":        qs.set("status", "new"); break;
     case "unanswered": qs.set("unanswered_minutes", "60"); break;
-    case "closed":     qs.set("status", "closed"); break;
+    case "closed":     qs.set("archived", "true"); break;
   }
 }
 
