@@ -157,8 +157,11 @@
   border: 1px solid transparent;
 }
 .chip-ok    { background: var(--ok-soft);    color: var(--ok);   }
+.chip-lime  { background: var(--lime-soft);  color: var(--lime); }
 .chip-warn  { background: var(--warn-soft);  color: var(--warn); }
+.chip-orange{ background: var(--orange-soft);color: var(--orange); }
 .chip-bad   { background: var(--bad-soft);   color: var(--bad);  }
+.chip-over  { background: var(--bad); color: #fff; border-color: var(--bad); }
 .chip-muted { background: var(--surface-2); color: var(--text-muted); }
 
 /* ─── Detail fields ─── */

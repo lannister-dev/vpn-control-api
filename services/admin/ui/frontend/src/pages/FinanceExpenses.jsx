@@ -4,7 +4,7 @@ import { useQuery } from "../hooks/useQuery.js";
 import { Icon } from "../components/Icon.jsx";
 import { ConfirmModal } from "../components/ConfirmModal.jsx";
 import { PeriodSelector, FinLoading, FinError, periodLabel, rangeFor } from "./finance/kit.jsx";
-import { fmtRub, fmtRubK, fmtCur } from "./finance/format.js";
+import { fmtRub, fmtRubK, fmtCur, dueProximity } from "./finance/format.js";
 import { KIND_LABELS, KIND_COLORS, KIND_CHIP } from "./finance/labels.js";
 import { downloadCsv } from "./finance/csv.js";
 
@@ -356,6 +356,7 @@ export function FinanceExpensesPage() {
         <div className="tpl-grid">
           {tpls.map((t) => {
             const monthly = t.currency === "RUB" ? Number(t.amount) : Math.round(Number(t.amount) * Number(t.fx_rate || 1));
+            const due = dueProximity(t.next_run_at);
             return (
               <div className="tpl-card" key={t.id}>
                 <div className="tpl-actions">
@@ -370,7 +371,9 @@ export function FinanceExpensesPage() {
                   {t.currency !== "RUB" && <div className="text-xs muted mono mt-1">{fmtCur(t.amount, t.currency)} × {t.fx_rate}</div>}
                   <div style={{ borderTop: "1px solid var(--border)", marginTop: 12, paddingTop: 10, display: "flex", justifyContent: "space-between", fontSize: 12 }}>
                     <span className="muted">{t.vendor || "—"}</span>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Icon name="calendar" size={11} className="muted" /> {fmtDate(t.next_run_at)}</span>
+                    <span className={`chip ${due.cls}`} style={{ display: "inline-flex", alignItems: "center", gap: 4 }} title={due.days == null ? "" : due.days < 0 ? `просрочен на ${Math.abs(due.days)} дн.` : `через ${due.days} дн.`}>
+                      <Icon name="calendar" size={11} /> {t.next_run_at ? fmtDate(t.next_run_at) : "—"}
+                    </span>
                   </div>
                 </div>
               );

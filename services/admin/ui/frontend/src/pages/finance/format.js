@@ -33,3 +33,16 @@ export function fmtDelta(pct) {
   if (pct == null) return null;
   return `${pct > 0 ? "+" : ""}${pct.toFixed(1)}%`;
 }
+
+export function dueProximity(dateStr, now = Date.now()) {
+  if (!dateStr) return { cls: "chip-muted", days: null };
+  const days = Math.ceil((new Date(dateStr).getTime() - now) / 86400000);
+  let cls;
+  if (days < 0) cls = "chip-over";
+  else if (days <= 3) cls = "chip-bad";
+  else if (days <= 7) cls = "chip-orange";
+  else if (days <= 14) cls = "chip-warn";
+  else if (days <= 30) cls = "chip-lime";
+  else cls = "chip-ok";
+  return { cls, days };
+}
