@@ -71,7 +71,7 @@
 
 /* Recurring template cards */
 .tpl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(248px, 1fr)); gap: 12px; }
-.tpl-card { border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px; background: var(--surface); position: relative; }
+.tpl-card { border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px; background: var(--surface); position: relative; display: flex; flex-direction: column; }
 .tpl-card:hover { border-color: var(--border-strong); }
 .tpl-card .tpl-actions { position: absolute; top: 10px; right: 10px; display: flex; gap: 2px; opacity: 0; transition: opacity 100ms; }
 .tpl-card:hover .tpl-actions { opacity: 1; }

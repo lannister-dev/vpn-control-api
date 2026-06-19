@@ -369,7 +369,7 @@ export function FinanceExpensesPage() {
                   <div style={{ fontWeight: 600, fontSize: 13.5, marginBottom: 2 }}>{t.name}</div>
                   <div className="kpi-value tnum" style={{ fontSize: 22, marginTop: 6 }}>{fmtRub(monthly)}<span className="kpi-unit">/ {t.period === "yearly" ? "год" : t.period === "weekly" ? "нед" : "мес"}</span></div>
                   {t.currency !== "RUB" && <div className="text-xs muted mono mt-1">{fmtCur(t.amount, t.currency)} × {t.fx_rate}</div>}
-                  <div style={{ borderTop: "1px solid var(--border)", marginTop: 12, paddingTop: 10, display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                  <div style={{ borderTop: "1px solid var(--border)", marginTop: "auto", paddingTop: 10, display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12 }}>
                     <span className="muted">{t.vendor || "—"}</span>
                     <span className={`chip ${due.cls}`} style={{ display: "inline-flex", alignItems: "center", gap: 4 }} title={due.days == null ? "" : due.days < 0 ? `просрочен на ${Math.abs(due.days)} дн.` : `через ${due.days} дн.`}>
                       <Icon name="calendar" size={11} /> {t.next_run_at ? fmtDate(t.next_run_at) : "—"}
