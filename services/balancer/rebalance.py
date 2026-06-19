@@ -18,6 +18,7 @@ from services.nodes.repository import VpnNodeRepository
 from services.placements.repository import UserPlacementRepository
 from services.placements.schemas import PlacementDesiredState
 from services.placements.transport import NodeAgentPlacementTransport
+from services.traffic.nodes.models import NodeTrafficUsage
 from services.traffic.users.models import TrafficUsage
 from services.vpn.keys.repository import VpnKeyRepository
 from services.vpn.keys.schemas import VpnKeyRoutingOverrideUpdate
@@ -54,9 +55,9 @@ class BackendRebalancer:
 
         since = datetime.now(timezone.utc) - timedelta(minutes=self._cfg.traffic_window_min)
         key_bytes = await self._recent_bytes_by_key(since)
+        bytes_by_tag = await self._recent_bytes_by_backend(nodes_by_id, since)
         cpu_by_tag = await self._cpu_by_backend(nodes_by_id)
 
-        bytes_by_tag = dict.fromkeys(live_tags, 0.0)
         conn_by_tag = dict.fromkeys(live_tags, 0)
         key_stats: list[KeyStat] = []
         for k in keys:
@@ -70,7 +71,6 @@ class BackendRebalancer:
                 continue
             w = float(key_bytes.get(k.id, 0))
             key_stats.append(KeyStat(key_id=k.id, current_tag=cur, allowed_tags=allowed, weight=w))
-            bytes_by_tag[cur] += w
             conn_by_tag[cur] += 1
 
         backend_stats = [
@@ -116,6 +116,27 @@ class BackendRebalancer:
             .group_by(TrafficUsage.key_id)
         )
         return {row[0]: int(row[1] or 0) for row in res.all()}
+
+    async def _recent_bytes_by_backend(self, nodes_by_id: dict, since: datetime) -> dict:
+        if not nodes_by_id:
+            return {}
+        res = await self._session.execute(
+            select(
+                NodeTrafficUsage.backend_node_id,
+                func.sum(NodeTrafficUsage.bytes_in + NodeTrafficUsage.bytes_out),
+            )
+            .where(
+                NodeTrafficUsage.created_at >= since,
+                NodeTrafficUsage.backend_node_id.in_(list(nodes_by_id.keys())),
+            )
+            .group_by(NodeTrafficUsage.backend_node_id)
+        )
+        out: dict[str, float] = {}
+        for node_id, total in res.all():
+            node = nodes_by_id.get(node_id)
+            if node is not None:
+                out[f"backend-{node.name}"] = float(total or 0)
+        return out
 
     async def _cpu_by_backend(self, nodes_by_id: dict) -> dict:
         if not nodes_by_id:

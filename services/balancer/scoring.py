@@ -55,24 +55,22 @@ class _Working:
         return self.conn / max(1, self.cap)
 
 
-def _normalize(raw: dict[str, float]) -> dict[str, float]:
+def _relative_to_mean(raw: dict[str, float]) -> dict[str, float]:
     if not raw:
         return {}
-    values = list(raw.values())
-    lo, hi = min(values), max(values)
-    if hi - lo <= 1e-12:
-        return dict.fromkeys(raw, 0.0)
-    span = hi - lo
-    return {tag: (v - lo) / span for tag, v in raw.items()}
+    mean = sum(raw.values()) / len(raw)
+    if mean <= 1e-12:
+        return dict.fromkeys(raw, 1.0)
+    return {tag: v / mean for tag, v in raw.items()}
 
 
 def compute_scores(working: dict[str, _Working], weights: Weights) -> dict[str, float]:
     total_w = weights.bandwidth + weights.cpu + weights.conn
     if total_w <= 0:
-        return dict.fromkeys(working, 0.0)
-    bw_n = _normalize({w.tag: w.bw_load for w in working.values()})
-    cpu_n = _normalize({w.tag: w.cpu_load for w in working.values()})
-    conn_n = _normalize({w.tag: w.conn_load for w in working.values()})
+        return dict.fromkeys(working, 1.0)
+    bw_n = _relative_to_mean({w.tag: w.bw_load for w in working.values()})
+    cpu_n = _relative_to_mean({w.tag: w.cpu_load for w in working.values()})
+    conn_n = _relative_to_mean({w.tag: w.conn_load for w in working.values()})
     return {
         tag: (
             weights.bandwidth * bw_n[tag]

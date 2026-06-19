@@ -81,6 +81,36 @@ def test_full_target_has_no_headroom():
     assert _plan(backends, keys) == []
 
 
+def test_near_balanced_is_left_alone():
+    backends = [
+        BackendStat("lon", recent_bytes=31_000, cpu_pct=41, conn=30, capacity=100),
+        BackendStat("hel", recent_bytes=29_000, cpu_pct=39, conn=29, capacity=100),
+        BackendStat("zrh", recent_bytes=30_000, cpu_pct=40, conn=31, capacity=100),
+    ]
+    allowed = frozenset({"lon", "hel", "zrh"})
+    keys = [
+        KeyStat(key_id=f"l{i}", current_tag="lon", allowed_tags=allowed, weight=1000) for i in range(3)
+    ] + [
+        KeyStat(key_id=f"h{i}", current_tag="hel", allowed_tags=allowed, weight=1000) for i in range(3)
+    ]
+    assert plan_moves(backends, keys, weights=W, spread_threshold=0.15, move_cap=15) == []
+
+
+def test_converges_without_overshoot():
+    backends = [
+        BackendStat("lon", recent_bytes=46_000, cpu_pct=50, conn=20, capacity=100),
+        BackendStat("zrh", recent_bytes=5_000, cpu_pct=20, conn=20, capacity=100),
+    ]
+    allowed = frozenset({"lon", "zrh"})
+    keys = [
+        KeyStat(key_id=f"l{i}", current_tag="lon", allowed_tags=allowed, weight=w)
+        for i, w in enumerate([20_000, 10_000, 8_000, 5_000, 3_000])
+    ]
+    moves = plan_moves(backends, keys, weights=W, spread_threshold=0.15, move_cap=15)
+    assert all(m.from_tag == "lon" and m.to_tag == "zrh" for m in moves)
+    assert 0 < len(moves) < 5
+
+
 def test_single_backend_is_noop():
     backends = [BackendStat("lon", recent_bytes=99_000, cpu_pct=99, conn=9, capacity=100)]
     keys = [_key("a", "lon", 50_000)]
