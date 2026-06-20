@@ -1,5 +1,3 @@
-import json
-
 from services.vpn.keys.schemas import VpnTransport
 
 WHITELIST_SUFFIX = " | WL"
