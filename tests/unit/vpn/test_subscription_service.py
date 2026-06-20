@@ -1421,3 +1421,23 @@ async def test_build_payload_expired_subscription_returns_empty_with_user_info(s
     assert user_info.download == 500
     assert user_info.total == 0
     assert user_info.expire == int(sub.expires_at.timestamp())
+
+
+def test_subscription_bundle_transports_uniform_regardless_of_plan(service):
+    from services.vpn.keys.schemas import VpnTransport
+
+    expected = (VpnTransport.reality, VpnTransport.ws, VpnTransport.xhttp)
+    sub_no_whitelist = SimpleNamespace(
+        profile_key=None,
+        plan=SimpleNamespace(whitelist_enabled=False),
+    )
+    sub_whitelist = SimpleNamespace(
+        profile_key=None,
+        plan=SimpleNamespace(whitelist_enabled=True),
+    )
+
+    assert service._subscription_bundle_transports(sub_no_whitelist) == expected
+    assert service._subscription_bundle_transports(sub_whitelist) == expected
+    assert service._subscription_bundle_transports(
+        sub_no_whitelist
+    ) == service._subscription_bundle_transports(sub_whitelist)
