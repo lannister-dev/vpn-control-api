@@ -3,7 +3,7 @@ from functools import lru_cache
 
 from environs import Env
 
-from services.vpn.subscriptions.constants import DEFAULT_HAPP_COLOR_PROFILE
+# from services.vpn.subscriptions.constants import DEFAULT_HAPP_COLOR_PROFILE
 
 
 @dataclass
@@ -117,7 +117,7 @@ class SubscriptionsConfig:
     happ_routing: str = ""
     happ_hide_settings: bool = False
     happ_always_hwid_enable: bool = False
-    happ_color_profile: str = DEFAULT_HAPP_COLOR_PROFILE
+    # happ_color_profile: str = DEFAULT_HAPP_COLOR_PROFILE
     happ_autoconnect: bool = True
     happ_autoconnect_type: str = "lowestdelay"
     happ_ping_onopen: bool = True
@@ -475,7 +475,7 @@ def get_settings() -> Settings:
         happ_routing=env.str("SUBSCRIPTIONS_HAPP_ROUTING", default=""),
         happ_hide_settings=env.bool("SUBSCRIPTIONS_HAPP_HIDE_SETTINGS", default=False),
         happ_always_hwid_enable=env.bool("SUBSCRIPTIONS_HAPP_ALWAYS_HWID_ENABLE", default=False),
-        happ_color_profile=env.str("SUBSCRIPTIONS_HAPP_COLOR_PROFILE", default="").strip() or DEFAULT_HAPP_COLOR_PROFILE,
+        # happ_color_profile=env.str("SUBSCRIPTIONS_HAPP_COLOR_PROFILE", default="").strip() or DEFAULT_HAPP_COLOR_PROFILE,
         happ_autoconnect=env.bool("SUBSCRIPTIONS_HAPP_AUTOCONNECT", default=True),
         happ_autoconnect_type=env.str("SUBSCRIPTIONS_HAPP_AUTOCONNECT_TYPE", default="lowestdelay"),
         happ_ping_onopen=env.bool("SUBSCRIPTIONS_HAPP_PING_ONOPEN", default=True),
