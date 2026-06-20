@@ -20,6 +20,7 @@ TRANSPORT_PRIORITY: dict[str, int] = {
 DEFAULT_SUBSCRIPTION_TRANSPORT_BUNDLE: tuple[VpnTransport, ...] = (
     VpnTransport.reality,
     VpnTransport.ws,
+    VpnTransport.xhttp,
 )
 #
 # HAPP_COLOR_PROFILE_EMBER = {

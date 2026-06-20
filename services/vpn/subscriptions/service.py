@@ -1602,10 +1602,6 @@ class SubscriptionService:
         for transport in DEFAULT_SUBSCRIPTION_TRANSPORT_BUNDLE:
             if transport not in ordered:
                 ordered.append(transport)
-        plan = getattr(subscription, "plan", None)
-        whitelist_enabled = bool(plan and getattr(plan, "whitelist_enabled", False))
-        if whitelist_enabled and VpnTransport.xhttp not in ordered:
-            ordered.append(VpnTransport.xhttp)
         return tuple(ordered)
 
     def _infer_transport_from_profile_key(self, profile_key: str | None) -> VpnTransport | None:
