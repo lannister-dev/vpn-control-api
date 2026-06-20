@@ -255,6 +255,9 @@ class SubscriptionRepository(BaseRepository[Subscription]):
                 SubscriptionDevice.subscription_id == subscription_id,
                 SubscriptionDevice.is_active.is_(True),
                 UserPlacement.is_active.is_(True),
+                VpnNode.is_active.is_(True),
+                VpnNode.is_enabled.is_(True),
+                VpnNode.is_draining.is_(False),
             )
             .order_by(VpnNode.region, VpnNode.name)
         )
@@ -269,6 +272,7 @@ class SubscriptionRepository(BaseRepository[Subscription]):
         if not backend_ids:
             return []
         entry_node = aliased(VpnNode)
+        backend_node = aliased(VpnNode)
         stmt = (
             select(
                 Route.node_id.label("backend_id"),
@@ -282,12 +286,16 @@ class SubscriptionRepository(BaseRepository[Subscription]):
                 Route.effective_weight.label("weight"),
             )
             .join(entry_node, entry_node.id == Route.entry_node_id)
+            .join(backend_node, backend_node.id == Route.node_id)
             .join(TransportProfile, TransportProfile.id == Route.transport_profile_id)
             .where(
                 Route.node_id.in_(backend_ids),
                 Route.is_active.is_(True),
                 Route.health_status.in_(("healthy", "warming_up")),
                 entry_node.is_enabled.is_(True),
+                backend_node.is_active.is_(True),
+                backend_node.is_enabled.is_(True),
+                backend_node.is_draining.is_(False),
             )
             .order_by(Route.effective_weight.desc(), entry_node.name)
         )
