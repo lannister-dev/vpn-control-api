@@ -375,12 +375,12 @@ async def test_fan_out_button_style():
     svc.broadcasts.get_by_id = AsyncMock(return_value=bcast)
 
     buttons = [
-        {"text": "Buy", "url": "https://x", "style": "destructive"},
+        {"text": "Buy", "url": "https://x", "style": "danger"},
         {"text": "More", "url": "https://y", "style": "bogus"},
     ]
     n = await svc._fan_out_broadcast(bcast.id, [uid], "hi", buttons=buttons)
     assert n == 1
     payload = svc._nats.publish_jetstream.await_args.kwargs["payload"]
     btns = payload["buttons"]
-    assert btns[0]["style"] == "destructive"
+    assert btns[0]["style"] == "danger"
     assert btns[1]["style"] is None
