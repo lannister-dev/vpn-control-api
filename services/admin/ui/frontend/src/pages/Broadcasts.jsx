@@ -410,6 +410,38 @@ function renderMarkdownV2(text) {
   return <>{parts.map((p, i) => <span key={i} style={{ whiteSpace: "pre-wrap" }}>{p}</span>)}</>;
 }
 
+function renderWithCustomEmoji(text, entities, assets) {
+  const ce = (entities || [])
+    .filter((e) => e.type === "custom_emoji")
+    .sort((a, b) => a.offset - b.offset);
+  if (ce.length === 0) return text;
+  const nodes = [];
+  let cursor = 0;
+  let key = 0;
+  for (const e of ce) {
+    if (e.offset < cursor) continue;
+    if (e.offset > cursor) nodes.push(<span key={key++}>{text.slice(cursor, e.offset)}</span>);
+    const fallback = text.slice(e.offset, e.offset + e.length);
+    const url = assets?.[e.custom_emoji_id];
+    if (url) {
+      nodes.push(
+        <img
+          key={key++}
+          src={url}
+          alt={fallback}
+          title={fallback}
+          style={{ height: "1.2em", width: "1.2em", verticalAlign: "-0.2em", display: "inline-block", objectFit: "contain" }}
+        />,
+      );
+    } else {
+      nodes.push(<span key={key++}>{fallback}</span>);
+    }
+    cursor = e.offset + e.length;
+  }
+  if (cursor < text.length) nodes.push(<span key={key++}>{text.slice(cursor)}</span>);
+  return nodes;
+}
+
 /* ─────────────── History ─────────────── */
 function BroadcastHistory() {
   const q = useQuery(
@@ -552,11 +584,17 @@ function BroadcastDetail({ broadcast: b, onClose, onChanged }) {
       )}
       <div className="card" style={{ padding: 12, background: "var(--surface-2)" }}>
         <div className="muted small" style={{ marginBottom: 6 }}>Текст сообщения</div>
-        <div
-          className="txed-preview"
-          style={{ whiteSpace: "pre-wrap" }}
-          dangerouslySetInnerHTML={{ __html: b.text_body || b.preview || "<span style='color:var(--text-muted)'>пусто</span>" }}
-        />
+        {Array.isArray(b.entities) && b.entities.length > 0 ? (
+          <div className="txed-preview" style={{ whiteSpace: "pre-wrap" }}>
+            {renderWithCustomEmoji(b.text_body || "", b.entities, b.custom_emoji_assets || {})}
+          </div>
+        ) : (
+          <div
+            className="txed-preview"
+            style={{ whiteSpace: "pre-wrap" }}
+            dangerouslySetInnerHTML={{ __html: b.text_body || b.preview || "<span style='color:var(--text-muted)'>пусто</span>" }}
+          />
+        )}
       </div>
       {(canRepeat || canCancel) && (
         <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end", gap: 8 }}>

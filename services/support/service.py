@@ -704,6 +704,8 @@ class SupportService:
                     media_kind=b.media_kind,
                     media_url=b.media_url,
                     inline_buttons=b.inline_buttons,
+                    entities=b.entities,
+                    custom_emoji_assets=b.custom_emoji_assets,
                     status=BroadcastStatus(b.status),
                     delivered=b.delivered,
                     errors=b.errors,
