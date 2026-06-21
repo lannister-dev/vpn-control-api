@@ -401,6 +401,7 @@ class SupportInboundMessage(BaseModel):
     caption_entities: list[MessageEntity] = Field(default_factory=list)
     attachments: list[SupportInboundAttachmentMsg] = Field(default_factory=list)
     tg_message_id: int | None = None
+    intent: str | None = None
 
 
 class SupportOutboundAttachmentMsg(BaseModel):

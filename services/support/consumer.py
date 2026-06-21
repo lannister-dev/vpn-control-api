@@ -85,9 +85,11 @@ class SupportInboundConsumer:
                     await msg.ack()
                     return
 
-            admin = await AdminUserRepository(session).get_by_telegram_id(parsed.telegram_id)
-            if admin is not None:
-                await self._ingest_admin_broadcast_draft(session, admin_id=admin.id, parsed=parsed)
+            if parsed.intent == "broadcast":
+                admin = await AdminUserRepository(session).get_by_telegram_id(parsed.telegram_id)
+                await self._ingest_admin_broadcast_draft(
+                    session, admin_id=(admin.id if admin else None), parsed=parsed
+                )
                 await msg.ack()
                 return
 
