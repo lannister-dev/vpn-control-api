@@ -152,9 +152,10 @@ class SupportInboundConsumer:
 
     async def _ingest_admin_broadcast_draft(self, session, *, admin_id, parsed) -> None:
         settings = get_settings()
+        entities = parsed.entities or parsed.caption_entities
         custom_emoji_ids = [
             e.custom_emoji_id
-            for e in parsed.entities
+            for e in entities
             if e.type == "custom_emoji" and e.custom_emoji_id
         ]
         assets: dict[str, str] = {}
@@ -162,7 +163,7 @@ class SupportInboundConsumer:
             assets = await CustomEmojiResolver(
                 support=settings.support, s3=settings.s3
             ).resolve(custom_emoji_ids)
-        text_html = custom_emoji_entities_to_html(parsed.text or "", parsed.entities)
+        text_html = custom_emoji_entities_to_html(parsed.text or "", entities)
         media_kind: str | None = None
         media_url: str | None = None
         if parsed.attachments:
@@ -195,6 +196,8 @@ class SupportInboundConsumer:
             broadcast_id=str(broadcast.id),
             admin_id=str(admin_id),
             emoji_count=len(assets),
+            entities_total=len(entities),
+            from_caption=bool(not parsed.entities and parsed.caption_entities),
         )
 
     @staticmethod
