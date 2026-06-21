@@ -17,6 +17,7 @@ from services.billing.repository import OrderRepository
 from services.config import get_settings
 from services.promo.repository import PromoCodeRepository
 from services.support.constants import (
+    BROADCAST_BUTTON_STYLES,
     BROADCAST_RETRY_BACKOFF_SEC,
     BROADCAST_SENDING_STALE_SEC,
     MAX_BROADCAST_DISPATCH_ATTEMPTS,
@@ -661,54 +662,70 @@ class SupportService:
             created_at=target.created_at,
         )
 
-    async def dispatch_broadcast(
+    async def update_broadcast(
         self,
         broadcast_id: UUID,
         *,
         audience: BroadcastAudience,
         plan_id: UUID | None,
+        text: str,
+        buttons: list[dict] | None,
+        media_kind: str | None,
+        media_url: str | None,
+        status: BroadcastStatus,
         scheduled_at: datetime | None,
+        promo_code_id: UUID | None = None,
     ) -> BroadcastOut:
         b = await self.broadcasts.get_by_id(broadcast_id)
         if b is None:
             raise BroadcastNotFound(str(broadcast_id))
         if b.status != BroadcastStatus.DRAFT.value:
             raise InvalidStateTransition(
-                f"Broadcast in status '{b.status}' cannot be dispatched"
+                f"Broadcast in status '{b.status}' cannot be edited"
             )
+        if promo_code_id is not None and "{promo}" in (text or ""):
+            promo = await PromoCodeRepository(self.session).get_by_id(promo_code_id)
+            if promo is not None:
+                text = text.replace("{promo}", promo.code)
         target_ids = await self._resolve_audience(audience, plan_id)
         b.audience = audience.value
         b.plan_id = plan_id
+        b.text_body = text
+        b.inline_buttons = buttons
+        b.media_kind = media_kind
+        b.media_url = media_url
+        b.promo_code_id = promo_code_id
         b.target_count = len(target_ids)
         delivered = 0
         sent_at: datetime | None = None
-        if scheduled_at is not None:
-            b.status = BroadcastStatus.SCHEDULED.value
-            b.scheduled_at = scheduled_at
-            final_status = BroadcastStatus.SCHEDULED
-            await self.session.commit()
-        else:
+        if status == BroadcastStatus.SENDING:
             b.status = BroadcastStatus.SENDING.value
             await self.session.flush()
             delivered = await self._fan_out_broadcast(
-                b.id, target_ids, b.text_body or "",
-                media_kind=b.media_kind, media_url=b.media_url, buttons=b.inline_buttons,
+                b.id, target_ids, text or "",
+                media_kind=media_kind, media_url=media_url, buttons=buttons,
             )
             sent_at = datetime.now(timezone.utc)
             b.delivered = delivered
             b.sent_at = sent_at
             b.status = BroadcastStatus.SENT.value
             final_status = BroadcastStatus.SENT
-            await self.session.commit()
+        elif status == BroadcastStatus.SCHEDULED:
+            b.status = BroadcastStatus.SCHEDULED.value
+            b.scheduled_at = scheduled_at
+            final_status = BroadcastStatus.SCHEDULED
+        else:
+            final_status = BroadcastStatus.DRAFT
+        await self.session.commit()
         return BroadcastOut(
             id=b.id,
             audience=audience,
             audience_label=b.audience_label,
-            preview=(b.text_body or "")[:160],
-            text_body=b.text_body or "",
-            media_kind=b.media_kind,
-            media_url=b.media_url,
-            inline_buttons=b.inline_buttons,
+            preview=(text or "")[:160],
+            text_body=text or "",
+            media_kind=media_kind,
+            media_url=media_url,
+            inline_buttons=buttons,
             entities=b.entities,
             custom_emoji_assets=b.custom_emoji_assets,
             status=final_status,
@@ -716,7 +733,7 @@ class SupportService:
             errors=max(0, b.target_count - delivered) if final_status == BroadcastStatus.SENT else 0,
             clicks=b.clicks,
             target_count=b.target_count,
-            promo_code_id=b.promo_code_id,
+            promo_code_id=promo_code_id,
             sent_at=sent_at,
             scheduled_at=b.scheduled_at,
             created_at=b.created_at,
@@ -1043,7 +1060,9 @@ class SupportService:
             t = (b.get("text") or "").strip()
             u = (b.get("url") or "").strip()
             if t and u:
-                button_payload.append(SupportOutboundInlineButton(text=t, url=u))
+                style = b.get("style")
+                style = style if style in BROADCAST_BUTTON_STYLES else None
+                button_payload.append(SupportOutboundInlineButton(text=t, url=u, style=style))
 
         bcast = await self.broadcasts.get_by_id(broadcast_id)
         username = (get_settings().referral.bot_username or "").strip()

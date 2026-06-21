@@ -25,6 +25,7 @@ const AUDIENCE_PRESETS = [
 
 export function BroadcastsPage({ initialAction, onActionConsumed }) {
   const [tab, setTab] = useState("new");
+  const [editingDraft, setEditingDraft] = useState(null);
 
   useEffect(() => {
     if (initialAction === "new-broadcast") {
@@ -50,10 +51,10 @@ export function BroadcastsPage({ initialAction, onActionConsumed }) {
       </div>
 
       <div style={{ display: tab === "new" ? "block" : "none" }}>
-        <BroadcastComposer />
+        <BroadcastComposer editingDraft={editingDraft} onDone={() => setEditingDraft(null)} />
       </div>
       <div style={{ display: tab === "drafts" ? "block" : "none" }}>
-        <BroadcastDrafts />
+        <BroadcastDrafts onEdit={(b) => { setEditingDraft(b); setTab("new"); }} />
       </div>
       <div style={{ display: tab === "recurring" ? "block" : "none" }}>
         <RecurringBroadcasts />
@@ -66,7 +67,7 @@ export function BroadcastsPage({ initialAction, onActionConsumed }) {
 }
 
 /* ─────────────── Composer ─────────────── */
-function BroadcastComposer() {
+function BroadcastComposer({ editingDraft, onDone }) {
   const plans = useQuery(() => api.get("/plans").catch(() => ({ items: [] })), { interval: 60000 });
   const promos = useQuery(() => api.get("/promo").catch(() => ({ items: [] })), { interval: 60000 });
   const [audience, setAudience] = useState("all");
@@ -74,11 +75,37 @@ function BroadcastComposer() {
   const [promoId, setPromoId] = useState("");
   const [text, setText] = useState("");
   const [file, setFile] = useState(null);
-  const [buttons, setButtons] = useState([]); // [{text, url}]
+  const [buttons, setButtons] = useState([]);
   const [schedule, setSchedule] = useState("now");
   const [scheduledAt, setScheduledAt] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [draftId, setDraftId] = useState(null);
+  const [mediaUrl, setMediaUrl] = useState(null);
+  const [mediaKind, setMediaKind] = useState(null);
+  const [emojiAssets, setEmojiAssets] = useState({});
+
+  useEffect(() => {
+    if (!editingDraft) return;
+    setDraftId(editingDraft.id);
+    setText((editingDraft.text_body || "").replace(/\n/g, "<br>"));
+    setButtons((editingDraft.inline_buttons || []).map((b) => ({ text: b.text || "", url: b.url || "", style: b.style || "default" })));
+    setMediaUrl(editingDraft.media_url || null);
+    setMediaKind(editingDraft.media_kind || null);
+    setEmojiAssets(editingDraft.custom_emoji_assets || {});
+    setAudience(editingDraft.audience || "all");
+    setPlanId(editingDraft.plan_id || "");
+    setPromoId(editingDraft.promo_code_id || "");
+    setFile(null);
+    setSchedule("now");
+    setScheduledAt("");
+  }, [editingDraft]);
+
+  const resetComposer = () => {
+    setText(""); setFile(null); setButtons([]); setSchedule("now"); setScheduledAt("");
+    setPromoId(""); setDraftId(null); setMediaUrl(null); setMediaKind(null); setEmojiAssets({});
+    onDone?.();
+  };
 
   // Audience size — preview
   const audienceQs = useMemo(() => {
@@ -101,7 +128,7 @@ function BroadcastComposer() {
 
   const addButton = () => {
     if (buttons.length >= 5) return;
-    setButtons((b) => [...b, { text: "", url: "" }]);
+    setButtons((b) => [...b, { text: "", url: "", style: "default" }]);
   };
   const updateButton = (i, key, val) => {
     setButtons((b) => b.map((row, idx) => (idx === i ? { ...row, [key]: val } : row)));
@@ -115,17 +142,22 @@ function BroadcastComposer() {
       fd.append("audience", audience);
       if (audience === "by_plan" && planId) fd.append("plan_id", planId);
       fd.append("text", htmlForTelegram(text));
-      fd.append("buttons", JSON.stringify(buttons.filter((b) => b.text && b.url)));
+      fd.append("buttons", JSON.stringify(
+        buttons.filter((b) => b.text && b.url).map((b) => ({
+          text: b.text, url: b.url,
+          style: b.style && b.style !== "default" ? b.style : null,
+        })),
+      ));
       if (file) fd.append("media", file);
+      else if (mediaUrl) { fd.append("media_url", mediaUrl); if (mediaKind) fd.append("media_kind", mediaKind); }
       if (promoId) fd.append("promo_code_id", promoId);
       fd.append("status", isDraft ? "draft" : (schedule === "now" ? "sending" : "scheduled"));
       if (schedule === "schedule" && scheduledAt) fd.append("scheduled_at", new Date(scheduledAt).toISOString());
 
-      await api.raw("/support/broadcasts", { method: "POST", headers: {}, body: fd });
+      const path = draftId ? `/support/broadcasts/${draftId}` : "/support/broadcasts";
+      await api.raw(path, { method: draftId ? "PATCH" : "POST", headers: {}, body: fd });
       toast.ok(isDraft ? "Черновик сохранён" : (schedule === "now" ? "Рассылка отправлена" : "Рассылка запланирована"));
-      if (!isDraft) {
-        setText(""); setFile(null); setButtons([]); setSchedule("now"); setScheduledAt(""); setPromoId("");
-      }
+      if (draftId || !isDraft) resetComposer();
     } catch (e) {
       toast.bad(e?.message || "Не удалось сохранить рассылку");
     }
@@ -136,6 +168,15 @@ function BroadcastComposer() {
     <div className="br-grid">
       {/* LEFT: composer */}
       <div className="br-col">
+        {draftId && (
+          <div className="card br-section" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Icon name="edit" size={14} />
+            <span className="small">Редактирование черновика</span>
+            <button className="btn btn-ghost btn-sm" style={{ marginLeft: "auto" }} onClick={resetComposer}>
+              <Icon name="x" size={12} /> Отменить правку
+            </button>
+          </div>
+        )}
         <section className="card br-section">
           <div className="br-section-head">
             <Icon name="users" size={14} /> Аудитория
@@ -184,13 +225,7 @@ function BroadcastComposer() {
             <Icon name="paperclip" size={14} /> Медиа
             <span className="muted small">опционально, 1 файл — фото / видео / документ</span>
           </div>
-          {!file ? (
-            <label className="br-drop">
-              <Icon name="paperclip" size={20} />
-              <span>Перетащите файл сюда или нажмите, чтобы выбрать</span>
-              <input type="file" style={{ display: "none" }} onChange={onPickFile} />
-            </label>
-          ) : (
+          {file ? (
             <div className="br-file-chip">
               <Icon name={file.type?.startsWith("image/") ? "image" : file.type?.startsWith("video/") ? "video" : "file"} size={13} />
               <span className="name">{file.name}</span>
@@ -199,6 +234,24 @@ function BroadcastComposer() {
                 <Icon name="x" size={12} />
               </button>
             </div>
+          ) : mediaUrl ? (
+            <div className="br-file-chip">
+              <Icon name={mediaKind === "video" ? "video" : mediaKind === "image" ? "image" : "file"} size={13} />
+              <span className="name">Текущее медиа · {mediaKind || "файл"}</span>
+              <label className="btn btn-ghost btn-sm" style={{ cursor: "pointer" }}>
+                Заменить
+                <input type="file" style={{ display: "none" }} onChange={onPickFile} />
+              </label>
+              <button type="button" className="btn btn-ghost btn-icon btn-sm" onClick={() => { setMediaUrl(null); setMediaKind(null); }}>
+                <Icon name="x" size={12} />
+              </button>
+            </div>
+          ) : (
+            <label className="br-drop">
+              <Icon name="paperclip" size={20} />
+              <span>Перетащите файл сюда или нажмите, чтобы выбрать</span>
+              <input type="file" style={{ display: "none" }} onChange={onPickFile} />
+            </label>
           )}
         </section>
 
@@ -226,6 +279,17 @@ function BroadcastComposer() {
                 value={b.url}
                 onChange={(e) => updateButton(i, "url", e.target.value)}
               />
+              <select
+                className="select"
+                value={b.style || "default"}
+                onChange={(e) => updateButton(i, "style", e.target.value)}
+                style={{ maxWidth: 120 }}
+                title="Цвет кнопки"
+              >
+                <option value="default">Синяя</option>
+                <option value="destructive">Красная</option>
+                <option value="secondary">Серая</option>
+              </select>
               <button className="btn btn-ghost btn-icon" onClick={() => removeButton(i)} title="Убрать">
                 <Icon name="x" size={13} />
               </button>
@@ -270,13 +334,13 @@ function BroadcastComposer() {
         </section>
 
         <div className="br-actions">
-          <button className="btn" onClick={() => save(true)} disabled={busy || (!text.trim() && !file)}>
+          <button className="btn" onClick={() => save(true)} disabled={busy || (!text.trim() && !file && !mediaUrl)}>
             <Icon name="save" size={13} /> Сохранить черновик
           </button>
           <button
             className="btn btn-primary"
             onClick={() => setConfirmOpen(true)}
-            disabled={busy || (!text.trim() && !file) || (schedule === "schedule" && !scheduledAt) || audienceCount === 0}
+            disabled={busy || (!text.trim() && !file && !mediaUrl) || (schedule === "schedule" && !scheduledAt) || audienceCount === 0}
           >
             <Icon name="send" size={13} />
             {schedule === "schedule" ? "Запланировать" : "Отправить сейчас"}
@@ -293,7 +357,7 @@ function BroadcastComposer() {
           </div>
           <div className="br-preview">
             <div className="br-bubble">
-              {file && (
+              {file ? (
                 <div className="br-bubble-media">
                   {file.type?.startsWith("image/")
                     ? <ImagePreview file={file} />
@@ -301,16 +365,22 @@ function BroadcastComposer() {
                       ? <div className="br-bubble-vid"><Icon name="video" size={24} /></div>
                       : <div className="br-bubble-doc"><Icon name="file" size={16} /> {file.name}</div>}
                 </div>
-              )}
+              ) : mediaUrl ? (
+                <div className="br-bubble-media">
+                  {mediaKind === "image"
+                    ? <img src={mediaUrl} alt="" />
+                    : <div className="br-bubble-doc"><Icon name={mediaKind === "video" ? "video" : "file"} size={16} /> {mediaKind || "медиа"}</div>}
+                </div>
+              ) : null}
               <div className="br-bubble-text txed-preview">
                 {text.trim()
-                  ? <span dangerouslySetInnerHTML={{ __html: htmlForTelegram(text) }} />
+                  ? <span dangerouslySetInnerHTML={{ __html: previewHtml(htmlForTelegram(text), emojiAssets) }} />
                   : <span className="muted">Текст сообщения…</span>}
               </div>
               {buttons.filter((b) => b.text && b.url).length > 0 && (
                 <div className="br-bubble-buttons">
                   {buttons.filter((b) => b.text && b.url).map((b, i) => (
-                    <a key={i} href={b.url} className="br-inline-btn" target="_blank" rel="noopener noreferrer">
+                    <a key={i} href={b.url} className="br-inline-btn" style={btnStyleInline(b.style)} target="_blank" rel="noopener noreferrer">
                       {b.text}
                     </a>
                   ))}
@@ -414,48 +484,32 @@ function renderMarkdownV2(text) {
   return <>{parts.map((p, i) => <span key={i} style={{ whiteSpace: "pre-wrap" }}>{p}</span>)}</>;
 }
 
-function renderWithCustomEmoji(text, entities, assets) {
-  const ce = (entities || [])
-    .filter((e) => e.type === "custom_emoji")
-    .sort((a, b) => a.offset - b.offset);
-  if (ce.length === 0) return text;
-  const nodes = [];
-  let cursor = 0;
-  let key = 0;
-  for (const e of ce) {
-    if (e.offset < cursor) continue;
-    if (e.offset > cursor) nodes.push(<span key={key++}>{text.slice(cursor, e.offset)}</span>);
-    const fallback = text.slice(e.offset, e.offset + e.length);
-    const url = assets?.[e.custom_emoji_id];
-    if (url) {
-      nodes.push(
-        <img
-          key={key++}
-          src={url}
-          alt={fallback}
-          title={fallback}
-          style={{ height: "1.2em", width: "1.2em", verticalAlign: "-0.2em", display: "inline-block", objectFit: "contain" }}
-        />,
-      );
-    } else {
-      nodes.push(<span key={key++}>{fallback}</span>);
-    }
-    cursor = e.offset + e.length;
-  }
-  if (cursor < text.length) nodes.push(<span key={key++}>{text.slice(cursor)}</span>);
-  return nodes;
+function previewHtml(tgHtml, assets) {
+  if (!tgHtml) return "";
+  return tgHtml.replace(
+    /<tg-emoji emoji-id="(\d+)">([\s\S]*?)<\/tg-emoji>/g,
+    (m, id, fb) => {
+      const url = assets && assets[id];
+      return url
+        ? `<img class="tg-emoji" src="${url}" alt="${fb}" style="height:1.2em;width:1.2em;vertical-align:-0.2em;display:inline-block;object-fit:contain" />`
+        : fb;
+    },
+  );
+}
+
+function btnStyleInline(style) {
+  if (style === "destructive") return { background: "var(--bad, #e5484d)", color: "#fff", borderColor: "transparent" };
+  if (style === "secondary") return { background: "var(--surface-3, #2a2a2e)", color: "var(--text)", borderColor: "transparent" };
+  return undefined;
 }
 
 /* ─────────────── Drafts ─────────────── */
-function BroadcastDrafts() {
+function BroadcastDrafts({ onEdit }) {
   const q = useQuery(
     () => api.get("/support/broadcasts?limit=100").catch(() => ({ items: [] })),
     { interval: 30000 },
   );
-  const plansQ = useQuery(() => api.get("/plans").catch(() => ({ items: [] })), {});
-  const plans = plansQ.data?.items || [];
   const drafts = (q.data?.items || []).filter((b) => b.status === "draft");
-  const [dispatch, setDispatch] = useState(null);
 
   const del = async (b) => {
     if (!window.confirm("Удалить черновик?")) return;
@@ -490,21 +544,21 @@ function BroadcastDrafts() {
           </thead>
           <tbody>
             {drafts.map((b) => (
-              <tr key={b.id}>
+              <tr key={b.id} onClick={() => onEdit?.(b)} style={{ cursor: "pointer" }} title="Редактировать">
                 <td className="small">
                   <div>{new Date(b.created_at).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</div>
                   <div className="muted small">{relTime(b.created_at)}</div>
                 </td>
-                <td className="small" style={{ maxWidth: 420, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {Array.isArray(b.entities) && b.entities.length > 0
-                    ? renderWithCustomEmoji(b.text_body || "", b.entities, b.custom_emoji_assets || {})
-                    : (b.preview || b.text_body || <span className="muted">— без текста —</span>)}
-                </td>
+                <td
+                  className="small txed-preview"
+                  style={{ maxWidth: 420, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                  dangerouslySetInnerHTML={{ __html: previewHtml(b.text_body || b.preview || "— без текста —", b.custom_emoji_assets || {}) }}
+                />
                 <td className="small muted">{b.media_kind ? <><Icon name="paperclip" size={11} /> {b.media_kind}</> : "—"}</td>
-                <td className="row-actions" style={{ textAlign: "right" }}>
+                <td className="row-actions" style={{ textAlign: "right" }} onClick={(e) => e.stopPropagation()}>
                   <div style={{ display: "inline-flex", gap: 4 }}>
-                    <button className="btn btn-primary btn-sm" onClick={() => setDispatch(b)}>
-                      <Icon name="send" size={12} /> Настроить и отправить
+                    <button className="btn btn-primary btn-sm" onClick={() => onEdit?.(b)}>
+                      <Icon name="edit" size={12} /> Редактировать
                     </button>
                     <button className="btn btn-ghost btn-icon btn-sm" title="Удалить" style={{ color: "var(--bad)" }} onClick={() => del(b)}>
                       <Icon name="trash-2" size={13} />
@@ -516,105 +570,7 @@ function BroadcastDrafts() {
           </tbody>
         </table>
       )}
-      {dispatch && (
-        <DraftDispatchModal
-          draft={dispatch}
-          plans={plans}
-          onClose={() => setDispatch(null)}
-          onDone={() => { setDispatch(null); q.refetch(); }}
-        />
-      )}
     </div>
-  );
-}
-
-function DraftDispatchModal({ draft, plans, onClose, onDone }) {
-  const [audience, setAudience] = useState("all");
-  const [planId, setPlanId] = useState("");
-  const [when, setWhen] = useState("now");
-  const [scheduledAt, setScheduledAt] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  const audienceQs = useMemo(() => {
-    const qs = new URLSearchParams();
-    qs.set("audience", audience);
-    if (audience === "by_plan" && planId) qs.set("plan_id", planId);
-    return qs.toString();
-  }, [audience, planId]);
-  const sizeQ = useQuery(
-    () => api.get(`/support/broadcasts/audience-size?${audienceQs}`).catch(() => ({ count: 0 })),
-    { interval: 0, deps: [audienceQs] },
-  );
-  const count = sizeQ.data?.count ?? 0;
-
-  const send = async () => {
-    setBusy(true);
-    try {
-      await api.post(`/support/broadcasts/${draft.id}/dispatch`, {
-        audience,
-        plan_id: audience === "by_plan" && planId ? planId : null,
-        scheduled_at: when === "schedule" && scheduledAt ? new Date(scheduledAt).toISOString() : null,
-      });
-      toast.ok(when === "schedule" ? "Рассылка запланирована" : "Рассылка отправлена");
-      onDone();
-    } catch (e) {
-      toast.bad(e?.message || "Не удалось отправить");
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Modal
-      title="Настроить и отправить черновик"
-      onClose={onClose}
-      footer={
-        <>
-          <button className="btn btn-ghost" onClick={onClose} disabled={busy}>Отмена</button>
-          <button
-            className="btn btn-primary"
-            onClick={send}
-            disabled={busy || count === 0 || (when === "schedule" && !scheduledAt)}
-          >
-            <Icon name="send" size={13} /> {busy ? "Отправка…" : when === "schedule" ? "Запланировать" : "Отправить"}
-          </button>
-        </>
-      }
-    >
-      <div className="card" style={{ padding: 12, background: "var(--surface-2)", marginBottom: 12 }}>
-        <div className="muted small" style={{ marginBottom: 6 }}>Текст</div>
-        <div className="txed-preview" style={{ whiteSpace: "pre-wrap" }}>
-          {Array.isArray(draft.entities) && draft.entities.length > 0
-            ? renderWithCustomEmoji(draft.text_body || "", draft.entities, draft.custom_emoji_assets || {})
-            : <span dangerouslySetInnerHTML={{ __html: draft.text_body || draft.preview || "<span style='color:var(--text-muted)'>пусто</span>" }} />}
-        </div>
-      </div>
-
-      <div className="muted small" style={{ marginBottom: 6 }}>Аудитория · получат <span className="mono">{count.toLocaleString("ru-RU")}</span></div>
-      <div className="br-audience-chips">
-        {AUDIENCE_PRESETS.map((p) => (
-          <FilterChip key={p.id} icon={p.icon} label={p.label} applied={audience === p.id} onClick={() => setAudience(p.id)} />
-        ))}
-      </div>
-      {audience === "by_plan" && (
-        <div style={{ marginTop: 10 }}>
-          <select className="select" value={planId} onChange={(e) => setPlanId(e.target.value)} style={{ width: "100%" }}>
-            <option value="">— выберите тариф —</option>
-            {plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-        </div>
-      )}
-
-      <div className="muted small" style={{ margin: "14px 0 6px" }}>Когда</div>
-      <div className="seg" style={{ width: 280 }}>
-        <button data-active={when === "now"} onClick={() => setWhen("now")}>Сейчас</button>
-        <button data-active={when === "schedule"} onClick={() => setWhen("schedule")}>Запланировать</button>
-      </div>
-      {when === "schedule" && (
-        <div style={{ marginTop: 10 }}>
-          <DatePicker mode="datetime" value={scheduledAt} onChange={setScheduledAt} />
-        </div>
-      )}
-    </Modal>
   );
 }
 
@@ -624,7 +580,7 @@ function BroadcastHistory() {
     () => api.get("/support/broadcasts?limit=50").catch(() => ({ items: buildMockBroadcasts() })),
     { interval: 30000 },
   );
-  const items = q.data?.items || [];
+  const items = (q.data?.items || []).filter((b) => b.status !== "draft");
   const [opened, setOpened] = useState(null);
 
   return (
@@ -760,17 +716,11 @@ function BroadcastDetail({ broadcast: b, onClose, onChanged }) {
       )}
       <div className="card" style={{ padding: 12, background: "var(--surface-2)" }}>
         <div className="muted small" style={{ marginBottom: 6 }}>Текст сообщения</div>
-        {Array.isArray(b.entities) && b.entities.length > 0 ? (
-          <div className="txed-preview" style={{ whiteSpace: "pre-wrap" }}>
-            {renderWithCustomEmoji(b.text_body || "", b.entities, b.custom_emoji_assets || {})}
-          </div>
-        ) : (
-          <div
-            className="txed-preview"
-            style={{ whiteSpace: "pre-wrap" }}
-            dangerouslySetInnerHTML={{ __html: b.text_body || b.preview || "<span style='color:var(--text-muted)'>пусто</span>" }}
-          />
-        )}
+        <div
+          className="txed-preview"
+          style={{ whiteSpace: "pre-wrap" }}
+          dangerouslySetInnerHTML={{ __html: previewHtml(b.text_body || b.preview || "<span style='color:var(--text-muted)'>пусто</span>", b.custom_emoji_assets || {}) }}
+        />
       </div>
       {(canRepeat || canCancel) && (
         <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end", gap: 8 }}>
@@ -806,6 +756,7 @@ function BroadcastDetail({ broadcast: b, onClose, onChanged }) {
                   borderRadius: 8,
                   textDecoration: "none",
                   color: "var(--accent, var(--text))",
+                  ...(btnStyleInline(btn.style) || {}),
                 }}
               >
                 <span style={{ fontWeight: 500, fontSize: 13 }}>{btn.text}</span>
