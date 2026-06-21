@@ -860,6 +860,8 @@ class SupportService:
         scheduled_at: datetime | None,
         actor_admin_id: UUID | None,
         promo_code_id: UUID | None = None,
+        entities: list[dict] | None = None,
+        custom_emoji_assets: dict | None = None,
     ) -> BroadcastOut:
         if promo_code_id is not None and "{promo}" in (text or ""):
             promo = await PromoCodeRepository(self.session).get_by_id(promo_code_id)
@@ -874,6 +876,8 @@ class SupportService:
                 media_kind=media_kind,
                 media_url=media_url,
                 inline_buttons=buttons,
+                entities=entities,
+                custom_emoji_assets=custom_emoji_assets,
                 status=status,
                 scheduled_at=scheduled_at,
                 target_count=len(target_ids),
@@ -908,6 +912,8 @@ class SupportService:
             media_kind=media_kind,
             media_url=media_url,
             inline_buttons=buttons,
+            entities=entities,
+            custom_emoji_assets=custom_emoji_assets,
             status=final_status,
             delivered=delivered,
             errors=max(0, len(target_ids) - delivered) if status == BroadcastStatus.SENDING else 0,
@@ -976,6 +982,9 @@ class SupportService:
                     )
                 )
 
+        entities = list(bcast.entities) if bcast is not None and bcast.entities else None
+        parse_mode = None if entities else "HTML"
+
         sem = asyncio.Semaphore(20)
 
         async def _one(_user_id: str, tg_id: int) -> bool:
@@ -986,6 +995,8 @@ class SupportService:
                 text=text,
                 media=list(media_payload),
                 buttons=list(button_payload),
+                entities=entities,
+                parse_mode=parse_mode,
                 kind="broadcast",
             )
             async with sem:

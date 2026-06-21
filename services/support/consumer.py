@@ -6,10 +6,17 @@ import logging
 from pydantic import ValidationError
 
 from services.admin.transport.repository import NatsMessageDedupRepository
-from services.config import NatsConfig
+from services.auth.admin.repository import AdminUserRepository
+from services.config import NatsConfig, get_settings
 from services.notifications.service import NotificationService
+from services.support.emoji_assets import CustomEmojiResolver
 from services.support.repository import SupportMessageRepository
-from services.support.schemas import SupportInboundMessage, SupportSentAck
+from services.support.schemas import (
+    BroadcastAudience,
+    BroadcastStatus,
+    SupportInboundMessage,
+    SupportSentAck,
+)
 from services.support.service import SupportService
 from services.users.repository import UserRepository
 from shared.database.session import AsyncDatabase
@@ -78,6 +85,12 @@ class SupportInboundConsumer:
                     await msg.ack()
                     return
 
+            admin = await AdminUserRepository(session).get_by_telegram_id(parsed.telegram_id)
+            if admin is not None:
+                await self._ingest_admin_broadcast_draft(session, admin_id=admin.id, parsed=parsed)
+                await msg.ack()
+                return
+
             user = await UserRepository(session).get_by_telegram_id(parsed.telegram_id)
             if not user:
                 logger.warning("support_msg_user_not_found", telegram_id=parsed.telegram_id)
@@ -130,6 +143,44 @@ class SupportInboundConsumer:
                 except Exception:
                     logger.exception("support_msg_notify_failed", ticket_id=str(ticket.id))
         await msg.ack()
+
+    async def _ingest_admin_broadcast_draft(self, session, *, admin_id, parsed) -> None:
+        entities = [e.model_dump() for e in parsed.entities] or None
+        custom_emoji_ids = [
+            e.custom_emoji_id
+            for e in parsed.entities
+            if e.type == "custom_emoji" and e.custom_emoji_id
+        ]
+        assets: dict[str, str] = {}
+        if custom_emoji_ids:
+            settings = get_settings()
+            assets = await CustomEmojiResolver(
+                support=settings.support, s3=settings.s3
+            ).resolve(custom_emoji_ids)
+        svc = SupportService(
+            session,
+            nats_client=self._nats,
+            outbound_subject=self._config.support_outbound_subject,
+        )
+        broadcast = await svc.create_broadcast(
+            audience=BroadcastAudience.ALL,
+            plan_id=None,
+            text=parsed.text or "",
+            buttons=None,
+            media_kind=None,
+            media_url=None,
+            status=BroadcastStatus.DRAFT,
+            scheduled_at=None,
+            actor_admin_id=admin_id,
+            entities=entities,
+            custom_emoji_assets=assets or None,
+        )
+        logger.info(
+            "broadcast_draft_from_admin",
+            broadcast_id=str(broadcast.id),
+            admin_id=str(admin_id),
+            emoji_count=len(assets),
+        )
 
     @staticmethod
     def _parse_payload(raw_payload: bytes) -> SupportInboundMessage | None:

@@ -199,3 +199,142 @@ async def test_materialize_recurring_dispatches():
     svc.create_broadcast.assert_awaited_once()
     upd = svc.recurring.update_by_id.await_args.args[1]
     assert "next_run_at" in upd and "last_run_at" in upd
+
+
+def test_inbound_message_parses_custom_emoji_entities():
+    from services.support.schemas import SupportInboundMessage
+
+    m = SupportInboundMessage.model_validate(
+        {
+            "telegram_id": 1,
+            "text": "hi",
+            "entities": [
+                {"type": "custom_emoji", "offset": 0, "length": 2, "custom_emoji_id": "555"}
+            ],
+        }
+    )
+    assert m.entities[0].type == "custom_emoji"
+    assert m.entities[0].custom_emoji_id == "555"
+
+
+@pytest.mark.asyncio
+async def test_fan_out_includes_entities_when_present():
+    from unittest.mock import AsyncMock
+
+    from services.support.service import SupportService
+
+    svc = SupportService.__new__(SupportService)
+    svc._nats = AsyncMock()
+    svc._outbound_subject = "support.message.out"
+    svc._ensure_outbound_stream = AsyncMock()
+    uid = uuid4()
+    svc.users = AsyncMock()
+    svc.users.list_by_ids = AsyncMock(
+        return_value=[SimpleNamespace(id=uid, telegram_id=111)]
+    )
+    ent = [{"type": "custom_emoji", "offset": 0, "length": 2, "custom_emoji_id": "555"}]
+    bcast = SimpleNamespace(id=uuid4(), promo_code_id=None, entities=ent)
+    svc.broadcasts = AsyncMock()
+    svc.broadcasts.get_by_id = AsyncMock(return_value=bcast)
+
+    n = await svc._fan_out_broadcast(bcast.id, [uid], "hi")
+    assert n == 1
+    payload = svc._nats.publish_jetstream.await_args.kwargs["payload"]
+    assert len(payload["entities"]) == 1
+    assert payload["entities"][0]["custom_emoji_id"] == "555"
+    assert payload["parse_mode"] is None
+
+
+@pytest.mark.asyncio
+async def test_fan_out_html_parse_mode_without_entities():
+    from unittest.mock import AsyncMock
+
+    from services.support.service import SupportService
+
+    svc = SupportService.__new__(SupportService)
+    svc._nats = AsyncMock()
+    svc._outbound_subject = "support.message.out"
+    svc._ensure_outbound_stream = AsyncMock()
+    uid = uuid4()
+    svc.users = AsyncMock()
+    svc.users.list_by_ids = AsyncMock(
+        return_value=[SimpleNamespace(id=uid, telegram_id=111)]
+    )
+    bcast = SimpleNamespace(id=uuid4(), promo_code_id=None, entities=None)
+    svc.broadcasts = AsyncMock()
+    svc.broadcasts.get_by_id = AsyncMock(return_value=bcast)
+
+    n = await svc._fan_out_broadcast(bcast.id, [uid], "hi")
+    assert n == 1
+    payload = svc._nats.publish_jetstream.await_args.kwargs["payload"]
+    assert payload["entities"] is None
+    assert payload["parse_mode"] == "HTML"
+
+
+@pytest.mark.asyncio
+async def test_emoji_resolver_noop_without_config():
+    from services.support.emoji_assets import CustomEmojiResolver
+
+    support = SimpleNamespace(bot_token="", media_proxy_timeout_sec=5)
+    s3 = SimpleNamespace(enabled=False)
+    resolver = CustomEmojiResolver(support=support, s3=s3)
+    assert await resolver.resolve(["1", "2"]) == {}
+    assert await resolver.resolve([]) == {}
+
+
+@pytest.mark.asyncio
+async def test_emoji_resolver_builds_map():
+    from unittest.mock import AsyncMock
+
+    from services.support.emoji_assets import CustomEmojiResolver
+
+    support = SimpleNamespace(bot_token="t", media_proxy_timeout_sec=5)
+    s3 = SimpleNamespace(enabled=True, region="", addressing_style="virtual")
+    resolver = CustomEmojiResolver(support=support, s3=s3)
+    resolver._get_custom_emoji_stickers = AsyncMock(
+        return_value=[{"custom_emoji_id": "555", "thumbnail": {"file_id": "fid"}}]
+    )
+    resolver._download_and_upload = AsyncMock(return_value="https://cdn/emoji/555.webp")
+
+    out = await resolver.resolve(["555", "555"])
+    assert out == {"555": "https://cdn/emoji/555.webp"}
+
+
+@pytest.mark.asyncio
+async def test_admin_message_creates_draft_with_entities(monkeypatch):
+    from unittest.mock import AsyncMock
+
+    import services.support.consumer as consumer_mod
+    from services.support.consumer import SupportInboundConsumer
+    from services.support.schemas import SupportInboundMessage
+
+    captured: dict = {}
+
+    async def fake_create_broadcast(self, **kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(id=uuid4())
+
+    monkeypatch.setattr(consumer_mod.SupportService, "create_broadcast", fake_create_broadcast)
+    monkeypatch.setattr(
+        consumer_mod.CustomEmojiResolver, "resolve", AsyncMock(return_value={"555": "u"})
+    )
+
+    cons = SupportInboundConsumer.__new__(SupportInboundConsumer)
+    cons._nats = AsyncMock()
+    cons._config = SimpleNamespace(support_outbound_subject="support.message.out")
+    parsed = SupportInboundMessage.model_validate(
+        {
+            "telegram_id": 1,
+            "text": "hi",
+            "entities": [
+                {"type": "custom_emoji", "offset": 0, "length": 2, "custom_emoji_id": "555"}
+            ],
+        }
+    )
+    admin_id = uuid4()
+    await cons._ingest_admin_broadcast_draft(AsyncMock(), admin_id=admin_id, parsed=parsed)
+
+    assert captured["actor_admin_id"] == admin_id
+    assert captured["status"].value == "draft"
+    assert captured["entities"][0]["custom_emoji_id"] == "555"
+    assert captured["custom_emoji_assets"] == {"555": "u"}

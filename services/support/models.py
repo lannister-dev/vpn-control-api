@@ -137,6 +137,8 @@ class Broadcast(Base):
     media_kind: Mapped[str | None] = mapped_column(String(20), nullable=True)
     media_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     inline_buttons: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    entities: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    custom_emoji_assets: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     status: Mapped[str] = mapped_column(
         String(16), default="draft", server_default=text("'draft'"), nullable=False
     )
