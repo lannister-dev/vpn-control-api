@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from urllib.parse import urlparse
@@ -684,6 +685,14 @@ class SupportService:
             raise InvalidStateTransition(
                 f"Broadcast in status '{b.status}' cannot be edited"
             )
+        if (
+            b.text_body
+            and "<tg-emoji" in b.text_body
+            and text
+            and "<tg-emoji" not in text
+            and self._strip_html_text(text) == self._strip_html_text(b.text_body)
+        ):
+            text = b.text_body
         if promo_code_id is not None and "{promo}" in (text or ""):
             promo = await PromoCodeRepository(self.session).get_by_id(promo_code_id)
             if promo is not None:
@@ -1111,6 +1120,10 @@ class SupportService:
 
         results = await asyncio.gather(*(_one(uid, tg) for uid, tg in targets))
         return sum(1 for ok in results if ok)
+
+    @staticmethod
+    def _strip_html_text(value: str) -> str:
+        return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", value or "")).strip()
 
     @staticmethod
     def _is_valid_button_url(url: str) -> bool:

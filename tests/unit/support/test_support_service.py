@@ -397,3 +397,12 @@ def test_is_valid_button_url():
     assert f("") is False
     assert f("notaurl") is False
     assert f("ftp://x.com") is False
+
+
+def test_strip_html_text_normalizes():
+    from services.support.service import SupportService
+
+    f = SupportService._strip_html_text
+    a = f('<tg-emoji emoji-id="1">🌍</tg-emoji> Факт\r\nстрока')
+    b = f('🌍 Факт\nстрока')
+    assert a == b == "🌍 Факт строка"
