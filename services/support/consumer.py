@@ -9,7 +9,11 @@ from services.admin.transport.repository import NatsMessageDedupRepository
 from services.auth.admin.repository import AdminUserRepository
 from services.config import NatsConfig, get_settings
 from services.notifications.service import NotificationService
-from services.support.emoji_assets import CustomEmojiResolver
+from services.support.emoji_assets import (
+    CustomEmojiResolver,
+    TelegramMediaResolver,
+    custom_emoji_entities_to_html,
+)
 from services.support.repository import SupportMessageRepository
 from services.support.schemas import (
     BroadcastAudience,
@@ -147,7 +151,7 @@ class SupportInboundConsumer:
         await msg.ack()
 
     async def _ingest_admin_broadcast_draft(self, session, *, admin_id, parsed) -> None:
-        entities = [e.model_dump() for e in parsed.entities] or None
+        settings = get_settings()
         custom_emoji_ids = [
             e.custom_emoji_id
             for e in parsed.entities
@@ -155,10 +159,19 @@ class SupportInboundConsumer:
         ]
         assets: dict[str, str] = {}
         if custom_emoji_ids:
-            settings = get_settings()
             assets = await CustomEmojiResolver(
                 support=settings.support, s3=settings.s3
             ).resolve(custom_emoji_ids)
+        text_html = custom_emoji_entities_to_html(parsed.text or "", parsed.entities)
+        media_kind: str | None = None
+        media_url: str | None = None
+        if parsed.attachments:
+            att = parsed.attachments[0]
+            media_url = await TelegramMediaResolver(
+                support=settings.support, s3=settings.s3
+            ).resolve(att.tg_file_id)
+            if media_url:
+                media_kind = att.kind
         svc = SupportService(
             session,
             nats_client=self._nats,
@@ -167,14 +180,14 @@ class SupportInboundConsumer:
         broadcast = await svc.create_broadcast(
             audience=BroadcastAudience.ALL,
             plan_id=None,
-            text=parsed.text or "",
+            text=text_html,
             buttons=None,
-            media_kind=None,
-            media_url=None,
+            media_kind=media_kind,
+            media_url=media_url,
             status=BroadcastStatus.DRAFT,
             scheduled_at=None,
             actor_admin_id=admin_id,
-            entities=entities,
+            entities=None,
             custom_emoji_assets=assets or None,
         )
         logger.info(

@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
-import { Mark, mergeAttributes } from "@tiptap/core";
+import { Mark, Node, mergeAttributes } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
 import Underline from "@tiptap/extension-underline";
@@ -23,6 +23,40 @@ const TgSpoiler = Mark.create({
   },
 });
 
+const TgEmoji = Node.create({
+  name: "tgEmoji",
+  inline: true,
+  group: "inline",
+  atom: true,
+  selectable: true,
+  addAttributes() {
+    return {
+      emojiId: {
+        default: null,
+        parseHTML: (el) => el.getAttribute("emoji-id") || el.getAttribute("data-emoji-id"),
+      },
+      fallback: {
+        default: "🙂",
+        parseHTML: (el) => el.getAttribute("data-fallback") || el.textContent || "🙂",
+      },
+    };
+  },
+  parseHTML() {
+    return [{ tag: "tg-emoji" }, { tag: "span[data-emoji-id]" }];
+  },
+  renderHTML({ node }) {
+    return [
+      "span",
+      {
+        "data-emoji-id": node.attrs.emojiId,
+        "data-fallback": node.attrs.fallback,
+        class: "tg-emoji-chip",
+      },
+      node.attrs.fallback,
+    ];
+  },
+});
+
 const TG_INLINE_TAGS = new Set([
   "b", "strong", "i", "em", "u", "s", "strike", "del",
   "code", "a", "tg-spoiler",
@@ -42,6 +76,12 @@ function serializeNode(node, depth = 0) {
   if (node.nodeType !== 1) return "";
   const tag = node.tagName.toLowerCase();
   if (tag === "br") return "\n";
+
+  if (node.getAttribute && node.getAttribute("data-emoji-id")) {
+    const id = node.getAttribute("data-emoji-id");
+    const fb = node.getAttribute("data-fallback") || node.textContent || "";
+    return `<tg-emoji emoji-id="${escapeHtml(id)}">${escapeHtml(fb)}</tg-emoji>`;
+  }
 
   const childHtml = [...node.childNodes].map((c) => serializeNode(c, depth + 1)).join("");
 
@@ -105,6 +145,7 @@ export function TextEditor({ value, onChange, placeholder, minHeight = 80, autoF
       }),
       Underline,
       TgSpoiler,
+      TgEmoji,
       Link.configure({ openOnClick: false, autolink: true, HTMLAttributes: { rel: "noopener" } }),
       Placeholder.configure({ placeholder: placeholder || "" }),
     ],

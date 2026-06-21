@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import html
 import json
 import logging
+from uuid import uuid4
 
 import httpx
 
@@ -13,6 +15,71 @@ from shared.utils.logger import StructuredLogger
 logger = StructuredLogger(logging.getLogger("support-emoji-assets"))
 
 _TELEGRAM_API = "https://api.telegram.org"
+
+
+def custom_emoji_entities_to_html(text: str, entities) -> str:
+    ce = sorted(
+        [
+            e
+            for e in (entities or [])
+            if getattr(e, "type", None) == "custom_emoji" and getattr(e, "custom_emoji_id", None)
+        ],
+        key=lambda e: e.offset,
+    )
+    raw = text or ""
+    if not ce:
+        return html.escape(raw, quote=False)
+    u16 = raw.encode("utf-16-le")
+    total = len(u16) // 2
+    out: list[str] = []
+    cursor = 0
+    for e in ce:
+        if e.offset < cursor or e.offset > total:
+            continue
+        if e.offset > cursor:
+            out.append(html.escape(u16[cursor * 2:e.offset * 2].decode("utf-16-le"), quote=False))
+        fallback = u16[e.offset * 2:(e.offset + e.length) * 2].decode("utf-16-le")
+        out.append(
+            f'<tg-emoji emoji-id="{e.custom_emoji_id}">{html.escape(fallback, quote=False)}</tg-emoji>'
+        )
+        cursor = e.offset + e.length
+    if cursor < total:
+        out.append(html.escape(u16[cursor * 2:].decode("utf-16-le"), quote=False))
+    return "".join(out)
+
+
+class TelegramMediaResolver:
+    def __init__(self, *, support: SupportConfig, s3: S3Config) -> None:
+        self._support = support
+        self._s3 = s3
+
+    async def resolve(self, tg_file_id: str | None) -> str | None:
+        if not tg_file_id or not self._support.bot_token or not self._s3.enabled:
+            return None
+        timeout = float(self._support.media_proxy_timeout_sec)
+        try:
+            file_path, mime = await resolve_file_path(
+                bot_token=self._support.bot_token, file_id=tg_file_id, timeout_sec=timeout
+            )
+            chunks: list[bytes] = []
+            async for chunk in stream_file(
+                bot_token=self._support.bot_token, file_path=file_path, timeout_sec=timeout
+            ):
+                chunks.append(chunk)
+            data = b"".join(chunks)
+            if not data:
+                return None
+            ext = file_path.rsplit(".", 1)[-1].lower() if "." in file_path else "bin"
+            result = await S3Client(self._s3).upload_bytes(
+                key=f"support/broadcasts/{uuid4().hex}.{ext}",
+                data=data,
+                content_type=mime or "application/octet-stream",
+                cache_control="public, max-age=2592000",
+            )
+            return result.public_url
+        except Exception:
+            logger.warning("broadcast_media_resolve_failed")
+            return None
 
 
 class CustomEmojiResolver:

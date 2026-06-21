@@ -165,12 +165,6 @@ class BroadcastCreate(BaseModel):
     custom_emoji_assets: dict | None = None
 
 
-class BroadcastDispatchIn(BaseModel):
-    audience: BroadcastAudience = BroadcastAudience.ALL
-    plan_id: UUID | None = None
-    scheduled_at: datetime | None = None
-
-
 class TicketStatsOut(BaseModel):
     open: int = 0
     unanswered: int = 0
@@ -420,6 +414,7 @@ class SupportOutboundAttachmentMsg(BaseModel):
 class SupportOutboundInlineButton(BaseModel):
     text: str
     url: str
+    style: str | None = None
 
 
 class SupportOutboundPayload(BaseModel):

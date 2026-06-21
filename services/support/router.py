@@ -32,7 +32,6 @@ from services.support.schemas import (
     AgentListOut,
     BroadcastAudience,
     BroadcastAudienceCount,
-    BroadcastDispatchIn,
     BroadcastFunnelOut,
     BroadcastListOut,
     BroadcastOut,
@@ -358,18 +357,58 @@ async def get_broadcast_funnel(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Broadcast not found")
 
 
-@router.post("/broadcasts/{broadcast_id}/dispatch", response_model=BroadcastOut)
-async def dispatch_broadcast(
+@router.patch("/broadcasts/{broadcast_id}", response_model=BroadcastOut)
+async def update_broadcast(
     broadcast_id: UUID,
-    body: BroadcastDispatchIn,
+    audience: Annotated[BroadcastAudience, Form()],
+    text: Annotated[str, Form()],
+    status_: Annotated[BroadcastStatus, Form(alias="status")] = BroadcastStatus.DRAFT,
+    plan_id: Annotated[UUID | None, Form()] = None,
+    buttons: Annotated[str | None, Form()] = None,
+    scheduled_at: Annotated[datetime | None, Form()] = None,
+    promo_code_id: Annotated[UUID | None, Form()] = None,
+    media_url: Annotated[str | None, Form()] = None,
+    media_kind: Annotated[str | None, Form()] = None,
+    media: UploadFile | None = File(None),
     service: SupportService = Depends(get_support_service),
 ):
+    parsed_buttons: list[dict] | None = None
+    if buttons:
+        try:
+            parsed_buttons = json.loads(buttons)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="Invalid buttons JSON")
+    if media is not None and media.filename:
+        settings = get_settings()
+        if not settings.s3.enabled:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="S3 не настроен — загрузка медиа недоступна",
+            )
+        from uuid import uuid4 as _u
+
+        from shared.s3 import S3Client
+        data = await media.read()
+        if data:
+            ct = media.content_type or "application/octet-stream"
+            media_kind = "image" if ct.startswith("image/") else "video" if ct.startswith("video/") else "audio" if ct.startswith("audio/") else "document"
+            ext = (media.filename or "").rsplit(".", 1)
+            suffix = f".{ext[1]}" if len(ext) == 2 else ""
+            key = f"support/broadcasts/{_u().hex}{suffix}"
+            up = await S3Client(settings.s3).upload_bytes(key=key, data=data, content_type=ct, cache_control="public, max-age=2592000")
+            media_url = up.public_url
     try:
-        return await service.dispatch_broadcast(
+        return await service.update_broadcast(
             broadcast_id,
-            audience=body.audience,
-            plan_id=body.plan_id,
-            scheduled_at=body.scheduled_at,
+            audience=audience,
+            plan_id=plan_id,
+            text=text,
+            buttons=parsed_buttons,
+            media_kind=media_kind,
+            media_url=media_url,
+            status=status_,
+            scheduled_at=scheduled_at,
+            promo_code_id=promo_code_id,
         )
     except BroadcastNotFound:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Broadcast not found")

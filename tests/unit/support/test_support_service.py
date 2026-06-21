@@ -336,5 +336,51 @@ async def test_admin_message_creates_draft_with_entities(monkeypatch):
 
     assert captured["actor_admin_id"] == admin_id
     assert captured["status"].value == "draft"
-    assert captured["entities"][0]["custom_emoji_id"] == "555"
+    assert captured["entities"] is None
+    assert '<tg-emoji emoji-id="555">' in captured["text"]
     assert captured["custom_emoji_assets"] == {"555": "u"}
+
+
+def test_custom_emoji_entities_to_html():
+    from services.support.emoji_assets import custom_emoji_entities_to_html
+
+    ent = [SimpleNamespace(type="custom_emoji", offset=6, length=2, custom_emoji_id="555")]
+    out = custom_emoji_entities_to_html("Hello 🔥 world", ent)
+    assert '<tg-emoji emoji-id="555">🔥</tg-emoji>' in out
+    assert out.startswith("Hello ") and out.endswith(" world")
+
+
+def test_custom_emoji_entities_to_html_escapes_plain():
+    from services.support.emoji_assets import custom_emoji_entities_to_html
+
+    out = custom_emoji_entities_to_html("a < b & c", [])
+    assert out == "a &lt; b &amp; c"
+
+
+@pytest.mark.asyncio
+async def test_fan_out_button_style():
+    from unittest.mock import AsyncMock
+
+    from services.support.service import SupportService
+
+    svc = SupportService.__new__(SupportService)
+    svc._nats = AsyncMock()
+    svc._outbound_subject = "support.message.out"
+    svc._ensure_outbound_stream = AsyncMock()
+    uid = uuid4()
+    svc.users = AsyncMock()
+    svc.users.list_by_ids = AsyncMock(return_value=[SimpleNamespace(id=uid, telegram_id=111)])
+    bcast = SimpleNamespace(id=uuid4(), promo_code_id=None, entities=None)
+    svc.broadcasts = AsyncMock()
+    svc.broadcasts.get_by_id = AsyncMock(return_value=bcast)
+
+    buttons = [
+        {"text": "Buy", "url": "https://x", "style": "destructive"},
+        {"text": "More", "url": "https://y", "style": "bogus"},
+    ]
+    n = await svc._fan_out_broadcast(bcast.id, [uid], "hi", buttons=buttons)
+    assert n == 1
+    payload = svc._nats.publish_jetstream.await_args.kwargs["payload"]
+    btns = payload["buttons"]
+    assert btns[0]["style"] == "destructive"
+    assert btns[1]["style"] is None
