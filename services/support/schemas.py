@@ -54,6 +54,15 @@ class BroadcastStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+class MessageEntity(BaseModel):
+    type: str
+    offset: int
+    length: int
+    url: str | None = None
+    language: str | None = None
+    custom_emoji_id: str | None = None
+
+
 class TicketUserRef(BaseModel):
     id: UUID
     username: str | None = None
@@ -152,6 +161,8 @@ class BroadcastCreate(BaseModel):
     target_count: int = 0
     promo_code_id: UUID | None = None
     created_by_admin_id: UUID | None = None
+    entities: list[dict] | None = None
+    custom_emoji_assets: dict | None = None
 
 
 class TicketStatsOut(BaseModel):
@@ -260,6 +271,8 @@ class BroadcastOut(BaseModel):
     media_kind: str | None = None
     media_url: str | None = None
     inline_buttons: list[dict] | None = None
+    entities: list[dict] | None = None
+    custom_emoji_assets: dict | None = None
     status: BroadcastStatus
     delivered: int = 0
     errors: int = 0
@@ -384,8 +397,11 @@ class SupportInboundAttachmentMsg(BaseModel):
 class SupportInboundMessage(BaseModel):
     telegram_id: int
     text: str = ""
+    entities: list[MessageEntity] = Field(default_factory=list)
+    caption_entities: list[MessageEntity] = Field(default_factory=list)
     attachments: list[SupportInboundAttachmentMsg] = Field(default_factory=list)
     tg_message_id: int | None = None
+    intent: str | None = None
 
 
 class SupportOutboundAttachmentMsg(BaseModel):
@@ -407,7 +423,9 @@ class SupportOutboundPayload(BaseModel):
     text: str = ""
     media: list[SupportOutboundAttachmentMsg] = Field(default_factory=list)
     buttons: list[SupportOutboundInlineButton] = Field(default_factory=list)
-    kind: str = "reply"  # "reply" — operator → user; "broadcast" — mass message
+    entities: list[MessageEntity] | None = None
+    parse_mode: str | None = None
+    kind: str = "reply"
 
 
 class SupportSentAck(BaseModel):
