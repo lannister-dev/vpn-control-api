@@ -2,6 +2,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
 from fastapi import Depends, Request
@@ -1059,7 +1060,7 @@ class SupportService:
         for b in (buttons or []):
             t = (b.get("text") or "").strip()
             u = (b.get("url") or "").strip()
-            if t and u:
+            if t and self._is_valid_button_url(u):
                 style = b.get("style")
                 style = style if style in BROADCAST_BUTTON_STYLES else None
                 button_payload.append(SupportOutboundInlineButton(text=t, url=u, style=style))
@@ -1110,6 +1111,20 @@ class SupportService:
 
         results = await asyncio.gather(*(_one(uid, tg) for uid, tg in targets))
         return sum(1 for ok in results if ok)
+
+    @staticmethod
+    def _is_valid_button_url(url: str) -> bool:
+        if not url:
+            return False
+        try:
+            parsed = urlparse(url)
+        except ValueError:
+            return False
+        if parsed.scheme in ("http", "https"):
+            return bool(parsed.netloc)
+        if parsed.scheme == "tg":
+            return bool(parsed.netloc or parsed.path)
+        return False
 
     async def _resolve_audience(
         self, audience: BroadcastAudience, plan_id: UUID | None

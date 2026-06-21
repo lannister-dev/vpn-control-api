@@ -134,6 +134,7 @@ function BroadcastComposer({ editingDraft, onDone }) {
     setButtons((b) => b.map((row, idx) => (idx === i ? { ...row, [key]: val } : row)));
   };
   const removeButton = (i) => setButtons((b) => b.filter((_, idx) => idx !== i));
+  const buttonsOk = buttons.every((b) => (!b.text && !b.url) || (b.text && validButtonUrl(b.url)));
 
   const save = async (isDraft = false) => {
     setBusy(true);
@@ -143,8 +144,8 @@ function BroadcastComposer({ editingDraft, onDone }) {
       if (audience === "by_plan" && planId) fd.append("plan_id", planId);
       fd.append("text", htmlForTelegram(text));
       fd.append("buttons", JSON.stringify(
-        buttons.filter((b) => b.text && b.url).map((b) => ({
-          text: b.text, url: b.url,
+        buttons.filter((b) => b.text && validButtonUrl(b.url)).map((b) => ({
+          text: b.text, url: b.url.trim(),
           style: b.style && b.style !== "default" ? b.style : null,
         })),
       ));
@@ -278,6 +279,8 @@ function BroadcastComposer({ editingDraft, onDone }) {
                 placeholder="https://… или t.me/…"
                 value={b.url}
                 onChange={(e) => updateButton(i, "url", e.target.value)}
+                style={b.url && !validButtonUrl(b.url) ? { borderColor: "var(--bad)" } : undefined}
+                title={b.url && !validButtonUrl(b.url) ? "Некорректная ссылка (нужен https://… с доменом или tg://…)" : undefined}
               />
               <select
                 className="select"
@@ -335,13 +338,13 @@ function BroadcastComposer({ editingDraft, onDone }) {
         </section>
 
         <div className="br-actions">
-          <button className="btn" onClick={() => save(true)} disabled={busy || (!text.trim() && !file && !mediaUrl)}>
+          <button className="btn" onClick={() => save(true)} disabled={busy || (!text.trim() && !file && !mediaUrl) || !buttonsOk}>
             <Icon name="save" size={13} /> Сохранить черновик
           </button>
           <button
             className="btn btn-primary"
             onClick={() => setConfirmOpen(true)}
-            disabled={busy || (!text.trim() && !file && !mediaUrl) || (schedule === "schedule" && !scheduledAt) || audienceCount === 0}
+            disabled={busy || (!text.trim() && !file && !mediaUrl) || (schedule === "schedule" && !scheduledAt) || audienceCount === 0 || !buttonsOk}
           >
             <Icon name="send" size={13} />
             {schedule === "schedule" ? "Запланировать" : "Отправить сейчас"}
@@ -496,6 +499,18 @@ function previewHtml(tgHtml, assets) {
         : fb;
     },
   );
+}
+
+function validButtonUrl(u) {
+  if (!u || !u.trim()) return false;
+  try {
+    const p = new URL(u.trim());
+    if (p.protocol === "http:" || p.protocol === "https:") return !!p.host;
+    if (p.protocol === "tg:") return true;
+    return false;
+  } catch {
+    return false;
+  }
 }
 
 function btnStyleInline(style) {

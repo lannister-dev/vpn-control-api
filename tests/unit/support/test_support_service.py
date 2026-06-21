@@ -384,3 +384,16 @@ async def test_fan_out_button_style():
     btns = payload["buttons"]
     assert btns[0]["style"] == "danger"
     assert btns[1]["style"] is None
+
+
+def test_is_valid_button_url():
+    from services.support.service import SupportService
+
+    f = SupportService._is_valid_button_url
+    assert f("https://example.com") is True
+    assert f("https://t.me/foo") is True
+    assert f("tg://resolve?domain=foo") is True
+    assert f("http://") is False
+    assert f("") is False
+    assert f("notaurl") is False
+    assert f("ftp://x.com") is False
