@@ -124,7 +124,7 @@
 }
 .u-preset:hover { color: var(--text, #e5e7eb); }
 .u-preset.active {
-  background: var(--surface-3, #2a2f3a); color: var(--text, #e5e7eb);
+  background: var(--accent-soft); color: var(--text);
 }
 .u-preset-count {
   font-size: 10px; padding: 1px 5px;
