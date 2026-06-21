@@ -84,10 +84,14 @@ function BroadcastComposer({ editingDraft, onDone }) {
   const [mediaUrl, setMediaUrl] = useState(null);
   const [mediaKind, setMediaKind] = useState(null);
   const [emojiAssets, setEmojiAssets] = useState({});
+  const [draftOriginalText, setDraftOriginalText] = useState(null);
+  const [textTouched, setTextTouched] = useState(false);
 
   useEffect(() => {
     if (!editingDraft) return;
     setDraftId(editingDraft.id);
+    setDraftOriginalText(editingDraft.text_body || "");
+    setTextTouched(false);
     setText((editingDraft.text_body || "").replace(/\n/g, "<br>"));
     setButtons((editingDraft.inline_buttons || []).map((b) => ({ text: b.text || "", url: b.url || "", style: b.style || "default" })));
     setMediaUrl(editingDraft.media_url || null);
@@ -104,6 +108,7 @@ function BroadcastComposer({ editingDraft, onDone }) {
   const resetComposer = () => {
     setText(""); setFile(null); setButtons([]); setSchedule("now"); setScheduledAt("");
     setPromoId(""); setDraftId(null); setMediaUrl(null); setMediaKind(null); setEmojiAssets({});
+    setDraftOriginalText(null); setTextTouched(false);
     onDone?.();
   };
 
@@ -142,7 +147,10 @@ function BroadcastComposer({ editingDraft, onDone }) {
       const fd = new FormData();
       fd.append("audience", audience);
       if (audience === "by_plan" && planId) fd.append("plan_id", planId);
-      fd.append("text", htmlForTelegram(text));
+      const outText = (draftId && !textTouched && draftOriginalText != null)
+        ? draftOriginalText
+        : htmlForTelegram(text);
+      fd.append("text", outText);
       fd.append("buttons", JSON.stringify(
         buttons.filter((b) => b.text && validButtonUrl(b.url)).map((b) => ({
           text: b.text, url: b.url.trim(),
@@ -215,7 +223,7 @@ function BroadcastComposer({ editingDraft, onDone }) {
           </div>
           <TextEditor
             value={text}
-            onChange={setText}
+            onChange={(v) => { setText(v); setTextTouched(true); }}
             placeholder="Привет, {user_name}! Мы добавили новые регионы для тарифа Pro: …"
             minHeight={160}
           />
