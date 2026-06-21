@@ -20,7 +20,14 @@ html, body { max-width: 100vw; overflow-x: hidden; }
 
   /* Segment toggle buttons (Routes, Broadcasts) */
   .seg[style*="width"], .seg[style*="min-width"] { width: 100% !important; min-width: 0 !important; }
-  .seg { flex-wrap: wrap; }
+  .seg { grid-template-columns: repeat(auto-fit, minmax(78px, 1fr)); }
+  .seg button {
+    font-size: 11px;
+    padding: 6px 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 
   /* — Tables: cells with inline min/max width shouldn't lock total width — */
   .tbl td[style*="min-width"], .tbl th[style*="width"] {
