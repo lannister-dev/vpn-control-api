@@ -40,8 +40,9 @@ export function BroadcastsPage({ initialAction, onActionConsumed }) {
           <div className="page-subtitle">Создавайте сообщения, выбирайте аудиторию и отправляйте сразу, по расписанию или регулярно.</div>
         </div>
         <div className="page-head-actions">
-          <div className="seg" style={{ width: 300 }}>
+          <div className="seg" style={{ width: 400 }}>
             <button data-active={tab === "new"} onClick={() => setTab("new")}>Новая</button>
+            <button data-active={tab === "drafts"} onClick={() => setTab("drafts")}>Черновики</button>
             <button data-active={tab === "recurring"} onClick={() => setTab("recurring")}>Регулярные</button>
             <button data-active={tab === "history"} onClick={() => setTab("history")}>История</button>
           </div>
@@ -50,6 +51,9 @@ export function BroadcastsPage({ initialAction, onActionConsumed }) {
 
       <div style={{ display: tab === "new" ? "block" : "none" }}>
         <BroadcastComposer />
+      </div>
+      <div style={{ display: tab === "drafts" ? "block" : "none" }}>
+        <BroadcastDrafts />
       </div>
       <div style={{ display: tab === "recurring" ? "block" : "none" }}>
         <RecurringBroadcasts />
@@ -440,6 +444,178 @@ function renderWithCustomEmoji(text, entities, assets) {
   }
   if (cursor < text.length) nodes.push(<span key={key++}>{text.slice(cursor)}</span>);
   return nodes;
+}
+
+/* ─────────────── Drafts ─────────────── */
+function BroadcastDrafts() {
+  const q = useQuery(
+    () => api.get("/support/broadcasts?limit=100").catch(() => ({ items: [] })),
+    { interval: 30000 },
+  );
+  const plansQ = useQuery(() => api.get("/plans").catch(() => ({ items: [] })), {});
+  const plans = plansQ.data?.items || [];
+  const drafts = (q.data?.items || []).filter((b) => b.status === "draft");
+  const [dispatch, setDispatch] = useState(null);
+
+  const del = async (b) => {
+    if (!window.confirm("Удалить черновик?")) return;
+    try {
+      await api.del(`/support/broadcasts/${b.id}`);
+      toast.ok("Черновик удалён");
+      q.refetch();
+    } catch (e) {
+      toast.bad(e?.message || "Не удалось удалить");
+    }
+  };
+
+  return (
+    <div className="card">
+      {q.loading && drafts.length === 0 && <SkeletonRows count={4} cols={4} />}
+      {!q.loading && drafts.length === 0 && (
+        <Empty
+          icon="edit"
+          title="Черновиков нет"
+          hint="Отправьте боту команду /broadcast и пришлите пост — черновик появится здесь."
+        />
+      )}
+      {drafts.length > 0 && (
+        <table className="tbl">
+          <thead>
+            <tr>
+              <th>Создан</th>
+              <th>Текст</th>
+              <th>Медиа</th>
+              <th style={{ textAlign: "right" }}>Действия</th>
+            </tr>
+          </thead>
+          <tbody>
+            {drafts.map((b) => (
+              <tr key={b.id}>
+                <td className="small">
+                  <div>{new Date(b.created_at).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</div>
+                  <div className="muted small">{relTime(b.created_at)}</div>
+                </td>
+                <td className="small" style={{ maxWidth: 420, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {Array.isArray(b.entities) && b.entities.length > 0
+                    ? renderWithCustomEmoji(b.text_body || "", b.entities, b.custom_emoji_assets || {})
+                    : (b.preview || b.text_body || <span className="muted">— без текста —</span>)}
+                </td>
+                <td className="small muted">{b.media_kind ? <><Icon name="paperclip" size={11} /> {b.media_kind}</> : "—"}</td>
+                <td className="row-actions" style={{ textAlign: "right" }}>
+                  <div style={{ display: "inline-flex", gap: 4 }}>
+                    <button className="btn btn-primary btn-sm" onClick={() => setDispatch(b)}>
+                      <Icon name="send" size={12} /> Настроить и отправить
+                    </button>
+                    <button className="btn btn-ghost btn-icon btn-sm" title="Удалить" style={{ color: "var(--bad)" }} onClick={() => del(b)}>
+                      <Icon name="trash-2" size={13} />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {dispatch && (
+        <DraftDispatchModal
+          draft={dispatch}
+          plans={plans}
+          onClose={() => setDispatch(null)}
+          onDone={() => { setDispatch(null); q.refetch(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function DraftDispatchModal({ draft, plans, onClose, onDone }) {
+  const [audience, setAudience] = useState("all");
+  const [planId, setPlanId] = useState("");
+  const [when, setWhen] = useState("now");
+  const [scheduledAt, setScheduledAt] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const audienceQs = useMemo(() => {
+    const qs = new URLSearchParams();
+    qs.set("audience", audience);
+    if (audience === "by_plan" && planId) qs.set("plan_id", planId);
+    return qs.toString();
+  }, [audience, planId]);
+  const sizeQ = useQuery(
+    () => api.get(`/support/broadcasts/audience-size?${audienceQs}`).catch(() => ({ count: 0 })),
+    { interval: 0, deps: [audienceQs] },
+  );
+  const count = sizeQ.data?.count ?? 0;
+
+  const send = async () => {
+    setBusy(true);
+    try {
+      await api.post(`/support/broadcasts/${draft.id}/dispatch`, {
+        audience,
+        plan_id: audience === "by_plan" && planId ? planId : null,
+        scheduled_at: when === "schedule" && scheduledAt ? new Date(scheduledAt).toISOString() : null,
+      });
+      toast.ok(when === "schedule" ? "Рассылка запланирована" : "Рассылка отправлена");
+      onDone();
+    } catch (e) {
+      toast.bad(e?.message || "Не удалось отправить");
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      title="Настроить и отправить черновик"
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn btn-ghost" onClick={onClose} disabled={busy}>Отмена</button>
+          <button
+            className="btn btn-primary"
+            onClick={send}
+            disabled={busy || count === 0 || (when === "schedule" && !scheduledAt)}
+          >
+            <Icon name="send" size={13} /> {busy ? "Отправка…" : when === "schedule" ? "Запланировать" : "Отправить"}
+          </button>
+        </>
+      }
+    >
+      <div className="card" style={{ padding: 12, background: "var(--surface-2)", marginBottom: 12 }}>
+        <div className="muted small" style={{ marginBottom: 6 }}>Текст</div>
+        <div className="txed-preview" style={{ whiteSpace: "pre-wrap" }}>
+          {Array.isArray(draft.entities) && draft.entities.length > 0
+            ? renderWithCustomEmoji(draft.text_body || "", draft.entities, draft.custom_emoji_assets || {})
+            : <span dangerouslySetInnerHTML={{ __html: draft.text_body || draft.preview || "<span style='color:var(--text-muted)'>пусто</span>" }} />}
+        </div>
+      </div>
+
+      <div className="muted small" style={{ marginBottom: 6 }}>Аудитория · получат <span className="mono">{count.toLocaleString("ru-RU")}</span></div>
+      <div className="br-audience-chips">
+        {AUDIENCE_PRESETS.map((p) => (
+          <FilterChip key={p.id} icon={p.icon} label={p.label} applied={audience === p.id} onClick={() => setAudience(p.id)} />
+        ))}
+      </div>
+      {audience === "by_plan" && (
+        <div style={{ marginTop: 10 }}>
+          <select className="select" value={planId} onChange={(e) => setPlanId(e.target.value)} style={{ width: "100%" }}>
+            <option value="">— выберите тариф —</option>
+            {plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </div>
+      )}
+
+      <div className="muted small" style={{ margin: "14px 0 6px" }}>Когда</div>
+      <div className="seg" style={{ width: 280 }}>
+        <button data-active={when === "now"} onClick={() => setWhen("now")}>Сейчас</button>
+        <button data-active={when === "schedule"} onClick={() => setWhen("schedule")}>Запланировать</button>
+      </div>
+      {when === "schedule" && (
+        <div style={{ marginTop: 10 }}>
+          <DatePicker mode="datetime" value={scheduledAt} onChange={setScheduledAt} />
+        </div>
+      )}
+    </Modal>
+  );
 }
 
 /* ─────────────── History ─────────────── */

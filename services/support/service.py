@@ -661,6 +661,78 @@ class SupportService:
             created_at=target.created_at,
         )
 
+    async def dispatch_broadcast(
+        self,
+        broadcast_id: UUID,
+        *,
+        audience: BroadcastAudience,
+        plan_id: UUID | None,
+        scheduled_at: datetime | None,
+    ) -> BroadcastOut:
+        b = await self.broadcasts.get_by_id(broadcast_id)
+        if b is None:
+            raise BroadcastNotFound(str(broadcast_id))
+        if b.status != BroadcastStatus.DRAFT.value:
+            raise InvalidStateTransition(
+                f"Broadcast in status '{b.status}' cannot be dispatched"
+            )
+        target_ids = await self._resolve_audience(audience, plan_id)
+        b.audience = audience.value
+        b.plan_id = plan_id
+        b.target_count = len(target_ids)
+        delivered = 0
+        sent_at: datetime | None = None
+        if scheduled_at is not None:
+            b.status = BroadcastStatus.SCHEDULED.value
+            b.scheduled_at = scheduled_at
+            final_status = BroadcastStatus.SCHEDULED
+            await self.session.commit()
+        else:
+            b.status = BroadcastStatus.SENDING.value
+            await self.session.flush()
+            delivered = await self._fan_out_broadcast(
+                b.id, target_ids, b.text_body or "",
+                media_kind=b.media_kind, media_url=b.media_url, buttons=b.inline_buttons,
+            )
+            sent_at = datetime.now(timezone.utc)
+            b.delivered = delivered
+            b.sent_at = sent_at
+            b.status = BroadcastStatus.SENT.value
+            final_status = BroadcastStatus.SENT
+            await self.session.commit()
+        return BroadcastOut(
+            id=b.id,
+            audience=audience,
+            audience_label=b.audience_label,
+            preview=(b.text_body or "")[:160],
+            text_body=b.text_body or "",
+            media_kind=b.media_kind,
+            media_url=b.media_url,
+            inline_buttons=b.inline_buttons,
+            entities=b.entities,
+            custom_emoji_assets=b.custom_emoji_assets,
+            status=final_status,
+            delivered=delivered,
+            errors=max(0, b.target_count - delivered) if final_status == BroadcastStatus.SENT else 0,
+            clicks=b.clicks,
+            target_count=b.target_count,
+            promo_code_id=b.promo_code_id,
+            sent_at=sent_at,
+            scheduled_at=b.scheduled_at,
+            created_at=b.created_at,
+        )
+
+    async def delete_broadcast(self, broadcast_id: UUID) -> None:
+        b = await self.broadcasts.get_by_id(broadcast_id)
+        if b is None:
+            raise BroadcastNotFound(str(broadcast_id))
+        if b.status in (BroadcastStatus.SENDING.value, BroadcastStatus.SENT.value):
+            raise InvalidStateTransition(
+                f"Broadcast in status '{b.status}' cannot be deleted"
+            )
+        await self.broadcasts.delete_by_id(broadcast_id)
+        await self.session.commit()
+
     async def get_broadcast_funnel(self, broadcast_id: UUID) -> BroadcastFunnelOut:
         broadcast = await self.broadcasts.get_by_id(broadcast_id)
         if broadcast is None:
