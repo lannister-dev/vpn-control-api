@@ -32,6 +32,7 @@ from services.support.schemas import (
     AgentListOut,
     BroadcastAudience,
     BroadcastAudienceCount,
+    BroadcastDispatchIn,
     BroadcastFunnelOut,
     BroadcastListOut,
     BroadcastOut,
@@ -355,6 +356,38 @@ async def get_broadcast_funnel(
         return await service.get_broadcast_funnel(broadcast_id)
     except BroadcastNotFound:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Broadcast not found")
+
+
+@router.post("/broadcasts/{broadcast_id}/dispatch", response_model=BroadcastOut)
+async def dispatch_broadcast(
+    broadcast_id: UUID,
+    body: BroadcastDispatchIn,
+    service: SupportService = Depends(get_support_service),
+):
+    try:
+        return await service.dispatch_broadcast(
+            broadcast_id,
+            audience=body.audience,
+            plan_id=body.plan_id,
+            scheduled_at=body.scheduled_at,
+        )
+    except BroadcastNotFound:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Broadcast not found")
+    except InvalidStateTransition as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+
+
+@router.delete("/broadcasts/{broadcast_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_broadcast(
+    broadcast_id: UUID,
+    service: SupportService = Depends(get_support_service),
+):
+    try:
+        await service.delete_broadcast(broadcast_id)
+    except BroadcastNotFound:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Broadcast not found")
+    except InvalidStateTransition as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
 
 
 @router.get("/recurring-broadcasts", response_model=RecurringBroadcastListOut)
