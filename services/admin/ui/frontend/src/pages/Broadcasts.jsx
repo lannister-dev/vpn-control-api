@@ -283,12 +283,13 @@ function BroadcastComposer({ editingDraft, onDone }) {
                 className="select"
                 value={b.style || "default"}
                 onChange={(e) => updateButton(i, "style", e.target.value)}
-                style={{ maxWidth: 120 }}
+                style={{ maxWidth: 130 }}
                 title="Цвет кнопки"
               >
-                <option value="default">Синяя</option>
-                <option value="destructive">Красная</option>
-                <option value="secondary">Серая</option>
+                <option value="default">По умолчанию</option>
+                <option value="primary">Синяя</option>
+                <option value="success">Зелёная</option>
+                <option value="danger">Красная</option>
               </select>
               <button className="btn btn-ghost btn-icon" onClick={() => removeButton(i)} title="Убрать">
                 <Icon name="x" size={13} />
@@ -498,8 +499,9 @@ function previewHtml(tgHtml, assets) {
 }
 
 function btnStyleInline(style) {
-  if (style === "destructive") return { background: "var(--bad, #e5484d)", color: "#fff", borderColor: "transparent" };
-  if (style === "secondary") return { background: "var(--surface-3, #2a2a2e)", color: "var(--text)", borderColor: "transparent" };
+  if (style === "danger") return { background: "var(--bad, #e5484d)", color: "#fff", borderColor: "transparent" };
+  if (style === "success") return { background: "var(--ok, #30a46c)", color: "#fff", borderColor: "transparent" };
+  if (style === "primary") return { background: "var(--accent, #3b82f6)", color: "#fff", borderColor: "transparent" };
   return undefined;
 }
 
