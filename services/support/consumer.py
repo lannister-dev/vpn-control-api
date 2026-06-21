@@ -197,6 +197,9 @@ class SupportInboundConsumer:
             admin_id=str(admin_id),
             emoji_count=len(assets),
             entities_total=len(entities),
+            entity_types=[e.type for e in entities],
+            cei_present=[bool(e.custom_emoji_id) for e in entities],
+            caption_entities_total=len(parsed.caption_entities),
             from_caption=bool(not parsed.entities and parsed.caption_entities),
         )
 
