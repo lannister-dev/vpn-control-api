@@ -500,11 +500,30 @@ class BroadcastRepository(BaseRepository[Broadcast]):
                 func.coalesce(PaymentOrder.paid_at, PaymentOrder.completed_at) >= cutoff,
             )
         )
+        paid_before_cutoff = (
+            select(PaymentOrder.user_id)
+            .where(
+                PaymentOrder.order_type == "plan_purchase",
+                PaymentOrder.status.in_(("paid", "completed")),
+                PaymentOrder.amount_rub > 0,
+                func.coalesce(PaymentOrder.paid_at, PaymentOrder.completed_at) < cutoff,
+            )
+        )
+        renewed = await self.session.scalar(
+            select(func.count(func.distinct(PaymentOrder.user_id))).where(
+                PaymentOrder.order_type == "plan_purchase",
+                PaymentOrder.status.in_(("paid", "completed")),
+                PaymentOrder.amount_rub > 0,
+                func.coalesce(PaymentOrder.paid_at, PaymentOrder.completed_at) >= cutoff,
+                PaymentOrder.user_id.in_(paid_before_cutoff),
+            )
+        )
         return {
             "registered": int(registered or 0),
             "trial_started": int(trial or 0),
             "connected": int(connected or 0),
             "purchased": int(purchased or 0),
+            "renewed": int(renewed or 0),
         }
 
 

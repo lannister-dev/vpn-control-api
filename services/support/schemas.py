@@ -519,3 +519,4 @@ class OnboardingFunnelOut(BaseModel):
     trial_started: int = 0
     connected: int = 0
     purchased: int = 0
+    renewed: int = 0
