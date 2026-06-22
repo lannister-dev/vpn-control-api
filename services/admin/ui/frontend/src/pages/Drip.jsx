@@ -3,6 +3,7 @@ import { useState } from "react";
 import { api } from "../api/client.js";
 import { Empty } from "../components/Empty.jsx";
 import { Icon } from "../components/Icon.jsx";
+import { TextEditor, htmlForTelegram } from "../components/TextEditor.jsx";
 import { useQuery } from "../hooks/useQuery.js";
 
 const TRIGGERS = [
@@ -38,7 +39,15 @@ function splitDelay(sec) {
 }
 
 function emptyStep() {
-  return { val: 1, unit: 3600, condition: "always", text_body: "", buttons: [] };
+  return {
+    val: 1,
+    unit: 3600,
+    condition: "always",
+    text_body: "",
+    buttons: [],
+    media_kind: null,
+    media_url: null,
+  };
 }
 
 function fromApi(c) {
@@ -58,6 +67,8 @@ function fromApi(c) {
           unit,
           condition: s.condition,
           text_body: s.text_body || "",
+          media_kind: s.media_kind || null,
+          media_url: s.media_url || null,
           buttons: (s.inline_buttons || []).map((b) => ({
             text: b.text || "",
             url: b.url || "",
@@ -82,8 +93,10 @@ function toPayload(form) {
         step_order: i,
         delay_seconds: Math.max(0, Math.round(s.val * s.unit)),
         condition: s.condition,
-        text_body: s.text_body,
+        text_body: htmlForTelegram(s.text_body),
         inline_buttons: buttons.length ? buttons : null,
+        media_kind: s.media_url ? s.media_kind : null,
+        media_url: s.media_url || null,
       };
     }),
   };
@@ -114,6 +127,18 @@ export function DripPage() {
       ...f,
       steps: f.steps.map((s, idx) => (idx === i ? { ...s, ...p } : s)),
     }));
+
+  const uploadMedia = async (i, file) => {
+    if (!file) return;
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      const r = await api.raw("/support/drip/upload", { method: "POST", headers: {}, body: fd });
+      patchStep(i, { media_kind: r.media_kind, media_url: r.media_url });
+    } catch (e) {
+      setErr(e.message || "Ошибка загрузки медиа");
+    }
+  };
 
   const save = async () => {
     const payload = toPayload(form);
@@ -276,16 +301,49 @@ export function DripPage() {
                   </select>
                 </label>
               </div>
-              <label className="form-field">
+              <div className="form-field">
                 <span className="form-label">Текст сообщения</span>
-                <textarea
-                  className="input"
-                  rows={4}
+                <TextEditor
                   value={s.text_body}
-                  onChange={(e) => patchStep(i, { text_body: e.target.value })}
+                  onChange={(v) => patchStep(i, { text_body: v })}
                   placeholder="Заметили, ты ещё не подключился — давай помогу 👇"
+                  minHeight={120}
                 />
-              </label>
+              </div>
+              <div className="form-field">
+                <span className="form-label">Медиа</span>
+                {s.media_url ? (
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    {s.media_kind === "image" ? (
+                      <img src={s.media_url} alt="" style={{ height: 48, borderRadius: 6 }} />
+                    ) : (
+                      <span className="mono muted" style={{ fontSize: 12 }}>{s.media_kind}</span>
+                    )}
+                    <a
+                      href={s.media_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="muted"
+                      style={{ fontSize: 12 }}
+                    >
+                      файл
+                    </a>
+                    <button
+                      className="btn btn-ghost btn-icon"
+                      onClick={() => patchStep(i, { media_kind: null, media_url: null })}
+                      title="Убрать медиа"
+                    >
+                      <Icon name="x" size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <input
+                    type="file"
+                    accept="image/*,video/*"
+                    onChange={(e) => uploadMedia(i, e.target.files?.[0])}
+                  />
+                )}
+              </div>
               <div style={{ display: "grid", gap: 6 }}>
                 <span className="form-label">Кнопки</span>
                 {s.buttons.map((b, bi) => (

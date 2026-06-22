@@ -554,6 +554,36 @@ async def onboarding_funnel(
     return await service.onboarding_funnel(days=days)
 
 
+@router.post("/drip/upload")
+async def drip_upload(file: UploadFile = File(...)):
+    settings = get_settings()
+    if not settings.s3.enabled:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="S3 не настроен — загрузка медиа недоступна",
+        )
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Пустой файл")
+    ct = file.content_type or "application/octet-stream"
+    kind = (
+        "image" if ct.startswith("image/")
+        else "video" if ct.startswith("video/")
+        else "document"
+    )
+    from uuid import uuid4 as _u
+
+    from shared.s3 import S3Client
+
+    ext = (file.filename or "").rsplit(".", 1)
+    suffix = f".{ext[1]}" if len(ext) == 2 else ""
+    key = f"drip/{_u().hex}{suffix}"
+    up = await S3Client(settings.s3).upload_bytes(
+        key=key, data=data, content_type=ct, cache_control="public, max-age=2592000"
+    )
+    return {"media_kind": kind, "media_url": up.public_url}
+
+
 @router.post(
     "/drip/campaigns",
     response_model=DripCampaignOut,
