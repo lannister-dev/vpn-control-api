@@ -445,8 +445,34 @@ class BroadcastRepository(BaseRepository[Broadcast]):
                 .where(Plan.price_rub == Decimal("0"))
                 .distinct()
             )
+        elif audience == BroadcastAudience.WAS_PAYING_EXPIRED:
+            stmt = (
+                select(User.id)
+                .join(Subscription, Subscription.user_id == User.id)
+                .join(Plan, Plan.id == Subscription.plan_id)
+                .where(
+                    Plan.price_rub > Decimal("0"),
+                    Subscription.expires_at.is_not(None),
+                    Subscription.expires_at < now,
+                )
+                .distinct()
+            )
+        elif audience == BroadcastAudience.DORMANT:
+            active_exists = (
+                select(Subscription.id)
+                .where(
+                    Subscription.user_id == User.id,
+                    Subscription.expires_at.is_not(None),
+                    Subscription.expires_at >= now,
+                )
+                .exists()
+            )
+            stmt = select(User.id).where(
+                ~active_exists, User.created_at < now - timedelta(days=30)
+            )
         else:
             return []
+        stmt = stmt.where(User.suppress_marketing.is_(False))
         rows = (await self.session.execute(stmt)).scalars().all()
         return list(rows)
 
