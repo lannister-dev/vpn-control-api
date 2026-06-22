@@ -1220,6 +1220,17 @@ class BillingService:
             )
             log.info("free_subscription_created", subscription_id=str(sub.id), expires_at=str(expires_at))
 
+        if self.notifications is not None:
+            try:
+                await self.notifications.publish_trial_started(
+                    telegram_id=user.telegram_id,
+                    username=getattr(user, "username", None),
+                    plan_name=getattr(plan, "name", "") or "",
+                    days=int(getattr(plan, "duration_days", 0) or 0),
+                )
+            except Exception:
+                log.exception("trial_started_publish_failed", user_id=str(user.id))
+
     async def _auto_purchase(
         self,
         user: User,

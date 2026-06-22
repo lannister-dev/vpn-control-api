@@ -1215,7 +1215,7 @@ class SupportService:
             state.next_send_at = None
             return False
 
-        ok = await self._send_drip_step(state, step, telegram_id=int(user.telegram_id))
+        ok = await self._send_drip_step(state, step, user=user)
         state.last_step_sent_at = now
         next_index = state.current_step + 1
         state.current_step = next_index
@@ -1316,13 +1316,36 @@ class SupportService:
             return not await self.drip.has_connected(user_id)
         if condition == DripCondition.NOT_PURCHASED:
             return not await self.drip.has_paid(user_id)
+        if condition == DripCondition.NO_ACTIVE_SUB:
+            return not await self.drip.has_active_subscription(
+                user_id, now=datetime.now(timezone.utc)
+            )
         return True
 
+    @staticmethod
+    def _render_drip_text(text: str, user) -> str:
+        if not text:
+            return text
+        out = text
+        if "{name}" in out:
+            out = out.replace("{name}", getattr(user, "username", None) or "друг")
+        if "{referral}" in out:
+            bot_username = (get_settings().referral.bot_username or "").strip()
+            code = getattr(user, "referral_code", None)
+            link = (
+                f"https://t.me/{bot_username}?start=ref_{code}"
+                if bot_username and code
+                else ""
+            )
+            out = out.replace("{referral}", link)
+        return out
+
     async def _send_drip_step(
-        self, state: UserCampaignState, step: DripStep, *, telegram_id: int
+        self, state: UserCampaignState, step: DripStep, *, user
     ) -> bool:
         if self._nats is None:
             return False
+        telegram_id = int(user.telegram_id)
         await self._ensure_outbound_stream()
         media: list[SupportOutboundAttachmentMsg] = []
         if step.media_url and step.media_kind:
@@ -1341,7 +1364,7 @@ class SupportService:
             ticket_id=f"drip:{state.campaign_id}",
             message_id=f"drip:{state.id}:{state.current_step}",
             telegram_id=telegram_id,
-            text=step.text_body,
+            text=self._render_drip_text(step.text_body, user),
             media=media,
             buttons=buttons,
             entities=None,

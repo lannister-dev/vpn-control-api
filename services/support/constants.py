@@ -17,14 +17,20 @@ DRIP_RECONCILER_INTERVAL_SEC = 60
 DRIP_DUE_BATCH_SIZE = 200
 DRIP_ENROLLMENT_DURABLE = "vpn-control-api-drip-enrollment"
 
-DRIP_TRIGGER_EVENTS = ("trial_started", "purchase", "user_registered")
-DRIP_CONDITIONS = ("always", "not_connected", "not_purchased")
+DRIP_TRIGGER_EVENTS = (
+    "trial_started",
+    "purchase",
+    "user_registered",
+    "subscription_expired",
+)
+DRIP_CONDITIONS = ("always", "not_connected", "not_purchased", "no_active_sub")
 
 
 class DripCondition:
     ALWAYS = "always"
     NOT_CONNECTED = "not_connected"
     NOT_PURCHASED = "not_purchased"
+    NO_ACTIVE_SUB = "no_active_sub"
 
 
 class DripStatus:

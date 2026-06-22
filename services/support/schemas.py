@@ -45,6 +45,8 @@ class BroadcastAudience(str, Enum):
     BY_PLAN = "by_plan"
     TRIAL = "trial"
     NO_SUB = "no_sub"
+    WAS_PAYING_EXPIRED = "was_paying_expired"
+    DORMANT = "dormant"
 
 
 class BroadcastStatus(str, Enum):
@@ -517,3 +519,4 @@ class OnboardingFunnelOut(BaseModel):
     trial_started: int = 0
     connected: int = 0
     purchased: int = 0
+    renewed: int = 0

@@ -5,9 +5,11 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from services.config import SubscriptionsExpirationConfig, get_settings
+from services.notifications.service import NotificationService
 from services.placements.repository import UserPlacementRepository
 from services.placements.schemas import PlacementDesiredState
 from services.placements.transport import NodeAgentPlacementTransport
+from services.users.repository import UserRepository
 from services.vpn.keys.repository import VpnKeyRepository
 from services.vpn.subscriptions.cache import SubscriptionCacheInvalidator
 from services.vpn.subscriptions.repository import SubscriptionRepository
@@ -39,6 +41,7 @@ class SubscriptionExpirationReconciler(Reconciler):
         *,
         settings: SubscriptionsExpirationConfig | None = None,
         tick_lock: RedisTickLock | None = None,
+        notifications: NotificationService | None = None,
     ):
         cfg = settings or get_settings().subscriptions_expiration
         super().__init__(
@@ -47,6 +50,7 @@ class SubscriptionExpirationReconciler(Reconciler):
             tick_lock=tick_lock,
         )
         self._batch_size = max(1, int(cfg.batch_size))
+        self._notifications = notifications
         self._session_maker = AsyncDatabase.get_session_maker()
 
     async def tick(self) -> TickResult:
@@ -84,6 +88,8 @@ class SubscriptionExpirationReconciler(Reconciler):
 
             await session.commit()
 
+            await self._emit_expired_events(session, expired)
+
             VPN_KEY_OPERATION_TOTAL.labels(operation="subscription_expired").inc(len(revoked_key_ids))
             EXPIRED_SUBSCRIPTIONS_TOTAL.inc(len(sub_ids))
             logger.info(
@@ -97,3 +103,27 @@ class SubscriptionExpirationReconciler(Reconciler):
                 keys_revoked=len(revoked_key_ids),
                 placements_affected=len(affected_placement_ids),
             )
+
+    async def _emit_expired_events(self, session, expired) -> None:
+        if self._notifications is None:
+            return
+        paid = [
+            s for s in expired
+            if getattr(getattr(s, "plan", None), "price_rub", 0) and s.plan.price_rub > 0
+        ]
+        if not paid:
+            return
+        users = await UserRepository(session).list_by_ids([s.user_id for s in paid])
+        by_id = {u.id: u for u in users}
+        for s in paid:
+            user = by_id.get(s.user_id)
+            if user is None or not user.telegram_id:
+                continue
+            try:
+                await self._notifications.publish_subscription_expired(
+                    telegram_id=int(user.telegram_id),
+                    username=getattr(user, "username", None),
+                    plan_name=getattr(s.plan, "name", None),
+                )
+            except Exception:
+                logger.exception("subscription_expired_publish_failed", subscription_id=str(s.id))

@@ -63,6 +63,7 @@ class UserOut(BaseModel):
     terms_accepted: bool = False
     terms_accepted_at: datetime | None = None
     referral_code: str | None = None
+    suppress_marketing: bool = False
     created_at: datetime
     updated_at: datetime
 

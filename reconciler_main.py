@@ -113,7 +113,7 @@ def _build_reconcilers(notifications: NotificationService, nats_client: NatsClie
         PlacementErrorRetryReconciler(),
         PlacementRebalanceReconciler(),
         VpnKeyExpirationReconciler(),
-        SubscriptionExpirationReconciler(),
+        SubscriptionExpirationReconciler(notifications=notifications),
         FirstConnectionReconciler(),
         BillingOrderExpirationReconciler(),
         AutoRenewReconciler(),

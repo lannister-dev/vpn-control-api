@@ -28,6 +28,7 @@ from services.notifications.schemas import (
     PurchaseEvent,
     RouteBlockedEvent,
     RouteRecoveredEvent,
+    SubscriptionExpiredEvent,
     SupportMessageEvent,
     TrialStartedEvent,
     UserRegisteredEvent,
@@ -257,6 +258,21 @@ class NotificationService:
             amount_rub=amount_rub,
             provider=provider,
             is_renewal=is_renewal,
+        ))
+
+    async def publish_subscription_expired(
+        self,
+        *,
+        telegram_id: int,
+        username: str | None,
+        plan_name: str | None,
+    ) -> None:
+        await self.publish(SubscriptionExpiredEvent(
+            event_id=_new_id(),
+            emitted_at=_now(),
+            telegram_id=telegram_id,
+            username=username,
+            plan_name=plan_name,
         ))
 
     async def publish_balance_topup(

@@ -39,6 +39,7 @@ from .schemas import (
     BotDeviceOut,
     BotDeviceSlotPurchaseIn,
     BotDevicesOut,
+    BotMarketingOut,
     BotOrderActionOut,
     BotOrderCreateIn,
     BotOrderHistoryItemOut,
@@ -820,6 +821,14 @@ class BotApiService:
         await self.subscription_repository.set_auto_renew(current.id, enabled)
         await self.session.commit()
         return BotAutoRenewOut(ok=True, enabled=enabled)
+
+    async def set_marketing(self, *, telegram_id: int, suppress: bool) -> BotMarketingOut:
+        user = await self.user_repository.get_by_telegram_id(telegram_id)
+        if user is None:
+            return BotMarketingOut(ok=False, suppress=False)
+        user.suppress_marketing = suppress
+        await self.session.commit()
+        return BotMarketingOut(ok=True, suppress=suppress)
 
     async def _current_subscription(self, user_id: UUID) -> SubscriptionOut | None:
         subscriptions = await self.subscription_service.list_subscriptions_by_user(

@@ -90,6 +90,13 @@ class PurchaseEvent(_Base):
     is_renewal: bool = False
 
 
+class SubscriptionExpiredEvent(_Base):
+    kind: Literal["subscription_expired"] = "subscription_expired"
+    telegram_id: int
+    username: str | None = None
+    plan_name: str | None = None
+
+
 class BalanceTopupEvent(_Base):
     kind: Literal["balance_topup"] = "balance_topup"
     telegram_id: int

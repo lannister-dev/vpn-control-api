@@ -445,8 +445,34 @@ class BroadcastRepository(BaseRepository[Broadcast]):
                 .where(Plan.price_rub == Decimal("0"))
                 .distinct()
             )
+        elif audience == BroadcastAudience.WAS_PAYING_EXPIRED:
+            stmt = (
+                select(User.id)
+                .join(Subscription, Subscription.user_id == User.id)
+                .join(Plan, Plan.id == Subscription.plan_id)
+                .where(
+                    Plan.price_rub > Decimal("0"),
+                    Subscription.expires_at.is_not(None),
+                    Subscription.expires_at < now,
+                )
+                .distinct()
+            )
+        elif audience == BroadcastAudience.DORMANT:
+            active_exists = (
+                select(Subscription.id)
+                .where(
+                    Subscription.user_id == User.id,
+                    Subscription.expires_at.is_not(None),
+                    Subscription.expires_at >= now,
+                )
+                .exists()
+            )
+            stmt = select(User.id).where(
+                ~active_exists, User.created_at < now - timedelta(days=30)
+            )
         else:
             return []
+        stmt = stmt.where(User.suppress_marketing.is_(False))
         rows = (await self.session.execute(stmt)).scalars().all()
         return list(rows)
 
@@ -474,11 +500,30 @@ class BroadcastRepository(BaseRepository[Broadcast]):
                 func.coalesce(PaymentOrder.paid_at, PaymentOrder.completed_at) >= cutoff,
             )
         )
+        paid_before_cutoff = (
+            select(PaymentOrder.user_id)
+            .where(
+                PaymentOrder.order_type == "plan_purchase",
+                PaymentOrder.status.in_(("paid", "completed")),
+                PaymentOrder.amount_rub > 0,
+                func.coalesce(PaymentOrder.paid_at, PaymentOrder.completed_at) < cutoff,
+            )
+        )
+        renewed = await self.session.scalar(
+            select(func.count(func.distinct(PaymentOrder.user_id))).where(
+                PaymentOrder.order_type == "plan_purchase",
+                PaymentOrder.status.in_(("paid", "completed")),
+                PaymentOrder.amount_rub > 0,
+                func.coalesce(PaymentOrder.paid_at, PaymentOrder.completed_at) >= cutoff,
+                PaymentOrder.user_id.in_(paid_before_cutoff),
+            )
+        )
         return {
             "registered": int(registered or 0),
             "trial_started": int(trial or 0),
             "connected": int(connected or 0),
             "purchased": int(purchased or 0),
+            "renewed": int(renewed or 0),
         }
 
 
@@ -669,6 +714,18 @@ class DripRepository(BaseRepository[UserCampaignState]):
             select(Subscription.id)
             .join(Plan, Subscription.plan_id == Plan.id)
             .where(Subscription.user_id == user_id, Plan.price_rub > 0)
+            .limit(1)
+        )
+        return await self.session.scalar(stmt) is not None
+
+    async def has_active_subscription(self, user_id: UUID, *, now: datetime) -> bool:
+        stmt = (
+            select(Subscription.id)
+            .where(
+                Subscription.user_id == user_id,
+                Subscription.expires_at.is_not(None),
+                Subscription.expires_at >= now,
+            )
             .limit(1)
         )
         return await self.session.scalar(stmt) is not None

@@ -42,6 +42,12 @@ export function FunnelPage() {
       value: d.purchased,
       sub: pct(d.purchased, d.trial_started) + " от триалов",
     },
+    {
+      key: "renewed",
+      label: "Продлили",
+      value: d.renewed,
+      sub: "повторные оплаты",
+    },
   ];
 
   return (

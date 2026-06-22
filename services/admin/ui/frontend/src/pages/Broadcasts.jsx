@@ -21,6 +21,8 @@ const AUDIENCE_PRESETS = [
   { id: "by_plan",     label: "По тарифу",           icon: "wallet" },
   { id: "trial",       label: "Триал",               icon: "sparkles" },
   { id: "no_sub",      label: "Без подписки",        icon: "user" },
+  { id: "was_paying_expired", label: "Был платящим (истёк)", icon: "trending-down" },
+  { id: "dormant",     label: "Спящие (30д+)",       icon: "moon" },
 ];
 
 export function BroadcastsPage({ initialAction, onActionConsumed }) {

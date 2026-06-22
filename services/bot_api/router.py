@@ -12,6 +12,8 @@ from .schemas import (
     BotAutoRenewOut,
     BotDeviceSlotPurchaseIn,
     BotDevicesOut,
+    BotMarketingIn,
+    BotMarketingOut,
     BotOrderActionOut,
     BotOrderCreateIn,
     BotOrderHistoryOut,
@@ -215,6 +217,19 @@ async def bot_set_auto_renew(
     service: BotApiService = Depends(get_bot_api_service),
 ):
     return await service.set_auto_renew(telegram_id=telegram_id, enabled=payload.enabled)
+
+
+@router.post(
+    "/users/{telegram_id}/marketing",
+    response_model=BotMarketingOut,
+    summary="Toggle marketing opt-out for Telegram bot user",
+)
+async def bot_set_marketing(
+    telegram_id: int,
+    payload: BotMarketingIn,
+    service: BotApiService = Depends(get_bot_api_service),
+):
+    return await service.set_marketing(telegram_id=telegram_id, suppress=payload.suppress)
 
 
 @router.get(

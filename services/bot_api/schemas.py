@@ -143,6 +143,7 @@ class BotUserOut(BaseModel):
     description: str | None = None
     terms_accepted: bool = False
     terms_accepted_at: datetime | None = None
+    suppress_marketing: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -370,3 +371,12 @@ class BotAutoRenewIn(BaseModel):
 class BotAutoRenewOut(BaseModel):
     ok: bool = True
     enabled: bool = False
+
+
+class BotMarketingIn(BaseModel):
+    suppress: bool
+
+
+class BotMarketingOut(BaseModel):
+    ok: bool = True
+    suppress: bool = False
