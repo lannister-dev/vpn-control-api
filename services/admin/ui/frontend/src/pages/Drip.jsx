@@ -10,12 +10,14 @@ const TRIGGERS = [
   { v: "trial_started", l: "Активировал триал" },
   { v: "purchase", l: "Оплатил" },
   { v: "user_registered", l: "Зарегистрировался" },
+  { v: "subscription_expired", l: "Подписка истекла (winback)" },
 ];
 
 const CONDITIONS = [
   { v: "always", l: "Всегда" },
   { v: "not_connected", l: "Ещё не подключился" },
   { v: "not_purchased", l: "Ещё не купил" },
+  { v: "no_active_sub", l: "Нет активной подписки" },
 ];
 
 const UNITS = [

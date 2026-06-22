@@ -698,3 +698,15 @@ class DripRepository(BaseRepository[UserCampaignState]):
             .limit(1)
         )
         return await self.session.scalar(stmt) is not None
+
+    async def has_active_subscription(self, user_id: UUID, *, now: datetime) -> bool:
+        stmt = (
+            select(Subscription.id)
+            .where(
+                Subscription.user_id == user_id,
+                Subscription.expires_at.is_not(None),
+                Subscription.expires_at >= now,
+            )
+            .limit(1)
+        )
+        return await self.session.scalar(stmt) is not None

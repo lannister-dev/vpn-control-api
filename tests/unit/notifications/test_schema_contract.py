@@ -10,6 +10,7 @@ from services.notifications.schemas import (
     PurchaseEvent,
     RouteBlockedEvent,
     RouteRecoveredEvent,
+    SubscriptionExpiredEvent,
     SupportMessageEvent,
     TrialStartedEvent,
     UserRegisteredEvent,
@@ -63,6 +64,10 @@ EXPECTED_CONTRACT: dict[str, tuple[type, frozenset[str]]] = {
     "balance_topup": (BalanceTopupEvent, frozenset({
         "schema_version", "event_id", "emitted_at", "kind",
         "telegram_id", "username", "amount_rub", "provider", "balance_after_rub",
+    })),
+    "subscription_expired": (SubscriptionExpiredEvent, frozenset({
+        "schema_version", "event_id", "emitted_at", "kind",
+        "telegram_id", "username", "plan_name",
     })),
     "digest_daily": (DigestDailyEvent, frozenset({
         "schema_version", "event_id", "emitted_at", "kind",

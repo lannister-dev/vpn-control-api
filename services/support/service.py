@@ -1316,6 +1316,10 @@ class SupportService:
             return not await self.drip.has_connected(user_id)
         if condition == DripCondition.NOT_PURCHASED:
             return not await self.drip.has_paid(user_id)
+        if condition == DripCondition.NO_ACTIVE_SUB:
+            return not await self.drip.has_active_subscription(
+                user_id, now=datetime.now(timezone.utc)
+            )
         return True
 
     async def _send_drip_step(
