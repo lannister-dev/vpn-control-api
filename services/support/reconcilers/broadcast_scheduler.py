@@ -3,9 +3,9 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta, timezone
 
+from services.config import get_settings
 from services.support.constants import (
     BROADCAST_SENDING_STALE_SEC,
-    SUPPORT_OUTBOUND_SUBJECT,
 )
 from services.support.repository import BroadcastRepository
 from services.support.service import SupportService
@@ -47,7 +47,7 @@ class BroadcastSchedulerReconciler(Reconciler):
             service = SupportService(
                 session,
                 nats_client=self._nats_client,
-                outbound_subject=SUPPORT_OUTBOUND_SUBJECT,
+                outbound_subject=get_settings().nats.support_outbound_subject,
             )
             dispatched = 0
             for candidate in due:
