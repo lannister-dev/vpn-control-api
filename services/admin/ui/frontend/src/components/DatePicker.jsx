@@ -276,10 +276,10 @@ export function DatePicker({
               <span className="dp-time-sep">:</span>
               <select
                 className="dp-time-sel"
-                value={parsed ? parsed.getMinutes() - (parsed.getMinutes() % 5) : 0}
+                value={parsed ? parsed.getMinutes() : 0}
                 onChange={(e) => setMinute(e.target.value)}
               >
-                {Array.from({ length: 12 }, (_, i) => i * 5).map((m) => (
+                {Array.from({ length: 60 }, (_, i) => i).map((m) => (
                   <option key={m} value={m}>{pad(m)}</option>
                 ))}
               </select>

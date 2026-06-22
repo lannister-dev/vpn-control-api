@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-from services.support.constants import SUPPORT_OUTBOUND_SUBJECT
+from services.config import get_settings
 from services.support.service import SupportService
 from shared.database.session import AsyncDatabase
 from shared.nats.client import NatsClient
@@ -34,7 +34,7 @@ class RecurringBroadcastReconciler(Reconciler):
             service = SupportService(
                 session,
                 nats_client=self._nats_client,
-                outbound_subject=SUPPORT_OUTBOUND_SUBJECT,
+                outbound_subject=get_settings().nats.support_outbound_subject,
             )
             created = await service.materialize_due_recurring(now)
             if created:
