@@ -18,6 +18,7 @@ DRIP_DUE_BATCH_SIZE = 200
 DRIP_ENROLLMENT_DURABLE = "vpn-control-api-drip-enrollment"
 
 DRIP_TRIGGER_EVENTS = ("trial_started", "purchase", "user_registered")
+DRIP_CONDITIONS = ("always", "not_connected", "not_purchased")
 
 
 class DripCondition:

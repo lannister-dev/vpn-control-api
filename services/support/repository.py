@@ -604,6 +604,15 @@ class DripRepository(BaseRepository[UserCampaignState]):
         )
         return await self.session.scalar(stmt)
 
+    async def list_campaigns(self) -> list[DripCampaign]:
+        stmt = (
+            select(DripCampaign)
+            .options(selectinload(DripCampaign.steps))
+            .order_by(DripCampaign.created_at.desc())
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().unique().all())
+
     async def has_connected(self, user_id: UUID) -> bool:
         stmt = (
             select(Subscription.id)

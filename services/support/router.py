@@ -36,6 +36,9 @@ from services.support.schemas import (
     BroadcastListOut,
     BroadcastOut,
     BroadcastStatus,
+    DripCampaignIn,
+    DripCampaignListOut,
+    DripCampaignOut,
     MessageListOut,
     MessageOut,
     RecurringBroadcastCreateIn,
@@ -529,3 +532,41 @@ async def create_broadcast(
         actor_admin_id=actor_admin_id,
         promo_code_id=promo_code_id,
     )
+
+
+@router.get("/drip/campaigns", response_model=DripCampaignListOut)
+async def list_drip_campaigns(service: SupportService = Depends(get_support_service)):
+    return await service.list_drip_campaigns()
+
+
+@router.post(
+    "/drip/campaigns",
+    response_model=DripCampaignOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_drip_campaign(
+    payload: DripCampaignIn,
+    service: SupportService = Depends(get_support_service),
+):
+    return await service.create_drip_campaign(payload)
+
+
+@router.put("/drip/campaigns/{campaign_id}", response_model=DripCampaignOut)
+async def update_drip_campaign(
+    campaign_id: UUID,
+    payload: DripCampaignIn,
+    service: SupportService = Depends(get_support_service),
+):
+    out = await service.update_drip_campaign(campaign_id, payload)
+    if out is None:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    return out
+
+
+@router.delete("/drip/campaigns/{campaign_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_drip_campaign(
+    campaign_id: UUID,
+    service: SupportService = Depends(get_support_service),
+):
+    if not await service.delete_drip_campaign(campaign_id):
+        raise HTTPException(status_code=404, detail="Campaign not found")

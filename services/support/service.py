@@ -39,6 +39,7 @@ from services.support.exceptions import (
     TicketNotFound,
 )
 from services.support.models import (
+    DripCampaign,
     DripStep,
     SupportMessage,
     SupportTicket,
@@ -65,6 +66,9 @@ from services.support.schemas import (
     BroadcastListOut,
     BroadcastOut,
     BroadcastStatus,
+    DripCampaignIn,
+    DripCampaignListOut,
+    DripCampaignOut,
     MessageAuthorRef,
     MessageListOut,
     MessageOut,
@@ -1220,6 +1224,64 @@ class SupportService:
                 seconds=int(steps[next_index].delay_seconds)
             )
         return ok
+
+    async def list_drip_campaigns(self) -> DripCampaignListOut:
+        campaigns = await self.drip.list_campaigns()
+        return DripCampaignListOut(
+            items=[DripCampaignOut.model_validate(c) for c in campaigns]
+        )
+
+    @staticmethod
+    def _build_drip_steps(payload: DripCampaignIn) -> list[DripStep]:
+        return [
+            DripStep(
+                step_order=s.step_order,
+                delay_seconds=s.delay_seconds,
+                condition=s.condition,
+                text_body=s.text_body,
+                inline_buttons=s.inline_buttons,
+                media_kind=s.media_kind,
+                media_url=s.media_url,
+            )
+            for s in sorted(payload.steps, key=lambda x: x.step_order)
+        ]
+
+    async def create_drip_campaign(self, payload: DripCampaignIn) -> DripCampaignOut:
+        campaign = DripCampaign(
+            key=payload.key,
+            name=payload.name,
+            trigger_event=payload.trigger_event,
+            is_active=payload.is_active,
+        )
+        campaign.steps = self._build_drip_steps(payload)
+        self.session.add(campaign)
+        await self.session.commit()
+        return DripCampaignOut.model_validate(campaign)
+
+    async def update_drip_campaign(
+        self, campaign_id: UUID, payload: DripCampaignIn
+    ) -> DripCampaignOut | None:
+        campaign = await self.drip.get_campaign_with_steps(campaign_id)
+        if campaign is None:
+            return None
+        campaign.key = payload.key
+        campaign.name = payload.name
+        campaign.trigger_event = payload.trigger_event
+        campaign.is_active = payload.is_active
+        campaign.steps.clear()
+        await self.session.flush()
+        for step in self._build_drip_steps(payload):
+            campaign.steps.append(step)
+        await self.session.commit()
+        return DripCampaignOut.model_validate(campaign)
+
+    async def delete_drip_campaign(self, campaign_id: UUID) -> bool:
+        campaign = await self.drip.get_campaign_with_steps(campaign_id)
+        if campaign is None:
+            return False
+        await self.session.delete(campaign)
+        await self.session.commit()
+        return True
 
     async def _drip_condition_holds(self, condition: str, user_id: UUID) -> bool:
         if condition == DripCondition.NOT_CONNECTED:

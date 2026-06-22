@@ -135,3 +135,53 @@ async def test_drip_last_step_completes():
     assert state.current_step == 1
     assert state.status == DripStatus.COMPLETED
     assert state.next_send_at is None
+
+
+def test_drip_step_rejects_bad_condition():
+    import pytest
+    from pydantic import ValidationError
+
+    from services.support.schemas import DripStepIn
+
+    with pytest.raises(ValidationError):
+        DripStepIn(step_order=0, text_body="x", condition="bogus")
+
+
+def test_drip_campaign_rejects_bad_trigger():
+    import pytest
+    from pydantic import ValidationError
+
+    from services.support.schemas import DripCampaignIn
+
+    with pytest.raises(ValidationError):
+        DripCampaignIn(key="k", name="n", trigger_event="bogus")
+
+
+def test_drip_campaign_accepts_valid():
+    from services.support.schemas import DripCampaignIn, DripStepIn
+
+    campaign = DripCampaignIn(
+        key="trial_connect",
+        name="x",
+        trigger_event="trial_started",
+        steps=[DripStepIn(step_order=0, text_body="hi", condition="not_connected")],
+    )
+    assert campaign.steps[0].condition == "not_connected"
+
+
+async def test_list_drip_campaigns_maps_out():
+    svc = _svc()
+    campaign = SimpleNamespace(
+        id=uuid4(),
+        key="k",
+        name="n",
+        trigger_event="purchase",
+        is_active=True,
+        steps=[],
+    )
+    svc.drip.list_campaigns = AsyncMock(return_value=[campaign])
+
+    out = await svc.list_drip_campaigns()
+
+    assert len(out.items) == 1
+    assert out.items[0].key == "k"
