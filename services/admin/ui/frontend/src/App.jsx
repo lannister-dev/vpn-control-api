@@ -31,6 +31,7 @@ import { SettingsPage } from "./pages/Settings.jsx";
 import { TicketsPage } from "./pages/Tickets.jsx";
 import { SupportTemplatesPage } from "./pages/SupportTemplates.jsx";
 import { BroadcastsPage } from "./pages/Broadcasts.jsx";
+import { DripPage } from "./pages/Drip.jsx";
 import { FinanceOverviewPage } from "./pages/FinanceOverview.jsx";
 import { FinanceIncomePage } from "./pages/FinanceIncome.jsx";
 import { FinanceExpensesPage } from "./pages/FinanceExpenses.jsx";
@@ -58,6 +59,7 @@ const PAGES = {
   tickets: TicketsPage,
   "support-templates": SupportTemplatesPage,
   broadcasts: BroadcastsPage,
+  drip: DripPage,
   "fin-overview": FinanceOverviewPage,
   "fin-income": FinanceIncomePage,
   "fin-expenses": FinanceExpensesPage,
