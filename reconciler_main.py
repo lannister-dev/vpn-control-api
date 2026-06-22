@@ -15,6 +15,8 @@ from services.balancer.load_consumer import BackendLoadRebalanceConsumer
 from services.billing.models import BalanceTransaction, PaymentOrder  # noqa: F401
 from services.billing.reconcilers.expiration import BillingOrderExpirationReconciler
 from services.config import get_settings
+from services.drip.consumer import DripEnrollmentConsumer
+from services.drip.reconcilers.drip import DripReconciler
 from services.entry.models import EntryBackendAssignment  # noqa: F401
 from services.entry.reconcilers.auto_drain import EntryAutoDrainReconciler
 from services.finance.models import Expense, RecurringExpenseTemplate  # noqa: F401
@@ -119,6 +121,7 @@ def _build_reconcilers(notifications: NotificationService, nats_client: NatsClie
         NotificationsDigestReconciler(notifications=notifications),
         BroadcastSchedulerReconciler(nats_client=nats_client),
         RecurringBroadcastReconciler(nats_client=nats_client),
+        DripReconciler(nats_client=nats_client),
     ]
 
 
@@ -130,6 +133,7 @@ def _build_nats_runtimes(node_agent_runtime: NodeAgentRuntime, nats_settings) ->
         BackendLoadRebalanceConsumer(nats_settings),
         SupportInboundConsumer(nats_settings),
         SupportSentConsumer(nats_settings),
+        DripEnrollmentConsumer(nats_settings),
     ]
 
 
