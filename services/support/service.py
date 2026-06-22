@@ -75,6 +75,7 @@ from services.support.schemas import (
     MessageListOut,
     MessageOut,
     MessageSenderKind,
+    OnboardingFunnelOut,
     RecurringBroadcastCreateIn,
     RecurringBroadcastInternalCreate,
     RecurringBroadcastListOut,
@@ -1232,6 +1233,11 @@ class SupportService:
         return DripCampaignListOut(
             items=[DripCampaignOut.model_validate(c) for c in campaigns]
         )
+
+    async def onboarding_funnel(self, *, days: int) -> OnboardingFunnelOut:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        counts = await self.broadcasts.onboarding_funnel(cutoff=cutoff)
+        return OnboardingFunnelOut(period_days=days, **counts)
 
     async def drip_stats(self) -> DripStatsOut:
         rows = await self.drip.status_counts()

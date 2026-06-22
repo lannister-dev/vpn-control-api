@@ -42,6 +42,7 @@ from services.support.schemas import (
     DripStatsOut,
     MessageListOut,
     MessageOut,
+    OnboardingFunnelOut,
     RecurringBroadcastCreateIn,
     RecurringBroadcastListOut,
     RecurringBroadcastOut,
@@ -543,6 +544,14 @@ async def list_drip_campaigns(service: SupportService = Depends(get_support_serv
 @router.get("/drip/stats", response_model=DripStatsOut)
 async def drip_stats(service: SupportService = Depends(get_support_service)):
     return await service.drip_stats()
+
+
+@router.get("/funnel", response_model=OnboardingFunnelOut)
+async def onboarding_funnel(
+    days: int = Query(30, ge=1, le=365),
+    service: SupportService = Depends(get_support_service),
+):
+    return await service.onboarding_funnel(days=days)
 
 
 @router.post(

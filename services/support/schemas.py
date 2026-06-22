@@ -509,3 +509,11 @@ class DripCampaignStat(BaseModel):
 
 class DripStatsOut(BaseModel):
     items: list[DripCampaignStat]
+
+
+class OnboardingFunnelOut(BaseModel):
+    period_days: int
+    registered: int = 0
+    trial_started: int = 0
+    connected: int = 0
+    purchased: int = 0

@@ -451,6 +451,37 @@ class BroadcastRepository(BaseRepository[Broadcast]):
         return list(rows)
 
 
+    async def onboarding_funnel(self, *, cutoff: datetime) -> dict[str, int]:
+        registered = await self.session.scalar(
+            select(func.count()).select_from(User).where(User.created_at >= cutoff)
+        )
+        trial = await self.session.scalar(
+            select(func.count())
+            .select_from(Subscription)
+            .join(Plan, Subscription.plan_id == Plan.id)
+            .where(Plan.price_rub == 0, Subscription.created_at >= cutoff)
+        )
+        connected = await self.session.scalar(
+            select(func.count())
+            .select_from(Subscription)
+            .where(Subscription.first_connected_at >= cutoff)
+        )
+        purchased = await self.session.scalar(
+            select(func.count(func.distinct(PaymentOrder.user_id))).where(
+                PaymentOrder.order_type == "plan_purchase",
+                PaymentOrder.status.in_(("paid", "completed")),
+                PaymentOrder.amount_rub > 0,
+                func.coalesce(PaymentOrder.paid_at, PaymentOrder.completed_at) >= cutoff,
+            )
+        )
+        return {
+            "registered": int(registered or 0),
+            "trial_started": int(trial or 0),
+            "connected": int(connected or 0),
+            "purchased": int(purchased or 0),
+        }
+
+
 class RecurringBroadcastRepository(BaseRepository[RecurringBroadcastSchedule]):
     def __init__(self, session: AsyncSession):
         super().__init__(RecurringBroadcastSchedule, session)
