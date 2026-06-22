@@ -164,14 +164,14 @@ export function Sidebar({ activeTab, onTab, collapsed, onToggle, onOpenPalette, 
         <span className="side-row-tools">
           {pinnedRow ? (
             <>
-              <button className="side-tool" title="Выше" onClick={() => movePin(it.id, -1)}><Icon name="chevron-up" size={12} /></button>
-              <button className="side-tool" title="Ниже" onClick={() => movePin(it.id, 1)}><Icon name="chevron-down" size={12} /></button>
-              <button className="side-tool" title="Открепить" onClick={() => togglePin(it.id)}><Icon name="pin" size={12} /></button>
+              <button className="side-tool" title="Выше" onClick={() => movePin(it.id, -1)}><Icon name="chevron-up" size={16} /></button>
+              <button className="side-tool" title="Ниже" onClick={() => movePin(it.id, 1)}><Icon name="chevron-down" size={16} /></button>
+              <button className="side-tool" title="Открепить" onClick={() => togglePin(it.id)}><Icon name="pin" size={16} /></button>
             </>
           ) : (
             <>
-              <button className="side-tool" data-on={isPinned(it.id) || undefined} title={isPinned(it.id) ? "Открепить" : "Закрепить"} onClick={() => togglePin(it.id)}><Icon name="pin" size={12} /></button>
-              <button className="side-tool" title={isHidden(it.id) ? "Показать" : "Скрыть"} onClick={() => toggleHide(it.id)}><Icon name={isHidden(it.id) ? "eye-off" : "eye"} size={12} /></button>
+              <button className="side-tool" data-on={isPinned(it.id) || undefined} title={isPinned(it.id) ? "Открепить" : "Закрепить"} onClick={() => togglePin(it.id)}><Icon name="pin" size={16} /></button>
+              <button className="side-tool" title={isHidden(it.id) ? "Показать" : "Скрыть"} onClick={() => toggleHide(it.id)}><Icon name={isHidden(it.id) ? "eye-off" : "eye"} size={16} /></button>
             </>
           )}
         </span>
@@ -231,9 +231,9 @@ export function Sidebar({ activeTab, onTab, collapsed, onToggle, onOpenPalette, 
           <div className="side-pinned">
             {!collapsed && (
               <div className="side-pinned-title">
-                <span><Icon name="pin" size={11} /> Закреплённое</span>
+                <span><Icon name="pin" size={12} /> Закреплённое</span>
                 <button className="side-edit-btn" data-on={editMode || undefined} title="Настроить меню" onClick={() => setEditMode((v) => !v)}>
-                  <Icon name={editMode ? "check" : "sliders"} size={12} />
+                  <Icon name={editMode ? "check" : "sliders"} size={16} />
                 </button>
               </div>
             )}
@@ -282,7 +282,7 @@ export function Sidebar({ activeTab, onTab, collapsed, onToggle, onOpenPalette, 
                       title={groupHidden ? "Показать группу" : "Скрыть группу"}
                       onClick={(e) => { e.stopPropagation(); toggleHide(g.title); }}
                     >
-                      <Icon name={groupHidden ? "eye-off" : "eye"} size={12} />
+                      <Icon name={groupHidden ? "eye-off" : "eye"} size={16} />
                     </span>
                   ) : (
                     <Icon className="side-group-chevron" name="chevron-right" size={12} />
