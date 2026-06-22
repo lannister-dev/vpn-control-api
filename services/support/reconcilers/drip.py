@@ -4,8 +4,11 @@ import logging
 from datetime import datetime, timezone
 
 from services.config import get_settings
-from services.drip.constants import DRIP_DUE_BATCH_SIZE, DRIP_RECONCILER_INTERVAL_SEC
-from services.drip.service import DripService
+from services.support.constants import (
+    DRIP_DUE_BATCH_SIZE,
+    DRIP_RECONCILER_INTERVAL_SEC,
+)
+from services.support.service import SupportService
 from shared.database.session import AsyncDatabase
 from shared.nats.client import NatsClient
 from shared.reconciler.base import Reconciler
@@ -33,13 +36,13 @@ class DripReconciler(Reconciler):
 
     async def tick(self) -> int:
         async with self._session_maker() as session:
-            svc = DripService(
+            svc = SupportService(
                 session,
                 nats_client=self._nats,
                 outbound_subject=get_settings().nats.support_outbound_subject,
             )
             now = datetime.now(timezone.utc)
-            sent = await svc.run_due(now=now, limit=self._batch_size)
+            sent = await svc.run_due_drip(now=now, limit=self._batch_size)
             await session.commit()
             if sent:
                 logger.info("drip_messages_sent", count=sent)

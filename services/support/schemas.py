@@ -434,3 +434,10 @@ class SupportSentAck(BaseModel):
     tg_message_id: int | None = None
     ok: bool = True
     error: str | None = None
+
+
+class DripTriggerEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    kind: str
+    telegram_id: int

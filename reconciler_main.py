@@ -15,8 +15,6 @@ from services.balancer.load_consumer import BackendLoadRebalanceConsumer
 from services.billing.models import BalanceTransaction, PaymentOrder  # noqa: F401
 from services.billing.reconcilers.expiration import BillingOrderExpirationReconciler
 from services.config import get_settings
-from services.drip.consumer import DripEnrollmentConsumer
-from services.drip.reconcilers.drip import DripReconciler
 from services.entry.models import EntryBackendAssignment  # noqa: F401
 from services.entry.reconcilers.auto_drain import EntryAutoDrainReconciler
 from services.finance.models import Expense, RecurringExpenseTemplate  # noqa: F401
@@ -48,12 +46,17 @@ from services.routes.models import Route, TransportProfile  # noqa: F401
 from services.routes.reconcilers.auto_create import RouteAutoCreateReconciler
 from services.routes.reconcilers.warmup import RouteWarmupReconciler
 from services.routing.entry.publisher import EntryRoutingPublisher
-from services.support.consumer import SupportInboundConsumer, SupportSentConsumer
+from services.support.consumer import (
+    DripEnrollmentConsumer,
+    SupportInboundConsumer,
+    SupportSentConsumer,
+)
 from services.support.models import (  # noqa: F401
     RecurringBroadcastSchedule,
     SupportTicket,
 )
 from services.support.reconcilers.broadcast_scheduler import BroadcastSchedulerReconciler
+from services.support.reconcilers.drip import DripReconciler
 from services.support.reconcilers.recurring_broadcast import RecurringBroadcastReconciler
 from services.traffic.nodes.consumer import NodeTrafficNatsConsumer
 from services.traffic.nodes.models import NodeTrafficUsage  # noqa: F401
