@@ -94,11 +94,19 @@ export function DripPage() {
     () => api.get("/support/drip/campaigns").catch(() => ({ items: [] })),
     { interval: 0 },
   );
+  const statsQ = useQuery(
+    () => api.get("/support/drip/stats").catch(() => ({ items: [] })),
+    { interval: 0 },
+  );
   const [form, setForm] = useState(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
   const campaigns = q.data?.items || [];
+  const stats = {};
+  (statsQ.data?.items || []).forEach((s) => {
+    stats[s.campaign_id] = s;
+  });
 
   const patch = (p) => setForm((f) => ({ ...f, ...p }));
   const patchStep = (i, p) =>
@@ -124,6 +132,7 @@ export function DripPage() {
       else await api.post("/support/drip/campaigns", payload);
       setForm(null);
       q.refetch();
+      statsQ.refetch();
     } catch (e) {
       setErr(e.message || "Ошибка сохранения");
     } finally {
@@ -142,6 +151,7 @@ export function DripPage() {
       await api.del(`/support/drip/campaigns/${form.id}`);
       setForm(null);
       q.refetch();
+      statsQ.refetch();
     } catch (e) {
       setErr(e.message || "Ошибка удаления");
     } finally {
@@ -404,27 +414,34 @@ export function DripPage() {
                 <th>Название</th>
                 <th>Триггер</th>
                 <th>Шагов</th>
+                <th>В работе</th>
+                <th>Завершено</th>
                 <th>Статус</th>
               </tr>
             </thead>
             <tbody>
-              {campaigns.map((c) => (
-                <tr key={c.id} style={{ cursor: "pointer" }} onClick={() => setForm(fromApi(c))}>
-                  <td style={{ fontWeight: 500 }}>
-                    {c.name}
-                    <div className="mono muted" style={{ fontSize: 11 }}>{c.key}</div>
-                  </td>
-                  <td>{TRIGGERS.find((t) => t.v === c.trigger_event)?.l || c.trigger_event || "—"}</td>
-                  <td className="tbl-num">{(c.steps || []).length}</td>
-                  <td>
-                    {c.is_active ? (
-                      <span className="pill ok">активна</span>
-                    ) : (
-                      <span className="pill muted">выкл</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {campaigns.map((c) => {
+                const st = stats[c.id] || {};
+                return (
+                  <tr key={c.id} style={{ cursor: "pointer" }} onClick={() => setForm(fromApi(c))}>
+                    <td style={{ fontWeight: 500 }}>
+                      {c.name}
+                      <div className="mono muted" style={{ fontSize: 11 }}>{c.key}</div>
+                    </td>
+                    <td>{TRIGGERS.find((t) => t.v === c.trigger_event)?.l || c.trigger_event || "—"}</td>
+                    <td className="tbl-num">{(c.steps || []).length}</td>
+                    <td className="tbl-num">{st.active || 0}</td>
+                    <td className="tbl-num">{st.completed || 0}</td>
+                    <td>
+                      {c.is_active ? (
+                        <span className="pill ok">активна</span>
+                      ) : (
+                        <span className="pill muted">выкл</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

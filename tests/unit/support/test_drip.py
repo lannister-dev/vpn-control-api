@@ -185,3 +185,21 @@ async def test_list_drip_campaigns_maps_out():
 
     assert len(out.items) == 1
     assert out.items[0].key == "k"
+
+
+async def test_drip_stats_aggregates_by_status():
+    svc = _svc()
+    cid = uuid4()
+    svc.drip.status_counts = AsyncMock(
+        return_value=[(cid, "active", 3), (cid, "completed", 2), (cid, "stopped", 1)]
+    )
+
+    out = await svc.drip_stats()
+
+    assert len(out.items) == 1
+    item = out.items[0]
+    assert item.campaign_id == cid
+    assert item.active == 3
+    assert item.completed == 2
+    assert item.stopped == 1
+    assert item.enrolled == 6

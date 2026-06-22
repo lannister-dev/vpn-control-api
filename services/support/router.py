@@ -39,6 +39,7 @@ from services.support.schemas import (
     DripCampaignIn,
     DripCampaignListOut,
     DripCampaignOut,
+    DripStatsOut,
     MessageListOut,
     MessageOut,
     RecurringBroadcastCreateIn,
@@ -537,6 +538,11 @@ async def create_broadcast(
 @router.get("/drip/campaigns", response_model=DripCampaignListOut)
 async def list_drip_campaigns(service: SupportService = Depends(get_support_service)):
     return await service.list_drip_campaigns()
+
+
+@router.get("/drip/stats", response_model=DripStatsOut)
+async def drip_stats(service: SupportService = Depends(get_support_service)):
+    return await service.drip_stats()
 
 
 @router.post(

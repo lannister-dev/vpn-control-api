@@ -496,3 +496,16 @@ class DripCampaignOut(BaseModel):
 
 class DripCampaignListOut(BaseModel):
     items: list[DripCampaignOut]
+
+
+class DripCampaignStat(BaseModel):
+    campaign_id: UUID
+    enrolled: int = 0
+    active: int = 0
+    completed: int = 0
+    abandoned: int = 0
+    stopped: int = 0
+
+
+class DripStatsOut(BaseModel):
+    items: list[DripCampaignStat]

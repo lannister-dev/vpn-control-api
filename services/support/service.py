@@ -69,6 +69,8 @@ from services.support.schemas import (
     DripCampaignIn,
     DripCampaignListOut,
     DripCampaignOut,
+    DripCampaignStat,
+    DripStatsOut,
     MessageAuthorRef,
     MessageListOut,
     MessageOut,
@@ -1230,6 +1232,26 @@ class SupportService:
         return DripCampaignListOut(
             items=[DripCampaignOut.model_validate(c) for c in campaigns]
         )
+
+    async def drip_stats(self) -> DripStatsOut:
+        rows = await self.drip.status_counts()
+        agg: dict[UUID, dict[str, int]] = {}
+        for campaign_id, status, count in rows:
+            bucket = agg.setdefault(
+                campaign_id,
+                {"active": 0, "completed": 0, "abandoned": 0, "stopped": 0},
+            )
+            if status in bucket:
+                bucket[status] += count
+        items = [
+            DripCampaignStat(
+                campaign_id=campaign_id,
+                enrolled=sum(bucket.values()),
+                **bucket,
+            )
+            for campaign_id, bucket in agg.items()
+        ]
+        return DripStatsOut(items=items)
 
     @staticmethod
     def _build_drip_steps(payload: DripCampaignIn) -> list[DripStep]:
