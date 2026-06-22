@@ -513,6 +513,24 @@ class SubscriptionRepository(BaseRepository[Subscription]):
         )
         return len(subscription_ids)
 
+    async def stamp_first_connection(self, *, now: datetime, limit: int = 500) -> list[UUID]:
+        due = (
+            select(self.model.id)
+            .where(
+                self.model.first_connected_at.is_(None),
+                self.model.lifetime_used_traffic_bytes > 0,
+            )
+            .limit(limit)
+        )
+        stmt = (
+            update(self.model)
+            .where(self.model.id.in_(due))
+            .values(first_connected_at=now)
+            .returning(self.model.id)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
 
 class SubscriptionDeviceRepository(BaseRepository[SubscriptionDevice]):
     def __init__(self, session: AsyncSession):

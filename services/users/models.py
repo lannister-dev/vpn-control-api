@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import BIGINT, DateTime, Index, Numeric, String
+from sqlalchemy import BIGINT, Boolean, DateTime, Index, Numeric, String, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from services.vpn.subscriptions.models import Subscription
@@ -19,6 +19,9 @@ class User(Base):
     terms_accepted: Mapped[bool] = mapped_column(default=False, nullable=False)
     terms_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     referral_code: Mapped[str | None] = mapped_column(String(12), unique=True, nullable=True)
+    suppress_marketing: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), nullable=False
+    )
 
     __table_args__ = (
         Index("ix_user_referral_code", "referral_code", unique=True),
