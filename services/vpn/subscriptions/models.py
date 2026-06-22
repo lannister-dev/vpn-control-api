@@ -48,6 +48,12 @@ class Subscription(Base):
     last_traffic_reset_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True,
     )
+    first_connected_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+    auto_renew: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false"),
+    )
 
     traffic_warning_threshold_pct: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=text("0"),

@@ -13,6 +13,7 @@ from services.artifacts.models import ProfileArtifact  # noqa: F401
 from services.auth.admin.models import AdminAuditEvent, AdminSession, AdminUser  # noqa: F401
 from services.balancer.load_consumer import BackendLoadRebalanceConsumer
 from services.billing.models import BalanceTransaction, PaymentOrder  # noqa: F401
+from services.billing.reconcilers.auto_renew import AutoRenewReconciler
 from services.billing.reconcilers.expiration import BillingOrderExpirationReconciler
 from services.config import get_settings
 from services.entry.models import EntryBackendAssignment  # noqa: F401
@@ -46,12 +47,17 @@ from services.routes.models import Route, TransportProfile  # noqa: F401
 from services.routes.reconcilers.auto_create import RouteAutoCreateReconciler
 from services.routes.reconcilers.warmup import RouteWarmupReconciler
 from services.routing.entry.publisher import EntryRoutingPublisher
-from services.support.consumer import SupportInboundConsumer, SupportSentConsumer
+from services.support.consumer import (
+    DripEnrollmentConsumer,
+    SupportInboundConsumer,
+    SupportSentConsumer,
+)
 from services.support.models import (  # noqa: F401
     RecurringBroadcastSchedule,
     SupportTicket,
 )
 from services.support.reconcilers.broadcast_scheduler import BroadcastSchedulerReconciler
+from services.support.reconcilers.drip import DripReconciler
 from services.support.reconcilers.recurring_broadcast import RecurringBroadcastReconciler
 from services.traffic.nodes.consumer import NodeTrafficNatsConsumer
 from services.traffic.nodes.models import NodeTrafficUsage  # noqa: F401
@@ -68,6 +74,7 @@ from services.vpn.keys.models import VpnKey  # noqa: F401
 from services.vpn.keys.reconcilers.expiration import VpnKeyExpirationReconciler
 from services.vpn.subscriptions.models import Subscription, SubscriptionDevice, SubscriptionDeviceKey  # noqa: F401
 from services.vpn.subscriptions.reconcilers.expiration import SubscriptionExpirationReconciler
+from services.vpn.subscriptions.reconcilers.first_connection import FirstConnectionReconciler
 from services.wg.publisher import WgMeshPeerPublisher
 from shared.app.bootstrap import (
     bootstrap_profiles,
@@ -107,7 +114,9 @@ def _build_reconcilers(notifications: NotificationService, nats_client: NatsClie
         PlacementRebalanceReconciler(),
         VpnKeyExpirationReconciler(),
         SubscriptionExpirationReconciler(),
+        FirstConnectionReconciler(),
         BillingOrderExpirationReconciler(),
+        AutoRenewReconciler(),
         FinanceMaterializeTemplatesReconciler(),
         EntryAutoDrainReconciler(),
         UpstreamFailoverReconciler(snapshot_trigger=snapshot_trigger),
@@ -117,6 +126,7 @@ def _build_reconcilers(notifications: NotificationService, nats_client: NatsClie
         NotificationsDigestReconciler(notifications=notifications),
         BroadcastSchedulerReconciler(nats_client=nats_client),
         RecurringBroadcastReconciler(nats_client=nats_client),
+        DripReconciler(nats_client=nats_client),
     ]
 
 
@@ -128,6 +138,7 @@ def _build_nats_runtimes(node_agent_runtime: NodeAgentRuntime, nats_settings) ->
         BackendLoadRebalanceConsumer(nats_settings),
         SupportInboundConsumer(nats_settings),
         SupportSentConsumer(nats_settings),
+        DripEnrollmentConsumer(nats_settings),
     ]
 
 

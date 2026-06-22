@@ -95,6 +95,7 @@ class SubscriptionOut(BaseModel):
     lifetime_used_traffic_bytes: int = 0
     last_traffic_reset_at: datetime | None = None
     device_count: int | None = None
+    auto_renew: bool = False
     created_at: datetime
     updated_at: datetime
 

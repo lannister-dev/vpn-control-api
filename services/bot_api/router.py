@@ -8,6 +8,8 @@ from services.auth.dependencies import bot_auth
 from services.referral.schemas import BotReferralApplyIn, BotReferralInfoOut
 
 from .schemas import (
+    BotAutoRenewIn,
+    BotAutoRenewOut,
     BotDeviceSlotPurchaseIn,
     BotDevicesOut,
     BotOrderActionOut,
@@ -200,6 +202,19 @@ async def bot_create_renew_order(
     service: BotApiService = Depends(get_bot_api_service),
 ):
     return await service.create_renew_order(telegram_id=telegram_id, payload=payload)
+
+
+@router.post(
+    "/users/{telegram_id}/auto-renew",
+    response_model=BotAutoRenewOut,
+    summary="Toggle balance auto-renew for current Telegram bot subscription",
+)
+async def bot_set_auto_renew(
+    telegram_id: int,
+    payload: BotAutoRenewIn,
+    service: BotApiService = Depends(get_bot_api_service),
+):
+    return await service.set_auto_renew(telegram_id=telegram_id, enabled=payload.enabled)
 
 
 @router.get(

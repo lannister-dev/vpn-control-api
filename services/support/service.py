@@ -25,6 +25,8 @@ from services.support.constants import (
     MAX_BROADCAST_DISPATCH_ATTEMPTS,
     SUBJECT_PREVIEW_LEN,
     SUPPORT_OUTBOUND_SUBJECT,
+    DripCondition,
+    DripStatus,
 )
 from services.support.exceptions import (
     BroadcastNotFound,
@@ -37,12 +39,16 @@ from services.support.exceptions import (
     TicketNotFound,
 )
 from services.support.models import (
+    DripCampaign,
+    DripStep,
     SupportMessage,
     SupportTicket,
+    UserCampaignState,
 )
 from services.support.repository import (
     BroadcastLogRepository,
     BroadcastRepository,
+    DripRepository,
     RecurringBroadcastRepository,
     SupportAttachmentRepository,
     SupportMessageRepository,
@@ -60,10 +66,16 @@ from services.support.schemas import (
     BroadcastListOut,
     BroadcastOut,
     BroadcastStatus,
+    DripCampaignIn,
+    DripCampaignListOut,
+    DripCampaignOut,
+    DripCampaignStat,
+    DripStatsOut,
     MessageAuthorRef,
     MessageListOut,
     MessageOut,
     MessageSenderKind,
+    OnboardingFunnelOut,
     RecurringBroadcastCreateIn,
     RecurringBroadcastInternalCreate,
     RecurringBroadcastListOut,
@@ -121,6 +133,7 @@ class SupportService:
         self.broadcasts = BroadcastRepository(session)
         self.broadcast_log = BroadcastLogRepository(session)
         self.recurring = RecurringBroadcastRepository(session)
+        self.drip = DripRepository(session)
         self.users = UserRepository(session)
         self.admins = AdminUserRepository(session)
         self.subscriptions = SubscriptionRepository(session)
@@ -1145,6 +1158,210 @@ class SupportService:
         return await self.broadcasts.resolve_audience_user_ids(
             audience, plan_id=plan_id, now=datetime.now(timezone.utc)
         )
+
+    async def enroll_drip_for_event(self, *, event_kind: str, telegram_id: int) -> int:
+        campaigns = await self.drip.active_campaigns_by_trigger(event_kind)
+        if not campaigns:
+            return 0
+        user = await self.users.get_by_telegram_id(telegram_id)
+        if user is None:
+            return 0
+        now = datetime.now(timezone.utc)
+        enrolled = 0
+        for campaign in campaigns:
+            steps = sorted(campaign.steps, key=lambda s: s.step_order)
+            if not steps:
+                continue
+            first_at = now + timedelta(seconds=int(steps[0].delay_seconds))
+            if await self.drip.enroll(
+                user_id=user.id,
+                campaign_id=campaign.id,
+                entered_at=now,
+                next_send_at=first_at,
+            ):
+                enrolled += 1
+        return enrolled
+
+    async def run_due_drip(self, *, now: datetime, limit: int) -> int:
+        states = await self.drip.list_due(now=now, limit=limit)
+        sent = 0
+        for state in states:
+            if await self._process_drip_state(state, now=now):
+                sent += 1
+        return sent
+
+    async def _process_drip_state(
+        self, state: UserCampaignState, *, now: datetime
+    ) -> bool:
+        campaign = await self.drip.get_campaign_with_steps(state.campaign_id)
+        if campaign is None or not campaign.is_active:
+            state.status = DripStatus.STOPPED
+            return False
+        steps = sorted(campaign.steps, key=lambda s: s.step_order)
+        user = await self.users.get_by_id(state.user_id)
+        if user is None:
+            state.status = DripStatus.ABANDONED
+            return False
+        if getattr(user, "suppress_marketing", False):
+            state.status = DripStatus.STOPPED
+            return False
+        if state.current_step >= len(steps):
+            state.status = DripStatus.COMPLETED
+            state.next_send_at = None
+            return False
+        step = steps[state.current_step]
+        if not await self._drip_condition_holds(step.condition, state.user_id):
+            state.status = DripStatus.COMPLETED
+            state.next_send_at = None
+            return False
+
+        ok = await self._send_drip_step(state, step, telegram_id=int(user.telegram_id))
+        state.last_step_sent_at = now
+        next_index = state.current_step + 1
+        state.current_step = next_index
+        if next_index >= len(steps):
+            state.status = DripStatus.COMPLETED
+            state.next_send_at = None
+        else:
+            state.next_send_at = now + timedelta(
+                seconds=int(steps[next_index].delay_seconds)
+            )
+        return ok
+
+    async def list_drip_campaigns(self) -> DripCampaignListOut:
+        campaigns = await self.drip.list_campaigns()
+        return DripCampaignListOut(
+            items=[DripCampaignOut.model_validate(c) for c in campaigns]
+        )
+
+    async def onboarding_funnel(self, *, days: int) -> OnboardingFunnelOut:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        counts = await self.broadcasts.onboarding_funnel(cutoff=cutoff)
+        return OnboardingFunnelOut(period_days=days, **counts)
+
+    async def drip_stats(self) -> DripStatsOut:
+        rows = await self.drip.status_counts()
+        agg: dict[UUID, dict[str, int]] = {}
+        for campaign_id, status, count in rows:
+            bucket = agg.setdefault(
+                campaign_id,
+                {"active": 0, "completed": 0, "abandoned": 0, "stopped": 0},
+            )
+            if status in bucket:
+                bucket[status] += count
+        items = [
+            DripCampaignStat(
+                campaign_id=campaign_id,
+                enrolled=sum(bucket.values()),
+                **bucket,
+            )
+            for campaign_id, bucket in agg.items()
+        ]
+        return DripStatsOut(items=items)
+
+    @staticmethod
+    def _build_drip_steps(payload: DripCampaignIn) -> list[DripStep]:
+        return [
+            DripStep(
+                step_order=s.step_order,
+                delay_seconds=s.delay_seconds,
+                condition=s.condition,
+                text_body=s.text_body,
+                inline_buttons=s.inline_buttons,
+                media_kind=s.media_kind,
+                media_url=s.media_url,
+            )
+            for s in sorted(payload.steps, key=lambda x: x.step_order)
+        ]
+
+    async def create_drip_campaign(self, payload: DripCampaignIn) -> DripCampaignOut:
+        campaign = DripCampaign(
+            key=payload.key,
+            name=payload.name,
+            trigger_event=payload.trigger_event,
+            is_active=payload.is_active,
+        )
+        campaign.steps = self._build_drip_steps(payload)
+        self.session.add(campaign)
+        await self.session.commit()
+        return DripCampaignOut.model_validate(campaign)
+
+    async def update_drip_campaign(
+        self, campaign_id: UUID, payload: DripCampaignIn
+    ) -> DripCampaignOut | None:
+        campaign = await self.drip.get_campaign_with_steps(campaign_id)
+        if campaign is None:
+            return None
+        campaign.key = payload.key
+        campaign.name = payload.name
+        campaign.trigger_event = payload.trigger_event
+        campaign.is_active = payload.is_active
+        campaign.steps.clear()
+        await self.session.flush()
+        for step in self._build_drip_steps(payload):
+            campaign.steps.append(step)
+        await self.session.commit()
+        return DripCampaignOut.model_validate(campaign)
+
+    async def delete_drip_campaign(self, campaign_id: UUID) -> bool:
+        campaign = await self.drip.get_campaign_with_steps(campaign_id)
+        if campaign is None:
+            return False
+        await self.session.delete(campaign)
+        await self.session.commit()
+        return True
+
+    async def _drip_condition_holds(self, condition: str, user_id: UUID) -> bool:
+        if condition == DripCondition.NOT_CONNECTED:
+            return not await self.drip.has_connected(user_id)
+        if condition == DripCondition.NOT_PURCHASED:
+            return not await self.drip.has_paid(user_id)
+        return True
+
+    async def _send_drip_step(
+        self, state: UserCampaignState, step: DripStep, *, telegram_id: int
+    ) -> bool:
+        if self._nats is None:
+            return False
+        await self._ensure_outbound_stream()
+        media: list[SupportOutboundAttachmentMsg] = []
+        if step.media_url and step.media_kind:
+            media.append(
+                SupportOutboundAttachmentMsg(kind=step.media_kind, url=step.media_url)
+            )
+        buttons: list[SupportOutboundInlineButton] = []
+        for b in step.inline_buttons or []:
+            text = (b.get("text") or "").strip()
+            url = (b.get("url") or "").strip()
+            if text and self._is_valid_button_url(url):
+                style = b.get("style")
+                style = style if style in BROADCAST_BUTTON_STYLES else None
+                buttons.append(SupportOutboundInlineButton(text=text, url=url, style=style))
+        payload = SupportOutboundPayload(
+            ticket_id=f"drip:{state.campaign_id}",
+            message_id=f"drip:{state.id}:{state.current_step}",
+            telegram_id=telegram_id,
+            text=step.text_body,
+            media=media,
+            buttons=buttons,
+            entities=None,
+            parse_mode="HTML",
+            kind="broadcast",
+        )
+        try:
+            await self._nats.publish_jetstream(
+                subject=self._outbound_subject,
+                payload=payload.model_dump(),
+                msg_id=payload.message_id,
+            )
+            return True
+        except Exception:
+            logger_support.exception(
+                "drip_publish_failed",
+                state_id=str(state.id),
+                step=state.current_step,
+            )
+            return False
 
     async def _publish_outbound(
         self,

@@ -3,7 +3,9 @@ from decimal import Decimal
 from enum import Enum
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from services.support.constants import DRIP_CONDITIONS, DRIP_TRIGGER_EVENTS
 
 
 class TicketStatus(str, Enum):
@@ -434,3 +436,84 @@ class SupportSentAck(BaseModel):
     tg_message_id: int | None = None
     ok: bool = True
     error: str | None = None
+
+
+class DripTriggerEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    kind: str
+    telegram_id: int
+
+
+class DripStepIn(BaseModel):
+    step_order: int
+    delay_seconds: int = 0
+    condition: str = "always"
+    text_body: str
+    inline_buttons: list[dict] | None = None
+    media_kind: str | None = None
+    media_url: str | None = None
+
+    @field_validator("condition")
+    @classmethod
+    def _check_condition(cls, v: str) -> str:
+        if v not in DRIP_CONDITIONS:
+            raise ValueError(f"condition must be one of {DRIP_CONDITIONS}")
+        return v
+
+
+class DripStepOut(DripStepIn):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+
+
+class DripCampaignIn(BaseModel):
+    key: str
+    name: str
+    trigger_event: str | None = None
+    is_active: bool = True
+    steps: list[DripStepIn] = Field(default_factory=list)
+
+    @field_validator("trigger_event")
+    @classmethod
+    def _check_trigger(cls, v: str | None) -> str | None:
+        if v is not None and v not in DRIP_TRIGGER_EVENTS:
+            raise ValueError(f"trigger_event must be null or one of {DRIP_TRIGGER_EVENTS}")
+        return v
+
+
+class DripCampaignOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    key: str
+    name: str
+    trigger_event: str | None
+    is_active: bool
+    steps: list[DripStepOut]
+
+
+class DripCampaignListOut(BaseModel):
+    items: list[DripCampaignOut]
+
+
+class DripCampaignStat(BaseModel):
+    campaign_id: UUID
+    enrolled: int = 0
+    active: int = 0
+    completed: int = 0
+    abandoned: int = 0
+    stopped: int = 0
+
+
+class DripStatsOut(BaseModel):
+    items: list[DripCampaignStat]
+
+
+class OnboardingFunnelOut(BaseModel):
+    period_days: int
+    registered: int = 0
+    trial_started: int = 0
+    connected: int = 0
+    purchased: int = 0

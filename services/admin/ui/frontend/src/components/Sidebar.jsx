@@ -37,6 +37,8 @@ const GROUPS = [
     { id: "tickets", label: "Тикеты", icon: "message-square", attentionKey: "unanswered" },
     { id: "support-templates", label: "Шаблоны", icon: "file-text" },
     { id: "broadcasts", label: "Рассылки", icon: "send" },
+    { id: "drip", label: "Цепочки", icon: "git-branch" },
+    { id: "funnel", label: "Воронка", icon: "filter" },
   ]},
   { title: "Система", items: [
     { id: "zones", label: "Зоны", icon: "globe" },

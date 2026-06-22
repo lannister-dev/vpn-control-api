@@ -503,6 +503,34 @@ class SubscriptionRepository(BaseRepository[Subscription]):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
+    async def list_due_auto_renew(
+        self, *, now: datetime, window_end: datetime, limit: int = 200
+    ) -> list[Subscription]:
+        stmt = (
+            select(self.model)
+            .join(Plan, self.model.plan_id == Plan.id)
+            .where(
+                self.model.is_active.is_(True),
+                self.model.auto_renew.is_(True),
+                self.model.expires_at.isnot(None),
+                self.model.expires_at > now,
+                self.model.expires_at <= window_end,
+                Plan.price_rub > 0,
+            )
+            .order_by(self.model.expires_at.asc())
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def set_auto_renew(self, subscription_id: UUID, enabled: bool) -> bool:
+        sub = await self.get_by_id(subscription_id)
+        if sub is None:
+            return False
+        sub.auto_renew = enabled
+        await self.session.flush()
+        return True
+
     async def bulk_deactivate(self, subscription_ids: list[UUID]) -> int:
         if not subscription_ids:
             return 0
@@ -512,6 +540,24 @@ class SubscriptionRepository(BaseRepository[Subscription]):
             .values(is_active=False)
         )
         return len(subscription_ids)
+
+    async def stamp_first_connection(self, *, now: datetime, limit: int = 500) -> list[UUID]:
+        due = (
+            select(self.model.id)
+            .where(
+                self.model.first_connected_at.is_(None),
+                self.model.lifetime_used_traffic_bytes > 0,
+            )
+            .limit(limit)
+        )
+        stmt = (
+            update(self.model)
+            .where(self.model.id.in_(due))
+            .values(first_connected_at=now)
+            .returning(self.model.id)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
 
 
 class SubscriptionDeviceRepository(BaseRepository[SubscriptionDevice]):

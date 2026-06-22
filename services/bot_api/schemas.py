@@ -224,6 +224,7 @@ class BotSubscriptionSummaryOut(BaseModel):
     device_price_rub: Decimal = Decimal("0")
     device_price_stars: int | None = None
     can_renew: bool = True
+    auto_renew: bool = False
     used_traffic_bytes: int = 0
     lifetime_used_traffic_bytes: int = 0
     traffic_limit_bytes: int | None = None
@@ -360,3 +361,12 @@ class BotOrderHistoryItemOut(BaseModel):
 class BotOrderHistoryOut(BaseModel):
     items: list[BotOrderHistoryItemOut]
     total: int
+
+
+class BotAutoRenewIn(BaseModel):
+    enabled: bool
+
+
+class BotAutoRenewOut(BaseModel):
+    ok: bool = True
+    enabled: bool = False
