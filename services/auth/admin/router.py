@@ -28,6 +28,7 @@ from services.auth.admin.dependencies import require_role, verify_csrf
 from services.auth.admin.models import AdminUser
 from services.auth.admin.rate_limit import login_rate_limiter
 from services.auth.admin.schemas import (
+    AdminUiPrefs,
     AdminUserCreateIn,
     AdminUserListOut,
     AdminUserOut,
@@ -45,6 +46,7 @@ from services.auth.admin.utils import (
     set_csrf_cookie,
     set_session_cookie,
 )
+from services.auth.dependencies import current_admin_user_id
 from services.config import get_settings
 
 router = APIRouter(prefix="/auth/admin", tags=["Admin Auth"])
@@ -512,3 +514,33 @@ async def revoke_user_sessions(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     return {"ok": True, "revoked": count}
+
+
+@router.get(
+    "/ui-prefs",
+    response_model=AdminUiPrefs,
+    summary="Get current admin sidebar preferences",
+)
+async def get_ui_prefs(
+    user_id: UUID | None = Depends(current_admin_user_id),
+    service: AdminAuthService = Depends(get_admin_auth_service),
+) -> AdminUiPrefs:
+    if user_id is None:
+        return AdminUiPrefs()
+    return AdminUiPrefs(**await service.get_ui_prefs(user_id))
+
+
+@router.put(
+    "/ui-prefs",
+    response_model=AdminUiPrefs,
+    summary="Save current admin sidebar preferences",
+)
+async def put_ui_prefs(
+    body: AdminUiPrefs,
+    _csrf_ok: None = Depends(verify_csrf),
+    user_id: UUID | None = Depends(current_admin_user_id),
+    service: AdminAuthService = Depends(get_admin_auth_service),
+) -> AdminUiPrefs:
+    if user_id is None:
+        return body
+    return AdminUiPrefs(**await service.set_ui_prefs(user_id, body.model_dump()))

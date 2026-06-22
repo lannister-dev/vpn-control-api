@@ -211,3 +211,19 @@ def test_render_drip_text_substitutes_vars():
     assert "vasya" in out
     assert "{name}" not in out
     assert "{referral}" not in out
+
+
+def test_build_outbound_button_action_vs_url():
+    action_btn = SupportService._build_outbound_button(
+        {"text": "Продлить", "action": "renew", "style": "success"}
+    )
+    assert action_btn.action == "renew"
+    assert action_btn.url == ""
+    assert action_btn.style == "success"
+
+    url_btn = SupportService._build_outbound_button({"text": "Сайт", "url": "https://x.com"})
+    assert url_btn.url == "https://x.com"
+    assert url_btn.action is None
+
+    assert SupportService._build_outbound_button({"text": "X", "action": "bogus"}) is None
+    assert SupportService._build_outbound_button({"action": "renew"}) is None

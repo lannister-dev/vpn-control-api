@@ -33,6 +33,14 @@ const BUTTON_STYLES = [
   { v: "danger", l: "Красная" },
 ];
 
+const BUTTON_ACTIONS = [
+  { v: "", l: "Свой URL" },
+  { v: "renew", l: "Продлить" },
+  { v: "connect", l: "Подключение" },
+  { v: "plans", l: "Тарифы" },
+  { v: "help", l: "Помощь" },
+];
+
 function splitDelay(sec) {
   const s = sec || 0;
   if (s && s % 86400 === 0) return [s / 86400, 86400];
@@ -75,6 +83,7 @@ function fromApi(c) {
             text: b.text || "",
             url: b.url || "",
             style: b.style || "",
+            action: b.action || "",
           })),
         };
       }),
@@ -89,8 +98,13 @@ function toPayload(form) {
     is_active: form.is_active,
     steps: form.steps.map((s, i) => {
       const buttons = s.buttons
-        .filter((b) => b.text.trim() && b.url.trim())
-        .map((b) => ({ text: b.text.trim(), url: b.url.trim(), style: b.style || null }));
+        .filter((b) => b.text.trim() && (b.action || b.url.trim()))
+        .map((b) => ({
+          text: b.text.trim(),
+          url: b.action ? "" : b.url.trim(),
+          style: b.style || null,
+          action: b.action || null,
+        }));
       return {
         step_order: i,
         delay_seconds: Math.max(0, Math.round(s.val * s.unit)),
@@ -348,65 +362,66 @@ export function DripPage() {
               </div>
               <div style={{ display: "grid", gap: 6 }}>
                 <span className="form-label">Кнопки</span>
-                {s.buttons.map((b, bi) => (
-                  <div key={bi} style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    <input
-                      className="input"
-                      style={{ flex: 1 }}
-                      value={b.text}
-                      placeholder="Текст"
-                      onChange={(e) =>
-                        patchStep(i, {
-                          buttons: s.buttons.map((x, xi) =>
-                            xi === bi ? { ...x, text: e.target.value } : x,
-                          ),
-                        })
-                      }
-                    />
-                    <input
-                      className="input"
-                      style={{ flex: 2 }}
-                      value={b.url}
-                      placeholder="https://… или https://t.me/…"
-                      onChange={(e) =>
-                        patchStep(i, {
-                          buttons: s.buttons.map((x, xi) =>
-                            xi === bi ? { ...x, url: e.target.value } : x,
-                          ),
-                        })
-                      }
-                    />
-                    <select
-                      className="select"
-                      style={{ width: 130 }}
-                      value={b.style}
-                      onChange={(e) =>
-                        patchStep(i, {
-                          buttons: s.buttons.map((x, xi) =>
-                            xi === bi ? { ...x, style: e.target.value } : x,
-                          ),
-                        })
-                      }
-                    >
-                      {BUTTON_STYLES.map((st) => (
-                        <option key={st.v} value={st.v}>{st.l}</option>
-                      ))}
-                    </select>
-                    <button
-                      className="btn btn-ghost btn-icon"
-                      onClick={() =>
-                        patchStep(i, { buttons: s.buttons.filter((_, xi) => xi !== bi) })
-                      }
-                      title="Удалить кнопку"
-                    >
-                      <Icon name="x" size={14} />
-                    </button>
-                  </div>
-                ))}
+                {s.buttons.map((b, bi) => {
+                  const upd = (patch) =>
+                    patchStep(i, {
+                      buttons: s.buttons.map((x, xi) => (xi === bi ? { ...x, ...patch } : x)),
+                    });
+                  return (
+                    <div key={bi} style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                      <input
+                        className="input"
+                        style={{ flex: 1, minWidth: 120 }}
+                        value={b.text}
+                        placeholder="Текст кнопки"
+                        onChange={(e) => upd({ text: e.target.value })}
+                      />
+                      <select
+                        className="select"
+                        style={{ width: 150 }}
+                        value={b.action || ""}
+                        onChange={(e) => upd({ action: e.target.value })}
+                        title="Куда ведёт кнопка"
+                      >
+                        {BUTTON_ACTIONS.map((a) => (
+                          <option key={a.v} value={a.v}>{a.l}</option>
+                        ))}
+                      </select>
+                      {!b.action && (
+                        <input
+                          className="input"
+                          style={{ flex: 2, minWidth: 160 }}
+                          value={b.url}
+                          placeholder="https://… или https://t.me/…"
+                          onChange={(e) => upd({ url: e.target.value })}
+                        />
+                      )}
+                      <select
+                        className="select"
+                        style={{ width: 130 }}
+                        value={b.style}
+                        onChange={(e) => upd({ style: e.target.value })}
+                      >
+                        {BUTTON_STYLES.map((st) => (
+                          <option key={st.v} value={st.v}>{st.l}</option>
+                        ))}
+                      </select>
+                      <button
+                        className="btn btn-ghost btn-icon"
+                        onClick={() =>
+                          patchStep(i, { buttons: s.buttons.filter((_, xi) => xi !== bi) })
+                        }
+                        title="Удалить кнопку"
+                      >
+                        <Icon name="x" size={14} />
+                      </button>
+                    </div>
+                  );
+                })}
                 <button
                   className="btn btn-sm"
                   onClick={() =>
-                    patchStep(i, { buttons: [...s.buttons, { text: "", url: "", style: "" }] })
+                    patchStep(i, { buttons: [...s.buttons, { text: "", url: "", style: "", action: "" }] })
                   }
                 >
                   <Icon name="plus" size={14} /> Кнопка

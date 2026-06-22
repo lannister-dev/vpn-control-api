@@ -19,6 +19,7 @@ from services.billing.repository import OrderRepository
 from services.config import get_settings
 from services.promo.repository import PromoCodeRepository
 from services.support.constants import (
+    BROADCAST_BUTTON_ACTIONS,
     BROADCAST_BUTTON_STYLES,
     BROADCAST_RETRY_BACKOFF_SEC,
     BROADCAST_SENDING_STALE_SEC,
@@ -1080,12 +1081,9 @@ class SupportService:
 
         button_payload: list[SupportOutboundInlineButton] = []
         for b in (buttons or []):
-            t = (b.get("text") or "").strip()
-            u = (b.get("url") or "").strip()
-            if t and self._is_valid_button_url(u):
-                style = b.get("style")
-                style = style if style in BROADCAST_BUTTON_STYLES else None
-                button_payload.append(SupportOutboundInlineButton(text=t, url=u, style=style))
+            btn = self._build_outbound_button(b)
+            if btn is not None:
+                button_payload.append(btn)
 
         bcast = await self.broadcasts.get_by_id(broadcast_id)
         username = (get_settings().referral.bot_username or "").strip()
@@ -1137,6 +1135,21 @@ class SupportService:
     @staticmethod
     def _strip_html_text(value: str) -> str:
         return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", value or "")).strip()
+
+    @staticmethod
+    def _build_outbound_button(b: dict) -> SupportOutboundInlineButton | None:
+        text = (b.get("text") or "").strip()
+        if not text:
+            return None
+        style = b.get("style")
+        style = style if style in BROADCAST_BUTTON_STYLES else None
+        action = b.get("action")
+        if action in BROADCAST_BUTTON_ACTIONS:
+            return SupportOutboundInlineButton(text=text, action=action, style=style)
+        url = (b.get("url") or "").strip()
+        if SupportService._is_valid_button_url(url):
+            return SupportOutboundInlineButton(text=text, url=url, style=style)
+        return None
 
     @staticmethod
     def _is_valid_button_url(url: str) -> bool:
@@ -1354,12 +1367,9 @@ class SupportService:
             )
         buttons: list[SupportOutboundInlineButton] = []
         for b in step.inline_buttons or []:
-            text = (b.get("text") or "").strip()
-            url = (b.get("url") or "").strip()
-            if text and self._is_valid_button_url(url):
-                style = b.get("style")
-                style = style if style in BROADCAST_BUTTON_STYLES else None
-                buttons.append(SupportOutboundInlineButton(text=text, url=url, style=style))
+            btn = self._build_outbound_button(b)
+            if btn is not None:
+                buttons.append(btn)
         payload = SupportOutboundPayload(
             ticket_id=f"drip:{state.campaign_id}",
             message_id=f"drip:{state.id}:{state.current_step}",

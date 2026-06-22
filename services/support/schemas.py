@@ -417,8 +417,9 @@ class SupportOutboundAttachmentMsg(BaseModel):
 
 class SupportOutboundInlineButton(BaseModel):
     text: str
-    url: str
+    url: str = ""
     style: str | None = None
+    action: str | None = None
 
 
 class SupportOutboundPayload(BaseModel):

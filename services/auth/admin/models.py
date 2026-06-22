@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from shared.database.base_model import Base
@@ -18,6 +19,7 @@ class AdminUser(Base):
     telegram_username: Mapped[str | None] = mapped_column(String(128), nullable=True)
     role: Mapped[str] = mapped_column(String(16), nullable=False, default="viewer")
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    ui_prefs: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
 
 class AdminSession(Base):

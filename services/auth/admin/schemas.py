@@ -103,3 +103,11 @@ class AdminSessionOut(BaseModel):
 class AdminUserSessionsOut(BaseModel):
     items: list[AdminSessionOut]
     total: int
+
+
+class AdminUiPrefs(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    pinned: list[str] = Field(default_factory=list, max_length=50)
+    order: list[str] = Field(default_factory=list, max_length=50)
+    hidden: list[str] = Field(default_factory=list, max_length=100)
