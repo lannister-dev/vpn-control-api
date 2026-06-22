@@ -799,6 +799,7 @@ class BotApiService:
             device_price_rub=device_price_rub,
             device_price_stars=device_price_stars,
             can_renew=can_renew,
+            auto_renew=getattr(subscription, "auto_renew", False),
             used_traffic_bytes=subscription.used_traffic_bytes,
             lifetime_used_traffic_bytes=subscription.lifetime_used_traffic_bytes,
             traffic_limit_bytes=(plan.traffic_limit_bytes if plan is not None else None),
