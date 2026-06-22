@@ -13,6 +13,7 @@ from services.artifacts.models import ProfileArtifact  # noqa: F401
 from services.auth.admin.models import AdminAuditEvent, AdminSession, AdminUser  # noqa: F401
 from services.balancer.load_consumer import BackendLoadRebalanceConsumer
 from services.billing.models import BalanceTransaction, PaymentOrder  # noqa: F401
+from services.billing.reconcilers.auto_renew import AutoRenewReconciler
 from services.billing.reconcilers.expiration import BillingOrderExpirationReconciler
 from services.config import get_settings
 from services.entry.models import EntryBackendAssignment  # noqa: F401
@@ -115,6 +116,7 @@ def _build_reconcilers(notifications: NotificationService, nats_client: NatsClie
         SubscriptionExpirationReconciler(),
         FirstConnectionReconciler(),
         BillingOrderExpirationReconciler(),
+        AutoRenewReconciler(),
         FinanceMaterializeTemplatesReconciler(),
         EntryAutoDrainReconciler(),
         UpstreamFailoverReconciler(snapshot_trigger=snapshot_trigger),

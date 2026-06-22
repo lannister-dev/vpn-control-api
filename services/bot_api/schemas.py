@@ -360,3 +360,12 @@ class BotOrderHistoryItemOut(BaseModel):
 class BotOrderHistoryOut(BaseModel):
     items: list[BotOrderHistoryItemOut]
     total: int
+
+
+class BotAutoRenewIn(BaseModel):
+    enabled: bool
+
+
+class BotAutoRenewOut(BaseModel):
+    ok: bool = True
+    enabled: bool = False

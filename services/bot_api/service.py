@@ -34,6 +34,7 @@ from ..billing.exceptions import InsufficientBalance, ProviderError
 from .constants import TOP_UP_STARS_RUB_RATE
 from .schemas import (
     BotAction,
+    BotAutoRenewOut,
     BotDashboardState,
     BotDeviceOut,
     BotDeviceSlotPurchaseIn,
@@ -807,6 +808,17 @@ class BotApiService:
             created_at=subscription.created_at,
             updated_at=subscription.updated_at,
         )
+
+    async def set_auto_renew(self, *, telegram_id: int, enabled: bool) -> BotAutoRenewOut:
+        user = await self.user_repository.get_by_telegram_id(telegram_id)
+        if user is None:
+            return BotAutoRenewOut(ok=False, enabled=False)
+        current = await self._current_subscription(user.id)
+        if current is None:
+            return BotAutoRenewOut(ok=False, enabled=False)
+        await self.subscription_repository.set_auto_renew(current.id, enabled)
+        await self.session.commit()
+        return BotAutoRenewOut(ok=True, enabled=enabled)
 
     async def _current_subscription(self, user_id: UUID) -> SubscriptionOut | None:
         subscriptions = await self.subscription_service.list_subscriptions_by_user(
