@@ -259,6 +259,17 @@ class AdminAuthService:
             ip_address=ip_address,
         )
 
+    async def get_ui_prefs(self, user_id: UUID) -> dict:
+        user = await self.user_repository.get_by_id(user_id)
+        if user is None or not user.ui_prefs:
+            return {}
+        return dict(user.ui_prefs)
+
+    async def set_ui_prefs(self, user_id: UUID, prefs: dict) -> dict:
+        await self.user_repository.update_by_id(user_id, {"ui_prefs": prefs})
+        await self.session.commit()
+        return prefs
+
     async def check_session(self, session_hash: str | None) -> SessionCheckOut:
         if not session_hash:
             return SessionCheckOut(authenticated=False)
