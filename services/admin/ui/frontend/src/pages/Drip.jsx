@@ -304,7 +304,7 @@ export function DripPage() {
                 </label>
               </div>
               <div className="form-field">
-                <span className="form-label">Текст сообщения</span>
+                <span className="form-label">Текст сообщения · переменные: {"{name}"}, {"{referral}"}</span>
                 <TextEditor
                   value={s.text_body}
                   onChange={(v) => patchStep(i, { text_body: v })}

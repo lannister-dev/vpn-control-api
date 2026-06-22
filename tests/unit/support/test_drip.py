@@ -203,3 +203,11 @@ async def test_drip_stats_aggregates_by_status():
     assert item.completed == 2
     assert item.stopped == 1
     assert item.enrolled == 6
+
+
+def test_render_drip_text_substitutes_vars():
+    user = SimpleNamespace(username="vasya", referral_code="ABC")
+    out = SupportService._render_drip_text("Привет, {name}! Зови друзей: {referral}", user)
+    assert "vasya" in out
+    assert "{name}" not in out
+    assert "{referral}" not in out
