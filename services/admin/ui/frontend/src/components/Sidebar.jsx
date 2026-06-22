@@ -1,4 +1,6 @@
-import { useState, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
+
+import { api } from "../api/client.js";
 import { Icon } from "./Icon.jsx";
 
 const COLLAPSE_KEY = "sidebar.collapsedGroups";
@@ -49,7 +51,7 @@ const GROUPS = [
   ]},
 ];
 
-const PINNED = ["overview", "users", "tickets", "fin-overview"];
+const DEFAULT_PINNED = ["overview", "users", "tickets", "fin-overview"];
 const LABELS = {};
 GROUPS.forEach((g) => g.items.forEach((it) => { LABELS[it.id] = { ...it, group: g.title }; }));
 
@@ -57,6 +59,49 @@ function fmtCount(n) { return n > 999 ? `${(n / 1000).toFixed(1)}k` : String(n);
 
 export function Sidebar({ activeTab, onTab, collapsed, onToggle, onOpenPalette, counts = {}, user, onLogout, mobileOpen, onMobileClose }) {
   const [collapsedGroups, setCollapsedGroups] = useState(loadCollapsed);
+  const [pinned, setPinned] = useState(DEFAULT_PINNED);
+  const [hidden, setHidden] = useState([]);
+  const [editMode, setEditMode] = useState(false);
+  const loadedRef = useRef(false);
+  const saveTimer = useRef(null);
+
+  useEffect(() => {
+    let alive = true;
+    api.get("/auth/admin/ui-prefs").then((p) => {
+      if (!alive || !p) return;
+      loadedRef.current = true;
+      if (Array.isArray(p.pinned) && (p.pinned.length || (p.hidden || []).length)) {
+        setPinned(p.pinned);
+      }
+      if (Array.isArray(p.hidden)) setHidden(p.hidden);
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  const persistPrefs = (nextPinned, nextHidden) => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      api.put("/auth/admin/ui-prefs", { pinned: nextPinned, order: [], hidden: nextHidden })
+        .catch(() => {});
+    }, 500);
+  };
+
+  const setPins = (next) => { setPinned(next); persistPrefs(next, hidden); };
+  const setHides = (next) => { setHidden(next); persistPrefs(pinned, next); };
+
+  const isPinned = (id) => pinned.includes(id);
+  const isHidden = (id) => hidden.includes(id);
+  const togglePin = (id) => setPins(isPinned(id) ? pinned.filter((x) => x !== id) : [...pinned, id]);
+  const toggleHide = (id) => setHides(isHidden(id) ? hidden.filter((x) => x !== id) : [...hidden, id]);
+  const movePin = (id, dir) => {
+    const i = pinned.indexOf(id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= pinned.length) return;
+    const next = pinned.slice();
+    [next[i], next[j]] = [next[j], next[i]];
+    setPins(next);
+  };
+
   const pick = (id) => {
     onTab(id);
     onMobileClose?.();
@@ -103,18 +148,35 @@ export function Sidebar({ activeTab, onTab, collapsed, onToggle, onOpenPalette, 
     );
   };
 
-  const navBtn = (it) => (
-    <button
-      key={it.id}
-      className="side-btn"
-      data-active={activeTab === it.id}
-      onClick={() => pick(it.id)}
-      title={collapsed ? it.label : undefined}
-    >
-      <Icon name={it.icon} size={15} />
-      <span className="side-label">{it.label}</span>
-      {countBadge(it)}
-    </button>
+  const navBtn = (it, { pinnedRow = false } = {}) => (
+    <div key={(pinnedRow ? "p-" : "") + it.id} className="side-row" data-edit={editMode || undefined}>
+      <button
+        className="side-btn"
+        data-active={activeTab === it.id}
+        onClick={() => pick(it.id)}
+        title={collapsed ? it.label : undefined}
+      >
+        <Icon name={it.icon} size={15} />
+        <span className="side-label">{it.label}</span>
+        {countBadge(it)}
+      </button>
+      {editMode && !collapsed && (
+        <span className="side-row-tools">
+          {pinnedRow ? (
+            <>
+              <button className="side-tool" title="Выше" onClick={() => movePin(it.id, -1)}><Icon name="chevron-up" size={12} /></button>
+              <button className="side-tool" title="Ниже" onClick={() => movePin(it.id, 1)}><Icon name="chevron-down" size={12} /></button>
+              <button className="side-tool" title="Открепить" onClick={() => togglePin(it.id)}><Icon name="pin" size={12} /></button>
+            </>
+          ) : (
+            <>
+              <button className="side-tool" data-on={isPinned(it.id) || undefined} title={isPinned(it.id) ? "Открепить" : "Закрепить"} onClick={() => togglePin(it.id)}><Icon name="pin" size={12} /></button>
+              <button className="side-tool" title={isHidden(it.id) ? "Показать" : "Скрыть"} onClick={() => toggleHide(it.id)}><Icon name={isHidden(it.id) ? "eye-off" : "eye"} size={12} /></button>
+            </>
+          )}
+        </span>
+      )}
+    </div>
   );
 
   const flyItem = (it) => (
@@ -129,6 +191,8 @@ export function Sidebar({ activeTab, onTab, collapsed, onToggle, onOpenPalette, 
       {countBadge(it)}
     </button>
   );
+
+  const pinnedItems = pinned.map((id) => LABELS[id]).filter(Boolean);
 
   return (
     <>
@@ -165,43 +229,66 @@ export function Sidebar({ activeTab, onTab, collapsed, onToggle, onOpenPalette, 
 
         <nav className="side-nav">
           <div className="side-pinned">
-            {!collapsed && <div className="side-pinned-title"><Icon name="pin" size={11} /> Закреплённое</div>}
-            {PINNED.map((id) => LABELS[id]).filter(Boolean).map((it) => (
+            {!collapsed && (
+              <div className="side-pinned-title">
+                <span><Icon name="pin" size={11} /> Закреплённое</span>
+                <button className="side-edit-btn" data-on={editMode || undefined} title="Настроить меню" onClick={() => setEditMode((v) => !v)}>
+                  <Icon name={editMode ? "check" : "sliders"} size={12} />
+                </button>
+              </div>
+            )}
+            {pinnedItems.map((it) => (
               collapsed ? (
                 <div key={it.id} className="flyout-host" onMouseEnter={positionFly}>
                   {navBtn(it)}
                   <div className="fly">{flyItem(it)}</div>
                 </div>
-              ) : navBtn(it)
+              ) : navBtn(it, { pinnedRow: true })
             ))}
           </div>
           {!collapsed && <div className="side-pinned-sep" />}
 
           {GROUPS.map((g) => {
+            const groupHidden = isHidden(g.title);
             if (collapsed) {
+              const vis = g.items.filter((it) => !isHidden(it.id));
+              if (groupHidden || !vis.length) return null;
               return (
                 <div key={g.title}>
                   <div className="grp-dot" data-here={hereGroup === g.title || undefined} />
-                  {g.items.map((it) => (
+                  {vis.map((it) => (
                     <div key={it.id} className="flyout-host" onMouseEnter={positionFly}>
                       {navBtn(it)}
                       <div className="fly">
                         <div className="fly-title">{g.title}</div>
-                        {g.items.map(flyItem)}
+                        {vis.map(flyItem)}
                       </div>
                     </div>
                   ))}
                 </div>
               );
             }
+            if (groupHidden && !editMode) return null;
             const open = !collapsedGroups.has(g.title);
+            const items = g.items.filter((it) => editMode || !isHidden(it.id));
+            if (!editMode && !items.length) return null;
             return (
-              <div key={g.title} className="side-group" data-open={open || undefined}>
+              <div key={g.title} className="side-group" data-open={open || undefined} data-hidden={groupHidden || undefined}>
                 <button className="side-group-title" onClick={() => toggleGroup(g.title)} aria-expanded={open}>
                   <span>{g.title}</span>
-                  <Icon className="side-group-chevron" name="chevron-right" size={12} />
+                  {editMode ? (
+                    <span
+                      className="side-tool"
+                      title={groupHidden ? "Показать группу" : "Скрыть группу"}
+                      onClick={(e) => { e.stopPropagation(); toggleHide(g.title); }}
+                    >
+                      <Icon name={groupHidden ? "eye-off" : "eye"} size={12} />
+                    </span>
+                  ) : (
+                    <Icon className="side-group-chevron" name="chevron-right" size={12} />
+                  )}
                 </button>
-                {open && g.items.map(navBtn)}
+                {open && items.map((it) => navBtn(it))}
               </div>
             );
           })}
@@ -216,8 +303,8 @@ export function Sidebar({ activeTab, onTab, collapsed, onToggle, onOpenPalette, 
               <span>{user?.role || "admin"}</span>
             </div>
           </div>
-          <button className="btn btn-ghost btn-icon" title="Настройки" style={{ width: 24, height: 24 }}>
-            <Icon name="settings" size={14} />
+          <button className="btn btn-ghost btn-icon" title="Настроить меню" style={{ width: 24, height: 24 }} onClick={() => setEditMode((v) => !v)}>
+            <Icon name="sliders" size={14} />
           </button>
           <button className="btn btn-ghost btn-icon" title="Выход" style={{ width: 24, height: 24 }} onClick={onLogout}>
             <Icon name="log-out" size={14} />
