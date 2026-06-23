@@ -560,6 +560,34 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
             out.setdefault(key_id, set()).add(node_id)
         return out
 
+    async def map_selected_backend_by_key(
+        self,
+        *,
+        key_ids: list[UUID],
+    ) -> dict[UUID, UUID]:
+        """Return {key_id: backend_node_id} for the placement the entry would
+        actually route to (most recent active placement), mirroring the agent's
+        pickBackend tiebreak: op_version, then updated_at, then backend_node_id."""
+        if not key_ids:
+            return {}
+        stmt = (
+            select(self.model.key_id, self.model.backend_node_id)
+            .where(
+                self.model.key_id.in_(key_ids),
+                self.model.is_active.is_(True),
+                self.model.desired_state == "active",
+            )
+            .distinct(self.model.key_id)
+            .order_by(
+                self.model.key_id,
+                self.model.op_version.desc(),
+                self.model.updated_at.desc(),
+                self.model.backend_node_id.desc(),
+            )
+        )
+        result = await self.session.execute(stmt)
+        return dict(result.all())
+
     async def find_missing_placements(
         self,
         *,
