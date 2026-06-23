@@ -588,34 +588,6 @@ class UserPlacementRepository(BaseRepository[UserPlacement]):
         result = await self.session.execute(stmt)
         return dict(result.all())
 
-    async def sticky_key_ids(self, *, key_ids: list[UUID], now: datetime) -> set[UUID]:
-        """key_ids that have at least one active placement still in sticky cooldown."""
-        if not key_ids:
-            return set()
-        stmt = (
-            select(self.model.key_id)
-            .where(
-                self.model.key_id.in_(key_ids),
-                self.model.is_active.is_(True),
-                self.model.sticky_until.is_not(None),
-                self.model.sticky_until > now,
-            )
-            .distinct()
-        )
-        result = await self.session.execute(stmt)
-        return {row[0] for row in result.all()}
-
-    async def set_sticky_until_for_key(self, *, key_id: UUID, until: datetime) -> None:
-        """Mark a key's active placements as sticky until `until` (move cooldown)."""
-        await self.session.execute(
-            sa_update(self.model)
-            .where(
-                self.model.key_id == key_id,
-                self.model.is_active.is_(True),
-            )
-            .values(sticky_until=until)
-        )
-
     async def find_missing_placements(
         self,
         *,

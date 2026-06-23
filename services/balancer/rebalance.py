@@ -37,17 +37,17 @@ class BackendRebalancer:
         self._transport = NodeAgentPlacementTransport(session)
         self._cfg = get_settings().backend_rebalance
 
-    async def rebalance(self) -> int:
+    async def rebalance(self, *, cooldown_key_ids: frozenset = frozenset()) -> list:
         backends = await self._node_repository.list_live_backends()
         if len(backends) < 2:
-            return 0
+            return []
         nodes_by_id = {b.id: b for b in backends}
         tag_by_id = {b.id: f"backend-{b.name}" for b in backends}
         live_tags = set(tag_by_id.values())
 
         keys = await self._key_repository.list_all_active()
         if not keys:
-            return 0
+            return []
 
         eligible = await self._placement_repository.map_active_backend_nodes_by_key(
             key_ids=[k.id for k in keys],
@@ -57,12 +57,8 @@ class BackendRebalancer:
         since = now - timedelta(minutes=self._cfg.traffic_window_min)
         key_bytes = await self._recent_bytes_by_key(since)
         cpu_by_tag = await self._cpu_by_backend(nodes_by_id)
-        key_id_list = [k.id for k in keys]
         selected = await self._placement_repository.map_selected_backend_by_key(
-            key_ids=key_id_list,
-        )
-        sticky = await self._placement_repository.sticky_key_ids(
-            key_ids=key_id_list, now=now,
+            key_ids=[k.id for k in keys],
         )
 
         conn_by_tag = dict.fromkeys(live_tags, 0)
@@ -83,7 +79,7 @@ class BackendRebalancer:
             w = float(key_bytes.get(k.id, 0))
             key_stats.append(KeyStat(
                 key_id=k.id, current_tag=cur, allowed_tags=allowed, weight=w,
-                movable=k.id not in sticky,
+                movable=k.id not in cooldown_key_ids,
             ))
             conn_by_tag[cur] += 1
             bytes_by_tag[cur] += w
@@ -111,11 +107,10 @@ class BackendRebalancer:
             move_cap=self._cfg.move_cap,
         )
         if not moves:
-            return 0
+            return []
 
-        sticky_until = now + timedelta(seconds=self._cfg.move_cooldown_sec)
         for m in moves:
-            await self._apply_move(m.key_id, m.to_tag, sticky_until=sticky_until)
+            await self._apply_move(m.key_id, m.to_tag)
 
         logger.info(
             "backend_rebalance_applied",
@@ -123,7 +118,7 @@ class BackendRebalancer:
             backends=len(backends),
             loads={s.tag: round(s.recent_bytes / 1048576.0, 1) for s in backend_stats},
         )
-        return len(moves)
+        return [m.key_id for m in moves]
 
     async def _recent_bytes_by_key(self, since: datetime) -> dict:
         res = await self._session.execute(
@@ -175,17 +170,13 @@ class BackendRebalancer:
                 out[f"backend-{node.name}"] = cpu
         return out
 
-    async def _apply_move(self, key_id, to_tag: str, *, sticky_until=None) -> None:
+    async def _apply_move(self, key_id, to_tag: str) -> None:
         await self._key_repository.update_by_id(
             key_id,
             VpnKeyRoutingOverrideUpdate(
                 entry_routing_override_backend_tag=to_tag,
             ).model_dump(exclude_unset=True),
         )
-        if sticky_until is not None:
-            await self._placement_repository.set_sticky_until_for_key(
-                key_id=key_id, until=sticky_until,
-            )
         await self._transport.enqueue_for_key_state(
             key_id=key_id,
             desired_state=PlacementDesiredState.active.value,
