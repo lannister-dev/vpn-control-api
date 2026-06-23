@@ -55,23 +55,30 @@ class BackendRebalancer:
 
         since = datetime.now(timezone.utc) - timedelta(minutes=self._cfg.traffic_window_min)
         key_bytes = await self._recent_bytes_by_key(since)
-        bytes_by_tag = await self._recent_bytes_by_backend(nodes_by_id, since)
         cpu_by_tag = await self._cpu_by_backend(nodes_by_id)
+        selected = await self._placement_repository.map_selected_backend_by_key(
+            key_ids=[k.id for k in keys],
+        )
 
         conn_by_tag = dict.fromkeys(live_tags, 0)
+        bytes_by_tag = dict.fromkeys(live_tags, 0.0)
         key_stats: list[KeyStat] = []
         for k in keys:
-            cur = k.entry_routing_override_backend_tag
-            if cur not in live_tags:
-                continue
             allowed = frozenset(
                 tag_by_id[bid] for bid in eligible.get(k.id, set()) if bid in tag_by_id
             )
             if not allowed:
                 continue
+            cur = k.entry_routing_override_backend_tag
+            if cur not in live_tags:
+                sel = selected.get(k.id)
+                cur = tag_by_id.get(sel) if sel else None
+            if cur not in live_tags:
+                continue
             w = float(key_bytes.get(k.id, 0))
             key_stats.append(KeyStat(key_id=k.id, current_tag=cur, allowed_tags=allowed, weight=w))
             conn_by_tag[cur] += 1
+            bytes_by_tag[cur] += w
 
         backend_stats = [
             BackendStat(
