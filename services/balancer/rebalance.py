@@ -53,11 +53,16 @@ class BackendRebalancer:
             key_ids=[k.id for k in keys],
         )
 
-        since = datetime.now(timezone.utc) - timedelta(minutes=self._cfg.traffic_window_min)
+        now = datetime.now(timezone.utc)
+        since = now - timedelta(minutes=self._cfg.traffic_window_min)
         key_bytes = await self._recent_bytes_by_key(since)
         cpu_by_tag = await self._cpu_by_backend(nodes_by_id)
+        key_id_list = [k.id for k in keys]
         selected = await self._placement_repository.map_selected_backend_by_key(
-            key_ids=[k.id for k in keys],
+            key_ids=key_id_list,
+        )
+        sticky = await self._placement_repository.sticky_key_ids(
+            key_ids=key_id_list, now=now,
         )
 
         conn_by_tag = dict.fromkeys(live_tags, 0)
@@ -76,7 +81,10 @@ class BackendRebalancer:
             if cur not in live_tags:
                 continue
             w = float(key_bytes.get(k.id, 0))
-            key_stats.append(KeyStat(key_id=k.id, current_tag=cur, allowed_tags=allowed, weight=w))
+            key_stats.append(KeyStat(
+                key_id=k.id, current_tag=cur, allowed_tags=allowed, weight=w,
+                movable=k.id not in sticky,
+            ))
             conn_by_tag[cur] += 1
             bytes_by_tag[cur] += w
 
@@ -105,8 +113,9 @@ class BackendRebalancer:
         if not moves:
             return 0
 
+        sticky_until = now + timedelta(seconds=self._cfg.move_cooldown_sec)
         for m in moves:
-            await self._apply_move(m.key_id, m.to_tag)
+            await self._apply_move(m.key_id, m.to_tag, sticky_until=sticky_until)
 
         logger.info(
             "backend_rebalance_applied",
@@ -166,13 +175,17 @@ class BackendRebalancer:
                 out[f"backend-{node.name}"] = cpu
         return out
 
-    async def _apply_move(self, key_id, to_tag: str) -> None:
+    async def _apply_move(self, key_id, to_tag: str, *, sticky_until=None) -> None:
         await self._key_repository.update_by_id(
             key_id,
             VpnKeyRoutingOverrideUpdate(
                 entry_routing_override_backend_tag=to_tag,
             ).model_dump(exclude_unset=True),
         )
+        if sticky_until is not None:
+            await self._placement_repository.set_sticky_until_for_key(
+                key_id=key_id, until=sticky_until,
+            )
         await self._transport.enqueue_for_key_state(
             key_id=key_id,
             desired_state=PlacementDesiredState.active.value,

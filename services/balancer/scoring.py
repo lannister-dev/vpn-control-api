@@ -18,6 +18,7 @@ class KeyStat:
     current_tag: str
     allowed_tags: frozenset[str]
     weight: float
+    movable: bool = True
 
 
 @dataclass(frozen=True)
@@ -113,7 +114,7 @@ def plan_moves(
         chosen_key = None
         chosen_target = None
         for k in keys_by_tag.get(hot_tag, []):
-            if k.key_id in moved_ids:
+            if k.key_id in moved_ids or not k.movable:
                 continue
             target = _best_target(scores, working, k, hot_tag)
             if target is not None and scores[target] < scores[hot_tag]:
