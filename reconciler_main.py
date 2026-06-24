@@ -11,7 +11,6 @@ from services.admin.transport.reconcilers.cleanup import AdminTransportCleanupRe
 from services.alerts.reconcilers.cleanup import AlertsCleanupReconciler
 from services.artifacts.models import ProfileArtifact  # noqa: F401
 from services.auth.admin.models import AdminAuditEvent, AdminSession, AdminUser  # noqa: F401
-from services.balancer.load_consumer import BackendLoadRebalanceConsumer
 from services.billing.models import BalanceTransaction, PaymentOrder  # noqa: F401
 from services.billing.reconcilers.auto_renew import AutoRenewReconciler
 from services.billing.reconcilers.expiration import BillingOrderExpirationReconciler
@@ -135,7 +134,6 @@ def _build_nats_runtimes(node_agent_runtime: NodeAgentRuntime, nats_settings) ->
         node_agent_runtime,
         UserTrafficNatsConsumer(nats_settings),
         NodeTrafficNatsConsumer(nats_settings),
-        BackendLoadRebalanceConsumer(nats_settings),
         SupportInboundConsumer(nats_settings),
         SupportSentConsumer(nats_settings),
         DripEnrollmentConsumer(nats_settings),
