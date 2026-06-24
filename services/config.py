@@ -181,6 +181,7 @@ class BackendRebalanceConfig:
     score_spread_threshold: float = 0.15
     traffic_window_min: int = 15
     move_cap: int = 15
+    move_cooldown_sec: int = 1200
 
 
 @dataclass
@@ -682,6 +683,7 @@ def get_settings() -> Settings:
             score_spread_threshold=env.float("BACKEND_REBALANCE_SCORE_SPREAD", default=0.15),
             traffic_window_min=max(1, env.int("BACKEND_REBALANCE_TRAFFIC_WINDOW_MIN", default=15)),
             move_cap=max(1, env.int("BACKEND_REBALANCE_MOVE_CAP", default=15)),
+            move_cooldown_sec=max(0, env.int("BACKEND_REBALANCE_MOVE_COOLDOWN_SEC", default=1200)),
     )
 
     return Settings(

@@ -37,23 +37,24 @@ class BackendRebalancer:
         self._transport = NodeAgentPlacementTransport(session)
         self._cfg = get_settings().backend_rebalance
 
-    async def rebalance(self) -> int:
+    async def rebalance(self, *, cooldown_key_ids: frozenset = frozenset()) -> list:
         backends = await self._node_repository.list_live_backends()
         if len(backends) < 2:
-            return 0
+            return []
         nodes_by_id = {b.id: b for b in backends}
         tag_by_id = {b.id: f"backend-{b.name}" for b in backends}
         live_tags = set(tag_by_id.values())
 
         keys = await self._key_repository.list_all_active()
         if not keys:
-            return 0
+            return []
 
         eligible = await self._placement_repository.map_active_backend_nodes_by_key(
             key_ids=[k.id for k in keys],
         )
 
-        since = datetime.now(timezone.utc) - timedelta(minutes=self._cfg.traffic_window_min)
+        now = datetime.now(timezone.utc)
+        since = now - timedelta(minutes=self._cfg.traffic_window_min)
         key_bytes = await self._recent_bytes_by_key(since)
         cpu_by_tag = await self._cpu_by_backend(nodes_by_id)
         selected = await self._placement_repository.map_selected_backend_by_key(
@@ -76,7 +77,10 @@ class BackendRebalancer:
             if cur not in live_tags:
                 continue
             w = float(key_bytes.get(k.id, 0))
-            key_stats.append(KeyStat(key_id=k.id, current_tag=cur, allowed_tags=allowed, weight=w))
+            key_stats.append(KeyStat(
+                key_id=k.id, current_tag=cur, allowed_tags=allowed, weight=w,
+                movable=k.id not in cooldown_key_ids,
+            ))
             conn_by_tag[cur] += 1
             bytes_by_tag[cur] += w
 
@@ -103,7 +107,7 @@ class BackendRebalancer:
             move_cap=self._cfg.move_cap,
         )
         if not moves:
-            return 0
+            return []
 
         for m in moves:
             await self._apply_move(m.key_id, m.to_tag)
@@ -114,7 +118,7 @@ class BackendRebalancer:
             backends=len(backends),
             loads={s.tag: round(s.recent_bytes / 1048576.0, 1) for s in backend_stats},
         )
-        return len(moves)
+        return [m.key_id for m in moves]
 
     async def _recent_bytes_by_key(self, since: datetime) -> dict:
         res = await self._session.execute(

@@ -577,7 +577,7 @@ class VpnNodeService:
                     "balancer_kick_after_backend_state_change",
                     node_id=str(node_id),
                     reason=reason,
-                    moved=moved,
+                    moved=len(moved),
                 )
             except Exception:
                 logger_node.exception("balancer_kick_failed", node_id=str(node_id))

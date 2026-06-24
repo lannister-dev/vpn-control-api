@@ -19,6 +19,7 @@ class BackendLoadRebalanceConsumer:
         self._nats = NatsClient(config)
         self._running = False
         self._last_rebalance_monotonic = 0.0
+        self._recent_moves: dict = {}
 
     async def start(self):
         if not self._config.enabled:
@@ -64,15 +65,28 @@ class BackendLoadRebalanceConsumer:
             return
         self._last_rebalance_monotonic = now
 
+        cooldown = self._cfg.move_cooldown_sec
+        active_cooldown = frozenset(
+            kid for kid, ts in self._recent_moves.items() if now - ts < cooldown
+        )
+        if len(active_cooldown) != len(self._recent_moves):
+            self._recent_moves = {
+                kid: ts for kid, ts in self._recent_moves.items() if now - ts < cooldown
+            }
+
         try:
             session_maker = AsyncDatabase.get_session_maker()
             async with session_maker() as session:
-                moved = await BackendRebalancer(session, nats=self._nats).rebalance()
+                moved = await BackendRebalancer(session, nats=self._nats).rebalance(
+                    cooldown_key_ids=active_cooldown,
+                )
                 if session.has_pending_writes():
                     await session.commit()
                 else:
                     await session.rollback()
             if moved:
-                logger.info("backend_load_rebalance_applied", moved=moved)
+                for kid in moved:
+                    self._recent_moves[kid] = now
+                logger.info("backend_load_rebalance_applied", moved=len(moved))
         except Exception:
             logger.exception("backend_load_rebalance_failed")
