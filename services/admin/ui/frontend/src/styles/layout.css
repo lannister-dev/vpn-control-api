@@ -329,6 +329,9 @@
 .side-edit-btn[data-on] { background: var(--accent-soft); color: var(--text); }
 .side-row { display: flex; align-items: center; }
 .side-row .side-btn { flex: 1; min-width: 0; }
+.side-btn > svg, .side-tool > svg { flex-shrink: 0; }
+.sidebar[data-collapsed="true"] .side-row { display: block; }
+.sidebar[data-collapsed="true"] .side-row .side-btn { width: 100%; }
 .side-row-tools { display: inline-flex; align-items: center; gap: 2px; padding-right: 4px; }
 .side-tool {
   display: inline-flex; align-items: center; justify-content: center;

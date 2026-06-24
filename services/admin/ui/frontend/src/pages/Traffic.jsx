@@ -415,6 +415,7 @@ export function TrafficPage({ onOpenNode }) {
     const statusById = Object.fromEntries((status.data?.nodes || []).map((n) => [n.id, n]));
     return items.map((t) => ({
       ...t,
+      sessions: t.active_sessions ?? t.sessions ?? 0,
       region: t.region || statusById[t.node_id]?.region || "—",
       role: t.role || statusById[t.node_id]?.role,
       is_healthy: statusById[t.node_id]?.is_healthy,
