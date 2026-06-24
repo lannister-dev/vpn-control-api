@@ -40,32 +40,33 @@ def _make_rebalancer():
     cfg.weight_conn = 0.2
     cfg.score_spread_threshold = 0.15
     cfg.move_cap = 15
+    cfg.move_cooldown_sec = 1200
     rb._cfg = cfg
     rb._cpu_by_backend = AsyncMock(return_value={})
     return rb
+
+
+def _wire(rb, *, backends, keys, eligible, selected, bytes_by_key):
+    rb._node_repository.list_live_backends = AsyncMock(return_value=backends)
+    rb._key_repository.list_all_active = AsyncMock(return_value=keys)
+    rb._placement_repository.map_active_backend_nodes_by_key = AsyncMock(return_value=eligible)
+    rb._placement_repository.map_selected_backend_by_key = AsyncMock(return_value=selected)
+    rb._recent_bytes_by_key = AsyncMock(return_value=bytes_by_key)
 
 
 @pytest.mark.asyncio
 async def test_unpinned_heavy_key_is_moved_off_hot_backend():
     hot, cold = _backend("hot"), _backend("cold")
     whale = _key(None)  # unpinned — old code skipped these entirely
-
     rb = _make_rebalancer()
-    rb._node_repository.list_live_backends = AsyncMock(return_value=[hot, cold])
-    rb._key_repository.list_all_active = AsyncMock(return_value=[whale])
-    rb._placement_repository.map_active_backend_nodes_by_key = AsyncMock(
-        return_value={whale.id: {hot.id, cold.id}},
-    )
-    rb._placement_repository.map_selected_backend_by_key = AsyncMock(
-        return_value={whale.id: hot.id},  # effective backend = hot
-    )
-    rb._recent_bytes_by_key = AsyncMock(return_value={whale.id: 500_000_000})
+    _wire(rb, backends=[hot, cold], keys=[whale],
+          eligible={whale.id: {hot.id, cold.id}}, selected={whale.id: hot.id},
+          bytes_by_key={whale.id: 500_000_000})
 
     moved = await rb.rebalance()
 
-    assert moved == 1
-    rb._key_repository.update_by_id.assert_awaited_once()
-    args, kwargs = rb._key_repository.update_by_id.call_args
+    assert moved == [whale.id]
+    args, _ = rb._key_repository.update_by_id.call_args
     assert args[0] == whale.id
     assert args[1]["entry_routing_override_backend_tag"] == "backend-cold"
 
@@ -74,19 +75,28 @@ async def test_unpinned_heavy_key_is_moved_off_hot_backend():
 async def test_no_move_when_key_ineligible_on_other_backend():
     hot, cold = _backend("hot"), _backend("cold")
     whale = _key(None)
-
     rb = _make_rebalancer()
-    rb._node_repository.list_live_backends = AsyncMock(return_value=[hot, cold])
-    rb._key_repository.list_all_active = AsyncMock(return_value=[whale])
-    rb._placement_repository.map_active_backend_nodes_by_key = AsyncMock(
-        return_value={whale.id: {hot.id}},  # only eligible on hot
-    )
-    rb._placement_repository.map_selected_backend_by_key = AsyncMock(
-        return_value={whale.id: hot.id},
-    )
-    rb._recent_bytes_by_key = AsyncMock(return_value={whale.id: 500_000_000})
+    _wire(rb, backends=[hot, cold], keys=[whale],
+          eligible={whale.id: {hot.id}}, selected={whale.id: hot.id},
+          bytes_by_key={whale.id: 500_000_000})
 
     moved = await rb.rebalance()
 
-    assert moved == 0
+    assert moved == []
+    rb._key_repository.update_by_id.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_key_in_cooldown_is_not_moved():
+    hot, cold = _backend("hot"), _backend("cold")
+    whale = _key(None)
+    rb = _make_rebalancer()
+    _wire(rb, backends=[hot, cold], keys=[whale],
+          eligible={whale.id: {hot.id, cold.id}}, selected={whale.id: hot.id},
+          bytes_by_key={whale.id: 500_000_000})
+
+    # whale is in cooldown -> must not be moved even though it is the hottest
+    moved = await rb.rebalance(cooldown_key_ids=frozenset({whale.id}))
+
+    assert moved == []
     rb._key_repository.update_by_id.assert_not_awaited()
