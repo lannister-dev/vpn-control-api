@@ -278,6 +278,7 @@ class VpnNodeService:
             and heartbeat_meta.consecutive_healthy >= healthy_undrain_threshold
         )
         if should_undrain:
+            prev_drained_at = heartbeat_meta.drained_at if heartbeat_meta else None
             await self.vpn_node_repository.update_by_id(
                 node.id,
                 VpnNodeUpdate(is_draining=False, drain_source=None).model_dump(exclude_unset=True),
@@ -297,13 +298,17 @@ class VpnNodeService:
                 consecutive_healthy=heartbeat_meta.consecutive_healthy,
             )
             if self.notifications is not None:
-                drained_at = heartbeat_meta.drained_at if heartbeat_meta else None
+                drained_at = prev_drained_at
                 downtime_seconds = 0
                 if drained_at is not None:
                     if drained_at.tzinfo is None:
                         drained_at = drained_at.replace(tzinfo=timezone.utc)
                     downtime_seconds = max(0, int((now - drained_at).total_seconds()))
-                drained_at_ts = int(drained_at.timestamp()) if drained_at is not None else 0
+                drained_at_ts = (
+                    int(drained_at.timestamp())
+                    if drained_at is not None
+                    else int(now.timestamp())
+                )
                 await self.notifications.publish_node_recovered(
                     node_id=str(node.id),
                     node_name=node.name,
