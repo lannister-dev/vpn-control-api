@@ -1,12 +1,3 @@
-// Drip / Цепочки — client model: constants, geometry, graph builders.
-// Pure JS, no React. Consumed by DripGraph / DripInspector / Drip page.
-//
-// The CURRENT backend (/scenarios/campaigns) stores a LINEAR list of steps
-// (step_order, delay_seconds, condition, text_body, inline_buttons, media).
-// `graphFromApi` lays those out as a linear graph; `graphToPayload` writes them
-// back. The builder UI additionally renders CONDITION / END nodes and multiple
-// branches — that branching model is a backend extension, see README.md.
-
 export const TRIGGERS = {
   trial_started:        { label: "Активировал триал", icon: "zap" },
   purchase:             { label: "Оплатил", icon: "credit-card" },
@@ -63,7 +54,7 @@ export function splitDelay(sec) {
 }
 
 // ── Lane geometry (graph-space px). Node anchors are computed from cx/top/w/h,
-// so keep rendered card sizes == these values (see drip.css min-heights). ──
+// so keep rendered card sizes == these values (see scenario.css min-heights). ──
 export const LANE = { C: 320, L: 178, R: 462 };
 export const NODE_W = 258;
 

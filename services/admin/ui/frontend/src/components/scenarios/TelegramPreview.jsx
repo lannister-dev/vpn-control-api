@@ -1,6 +1,5 @@
-// Drip / Цепочки — live Telegram message preview.
 import { Icon } from "../Icon.jsx";
-import { BUTTON_STYLES, stripTags } from "./dripModel.js";
+import { BUTTON_STYLES, stripTags } from "./scenarioModel.js";
 
 const SAMPLE = { name: "Алексей", referral: "vpn.gg/r/ax93", plan: "Год", days_left: "2", balance: "150 ₽" };
 

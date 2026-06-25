@@ -1,12 +1,10 @@
-// Drip / Цепочки — step inspector (right pane). Edits the selected node and
-// shows a live Telegram preview for message nodes. Uses the repo's TextEditor.
 import { api } from "../../api/client.js";
 import { Icon } from "../Icon.jsx";
 import { TextEditor } from "../TextEditor.jsx";
 import { TelegramPreview } from "./TelegramPreview.jsx";
-import { TRIGGERS, CONDITIONS, UNITS, BUTTON_STYLES, BUTTON_ACTIONS, splitDelay } from "./dripModel.js";
+import { TRIGGERS, CONDITIONS, UNITS, BUTTON_STYLES, BUTTON_ACTIONS, splitDelay } from "./scenarioModel.js";
 
-async function uploadDripMedia(file, onPatch) {
+async function uploadScenarioMedia(file, onPatch) {
   if (!file) return;
   const fd = new FormData();
   fd.append("file", file);
@@ -56,7 +54,7 @@ function ButtonsEditor({ buttons, onChange }) {
   );
 }
 
-export function DripInspector({ node, chainStats, onPatch, onClose, onDelete, onAddBranch }) {
+export function ScenarioInspector({ node, chainStats, onPatch, onClose, onDelete, onAddBranch }) {
   if (!node) {
     return (
       <aside className="di">
@@ -183,7 +181,7 @@ export function DripInspector({ node, chainStats, onPatch, onClose, onDelete, on
                     type="file"
                     accept="image/*,video/*"
                     style={{ display: "none" }}
-                    onChange={(e) => uploadDripMedia(e.target.files?.[0], onPatch)}
+                    onChange={(e) => uploadScenarioMedia(e.target.files?.[0], onPatch)}
                   />
                 </label>
               )}
