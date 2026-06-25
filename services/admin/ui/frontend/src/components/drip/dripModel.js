@@ -1,7 +1,7 @@
 // Drip / Цепочки — client model: constants, geometry, graph builders.
 // Pure JS, no React. Consumed by DripGraph / DripInspector / Drip page.
 //
-// The CURRENT backend (/support/drip/campaigns) stores a LINEAR list of steps
+// The CURRENT backend (/scenarios/campaigns) stores a LINEAR list of steps
 // (step_order, delay_seconds, condition, text_body, inline_buttons, media).
 // `graphFromApi` lays those out as a linear graph; `graphToPayload` writes them
 // back. The builder UI additionally renders CONDITION / END nodes and multiple

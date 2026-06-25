@@ -11,7 +11,7 @@ async function uploadDripMedia(file, onPatch) {
   const fd = new FormData();
   fd.append("file", file);
   try {
-    const r = await api.raw("/support/drip/upload", { method: "POST", headers: {}, body: fd });
+    const r = await api.raw("/scenarios/upload", { method: "POST", headers: {}, body: fd });
     onPatch({ media: { kind: r.media_kind, url: r.media_url, name: file.name, size: "" } });
   } catch {
     /* ignore — upload failed */

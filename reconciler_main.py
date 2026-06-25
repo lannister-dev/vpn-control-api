@@ -46,8 +46,15 @@ from services.routes.models import Route, TransportProfile  # noqa: F401
 from services.routes.reconcilers.auto_create import RouteAutoCreateReconciler
 from services.routes.reconcilers.warmup import RouteWarmupReconciler
 from services.routing.entry.publisher import EntryRoutingPublisher
+from services.scenarios.consumer import ScenarioEnrollmentConsumer
+from services.scenarios.models import (  # noqa: F401
+    ScenarioCampaign,
+    ScenarioEdge,
+    ScenarioNode,
+    ScenarioState,
+)
+from services.scenarios.reconcilers.scenario import ScenarioReconciler
 from services.support.consumer import (
-    DripEnrollmentConsumer,
     SupportInboundConsumer,
     SupportSentConsumer,
 )
@@ -56,7 +63,6 @@ from services.support.models import (  # noqa: F401
     SupportTicket,
 )
 from services.support.reconcilers.broadcast_scheduler import BroadcastSchedulerReconciler
-from services.support.reconcilers.drip import DripReconciler
 from services.support.reconcilers.recurring_broadcast import RecurringBroadcastReconciler
 from services.traffic.nodes.consumer import NodeTrafficNatsConsumer
 from services.traffic.nodes.models import NodeTrafficUsage  # noqa: F401
@@ -125,7 +131,7 @@ def _build_reconcilers(notifications: NotificationService, nats_client: NatsClie
         NotificationsDigestReconciler(notifications=notifications),
         BroadcastSchedulerReconciler(nats_client=nats_client),
         RecurringBroadcastReconciler(nats_client=nats_client),
-        DripReconciler(nats_client=nats_client),
+        ScenarioReconciler(nats_client=nats_client),
     ]
 
 
@@ -136,7 +142,7 @@ def _build_nats_runtimes(node_agent_runtime: NodeAgentRuntime, nats_settings) ->
         NodeTrafficNatsConsumer(nats_settings),
         SupportInboundConsumer(nats_settings),
         SupportSentConsumer(nats_settings),
-        DripEnrollmentConsumer(nats_settings),
+        ScenarioEnrollmentConsumer(nats_settings),
     ]
 
 

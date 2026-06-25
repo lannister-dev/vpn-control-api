@@ -3,9 +3,7 @@ from decimal import Decimal
 from enum import Enum
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-
-from services.support.constants import DRIP_CONDITIONS, DRIP_TRIGGER_EVENTS
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TicketStatus(str, Enum):
@@ -439,133 +437,6 @@ class SupportSentAck(BaseModel):
     tg_message_id: int | None = None
     ok: bool = True
     error: str | None = None
-
-
-class DripTriggerEvent(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    kind: str
-    telegram_id: int
-
-
-class DripNodeIn(BaseModel):
-    key: str
-    type: str
-    pos_cx: int = 0
-    pos_top: int = 0
-    delay_seconds: int = 0
-    condition: str = "always"
-    repeat_count: int = 1
-    repeat_interval_sec: int = 0
-    text_body: str | None = None
-    inline_buttons: list[dict] | None = None
-    media_kind: str | None = None
-    media_url: str | None = None
-    check: str | None = None
-    conversion: bool = False
-    label: str | None = None
-
-    @field_validator("type")
-    @classmethod
-    def _check_type(cls, v: str) -> str:
-        if v not in ("message", "condition", "end"):
-            raise ValueError("type must be one of message|condition|end")
-        return v
-
-    @field_validator("condition")
-    @classmethod
-    def _check_condition(cls, v: str) -> str:
-        if v not in DRIP_CONDITIONS:
-            raise ValueError(f"condition must be one of {DRIP_CONDITIONS}")
-        return v
-
-    @field_validator("check")
-    @classmethod
-    def _check_check(cls, v: str | None) -> str | None:
-        if v is not None and v not in DRIP_CONDITIONS:
-            raise ValueError(f"check must be null or one of {DRIP_CONDITIONS}")
-        return v
-
-
-class DripEdgeIn(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    from_node: str = Field(alias="from")
-    to_node: str = Field(alias="to")
-    branch: str | None = None
-
-
-class DripNodeOut(BaseModel):
-    id: UUID
-    key: str
-    type: str
-    pos_cx: int = 0
-    pos_top: int = 0
-    delay_seconds: int = 0
-    condition: str = "always"
-    repeat_count: int = 1
-    repeat_interval_sec: int = 0
-    text_body: str | None = None
-    inline_buttons: list[dict] | None = None
-    media_kind: str | None = None
-    media_url: str | None = None
-    check: str | None = None
-    conversion: bool = False
-    label: str | None = None
-
-
-class DripEdgeOut(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    id: UUID
-    from_node: str = Field(serialization_alias="from")
-    to_node: str = Field(serialization_alias="to")
-    branch: str | None = None
-
-
-class DripCampaignIn(BaseModel):
-    key: str
-    name: str
-    trigger_event: str | None = None
-    is_active: bool = True
-    entry_node_key: str | None = None
-    nodes: list[DripNodeIn] = Field(default_factory=list)
-    edges: list[DripEdgeIn] = Field(default_factory=list)
-
-    @field_validator("trigger_event")
-    @classmethod
-    def _check_trigger(cls, v: str | None) -> str | None:
-        if v is not None and v not in DRIP_TRIGGER_EVENTS:
-            raise ValueError(f"trigger_event must be null or one of {DRIP_TRIGGER_EVENTS}")
-        return v
-
-
-class DripCampaignOut(BaseModel):
-    id: UUID
-    key: str
-    name: str
-    trigger_event: str | None
-    is_active: bool
-    entry_node_key: str | None = None
-    nodes: list[DripNodeOut] = Field(default_factory=list)
-    edges: list[DripEdgeOut] = Field(default_factory=list)
-
-
-class DripCampaignListOut(BaseModel):
-    items: list[DripCampaignOut]
-
-
-class DripCampaignStat(BaseModel):
-    campaign_id: UUID
-    enrolled: int = 0
-    active: int = 0
-    completed: int = 0
-    abandoned: int = 0
-    stopped: int = 0
-
-
-class DripStatsOut(BaseModel):
-    items: list[DripCampaignStat]
 
 
 class OnboardingFunnelOut(BaseModel):

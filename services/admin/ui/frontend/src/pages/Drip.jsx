@@ -25,8 +25,8 @@ import {
    ════════════════════════════════════════════════════════════ */
 
 export function DripPage() {
-  const q = useQuery(() => api.get("/support/drip/campaigns").catch(() => ({ items: [] })), { interval: 0 });
-  const statsQ = useQuery(() => api.get("/support/drip/stats").catch(() => ({ items: [] })), { interval: 0 });
+  const q = useQuery(() => api.get("/scenarios/campaigns").catch(() => ({ items: [] })), { interval: 0 });
+  const statsQ = useQuery(() => api.get("/scenarios/stats").catch(() => ({ items: [] })), { interval: 0 });
 
   const [graph, setGraph] = useState(null);   // { meta, nodes, edges } | null
   const [selected, setSelected] = useState(null);
@@ -127,8 +127,8 @@ export function DripPage() {
     if (!payload.nodes.length) { setErr("Добавь хотя бы один шаг"); return; }
     setBusy(true); setErr("");
     try {
-      if (graph.meta.id) await api.put(`/support/drip/campaigns/${graph.meta.id}`, payload);
-      else await api.post("/support/drip/campaigns", payload);
+      if (graph.meta.id) await api.put(`/scenarios/campaigns/${graph.meta.id}`, payload);
+      else await api.post("/scenarios/campaigns", payload);
       setGraph(null); q.refetch(); statsQ.refetch();
     } catch (e) { setErr(e.message || "Ошибка сохранения"); }
     finally { setBusy(false); }

@@ -5,13 +5,13 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
-from services.support.constants import DripStatus
-from services.support.service import SupportService
+from services.scenarios.constants import ScenarioStatus
+from services.scenarios.service import ScenarioService
 
 
-def _svc() -> SupportService:
-    svc = SupportService(MagicMock(), nats_client=AsyncMock(), outbound_subject="out")
-    svc.drip = AsyncMock()
+def _svc() -> ScenarioService:
+    svc = ScenarioService(MagicMock(), nats_client=AsyncMock(), outbound_subject="out")
+    svc.scenarios = AsyncMock()
     svc.users = AsyncMock()
     return svc
 
@@ -39,7 +39,7 @@ def _campaign(nodes, edges, *, entry, is_active=True):
 def _state(current):
     return SimpleNamespace(
         id=uuid4(), campaign_id=uuid4(), user_id=uuid4(),
-        current_node_key=current, node_sends=0, status=DripStatus.ACTIVE,
+        current_node_key=current, node_sends=0, status=ScenarioStatus.ACTIVE,
         next_send_at=datetime.now(timezone.utc), last_step_sent_at=None,
     )
 
@@ -55,16 +55,16 @@ async def test_message_sends_and_advances_to_next_message():
         [_edge("m1", "m2"), _edge("m2", "end")],
         entry="m1",
     )
-    svc.drip.get_campaign_with_graph = AsyncMock(return_value=camp)
+    svc.scenarios.get_campaign_with_graph = AsyncMock(return_value=camp)
     svc.users.get_by_id = AsyncMock(return_value=_user())
     state = _state("m1")
 
-    ok = await svc._process_drip_state(state, now=datetime.now(timezone.utc))
+    ok = await svc._process_state(state, now=datetime.now(timezone.utc))
 
     assert ok is True
     svc._nats.publish_jetstream.assert_awaited_once()
     assert state.current_node_key == "m2"
-    assert state.status == DripStatus.ACTIVE
+    assert state.status == ScenarioStatus.ACTIVE
     assert state.next_send_at is not None
 
 
@@ -74,20 +74,20 @@ async def test_message_repeats_until_cap_then_advances():
         [_node("m1", delay=0, repeat=3, interval=86400), _node("end", "end")],
         [_edge("m1", "end")], entry="m1",
     )
-    svc.drip.get_campaign_with_graph = AsyncMock(return_value=camp)
+    svc.scenarios.get_campaign_with_graph = AsyncMock(return_value=camp)
     svc.users.get_by_id = AsyncMock(return_value=_user())
     state = _state("m1")
 
     # first two ticks: send + stay on the same node (reminder repeats)
-    await svc._process_drip_state(state, now=datetime.now(timezone.utc))
+    await svc._process_state(state, now=datetime.now(timezone.utc))
     assert state.current_node_key == "m1" and state.node_sends == 1
-    assert state.status == DripStatus.ACTIVE
-    await svc._process_drip_state(state, now=datetime.now(timezone.utc))
+    assert state.status == ScenarioStatus.ACTIVE
+    await svc._process_state(state, now=datetime.now(timezone.utc))
     assert state.current_node_key == "m1" and state.node_sends == 2
     # third tick: cap reached → advance to end → completed
-    await svc._process_drip_state(state, now=datetime.now(timezone.utc))
+    await svc._process_state(state, now=datetime.now(timezone.utc))
     assert state.node_sends == 3
-    assert state.status == DripStatus.COMPLETED
+    assert state.status == ScenarioStatus.COMPLETED
     assert svc._nats.publish_jetstream.await_count == 3
 
 
@@ -97,16 +97,16 @@ async def test_repeat_stops_when_gate_resolves():
         [_node("m1", delay=0, condition="not_connected", repeat=5, interval=86400), _node("end", "end")],
         [_edge("m1", "end")], entry="m1",
     )
-    svc.drip.get_campaign_with_graph = AsyncMock(return_value=camp)
+    svc.scenarios.get_campaign_with_graph = AsyncMock(return_value=camp)
     svc.users.get_by_id = AsyncMock(return_value=_user())
-    svc.drip.has_connected = AsyncMock(return_value=False)  # not connected → reminder fires
+    svc.scenarios.has_connected = AsyncMock(return_value=False)  # not connected → reminder fires
     state = _state("m1")
-    await svc._process_drip_state(state, now=datetime.now(timezone.utc))
-    assert state.node_sends == 1 and state.status == DripStatus.ACTIVE
+    await svc._process_state(state, now=datetime.now(timezone.utc))
+    assert state.node_sends == 1 and state.status == ScenarioStatus.ACTIVE
 
-    svc.drip.has_connected = AsyncMock(return_value=True)  # user connected → gate fails
-    await svc._process_drip_state(state, now=datetime.now(timezone.utc))
-    assert state.status == DripStatus.COMPLETED
+    svc.scenarios.has_connected = AsyncMock(return_value=True)  # user connected → gate fails
+    await svc._process_state(state, now=datetime.now(timezone.utc))
+    assert state.status == ScenarioStatus.COMPLETED
     assert svc._nats.publish_jetstream.await_count == 1  # no further reminder
 
 
@@ -114,16 +114,16 @@ async def test_message_gate_fail_completes_without_send():
     svc = _svc()
     camp = _campaign([_node("m1", condition="not_connected"), _node("end", "end")],
                      [_edge("m1", "end")], entry="m1")
-    svc.drip.get_campaign_with_graph = AsyncMock(return_value=camp)
+    svc.scenarios.get_campaign_with_graph = AsyncMock(return_value=camp)
     svc.users.get_by_id = AsyncMock(return_value=_user())
-    svc.drip.has_connected = AsyncMock(return_value=True)  # already connected → gate fails
+    svc.scenarios.has_connected = AsyncMock(return_value=True)  # already connected → gate fails
     state = _state("m1")
 
-    ok = await svc._process_drip_state(state, now=datetime.now(timezone.utc))
+    ok = await svc._process_state(state, now=datetime.now(timezone.utc))
 
     assert ok is False
     svc._nats.publish_jetstream.assert_not_awaited()
-    assert state.status == DripStatus.COMPLETED
+    assert state.status == ScenarioStatus.COMPLETED
 
 
 async def test_condition_node_routes_by_branch():
@@ -135,71 +135,71 @@ async def test_condition_node_routes_by_branch():
          _edge("yes", "end"), _edge("no", "end")],
         entry="c1",
     )
-    svc.drip.get_campaign_with_graph = AsyncMock(return_value=camp)
+    svc.scenarios.get_campaign_with_graph = AsyncMock(return_value=camp)
     svc.users.get_by_id = AsyncMock(return_value=_user())
-    svc.drip.has_connected = AsyncMock(return_value=True)  # connected → "yes" branch
+    svc.scenarios.has_connected = AsyncMock(return_value=True)  # connected → "yes" branch
     state = _state("c1")
 
-    ok = await svc._process_drip_state(state, now=datetime.now(timezone.utc))
+    ok = await svc._process_state(state, now=datetime.now(timezone.utc))
 
     assert ok is False  # condition routes, no send
     svc._nats.publish_jetstream.assert_not_awaited()
     assert state.current_node_key == "yes"  # waiting at the yes-branch message
-    assert state.status == DripStatus.ACTIVE
+    assert state.status == ScenarioStatus.ACTIVE
 
 
 async def test_end_node_completes():
     svc = _svc()
     camp = _campaign([_node("end", "end")], [], entry="end")
-    svc.drip.get_campaign_with_graph = AsyncMock(return_value=camp)
+    svc.scenarios.get_campaign_with_graph = AsyncMock(return_value=camp)
     svc.users.get_by_id = AsyncMock(return_value=_user())
     state = _state("end")
 
-    ok = await svc._process_drip_state(state, now=datetime.now(timezone.utc))
+    ok = await svc._process_state(state, now=datetime.now(timezone.utc))
 
     assert ok is False
-    assert state.status == DripStatus.COMPLETED
+    assert state.status == ScenarioStatus.COMPLETED
 
 
 async def test_opt_out_stops():
     svc = _svc()
     camp = _campaign([_node("m1")], [], entry="m1")
-    svc.drip.get_campaign_with_graph = AsyncMock(return_value=camp)
+    svc.scenarios.get_campaign_with_graph = AsyncMock(return_value=camp)
     svc.users.get_by_id = AsyncMock(return_value=_user(supp=True))
     state = _state("m1")
 
-    ok = await svc._process_drip_state(state, now=datetime.now(timezone.utc))
+    ok = await svc._process_state(state, now=datetime.now(timezone.utc))
 
     assert ok is False
-    assert state.status == DripStatus.STOPPED
+    assert state.status == ScenarioStatus.STOPPED
     svc._nats.publish_jetstream.assert_not_awaited()
 
 
 async def test_last_message_completes():
     svc = _svc()
     camp = _campaign([_node("m1")], [], entry="m1")  # no outgoing edge
-    svc.drip.get_campaign_with_graph = AsyncMock(return_value=camp)
+    svc.scenarios.get_campaign_with_graph = AsyncMock(return_value=camp)
     svc.users.get_by_id = AsyncMock(return_value=_user())
     state = _state("m1")
 
-    ok = await svc._process_drip_state(state, now=datetime.now(timezone.utc))
+    ok = await svc._process_state(state, now=datetime.now(timezone.utc))
 
     assert ok is True
-    assert state.status == DripStatus.COMPLETED
+    assert state.status == ScenarioStatus.COMPLETED
     assert state.next_send_at is None
 
 
 async def test_enroll_uses_entry_node():
     svc = _svc()
     camp = _campaign([_node("m1", delay=3600)], [], entry="m1")
-    svc.drip.active_campaigns_by_trigger = AsyncMock(return_value=[camp])
+    svc.scenarios.active_campaigns_by_trigger = AsyncMock(return_value=[camp])
     svc.users.get_by_telegram_id = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
-    svc.drip.enroll = AsyncMock(return_value=True)
+    svc.scenarios.enroll = AsyncMock(return_value=True)
 
-    n = await svc.enroll_drip_for_event(event_kind="trial_started", telegram_id=1)
+    n = await svc.enroll_for_event(event_kind="trial_started", telegram_id=1)
 
     assert n == 1
-    _, kwargs = svc.drip.enroll.call_args
+    _, kwargs = svc.scenarios.enroll.call_args
     assert kwargs["current_node_key"] == "m1"
 
 
@@ -207,18 +207,18 @@ def test_node_schema_rejects_bad_type_and_condition():
     import pytest
     from pydantic import ValidationError
 
-    from services.support.schemas import DripNodeIn
+    from services.scenarios.schemas import ScenarioNodeIn
 
     with pytest.raises(ValidationError):
-        DripNodeIn(key="m1", type="bogus")
+        ScenarioNodeIn(key="m1", type="bogus")
     with pytest.raises(ValidationError):
-        DripNodeIn(key="m1", type="message", condition="bogus")
+        ScenarioNodeIn(key="m1", type="message", condition="bogus")
 
 
 def test_campaign_schema_parses_nodes_and_edges():
-    from services.support.schemas import DripCampaignIn
+    from services.scenarios.schemas import ScenarioCampaignIn
 
-    c = DripCampaignIn(
+    c = ScenarioCampaignIn(
         key="trial_connect", name="x", trigger_event="trial_started",
         nodes=[{"key": "m1", "type": "message", "condition": "not_connected"}],
         edges=[{"from": "m1", "to": "end"}],
@@ -227,28 +227,28 @@ def test_campaign_schema_parses_nodes_and_edges():
     assert c.edges[0].from_node == "m1" and c.edges[0].to_node == "end"
 
 
-def test_render_drip_text_substitutes_vars():
+def test_render_text_substitutes_vars():
     user = SimpleNamespace(username="vasya", referral_code="ABC")
-    out = SupportService._render_drip_text("Привет, {name}! Зови друзей: {referral}", user)
+    out = ScenarioService._render_text("Привет, {name}! Зови друзей: {referral}", user)
     assert "vasya" in out
     assert "{name}" not in out
     assert "{referral}" not in out
 
 
 def test_build_outbound_button_action_vs_url():
-    a = SupportService._build_outbound_button({"text": "Продлить", "action": "renew", "style": "success"})
+    a = ScenarioService._build_outbound_button({"text": "Продлить", "action": "renew", "style": "success"})
     assert a.action == "renew" and a.url == "" and a.style == "success"
-    u = SupportService._build_outbound_button({"text": "Сайт", "url": "https://x.com"})
+    u = ScenarioService._build_outbound_button({"text": "Сайт", "url": "https://x.com"})
     assert u.url == "https://x.com" and u.action is None
-    assert SupportService._build_outbound_button({"text": "X", "action": "bogus"}) is None
+    assert ScenarioService._build_outbound_button({"text": "X", "action": "bogus"}) is None
 
 
-async def test_drip_stats_aggregates_by_status():
+async def test_stats_aggregates_by_status():
     svc = _svc()
     cid = uuid4()
-    svc.drip.status_counts = AsyncMock(
+    svc.scenarios.status_counts = AsyncMock(
         return_value=[(cid, "active", 3), (cid, "completed", 2), (cid, "stopped", 1)]
     )
-    out = await svc.drip_stats()
+    out = await svc.stats()
     assert len(out.items) == 1
     assert out.items[0].active == 3 and out.items[0].enrolled == 6
