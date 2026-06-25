@@ -3,517 +3,160 @@ import { useState } from "react";
 import { api } from "../api/client.js";
 import { Empty } from "../components/Empty.jsx";
 import { Icon } from "../components/Icon.jsx";
-import { TextEditor, htmlForTelegram } from "../components/TextEditor.jsx";
 import { useQuery } from "../hooks/useQuery.js";
+import { DripGraph } from "../components/drip/DripGraph.jsx";
+import { DripInspector } from "../components/drip/DripInspector.jsx";
+import "../components/drip/drip.css";
+import {
+  TRIGGERS, graphFromApi, graphToPayload, mockChain, emptyMessage, layoutLinear,
+} from "../components/drip/dripModel.js";
 
-const TRIGGERS = [
-  { v: "trial_started", l: "Активировал триал" },
-  { v: "purchase", l: "Оплатил" },
-  { v: "user_registered", l: "Зарегистрировался" },
-  { v: "subscription_expired", l: "Подписка истекла (winback)" },
-];
+/* ════════════════════════════════════════════════════════════
+   Цепочки — drip campaign builder
+   - List view: campaigns table with live stats
+   - Builder view: branching graph (left) + step inspector & live
+     Telegram preview (right). Selecting a node opens its editor.
 
-const CONDITIONS = [
-  { v: "always", l: "Всегда" },
-  { v: "not_connected", l: "Ещё не подключился" },
-  { v: "not_purchased", l: "Ещё не купил" },
-  { v: "no_active_sub", l: "Нет активной подписки" },
-];
-
-const UNITS = [
-  { v: 60, l: "мин" },
-  { v: 3600, l: "часов" },
-  { v: 86400, l: "дней" },
-];
-
-const BUTTON_STYLES = [
-  { v: "", l: "По умолчанию" },
-  { v: "primary", l: "Синяя" },
-  { v: "success", l: "Зелёная" },
-  { v: "danger", l: "Красная" },
-];
-
-const BUTTON_ACTIONS = [
-  { v: "", l: "Свой URL" },
-  { v: "renew", l: "Продлить" },
-  { v: "connect", l: "Подключение" },
-  { v: "plans", l: "Тарифы" },
-  { v: "help", l: "Помощь" },
-];
-
-function splitDelay(sec) {
-  const s = sec || 0;
-  if (s && s % 86400 === 0) return [s / 86400, 86400];
-  if (s && s % 3600 === 0) return [s / 3600, 3600];
-  return [Math.round(s / 60), 60];
-}
-
-function emptyStep() {
-  return {
-    val: 1,
-    unit: 3600,
-    condition: "always",
-    text_body: "",
-    buttons: [],
-    media_kind: null,
-    media_url: null,
-  };
-}
-
-function fromApi(c) {
-  return {
-    id: c.id,
-    key: c.key,
-    name: c.name,
-    trigger_event: c.trigger_event || "trial_started",
-    is_active: !!c.is_active,
-    steps: (c.steps || [])
-      .slice()
-      .sort((a, b) => a.step_order - b.step_order)
-      .map((s) => {
-        const [val, unit] = splitDelay(s.delay_seconds);
-        return {
-          val,
-          unit,
-          condition: s.condition,
-          text_body: s.text_body || "",
-          media_kind: s.media_kind || null,
-          media_url: s.media_url || null,
-          buttons: (s.inline_buttons || []).map((b) => ({
-            text: b.text || "",
-            url: b.url || "",
-            style: b.style || "",
-            action: b.action || "",
-          })),
-        };
-      }),
-  };
-}
-
-function toPayload(form) {
-  return {
-    key: form.key.trim(),
-    name: form.name.trim(),
-    trigger_event: form.trigger_event,
-    is_active: form.is_active,
-    steps: form.steps.map((s, i) => {
-      const buttons = s.buttons
-        .filter((b) => b.text.trim() && (b.action || b.url.trim()))
-        .map((b) => ({
-          text: b.text.trim(),
-          url: b.action ? "" : b.url.trim(),
-          style: b.style || null,
-          action: b.action || null,
-        }));
-      return {
-        step_order: i,
-        delay_seconds: Math.max(0, Math.round(s.val * s.unit)),
-        condition: s.condition,
-        text_body: htmlForTelegram(s.text_body),
-        inline_buttons: buttons.length ? buttons : null,
-        media_kind: s.media_url ? s.media_kind : null,
-        media_url: s.media_url || null,
-      };
-    }),
-  };
-}
+   Backend today stores LINEAR steps; graphFromApi/graphToPayload bridge
+   that. CONDITION/END nodes + multiple branches are an extension — see
+   drip_module/README.md for the proposed contract. The builder degrades
+   to a linear chain when the campaign has no branch metadata.
+   ════════════════════════════════════════════════════════════ */
 
 export function DripPage() {
-  const q = useQuery(
-    () => api.get("/support/drip/campaigns").catch(() => ({ items: [] })),
-    { interval: 0 },
-  );
-  const statsQ = useQuery(
-    () => api.get("/support/drip/stats").catch(() => ({ items: [] })),
-    { interval: 0 },
-  );
-  const [form, setForm] = useState(null);
-  const [err, setErr] = useState("");
+  const q = useQuery(() => api.get("/support/drip/campaigns").catch(() => ({ items: [] })), { interval: 0 });
+  const statsQ = useQuery(() => api.get("/support/drip/stats").catch(() => ({ items: [] })), { interval: 0 });
+
+  const [graph, setGraph] = useState(null);   // { meta, nodes, edges } | null
+  const [selected, setSelected] = useState(null);
+  const [edgeStyle, setEdgeStyle] = useState("curved");
+  const [showCounts, setShowCounts] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
 
   const campaigns = q.data?.items || [];
-  const stats = {};
-  (statsQ.data?.items || []).forEach((s) => {
-    stats[s.campaign_id] = s;
-  });
+  const statsById = {};
+  (statsQ.data?.items || []).forEach((s) => { statsById[s.campaign_id] = s; });
 
-  const patch = (p) => setForm((f) => ({ ...f, ...p }));
-  const patchStep = (i, p) =>
-    setForm((f) => ({
-      ...f,
-      steps: f.steps.map((s, idx) => (idx === i ? { ...s, ...p } : s)),
-    }));
+  const openCampaign = (c) => {
+    const g = graphFromApi({ ...c, stats: statsById[c.id] });
+    setGraph(g);
+    setSelected(g.nodes.find((n) => n.type === "message")?.id || "trig");
+    setErr("");
+  };
+  const openNew = () => {
+    const { nodes, edges } = layoutLinear([emptyMessage("m1")], "trial_started");
+    setGraph({ meta: { id: null, key: "", name: "", trigger_event: "trial_started", is_active: false, stats: { active: 0, completed: 0 } }, nodes, edges });
+    setSelected("m1");
+    setErr("");
+  };
+  const openDemo = () => { const g = mockChain(); setGraph(g); setSelected("m3"); setErr(""); };
 
-  const uploadMedia = async (i, file) => {
-    if (!file) return;
-    const fd = new FormData();
-    fd.append("file", file);
-    try {
-      const r = await api.raw("/support/drip/upload", { method: "POST", headers: {}, body: fd });
-      patchStep(i, { media_kind: r.media_kind, media_url: r.media_url });
-    } catch (e) {
-      setErr(e.message || "Ошибка загрузки медиа");
-    }
+  const selectedNode = graph?.nodes.find((n) => n.id === selected) || null;
+  const patchMeta = (p) => setGraph((g) => ({ ...g, meta: { ...g.meta, ...p } }));
+  const patchNode = (p) => setGraph((g) => ({ ...g, nodes: g.nodes.map((n) => (n.id === selected ? { ...n, ...p } : n)) }));
+  const deleteNode = (id) => {
+    setGraph((g) => ({ ...g, nodes: g.nodes.filter((n) => n.id !== id), edges: g.edges.filter((e) => e.from !== id && e.to !== id) }));
+    setSelected(null);
   };
 
   const save = async () => {
-    const payload = toPayload(form);
-    if (!payload.key || !payload.name) {
-      setErr("Заполни ключ и название");
-      return;
-    }
-    if (!payload.steps.length) {
-      setErr("Добавь хотя бы один шаг");
-      return;
-    }
-    setBusy(true);
-    setErr("");
+    const payload = graphToPayload(graph.meta, graph.nodes);
+    if (!payload.key || !payload.name) { setErr("Заполни ключ и название"); return; }
+    if (!payload.steps.length) { setErr("Добавь хотя бы один шаг"); return; }
+    setBusy(true); setErr("");
     try {
-      if (form.id) await api.put(`/support/drip/campaigns/${form.id}`, payload);
+      if (graph.meta.id) await api.put(`/support/drip/campaigns/${graph.meta.id}`, payload);
       else await api.post("/support/drip/campaigns", payload);
-      setForm(null);
-      q.refetch();
-      statsQ.refetch();
-    } catch (e) {
-      setErr(e.message || "Ошибка сохранения");
-    } finally {
-      setBusy(false);
-    }
+      setGraph(null); q.refetch(); statsQ.refetch();
+    } catch (e) { setErr(e.message || "Ошибка сохранения"); }
+    finally { setBusy(false); }
   };
 
-  const remove = async () => {
-    if (!form.id) {
-      setForm(null);
-      return;
-    }
-    if (!window.confirm("Удалить кампанию?")) return;
-    setBusy(true);
-    try {
-      await api.del(`/support/drip/campaigns/${form.id}`);
-      setForm(null);
-      q.refetch();
-      statsQ.refetch();
-    } catch (e) {
-      setErr(e.message || "Ошибка удаления");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  if (form) {
+  /* ── Builder view ── */
+  if (graph) {
+    const m = graph.meta;
     return (
-      <div className="page">
-        <div className="page-head">
-          <div className="page-head-main">
-            <h1 className="page-title">{form.id ? "Кампания" : "Новая цепочка"}</h1>
-            <div className="page-subtitle">
-              Автоматическая цепочка сообщений по событию пользователя
-            </div>
+      <div className="db-wrap">
+        <div className="db-bar">
+          <button className="btn btn-ghost btn-icon db-bar-back" title="К списку" onClick={() => setGraph(null)} disabled={busy}><Icon name="chevron-left" size={17} /></button>
+          <div className="db-bar-id">
+            <input className="db-bar-name" value={m.name} placeholder="Название цепочки" onChange={(e) => patchMeta({ name: e.target.value })} />
+            <input className="db-bar-key" value={m.key} placeholder="ключ_латиницей" disabled={!!m.id} onChange={(e) => patchMeta({ key: e.target.value })} style={{ border: 0, background: "transparent" }} />
           </div>
-          <div className="page-head-actions">
-            <button className="btn" onClick={() => setForm(null)} disabled={busy}>
-              Назад
-            </button>
-            <button className="btn btn-primary" onClick={save} disabled={busy}>
-              Сохранить
-            </button>
+          <span className="db-trigger-chip">
+            <span className="ic"><Icon name="zap" size={13} /></span>
+            {TRIGGERS[m.trigger_event]?.label || m.trigger_event}
+          </span>
+          <div className="db-bar-spacer" />
+          <div className="db-stat"><span className="db-stat-val">{(m.stats?.active || 0).toLocaleString("ru-RU")}</span><span className="db-stat-lbl">в работе</span></div>
+          <div className="db-stat"><span className="db-stat-val">{(m.stats?.completed || 0).toLocaleString("ru-RU")}</span><span className="db-stat-lbl">завершено</span></div>
+          <div className="db-toggle" style={{ paddingLeft: 14, borderLeft: "1px solid var(--border)" }}>
+            <span>{m.is_active ? "Активна" : "Выключена"}</span>
+            <button className="db-switch" data-on={m.is_active ? "true" : "false"} onClick={() => patchMeta({ is_active: !m.is_active })} />
           </div>
+          <button className="btn btn-primary" onClick={save} disabled={busy}><Icon name="check" size={14} /> Сохранить</button>
         </div>
 
-        {err && <div className="card card-bad">{err}</div>}
+        {err && <div className="card card-bad" style={{ margin: "10px 16px 0" }}>{err}</div>}
 
-        <div className="card" style={{ display: "grid", gap: 12, padding: 16 }}>
-          <label className="form-field">
-            <span className="form-label">Название</span>
-            <input
-              className="input"
-              value={form.name}
-              onChange={(e) => patch({ name: e.target.value })}
-              placeholder="Триал → подключение"
-            />
-          </label>
-          <label className="form-field">
-            <span className="form-label">Ключ (латиницей, уникальный)</span>
-            <input
-              className="input mono"
-              value={form.key}
-              onChange={(e) => patch({ key: e.target.value })}
-              placeholder="trial_connect"
-              disabled={!!form.id}
-            />
-          </label>
-          <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "end" }}>
-            <label className="form-field" style={{ flex: 1, minWidth: 200 }}>
-              <span className="form-label">Запускать по событию</span>
-              <select
-                className="select"
-                value={form.trigger_event}
-                onChange={(e) => patch({ trigger_event: e.target.value })}
-              >
-                {TRIGGERS.map((t) => (
-                  <option key={t.v} value={t.v}>{t.l}</option>
-                ))}
-              </select>
-            </label>
-            <label className="form-field" style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <input
-                type="checkbox"
-                checked={form.is_active}
-                onChange={(e) => patch({ is_active: e.target.checked })}
-              />
-              <span className="form-label" style={{ margin: 0 }}>Активна</span>
-            </label>
-          </div>
+        <div className="db-body">
+          <DripGraph
+            nodes={graph.nodes}
+            edges={graph.edges}
+            selected={selected}
+            onSelect={setSelected}
+            edgeStyle={edgeStyle}
+            showCounts={showCounts}
+          />
+          <DripInspector
+            node={selectedNode}
+            chainStats={m.stats}
+            onPatch={patchNode}
+            onClose={() => setSelected(null)}
+            onDelete={deleteNode}
+          />
         </div>
-
-        <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
-          {form.steps.map((s, i) => (
-            <div key={i} className="card" style={{ display: "grid", gap: 10, padding: 16 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <strong>Шаг {i + 1}</strong>
-                <button
-                  className="btn btn-ghost btn-icon"
-                  onClick={() =>
-                    setForm((f) => ({ ...f, steps: f.steps.filter((_, idx) => idx !== i) }))
-                  }
-                  title="Удалить шаг"
-                >
-                  <Icon name="x" size={16} />
-                </button>
-              </div>
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
-                <label className="form-field" style={{ width: 110 }}>
-                  <span className="form-label">Через</span>
-                  <input
-                    className="input"
-                    type="number"
-                    min={0}
-                    value={s.val}
-                    onChange={(e) => patchStep(i, { val: Number(e.target.value) })}
-                  />
-                </label>
-                <label className="form-field" style={{ width: 120 }}>
-                  <span className="form-label">&nbsp;</span>
-                  <select
-                    className="select"
-                    value={s.unit}
-                    onChange={(e) => patchStep(i, { unit: Number(e.target.value) })}
-                  >
-                    {UNITS.map((u) => (
-                      <option key={u.v} value={u.v}>{u.l}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="form-field" style={{ flex: 1, minWidth: 200 }}>
-                  <span className="form-label">Условие (иначе цепочка завершается)</span>
-                  <select
-                    className="select"
-                    value={s.condition}
-                    onChange={(e) => patchStep(i, { condition: e.target.value })}
-                  >
-                    {CONDITIONS.map((c) => (
-                      <option key={c.v} value={c.v}>{c.l}</option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <div className="form-field">
-                <span className="form-label">Текст сообщения · переменные: {"{name}"}, {"{referral}"}</span>
-                <TextEditor
-                  value={s.text_body}
-                  onChange={(v) => patchStep(i, { text_body: v })}
-                  placeholder="Заметили, ты ещё не подключился — давай помогу 👇"
-                  minHeight={120}
-                />
-              </div>
-              <div className="form-field">
-                <span className="form-label">Медиа</span>
-                {s.media_url ? (
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    {s.media_kind === "image" ? (
-                      <img src={s.media_url} alt="" style={{ height: 48, borderRadius: 6 }} />
-                    ) : (
-                      <span className="mono muted" style={{ fontSize: 12 }}>{s.media_kind}</span>
-                    )}
-                    <a
-                      href={s.media_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="muted"
-                      style={{ fontSize: 12 }}
-                    >
-                      файл
-                    </a>
-                    <button
-                      className="btn btn-ghost btn-icon"
-                      onClick={() => patchStep(i, { media_kind: null, media_url: null })}
-                      title="Убрать медиа"
-                    >
-                      <Icon name="x" size={14} />
-                    </button>
-                  </div>
-                ) : (
-                  <input
-                    type="file"
-                    accept="image/*,video/*"
-                    onChange={(e) => uploadMedia(i, e.target.files?.[0])}
-                  />
-                )}
-              </div>
-              <div style={{ display: "grid", gap: 6 }}>
-                <span className="form-label">Кнопки</span>
-                {s.buttons.map((b, bi) => {
-                  const upd = (patch) =>
-                    patchStep(i, {
-                      buttons: s.buttons.map((x, xi) => (xi === bi ? { ...x, ...patch } : x)),
-                    });
-                  return (
-                    <div key={bi} style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                      <input
-                        className="input"
-                        style={{ flex: 1, minWidth: 120 }}
-                        value={b.text}
-                        placeholder="Текст кнопки"
-                        onChange={(e) => upd({ text: e.target.value })}
-                      />
-                      <select
-                        className="select"
-                        style={{ width: 150 }}
-                        value={b.action || ""}
-                        onChange={(e) => upd({ action: e.target.value })}
-                        title="Куда ведёт кнопка"
-                      >
-                        {BUTTON_ACTIONS.map((a) => (
-                          <option key={a.v} value={a.v}>{a.l}</option>
-                        ))}
-                      </select>
-                      {!b.action && (
-                        <input
-                          className="input"
-                          style={{ flex: 2, minWidth: 160 }}
-                          value={b.url}
-                          placeholder="https://… или https://t.me/…"
-                          onChange={(e) => upd({ url: e.target.value })}
-                        />
-                      )}
-                      <select
-                        className="select"
-                        style={{ width: 130 }}
-                        value={b.style}
-                        onChange={(e) => upd({ style: e.target.value })}
-                      >
-                        {BUTTON_STYLES.map((st) => (
-                          <option key={st.v} value={st.v}>{st.l}</option>
-                        ))}
-                      </select>
-                      <button
-                        className="btn btn-ghost btn-icon"
-                        onClick={() =>
-                          patchStep(i, { buttons: s.buttons.filter((_, xi) => xi !== bi) })
-                        }
-                        title="Удалить кнопку"
-                      >
-                        <Icon name="x" size={14} />
-                      </button>
-                    </div>
-                  );
-                })}
-                <button
-                  className="btn btn-sm"
-                  onClick={() =>
-                    patchStep(i, { buttons: [...s.buttons, { text: "", url: "", style: "", action: "" }] })
-                  }
-                >
-                  <Icon name="plus" size={14} /> Кнопка
-                </button>
-              </div>
-            </div>
-          ))}
-          <button
-            className="btn"
-            onClick={() => setForm((f) => ({ ...f, steps: [...f.steps, emptyStep()] }))}
-          >
-            <Icon name="plus" size={16} /> Добавить шаг
-          </button>
-        </div>
-
-        {form.id && (
-          <div style={{ marginTop: 16 }}>
-            <button className="btn btn-danger" onClick={remove} disabled={busy}>
-              Удалить кампанию
-            </button>
-          </div>
-        )}
       </div>
     );
   }
 
+  /* ── List view ── */
   return (
     <div className="page">
       <div className="page-head">
         <div className="page-head-main">
           <h1 className="page-title">Цепочки</h1>
-          <div className="page-subtitle">
-            Автоматические сообщения по событиям: триал → подключение, конверсия, winback
-          </div>
+          <div className="page-subtitle">Автоматические сообщения по событиям: триал → подключение, конверсия, winback</div>
         </div>
         <div className="page-head-actions">
-          <button
-            className="btn btn-primary"
-            onClick={() =>
-              setForm({
-                key: "",
-                name: "",
-                trigger_event: "trial_started",
-                is_active: false,
-                steps: [emptyStep()],
-              })
-            }
-          >
-            <Icon name="plus" size={16} /> Кампания
-          </button>
+          <button className="btn" onClick={openDemo}><Icon name="eye" size={15} /> Демо-цепочка</button>
+          <button className="btn btn-primary" onClick={openNew}><Icon name="plus" size={16} /> Кампания</button>
         </div>
       </div>
 
-      {!campaigns.length ? (
-        <Empty
-          icon="git-branch"
-          title="Цепочек нет"
-          hint="Создай кампанию: выбери событие-триггер и шаги с задержкой, условием и текстом. Движок сам разошлёт их по юзерам."
-        />
+      {q.loading && !campaigns.length ? (
+        <div className="card" style={{ padding: 16 }}><div className="muted">Загрузка…</div></div>
+      ) : !campaigns.length ? (
+        <Empty icon="git-branch" title="Цепочек нет"
+          hint="Создай кампанию: выбери событие-триггер, собери шаги и ветки на схеме. Движок сам разошлёт их по юзерам. Можно открыть демо-цепочку, чтобы посмотреть редактор." />
       ) : (
         <div className="card">
           <table className="tbl">
             <thead>
-              <tr>
-                <th>Название</th>
-                <th>Триггер</th>
-                <th>Шагов</th>
-                <th>В работе</th>
-                <th>Завершено</th>
-                <th>Статус</th>
-              </tr>
+              <tr><th>Название</th><th>Триггер</th><th>Шагов</th><th>В работе</th><th>Завершено</th><th>Статус</th></tr>
             </thead>
             <tbody>
               {campaigns.map((c) => {
-                const st = stats[c.id] || {};
+                const st = statsById[c.id] || {};
                 return (
-                  <tr key={c.id} style={{ cursor: "pointer" }} onClick={() => setForm(fromApi(c))}>
-                    <td style={{ fontWeight: 500 }}>
-                      {c.name}
-                      <div className="mono muted" style={{ fontSize: 11 }}>{c.key}</div>
-                    </td>
-                    <td>{TRIGGERS.find((t) => t.v === c.trigger_event)?.l || c.trigger_event || "—"}</td>
+                  <tr key={c.id} style={{ cursor: "pointer" }} onClick={() => openCampaign(c)}>
+                    <td style={{ fontWeight: 500 }}>{c.name}<div className="mono muted" style={{ fontSize: 11 }}>{c.key}</div></td>
+                    <td>{TRIGGERS[c.trigger_event]?.label || c.trigger_event || "—"}</td>
                     <td className="tbl-num">{(c.steps || []).length}</td>
                     <td className="tbl-num">{st.active || 0}</td>
                     <td className="tbl-num">{st.completed || 0}</td>
-                    <td>
-                      {c.is_active ? (
-                        <span className="pill ok">активна</span>
-                      ) : (
-                        <span className="pill muted">выкл</span>
-                      )}
-                    </td>
+                    <td>{c.is_active ? <span className="pill ok">активна</span> : <span className="pill muted">выкл</span>}</td>
                   </tr>
                 );
               })}

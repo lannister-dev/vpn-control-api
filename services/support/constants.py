@@ -24,7 +24,14 @@ DRIP_TRIGGER_EVENTS = (
     "user_registered",
     "subscription_expired",
 )
-DRIP_CONDITIONS = ("always", "not_connected", "not_purchased", "no_active_sub")
+DRIP_CONDITIONS = (
+    "always",
+    "not_connected",
+    "not_purchased",
+    "no_active_sub",
+    "connected",
+    "purchased",
+)
 
 
 class DripCondition:
@@ -32,6 +39,8 @@ class DripCondition:
     NOT_CONNECTED = "not_connected"
     NOT_PURCHASED = "not_purchased"
     NO_ACTIVE_SUB = "no_active_sub"
+    CONNECTED = "connected"
+    PURCHASED = "purchased"
 
 
 class DripStatus:

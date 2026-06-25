@@ -1333,6 +1333,10 @@ class SupportService:
             return not await self.drip.has_active_subscription(
                 user_id, now=datetime.now(timezone.utc)
             )
+        if condition == DripCondition.CONNECTED:
+            return await self.drip.has_connected(user_id)
+        if condition == DripCondition.PURCHASED:
+            return await self.drip.has_paid(user_id)
         return True
 
     @staticmethod
