@@ -69,7 +69,8 @@ export const NODE_W = 258;
 
 export function emptyMessage(id) {
   return { id, type: "message", cx: LANE.C, top: 0, w: NODE_W, h: 112,
-    delay_seconds: 3600, condition: "always", text: "", buttons: [], media: null, stats: { active: 0 } };
+    delay_seconds: 3600, condition: "always", repeat: 1, repeatInterval: 0,
+    text: "", buttons: [], media: null, stats: { active: 0 } };
 }
 
 // ── Linear layout: trigger → messages → end, centre lane ──
@@ -155,6 +156,8 @@ function apiNodeToGraph(n) {
     ...base, w: NODE_W, h: 120,
     delay_seconds: n.delay_seconds || 0,
     condition: n.condition || "always",
+    repeat: n.repeat_count || 1,
+    repeatInterval: n.repeat_interval_sec || 0,
     text: n.text_body || "",
     media: n.media_url ? { kind: n.media_kind || "image", url: n.media_url, name: "media", size: "" } : null,
     buttons: (n.inline_buttons || []).map((b) => ({ text: b.text || "", url: b.url || "", style: b.style || "", action: b.action || "" })),
@@ -220,6 +223,8 @@ export function graphToPayload(meta, nodes, edges) {
       ...base,
       delay_seconds: Math.max(0, Math.round(n.delay_seconds || 0)),
       condition: n.condition || "always",
+      repeat_count: Math.max(1, Math.round(n.repeat || 1)),
+      repeat_interval_sec: Math.max(0, Math.round(n.repeatInterval || 0)),
       text_body: n.text || null,
       inline_buttons: (n.buttons || [])
         .filter((b) => (b.text || "").trim() && (b.action || (b.url || "").trim()))

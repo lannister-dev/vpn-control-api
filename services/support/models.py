@@ -281,6 +281,12 @@ class DripNode(Base):
     condition: Mapped[str] = mapped_column(
         String(32), nullable=False, default="always", server_default=text("'always'")
     )
+    repeat_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default=text("1")
+    )
+    repeat_interval_sec: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
     text_body: Mapped[str | None] = mapped_column(Text, nullable=True)
     inline_buttons: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     media_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
@@ -333,6 +339,9 @@ class UserCampaignState(Base):
         nullable=False,
     )
     current_node_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    node_sends: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="active", server_default=text("'active'")
     )

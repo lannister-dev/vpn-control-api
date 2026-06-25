@@ -455,6 +455,8 @@ class DripNodeIn(BaseModel):
     pos_top: int = 0
     delay_seconds: int = 0
     condition: str = "always"
+    repeat_count: int = 1
+    repeat_interval_sec: int = 0
     text_body: str | None = None
     inline_buttons: list[dict] | None = None
     media_kind: str | None = None
@@ -501,6 +503,8 @@ class DripNodeOut(BaseModel):
     pos_top: int = 0
     delay_seconds: int = 0
     condition: str = "always"
+    repeat_count: int = 1
+    repeat_interval_sec: int = 0
     text_body: str | None = None
     inline_buttons: list[dict] | None = None
     media_kind: str | None = None

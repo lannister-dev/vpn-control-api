@@ -79,6 +79,7 @@ export function DripNode({ node, selected, num, showCounts = true, onSelect, onB
       <div className="dn-body"><div className="dn-title">{stripTags(node.text) || "Без текста"}</div></div>
       <div className="dn-foot">
         {node.media && <span className="dn-meta"><Icon name="image" size={12} /> медиа</span>}
+        {node.repeat > 1 && <span className="dn-meta" title="Повторов"><Icon name="refresh" size={11} /> ×{node.repeat}</span>}
         {firstBtn && (
           <span className="dn-btnchip"><Icon name="link" size={11} />{firstBtn.text}{extraBtns > 0 ? ` +${extraBtns}` : ""}</span>
         )}

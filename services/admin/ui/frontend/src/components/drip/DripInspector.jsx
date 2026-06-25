@@ -70,6 +70,8 @@ export function DripInspector({ node, chainStats, onPatch, onClose, onDelete, on
 
   const [val, unit] = splitDelay(node.delay_seconds);
   const setDelay = (v, u) => onPatch({ delay_seconds: Math.max(0, Math.round((v ?? val) * (u ?? unit))) });
+  const [rptVal, rptUnit] = splitDelay(node.repeatInterval || node.delay_seconds || 86400);
+  const setRpt = (v, u) => onPatch({ repeatInterval: Math.max(0, Math.round((v ?? rptVal) * (u ?? rptUnit))) });
 
   const TYPE_META = {
     trigger:   { ic: "zap", tone: "var(--accent)", title: "Триггер", sub: "Точка входа в цепочку" },
@@ -115,6 +117,34 @@ export function DripInspector({ node, chainStats, onPatch, onClose, onDelete, on
                 </div>
               </div>
               <div className="di-hint">Отсчёт начинается после предыдущего шага цепочки.</div>
+            </div>
+
+            <div className="di-sec">
+              <div className="di-sec-h"><Icon name="refresh" size={13} /> Повторы (напоминания)</div>
+              <div className="di-row">
+                <div className="di-field">
+                  <span className="di-label">Сколько раз</span>
+                  <input className="di-input-sm" type="number" min={1} style={{ width: 84 }}
+                    value={node.repeat ?? 1}
+                    onChange={(e) => onPatch({ repeat: Math.max(1, Number(e.target.value) || 1) })} />
+                </div>
+                <div className="di-field">
+                  <span className="di-label">Каждые</span>
+                  <input className="di-input-sm" type="number" min={1} style={{ width: 70 }}
+                    value={rptVal} onChange={(e) => setRpt(Number(e.target.value), rptUnit)} />
+                </div>
+                <div className="di-field">
+                  <span className="di-label">&nbsp;</span>
+                  <select className="di-select-sm" style={{ width: 100 }} value={rptUnit} onChange={(e) => setRpt(rptVal, Number(e.target.value))}>
+                    {UNITS.map((u) => <option key={u.v} value={u.v}>{u.long}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="di-hint">
+                {(node.repeat ?? 1) > 1
+                  ? "Напоминание прекратится само, как только «условие отправки» выше перестанет выполняться (юзер сделал действие)."
+                  : "1 = один раз. Поставь больше, чтобы напоминать, пока держится «условие отправки» выше."}
+              </div>
             </div>
 
             <div className="di-sec">

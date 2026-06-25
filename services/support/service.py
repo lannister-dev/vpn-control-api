@@ -1254,6 +1254,7 @@ class SupportService:
                 key = self._next_edge_key(campaign, key, branch="yes" if holds else "no")
                 continue
             state.current_node_key = key
+            state.node_sends = 0
             state.next_send_at = now + timedelta(seconds=int(node.delay_seconds))
             return
         state.status = DripStatus.COMPLETED
@@ -1298,6 +1299,16 @@ class SupportService:
             return False
         ok = await self._send_drip_message(state, node, user=user)
         state.last_step_sent_at = now
+        state.node_sends = int(state.node_sends or 0) + 1
+
+        # repeat the same reminder until the cap is hit (gate above stops it early
+        # the moment the user does the action — e.g. connects / takes the trial)
+        repeat_cap = max(1, int(node.repeat_count or 1))
+        if state.node_sends < repeat_cap:
+            gap = int(node.repeat_interval_sec or 0) or int(node.delay_seconds or 0)
+            state.next_send_at = now + timedelta(seconds=gap)
+            return ok
+
         await self._walk_to_waitpoint(
             state, campaign, nodes,
             start_key=self._next_edge_key(campaign, node.node_key, branch=None),
@@ -1318,6 +1329,7 @@ class SupportService:
                 id=n.id, key=n.node_key, type=n.node_type,
                 pos_cx=n.pos_cx, pos_top=n.pos_top,
                 delay_seconds=n.delay_seconds, condition=n.condition,
+                repeat_count=n.repeat_count, repeat_interval_sec=n.repeat_interval_sec,
                 text_body=n.text_body, inline_buttons=n.inline_buttons,
                 media_kind=n.media_kind, media_url=n.media_url,
                 check=n.check_kind, conversion=n.conversion, label=n.label,
@@ -1366,6 +1378,7 @@ class SupportService:
                 node_key=n.key, node_type=n.type,
                 pos_cx=n.pos_cx, pos_top=n.pos_top,
                 delay_seconds=n.delay_seconds, condition=n.condition,
+                repeat_count=n.repeat_count, repeat_interval_sec=n.repeat_interval_sec,
                 text_body=n.text_body, inline_buttons=n.inline_buttons,
                 media_kind=n.media_kind, media_url=n.media_url,
                 check_kind=n.check, conversion=n.conversion, label=n.label,
@@ -1488,7 +1501,7 @@ class SupportService:
                 buttons.append(btn)
         payload = SupportOutboundPayload(
             ticket_id=f"drip:{state.campaign_id}",
-            message_id=f"drip:{state.id}:{node.node_key}",
+            message_id=f"drip:{state.id}:{node.node_key}:{state.node_sends or 0}",
             telegram_id=telegram_id,
             text=self._render_drip_text(node.text_body or "", user),
             media=media,

@@ -16,9 +16,10 @@ def _svc() -> SupportService:
     return svc
 
 
-def _node(key, type="message", *, delay=0, condition="always", check=None, text="hi"):
+def _node(key, type="message", *, delay=0, condition="always", check=None, text="hi", repeat=1, interval=0):
     return SimpleNamespace(
         node_key=key, node_type=type, delay_seconds=delay, condition=condition,
+        repeat_count=repeat, repeat_interval_sec=interval,
         text_body=text, inline_buttons=None, media_kind=None, media_url=None,
         check_kind=check, conversion=False, label=None, pos_cx=0, pos_top=0, id=uuid4(),
     )
@@ -38,7 +39,7 @@ def _campaign(nodes, edges, *, entry, is_active=True):
 def _state(current):
     return SimpleNamespace(
         id=uuid4(), campaign_id=uuid4(), user_id=uuid4(),
-        current_node_key=current, status=DripStatus.ACTIVE,
+        current_node_key=current, node_sends=0, status=DripStatus.ACTIVE,
         next_send_at=datetime.now(timezone.utc), last_step_sent_at=None,
     )
 
@@ -65,6 +66,48 @@ async def test_message_sends_and_advances_to_next_message():
     assert state.current_node_key == "m2"
     assert state.status == DripStatus.ACTIVE
     assert state.next_send_at is not None
+
+
+async def test_message_repeats_until_cap_then_advances():
+    svc = _svc()
+    camp = _campaign(
+        [_node("m1", delay=0, repeat=3, interval=86400), _node("end", "end")],
+        [_edge("m1", "end")], entry="m1",
+    )
+    svc.drip.get_campaign_with_graph = AsyncMock(return_value=camp)
+    svc.users.get_by_id = AsyncMock(return_value=_user())
+    state = _state("m1")
+
+    # first two ticks: send + stay on the same node (reminder repeats)
+    await svc._process_drip_state(state, now=datetime.now(timezone.utc))
+    assert state.current_node_key == "m1" and state.node_sends == 1
+    assert state.status == DripStatus.ACTIVE
+    await svc._process_drip_state(state, now=datetime.now(timezone.utc))
+    assert state.current_node_key == "m1" and state.node_sends == 2
+    # third tick: cap reached → advance to end → completed
+    await svc._process_drip_state(state, now=datetime.now(timezone.utc))
+    assert state.node_sends == 3
+    assert state.status == DripStatus.COMPLETED
+    assert svc._nats.publish_jetstream.await_count == 3
+
+
+async def test_repeat_stops_when_gate_resolves():
+    svc = _svc()
+    camp = _campaign(
+        [_node("m1", delay=0, condition="not_connected", repeat=5, interval=86400), _node("end", "end")],
+        [_edge("m1", "end")], entry="m1",
+    )
+    svc.drip.get_campaign_with_graph = AsyncMock(return_value=camp)
+    svc.users.get_by_id = AsyncMock(return_value=_user())
+    svc.drip.has_connected = AsyncMock(return_value=False)  # not connected → reminder fires
+    state = _state("m1")
+    await svc._process_drip_state(state, now=datetime.now(timezone.utc))
+    assert state.node_sends == 1 and state.status == DripStatus.ACTIVE
+
+    svc.drip.has_connected = AsyncMock(return_value=True)  # user connected → gate fails
+    await svc._process_drip_state(state, now=datetime.now(timezone.utc))
+    assert state.status == DripStatus.COMPLETED
+    assert svc._nats.publish_jetstream.await_count == 1  # no further reminder
 
 
 async def test_message_gate_fail_completes_without_send():
