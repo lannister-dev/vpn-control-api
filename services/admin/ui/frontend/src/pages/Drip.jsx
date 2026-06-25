@@ -58,21 +58,32 @@ export function DripPage() {
   const patchNode = (p) => setGraph((g) => ({ ...g, nodes: g.nodes.map((n) => (n.id === selected ? { ...n, ...p } : n)) }));
   const deleteNode = (id) => {
     setGraph((g) => {
-      const msgs = g.nodes.filter((n) => n.type === "message" && n.id !== id).map(({ id: _i, ...r }) => r);
-      const { nodes, edges } = layoutLinear(msgs, g.meta.trigger_event);
-      return { ...g, nodes, edges };
+      const nodes = g.nodes.filter((n) => n.id !== id);
+      const edges = g.edges.filter((e) => e.from !== id && e.to !== id);
+      return { ...g, nodes: autoLayout(nodes, edges), edges };
     });
     setSelected(null);
   };
   const insertStep = (edge) => {
-    const msgs = graph.nodes.filter((n) => n.type === "message");
-    const fromIdx = msgs.findIndex((m) => m.id === edge.from);
-    const insertAt = fromIdx >= 0 ? fromIdx + 1 : 0;
-    const data = msgs.map(({ id: _i, ...r }) => r);
-    data.splice(insertAt, 0, emptyMessage(""));
-    const { nodes, edges } = layoutLinear(data, graph.meta.trigger_event);
-    setGraph((g) => ({ ...g, nodes, edges }));
-    setSelected(`m${insertAt + 1}`);
+    setGraph((g) => {
+      const nodes = g.nodes.map((n) => ({ ...n }));
+      const edges = g.edges.map((e) => ({ ...e }));
+      const mId = nextNodeId(nodes, "m");
+      nodes.push({ ...emptyMessage(mId), id: mId });
+      const idx = edges.findIndex((e) => e.from === edge.from && e.to === edge.to && e.branch === edge.branch);
+      if (idx >= 0) {
+        const old = edges[idx];
+        const tailIsMsg = nodes.some((n) => n.id === old.to && n.type === "message");
+        edges.splice(idx, 1,
+          { from: old.from, to: mId, branch: old.branch || undefined, delayOf: mId },
+          { from: mId, to: old.to, delayOf: tailIsMsg ? old.to : undefined },
+        );
+      } else {
+        edges.push({ from: edge.from, to: mId, delayOf: mId });
+      }
+      setSelected(mId);
+      return { ...g, nodes: autoLayout(nodes, edges), edges };
+    });
   };
   const insertBranchAfter = (nodeKey) => {
     setGraph((g) => {
