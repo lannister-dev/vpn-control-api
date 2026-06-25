@@ -59,8 +59,18 @@ export function DripPage() {
   const moveNode = (id, cx, top) => setGraph((g) => ({ ...g, nodes: g.nodes.map((n) => (n.id === id ? { ...n, cx, top } : n)) }));
   const deleteNode = (id) => {
     setGraph((g) => {
+      const incoming = g.edges.filter((e) => e.to === id);
+      const outgoing = g.edges.filter((e) => e.from === id);
       const nodes = g.nodes.filter((n) => n.id !== id);
       const edges = g.edges.filter((e) => e.from !== id && e.to !== id);
+      const target = outgoing[0] ? outgoing[0].to : null;
+      if (target) {
+        incoming.forEach((inc) => {
+          if (inc.from !== target && !edges.some((e) => e.from === inc.from && e.to === target)) {
+            edges.push({ from: inc.from, to: target, branch: inc.branch || undefined, delayOf: nodes.some((n) => n.id === target && n.type === "message") ? target : undefined });
+          }
+        });
+      }
       return { ...g, nodes: autoLayout(nodes, edges), edges };
     });
     setSelected(null);

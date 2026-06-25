@@ -25,7 +25,8 @@ export function DripNode({ node, selected, num, showCounts = true, onSelect, onB
   if (node.type === "trigger") {
     const t = TRIGGERS[node.trigger_event] || {};
     return (
-      <div className="dn dn-trigger" {...common}>
+      <div className="dn dn-trigger" {...common}
+        style={{ ...common.style, left: node.cx, width: "max-content", maxWidth: 460, transform: "translateX(-50%)" }}>
         <div className="dn-head">
           <span className="dn-ic"><Icon name={t.icon || "zap"} size={14} /></span>
           <span className="dn-type">Старт</span>

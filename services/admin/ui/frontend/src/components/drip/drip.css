@@ -41,8 +41,8 @@
 .db-trigger-chip .ic { color: var(--accent); display: inline-flex; }
 .db-bar-spacer { flex: 1 1 auto; }
 .db-stat {
-  display: flex; flex-direction: column; align-items: flex-end; line-height: 1.1;
-  padding: 0 12px; border-left: 1px solid var(--border);
+  display: flex; flex-direction: column; align-items: flex-end; gap: 3px; line-height: 1.15;
+  padding: 0 14px; border-left: 1px solid var(--border);
 }
 .db-stat-val { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text); }
 .db-stat-lbl { font-size: 10.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
@@ -167,7 +167,7 @@
 .dn-trigger .dn-head { padding: 0; height: 100%; align-items: center; padding: 0 16px 0 12px; }
 .dn-trigger .dn-ic { background: var(--accent); color: #fff; }
 .dn-trigger .dn-type { color: var(--accent-text); }
-.dn-trigger .dn-trig-name { font-size: 13px; font-weight: 600; color: var(--text); margin-left: auto; }
+.dn-trigger .dn-trig-name { font-size: 13px; font-weight: 600; color: var(--text); margin-left: 8px; white-space: nowrap; }
 
 .dn-message .dn-ic { background: color-mix(in oklch, var(--info) 22%, var(--surface)); color: var(--info); }
 .dn-message .dn-type { color: var(--text-muted); }
