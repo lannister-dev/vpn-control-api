@@ -118,6 +118,11 @@ export function autoLayout(nodes, edges) {
       if (!seen.has(e.to)) { seen.add(e.to); queue.push(e.to); }
     });
   }
+  let maxRow = 0;
+  Object.values(row).forEach((r) => { maxRow = Math.max(maxRow, r); });
+  nodes.forEach((n) => {
+    if (row[n.id] == null) { maxRow += 1; row[n.id] = maxRow; lane[n.id] = LANE.C; }
+  });
   return nodes.map((n) => {
     const r = row[n.id] != null ? row[n.id] : 0;
     const l = lane[n.id] != null ? lane[n.id] : LANE.C;
