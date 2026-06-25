@@ -586,6 +586,11 @@ class SubscriptionService:
                 key.is_revoked = False
                 restored += 1
 
+            if subscription.expires_at is not None and (
+                key.valid_until is None or key.valid_until < subscription.expires_at
+            ):
+                key.valid_until = subscription.expires_at
+
             await self._set_placement_desired_state(
                 key_id=key_id,
                 desired_state=PlacementDesiredState.active,

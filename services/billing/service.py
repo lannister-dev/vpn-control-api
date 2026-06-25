@@ -87,6 +87,7 @@ class BillingService:
         notifications: NotificationService | None = None,
     ):
         self.session = session
+        self._redis = redis
         self.order_repo = OrderRepository(session)
         self.tx_repo = TransactionRepository(session)
         self.fee_repo = ProviderFeeRepository(session)
@@ -1311,11 +1312,14 @@ class BillingService:
                 order.id,
                 OrderInternalUpdate(subscription_id=existing.id).model_dump(exclude_none=True),
             )
+            from services.vpn.subscriptions.service import SubscriptionService
+            reactivated = await SubscriptionService(self.session, self._redis).activate(existing.id)
             log.info(
                 "subscription_extended",
                 subscription_id=str(existing.id),
                 new_expires=str(new_expires),
                 plan_changed=plan_changed,
+                reactivated_keys=reactivated,
             )
         else:
             # Create new subscription

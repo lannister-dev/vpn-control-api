@@ -518,6 +518,14 @@ class TestBalanceOps:
 
 
 class TestAutoPurchase:
+    @pytest.fixture(autouse=True)
+    def _mock_reactivate(self):
+        with patch(
+            "services.vpn.subscriptions.service.SubscriptionService.activate",
+            new=AsyncMock(return_value=0),
+        ):
+            yield
+
     async def test_auto_purchase_new_subscription(self, service, async_session):
         user = _make_user(balance=Decimal("299.00"))
         plan = _make_plan(price_rub=Decimal("299.00"))

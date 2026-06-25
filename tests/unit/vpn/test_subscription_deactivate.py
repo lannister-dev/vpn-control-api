@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -12,6 +13,7 @@ from services.vpn.subscriptions.service import SubscriptionService
 def _subscription():
     sub = MagicMock()
     sub.id = uuid4()
+    sub.expires_at = datetime(2030, 1, 1, tzinfo=timezone.utc)
     return sub
 
 
@@ -78,11 +80,13 @@ async def test_activate_restores_keys_and_placements(async_session, redis_client
     device_key = MagicMock()
     device_key.id = device_key_id
     device_key.is_revoked = False
+    device_key.valid_until = None
     svc.vpn_key_repository.list_by_ids = AsyncMock(return_value=[device_key])
 
     restored = await svc.activate(sub.id)
 
     assert restored == 0
     assert device_key.is_revoked is False
+    assert device_key.valid_until == sub.expires_at
     assert svc.placement_repository.set_desired_state_for_key.await_count == 1
     assert svc.node_agent_transport.enqueue_for_key_state.await_count == 1
