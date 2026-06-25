@@ -56,8 +56,22 @@ export function DripPage() {
   const patchMeta = (p) => setGraph((g) => ({ ...g, meta: { ...g.meta, ...p } }));
   const patchNode = (p) => setGraph((g) => ({ ...g, nodes: g.nodes.map((n) => (n.id === selected ? { ...n, ...p } : n)) }));
   const deleteNode = (id) => {
-    setGraph((g) => ({ ...g, nodes: g.nodes.filter((n) => n.id !== id), edges: g.edges.filter((e) => e.from !== id && e.to !== id) }));
+    setGraph((g) => {
+      const msgs = g.nodes.filter((n) => n.type === "message" && n.id !== id).map(({ id: _i, ...r }) => r);
+      const { nodes, edges } = layoutLinear(msgs, g.meta.trigger_event);
+      return { ...g, nodes, edges };
+    });
     setSelected(null);
+  };
+  const insertStep = (edge) => {
+    const msgs = graph.nodes.filter((n) => n.type === "message");
+    const fromIdx = msgs.findIndex((m) => m.id === edge.from);
+    const insertAt = fromIdx >= 0 ? fromIdx + 1 : 0;
+    const data = msgs.map(({ id: _i, ...r }) => r);
+    data.splice(insertAt, 0, emptyMessage(""));
+    const { nodes, edges } = layoutLinear(data, graph.meta.trigger_event);
+    setGraph((g) => ({ ...g, nodes, edges }));
+    setSelected(`m${insertAt + 1}`);
   };
 
   const save = async () => {
@@ -106,6 +120,7 @@ export function DripPage() {
             edges={graph.edges}
             selected={selected}
             onSelect={setSelected}
+            onInsert={insertStep}
             edgeStyle={edgeStyle}
             showCounts={showCounts}
           />

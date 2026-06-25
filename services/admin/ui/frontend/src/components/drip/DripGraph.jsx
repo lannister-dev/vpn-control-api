@@ -148,7 +148,7 @@ export function DripGraph({ nodes, edges, selected, onSelect, onInsert, edgeStyl
               </div>
             );
           }
-          if (onInsert && (byId[e.to].type === "message" || byId[e.to].type === "condition")) {
+          if (onInsert && (byId[e.to].type === "message" || byId[e.to].type === "condition" || byId[e.to].type === "end")) {
             const p = e.at(e.delayOf ? 0.68 : 0.5);
             out.push(
               <div key={`i${i}`} className="dg-insert" style={{ left: p.x, top: p.y }} title="Вставить шаг"
