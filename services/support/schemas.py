@@ -448,14 +448,27 @@ class DripTriggerEvent(BaseModel):
     telegram_id: int
 
 
-class DripStepIn(BaseModel):
-    step_order: int
+class DripNodeIn(BaseModel):
+    key: str
+    type: str
+    pos_cx: int = 0
+    pos_top: int = 0
     delay_seconds: int = 0
     condition: str = "always"
-    text_body: str
+    text_body: str | None = None
     inline_buttons: list[dict] | None = None
     media_kind: str | None = None
     media_url: str | None = None
+    check: str | None = None
+    conversion: bool = False
+    label: str | None = None
+
+    @field_validator("type")
+    @classmethod
+    def _check_type(cls, v: str) -> str:
+        if v not in ("message", "condition", "end"):
+            raise ValueError("type must be one of message|condition|end")
+        return v
 
     @field_validator("condition")
     @classmethod
@@ -464,11 +477,46 @@ class DripStepIn(BaseModel):
             raise ValueError(f"condition must be one of {DRIP_CONDITIONS}")
         return v
 
+    @field_validator("check")
+    @classmethod
+    def _check_check(cls, v: str | None) -> str | None:
+        if v is not None and v not in DRIP_CONDITIONS:
+            raise ValueError(f"check must be null or one of {DRIP_CONDITIONS}")
+        return v
 
-class DripStepOut(DripStepIn):
-    model_config = ConfigDict(from_attributes=True)
+
+class DripEdgeIn(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    from_node: str = Field(alias="from")
+    to_node: str = Field(alias="to")
+    branch: str | None = None
+
+
+class DripNodeOut(BaseModel):
+    id: UUID
+    key: str
+    type: str
+    pos_cx: int = 0
+    pos_top: int = 0
+    delay_seconds: int = 0
+    condition: str = "always"
+    text_body: str | None = None
+    inline_buttons: list[dict] | None = None
+    media_kind: str | None = None
+    media_url: str | None = None
+    check: str | None = None
+    conversion: bool = False
+    label: str | None = None
+
+
+class DripEdgeOut(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
 
     id: UUID
+    from_node: str = Field(serialization_alias="from")
+    to_node: str = Field(serialization_alias="to")
+    branch: str | None = None
 
 
 class DripCampaignIn(BaseModel):
@@ -476,7 +524,9 @@ class DripCampaignIn(BaseModel):
     name: str
     trigger_event: str | None = None
     is_active: bool = True
-    steps: list[DripStepIn] = Field(default_factory=list)
+    entry_node_key: str | None = None
+    nodes: list[DripNodeIn] = Field(default_factory=list)
+    edges: list[DripEdgeIn] = Field(default_factory=list)
 
     @field_validator("trigger_event")
     @classmethod
@@ -487,14 +537,14 @@ class DripCampaignIn(BaseModel):
 
 
 class DripCampaignOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     key: str
     name: str
     trigger_event: str | None
     is_active: bool
-    steps: list[DripStepOut]
+    entry_node_key: str | None = None
+    nodes: list[DripNodeOut] = Field(default_factory=list)
+    edges: list[DripEdgeOut] = Field(default_factory=list)
 
 
 class DripCampaignListOut(BaseModel):

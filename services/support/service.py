@@ -41,7 +41,8 @@ from services.support.exceptions import (
 )
 from services.support.models import (
     DripCampaign,
-    DripStep,
+    DripEdge,
+    DripNode,
     SupportMessage,
     SupportTicket,
     UserCampaignState,
@@ -71,6 +72,8 @@ from services.support.schemas import (
     DripCampaignListOut,
     DripCampaignOut,
     DripCampaignStat,
+    DripEdgeOut,
+    DripNodeOut,
     DripStatsOut,
     MessageAuthorRef,
     MessageListOut,
@@ -1172,6 +1175,28 @@ class SupportService:
             audience, plan_id=plan_id, now=datetime.now(timezone.utc)
         )
 
+    @staticmethod
+    def _nodes_by_key(campaign: DripCampaign) -> dict[str, DripNode]:
+        return {n.node_key: n for n in campaign.nodes}
+
+    @staticmethod
+    def _next_edge_key(
+        campaign: DripCampaign, from_key: str, *, branch: str | None
+    ) -> str | None:
+        for e in campaign.edges:
+            if e.from_key != from_key:
+                continue
+            if branch is None:
+                if e.branch is None:
+                    return e.to_key
+            elif e.branch == branch:
+                return e.to_key
+        if branch is not None:
+            for e in campaign.edges:
+                if e.from_key == from_key:
+                    return e.to_key
+        return None
+
     async def enroll_drip_for_event(self, *, event_kind: str, telegram_id: int) -> int:
         campaigns = await self.drip.active_campaigns_by_trigger(event_kind)
         if not campaigns:
@@ -1182,15 +1207,19 @@ class SupportService:
         now = datetime.now(timezone.utc)
         enrolled = 0
         for campaign in campaigns:
-            steps = sorted(campaign.steps, key=lambda s: s.step_order)
-            if not steps:
+            entry_key = campaign.entry_node_key
+            if not entry_key:
                 continue
-            first_at = now + timedelta(seconds=int(steps[0].delay_seconds))
+            entry = self._nodes_by_key(campaign).get(entry_key)
+            if entry is None:
+                continue
+            delay = int(entry.delay_seconds) if entry.node_type == "message" else 0
             if await self.drip.enroll(
                 user_id=user.id,
                 campaign_id=campaign.id,
                 entered_at=now,
-                next_send_at=first_at,
+                next_send_at=now + timedelta(seconds=delay),
+                current_node_key=entry_key,
             ):
                 enrolled += 1
         return enrolled
@@ -1203,14 +1232,40 @@ class SupportService:
                 sent += 1
         return sent
 
+    async def _walk_to_waitpoint(
+        self, state: UserCampaignState, campaign: DripCampaign,
+        nodes: dict[str, DripNode], *, start_key: str | None, now: datetime,
+    ) -> None:
+        """Route through condition nodes (no send) until a message wait-point or terminal."""
+        key = start_key
+        guard = 0
+        while key is not None and guard < 64:
+            guard += 1
+            node = nodes.get(key)
+            if node is None or node.node_type == "end":
+                state.current_node_key = key
+                state.status = DripStatus.COMPLETED
+                state.next_send_at = None
+                return
+            if node.node_type == "condition":
+                holds = await self._drip_condition_holds(
+                    node.check_kind or "always", state.user_id
+                )
+                key = self._next_edge_key(campaign, key, branch="yes" if holds else "no")
+                continue
+            state.current_node_key = key
+            state.next_send_at = now + timedelta(seconds=int(node.delay_seconds))
+            return
+        state.status = DripStatus.COMPLETED
+        state.next_send_at = None
+
     async def _process_drip_state(
         self, state: UserCampaignState, *, now: datetime
     ) -> bool:
-        campaign = await self.drip.get_campaign_with_steps(state.campaign_id)
+        campaign = await self.drip.get_campaign_with_graph(state.campaign_id)
         if campaign is None or not campaign.is_active:
             state.status = DripStatus.STOPPED
             return False
-        steps = sorted(campaign.steps, key=lambda s: s.step_order)
         user = await self.users.get_by_id(state.user_id)
         if user is None:
             state.status = DripStatus.ABANDONED
@@ -1218,33 +1273,65 @@ class SupportService:
         if getattr(user, "suppress_marketing", False):
             state.status = DripStatus.STOPPED
             return False
-        if state.current_step >= len(steps):
-            state.status = DripStatus.COMPLETED
-            state.next_send_at = None
-            return False
-        step = steps[state.current_step]
-        if not await self._drip_condition_holds(step.condition, state.user_id):
+
+        nodes = self._nodes_by_key(campaign)
+        node = nodes.get(state.current_node_key)
+        if node is None:
             state.status = DripStatus.COMPLETED
             state.next_send_at = None
             return False
 
-        ok = await self._send_drip_step(state, step, user=user)
-        state.last_step_sent_at = now
-        next_index = state.current_step + 1
-        state.current_step = next_index
-        if next_index >= len(steps):
+        if node.node_type == "condition":
+            await self._walk_to_waitpoint(
+                state, campaign, nodes, start_key=state.current_node_key, now=now
+            )
+            return False
+        if node.node_type == "end":
             state.status = DripStatus.COMPLETED
             state.next_send_at = None
-        else:
-            state.next_send_at = now + timedelta(
-                seconds=int(steps[next_index].delay_seconds)
-            )
+            return False
+
+        # message node — its delay has elapsed, send if the gate holds
+        if not await self._drip_condition_holds(node.condition, state.user_id):
+            state.status = DripStatus.COMPLETED
+            state.next_send_at = None
+            return False
+        ok = await self._send_drip_message(state, node, user=user)
+        state.last_step_sent_at = now
+        await self._walk_to_waitpoint(
+            state, campaign, nodes,
+            start_key=self._next_edge_key(campaign, node.node_key, branch=None),
+            now=now,
+        )
         return ok
 
     async def list_drip_campaigns(self) -> DripCampaignListOut:
         campaigns = await self.drip.list_campaigns()
         return DripCampaignListOut(
-            items=[DripCampaignOut.model_validate(c) for c in campaigns]
+            items=[self._campaign_to_out(c) for c in campaigns]
+        )
+
+    @staticmethod
+    def _campaign_to_out(campaign: DripCampaign) -> DripCampaignOut:
+        nodes = [
+            DripNodeOut(
+                id=n.id, key=n.node_key, type=n.node_type,
+                pos_cx=n.pos_cx, pos_top=n.pos_top,
+                delay_seconds=n.delay_seconds, condition=n.condition,
+                text_body=n.text_body, inline_buttons=n.inline_buttons,
+                media_kind=n.media_kind, media_url=n.media_url,
+                check=n.check_kind, conversion=n.conversion, label=n.label,
+            )
+            for n in campaign.nodes
+        ]
+        edges = [
+            DripEdgeOut(id=e.id, from_node=e.from_key, to_node=e.to_key, branch=e.branch)
+            for e in campaign.edges
+        ]
+        return DripCampaignOut(
+            id=campaign.id, key=campaign.key, name=campaign.name,
+            trigger_event=campaign.trigger_event, is_active=campaign.is_active,
+            entry_node_key=campaign.entry_node_key, nodes=nodes, edges=edges,
         )
 
     async def onboarding_funnel(self, *, days: int) -> OnboardingFunnelOut:
@@ -1273,19 +1360,38 @@ class SupportService:
         return DripStatsOut(items=items)
 
     @staticmethod
-    def _build_drip_steps(payload: DripCampaignIn) -> list[DripStep]:
+    def _build_drip_nodes(payload: DripCampaignIn) -> list[DripNode]:
         return [
-            DripStep(
-                step_order=s.step_order,
-                delay_seconds=s.delay_seconds,
-                condition=s.condition,
-                text_body=s.text_body,
-                inline_buttons=s.inline_buttons,
-                media_kind=s.media_kind,
-                media_url=s.media_url,
+            DripNode(
+                node_key=n.key, node_type=n.type,
+                pos_cx=n.pos_cx, pos_top=n.pos_top,
+                delay_seconds=n.delay_seconds, condition=n.condition,
+                text_body=n.text_body, inline_buttons=n.inline_buttons,
+                media_kind=n.media_kind, media_url=n.media_url,
+                check_kind=n.check, conversion=n.conversion, label=n.label,
             )
-            for s in sorted(payload.steps, key=lambda x: x.step_order)
+            for n in payload.nodes
         ]
+
+    @staticmethod
+    def _build_drip_edges(payload: DripCampaignIn) -> list[DripEdge]:
+        return [
+            DripEdge(from_key=e.from_node, to_key=e.to_node, branch=e.branch)
+            for e in payload.edges
+        ]
+
+    @staticmethod
+    def _resolve_entry_key(payload: DripCampaignIn) -> str | None:
+        if payload.entry_node_key:
+            return payload.entry_node_key
+        targets = {e.to_node for e in payload.edges}
+        for n in payload.nodes:
+            if n.type != "end" and n.key not in targets:
+                return n.key
+        for n in payload.nodes:
+            if n.type == "message":
+                return n.key
+        return None
 
     async def create_drip_campaign(self, payload: DripCampaignIn) -> DripCampaignOut:
         campaign = DripCampaign(
@@ -1293,31 +1399,37 @@ class SupportService:
             name=payload.name,
             trigger_event=payload.trigger_event,
             is_active=payload.is_active,
+            entry_node_key=self._resolve_entry_key(payload),
         )
-        campaign.steps = self._build_drip_steps(payload)
+        campaign.nodes = self._build_drip_nodes(payload)
+        campaign.edges = self._build_drip_edges(payload)
         self.session.add(campaign)
         await self.session.commit()
-        return DripCampaignOut.model_validate(campaign)
+        return self._campaign_to_out(campaign)
 
     async def update_drip_campaign(
         self, campaign_id: UUID, payload: DripCampaignIn
     ) -> DripCampaignOut | None:
-        campaign = await self.drip.get_campaign_with_steps(campaign_id)
+        campaign = await self.drip.get_campaign_with_graph(campaign_id)
         if campaign is None:
             return None
         campaign.key = payload.key
         campaign.name = payload.name
         campaign.trigger_event = payload.trigger_event
         campaign.is_active = payload.is_active
-        campaign.steps.clear()
+        campaign.entry_node_key = self._resolve_entry_key(payload)
+        campaign.nodes.clear()
+        campaign.edges.clear()
         await self.session.flush()
-        for step in self._build_drip_steps(payload):
-            campaign.steps.append(step)
+        for node in self._build_drip_nodes(payload):
+            campaign.nodes.append(node)
+        for edge in self._build_drip_edges(payload):
+            campaign.edges.append(edge)
         await self.session.commit()
-        return DripCampaignOut.model_validate(campaign)
+        return self._campaign_to_out(campaign)
 
     async def delete_drip_campaign(self, campaign_id: UUID) -> bool:
-        campaign = await self.drip.get_campaign_with_steps(campaign_id)
+        campaign = await self.drip.get_campaign_with_graph(campaign_id)
         if campaign is None:
             return False
         await self.session.delete(campaign)
@@ -1333,6 +1445,10 @@ class SupportService:
             return not await self.drip.has_active_subscription(
                 user_id, now=datetime.now(timezone.utc)
             )
+        if condition == DripCondition.CONNECTED:
+            return await self.drip.has_connected(user_id)
+        if condition == DripCondition.PURCHASED:
+            return await self.drip.has_paid(user_id)
         return True
 
     @staticmethod
@@ -1353,28 +1469,28 @@ class SupportService:
             out = out.replace("{referral}", link)
         return out
 
-    async def _send_drip_step(
-        self, state: UserCampaignState, step: DripStep, *, user
+    async def _send_drip_message(
+        self, state: UserCampaignState, node: DripNode, *, user
     ) -> bool:
         if self._nats is None:
             return False
         telegram_id = int(user.telegram_id)
         await self._ensure_outbound_stream()
         media: list[SupportOutboundAttachmentMsg] = []
-        if step.media_url and step.media_kind:
+        if node.media_url and node.media_kind:
             media.append(
-                SupportOutboundAttachmentMsg(kind=step.media_kind, url=step.media_url)
+                SupportOutboundAttachmentMsg(kind=node.media_kind, url=node.media_url)
             )
         buttons: list[SupportOutboundInlineButton] = []
-        for b in step.inline_buttons or []:
+        for b in node.inline_buttons or []:
             btn = self._build_outbound_button(b)
             if btn is not None:
                 buttons.append(btn)
         payload = SupportOutboundPayload(
             ticket_id=f"drip:{state.campaign_id}",
-            message_id=f"drip:{state.id}:{state.current_step}",
+            message_id=f"drip:{state.id}:{node.node_key}",
             telegram_id=telegram_id,
-            text=self._render_drip_text(step.text_body, user),
+            text=self._render_drip_text(node.text_body or "", user),
             media=media,
             buttons=buttons,
             entities=None,
@@ -1392,7 +1508,7 @@ class SupportService:
             logger_support.exception(
                 "drip_publish_failed",
                 state_id=str(state.id),
-                step=state.current_step,
+                node=node.node_key,
             )
             return False
 

@@ -250,38 +250,72 @@ class DripCampaign(Base):
     key: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     trigger_event: Mapped[str | None] = mapped_column(String(48), nullable=True)
+    entry_node_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
-    steps: Mapped[list["DripStep"]] = relationship(
+    nodes: Mapped[list["DripNode"]] = relationship(
         back_populates="campaign",
         cascade="all, delete-orphan",
-        order_by="DripStep.step_order",
+    )
+    edges: Mapped[list["DripEdge"]] = relationship(
+        back_populates="campaign",
+        cascade="all, delete-orphan",
     )
 
 
-class DripStep(Base):
-    __tablename__ = "drip_step"
+class DripNode(Base):
+    __tablename__ = "drip_node"
 
     campaign_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("drip_campaign.id", ondelete="CASCADE"),
         nullable=False,
     )
-    step_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    node_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    node_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    pos_cx: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    pos_top: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+
     delay_seconds: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=text("0")
     )
     condition: Mapped[str] = mapped_column(
         String(32), nullable=False, default="always", server_default=text("'always'")
     )
-    text_body: Mapped[str] = mapped_column(Text, nullable=False)
+    text_body: Mapped[str | None] = mapped_column(Text, nullable=True)
     inline_buttons: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     media_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
     media_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
-    campaign: Mapped["DripCampaign"] = relationship(back_populates="steps")
+    check_kind: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    conversion: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    label: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+    campaign: Mapped["DripCampaign"] = relationship(back_populates="nodes")
 
     __table_args__ = (
-        UniqueConstraint("campaign_id", "step_order", name="uq_drip_step_campaign_order"),
+        UniqueConstraint("campaign_id", "node_key", name="uq_drip_node_campaign_key"),
+    )
+
+
+class DripEdge(Base):
+    __tablename__ = "drip_edge"
+
+    campaign_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("drip_campaign.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    from_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    to_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    branch: Mapped[str | None] = mapped_column(String(8), nullable=True)
+
+    campaign: Mapped["DripCampaign"] = relationship(back_populates="edges")
+
+    __table_args__ = (
+        Index("ix_drip_edge_campaign_from", "campaign_id", "from_key"),
     )
 
 
@@ -298,9 +332,7 @@ class UserCampaignState(Base):
         ForeignKey("drip_campaign.id", ondelete="CASCADE"),
         nullable=False,
     )
-    current_step: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default=text("0")
-    )
+    current_node_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="active", server_default=text("'active'")
     )
