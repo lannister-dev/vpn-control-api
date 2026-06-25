@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
-from services.support.constants import DripCondition, DripStatus
+from services.support.constants import DripStatus
 from services.support.service import SupportService
 
 
@@ -16,86 +16,65 @@ def _svc() -> SupportService:
     return svc
 
 
-def _step(order: int = 0, delay: int = 0, condition: str = DripCondition.ALWAYS):
+def _node(key, type="message", *, delay=0, condition="always", check=None, text="hi"):
     return SimpleNamespace(
-        step_order=order,
-        delay_seconds=delay,
-        condition=condition,
-        text_body="hi",
-        inline_buttons=None,
-        media_kind=None,
-        media_url=None,
+        node_key=key, node_type=type, delay_seconds=delay, condition=condition,
+        text_body=text, inline_buttons=None, media_kind=None, media_url=None,
+        check_kind=check, conversion=False, label=None, pos_cx=0, pos_top=0, id=uuid4(),
     )
 
 
-def _state(step: int = 0):
+def _edge(frm, to, branch=None):
+    return SimpleNamespace(from_key=frm, to_key=to, branch=branch)
+
+
+def _campaign(nodes, edges, *, entry, is_active=True):
     return SimpleNamespace(
-        id=uuid4(),
-        campaign_id=uuid4(),
-        user_id=uuid4(),
-        current_step=step,
-        status=DripStatus.ACTIVE,
-        next_send_at=datetime.now(timezone.utc),
-        last_step_sent_at=None,
+        id=uuid4(), key="k", name="n", trigger_event="trial_started",
+        is_active=is_active, entry_node_key=entry, nodes=nodes, edges=edges,
     )
 
 
-async def test_enroll_drip_enrolls_each_campaign():
+def _state(current):
+    return SimpleNamespace(
+        id=uuid4(), campaign_id=uuid4(), user_id=uuid4(),
+        current_node_key=current, status=DripStatus.ACTIVE,
+        next_send_at=datetime.now(timezone.utc), last_step_sent_at=None,
+    )
+
+
+def _user(**kw):
+    return SimpleNamespace(telegram_id=kw.get("tg", 1), suppress_marketing=kw.get("supp", False))
+
+
+async def test_message_sends_and_advances_to_next_message():
     svc = _svc()
-    campaign = SimpleNamespace(id=uuid4(), steps=[_step(0, delay=3600)])
-    svc.drip.active_campaigns_by_trigger = AsyncMock(return_value=[campaign])
-    svc.users.get_by_telegram_id = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
-    svc.drip.enroll = AsyncMock(return_value=True)
-
-    enrolled = await svc.enroll_drip_for_event(event_kind="trial_started", telegram_id=1)
-
-    assert enrolled == 1
-    svc.drip.enroll.assert_awaited_once()
-
-
-async def test_enroll_drip_no_user_is_noop():
-    svc = _svc()
-    svc.drip.active_campaigns_by_trigger = AsyncMock(
-        return_value=[SimpleNamespace(id=uuid4(), steps=[_step()])]
+    camp = _campaign(
+        [_node("m1", delay=0), _node("m2", delay=7200), _node("end", "end")],
+        [_edge("m1", "m2"), _edge("m2", "end")],
+        entry="m1",
     )
-    svc.users.get_by_telegram_id = AsyncMock(return_value=None)
-
-    assert await svc.enroll_drip_for_event(event_kind="purchase", telegram_id=9) == 0
-
-
-async def test_drip_sends_when_condition_holds_and_advances():
-    svc = _svc()
-    state = _state(0)
-    campaign = SimpleNamespace(
-        is_active=True,
-        steps=[_step(0, condition=DripCondition.NOT_CONNECTED), _step(1, delay=7200)],
-    )
-    svc.drip.get_campaign_with_steps = AsyncMock(return_value=campaign)
-    svc.users.get_by_id = AsyncMock(
-        return_value=SimpleNamespace(telegram_id=123, suppress_marketing=False)
-    )
-    svc.drip.has_connected = AsyncMock(return_value=False)
+    svc.drip.get_campaign_with_graph = AsyncMock(return_value=camp)
+    svc.users.get_by_id = AsyncMock(return_value=_user())
+    state = _state("m1")
 
     ok = await svc._process_drip_state(state, now=datetime.now(timezone.utc))
 
     assert ok is True
     svc._nats.publish_jetstream.assert_awaited_once()
-    assert state.current_step == 1
+    assert state.current_node_key == "m2"
     assert state.status == DripStatus.ACTIVE
     assert state.next_send_at is not None
 
 
-async def test_drip_completes_when_condition_fails():
+async def test_message_gate_fail_completes_without_send():
     svc = _svc()
-    state = _state(0)
-    campaign = SimpleNamespace(
-        is_active=True, steps=[_step(0, condition=DripCondition.NOT_CONNECTED)]
-    )
-    svc.drip.get_campaign_with_steps = AsyncMock(return_value=campaign)
-    svc.users.get_by_id = AsyncMock(
-        return_value=SimpleNamespace(telegram_id=1, suppress_marketing=False)
-    )
-    svc.drip.has_connected = AsyncMock(return_value=True)
+    camp = _campaign([_node("m1", condition="not_connected"), _node("end", "end")],
+                     [_edge("m1", "end")], entry="m1")
+    svc.drip.get_campaign_with_graph = AsyncMock(return_value=camp)
+    svc.users.get_by_id = AsyncMock(return_value=_user())
+    svc.drip.has_connected = AsyncMock(return_value=True)  # already connected → gate fails
+    state = _state("m1")
 
     ok = await svc._process_drip_state(state, now=datetime.now(timezone.utc))
 
@@ -104,14 +83,47 @@ async def test_drip_completes_when_condition_fails():
     assert state.status == DripStatus.COMPLETED
 
 
-async def test_drip_stops_on_opt_out():
+async def test_condition_node_routes_by_branch():
     svc = _svc()
-    state = _state(0)
-    campaign = SimpleNamespace(is_active=True, steps=[_step(0)])
-    svc.drip.get_campaign_with_steps = AsyncMock(return_value=campaign)
-    svc.users.get_by_id = AsyncMock(
-        return_value=SimpleNamespace(telegram_id=1, suppress_marketing=True)
+    camp = _campaign(
+        [_node("c1", "condition", check="connected"),
+         _node("yes", delay=60), _node("no", delay=60), _node("end", "end")],
+        [_edge("c1", "yes", "yes"), _edge("c1", "no", "no"),
+         _edge("yes", "end"), _edge("no", "end")],
+        entry="c1",
     )
+    svc.drip.get_campaign_with_graph = AsyncMock(return_value=camp)
+    svc.users.get_by_id = AsyncMock(return_value=_user())
+    svc.drip.has_connected = AsyncMock(return_value=True)  # connected → "yes" branch
+    state = _state("c1")
+
+    ok = await svc._process_drip_state(state, now=datetime.now(timezone.utc))
+
+    assert ok is False  # condition routes, no send
+    svc._nats.publish_jetstream.assert_not_awaited()
+    assert state.current_node_key == "yes"  # waiting at the yes-branch message
+    assert state.status == DripStatus.ACTIVE
+
+
+async def test_end_node_completes():
+    svc = _svc()
+    camp = _campaign([_node("end", "end")], [], entry="end")
+    svc.drip.get_campaign_with_graph = AsyncMock(return_value=camp)
+    svc.users.get_by_id = AsyncMock(return_value=_user())
+    state = _state("end")
+
+    ok = await svc._process_drip_state(state, now=datetime.now(timezone.utc))
+
+    assert ok is False
+    assert state.status == DripStatus.COMPLETED
+
+
+async def test_opt_out_stops():
+    svc = _svc()
+    camp = _campaign([_node("m1")], [], entry="m1")
+    svc.drip.get_campaign_with_graph = AsyncMock(return_value=camp)
+    svc.users.get_by_id = AsyncMock(return_value=_user(supp=True))
+    state = _state("m1")
 
     ok = await svc._process_drip_state(state, now=datetime.now(timezone.utc))
 
@@ -120,89 +132,56 @@ async def test_drip_stops_on_opt_out():
     svc._nats.publish_jetstream.assert_not_awaited()
 
 
-async def test_drip_last_step_completes():
+async def test_last_message_completes():
     svc = _svc()
-    state = _state(0)
-    campaign = SimpleNamespace(is_active=True, steps=[_step(0)])
-    svc.drip.get_campaign_with_steps = AsyncMock(return_value=campaign)
-    svc.users.get_by_id = AsyncMock(
-        return_value=SimpleNamespace(telegram_id=5, suppress_marketing=False)
-    )
+    camp = _campaign([_node("m1")], [], entry="m1")  # no outgoing edge
+    svc.drip.get_campaign_with_graph = AsyncMock(return_value=camp)
+    svc.users.get_by_id = AsyncMock(return_value=_user())
+    state = _state("m1")
 
     ok = await svc._process_drip_state(state, now=datetime.now(timezone.utc))
 
     assert ok is True
-    assert state.current_step == 1
     assert state.status == DripStatus.COMPLETED
     assert state.next_send_at is None
 
 
-def test_drip_step_rejects_bad_condition():
+async def test_enroll_uses_entry_node():
+    svc = _svc()
+    camp = _campaign([_node("m1", delay=3600)], [], entry="m1")
+    svc.drip.active_campaigns_by_trigger = AsyncMock(return_value=[camp])
+    svc.users.get_by_telegram_id = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
+    svc.drip.enroll = AsyncMock(return_value=True)
+
+    n = await svc.enroll_drip_for_event(event_kind="trial_started", telegram_id=1)
+
+    assert n == 1
+    _, kwargs = svc.drip.enroll.call_args
+    assert kwargs["current_node_key"] == "m1"
+
+
+def test_node_schema_rejects_bad_type_and_condition():
     import pytest
     from pydantic import ValidationError
 
-    from services.support.schemas import DripStepIn
+    from services.support.schemas import DripNodeIn
 
     with pytest.raises(ValidationError):
-        DripStepIn(step_order=0, text_body="x", condition="bogus")
+        DripNodeIn(key="m1", type="bogus")
+    with pytest.raises(ValidationError):
+        DripNodeIn(key="m1", type="message", condition="bogus")
 
 
-def test_drip_campaign_rejects_bad_trigger():
-    import pytest
-    from pydantic import ValidationError
-
+def test_campaign_schema_parses_nodes_and_edges():
     from services.support.schemas import DripCampaignIn
 
-    with pytest.raises(ValidationError):
-        DripCampaignIn(key="k", name="n", trigger_event="bogus")
-
-
-def test_drip_campaign_accepts_valid():
-    from services.support.schemas import DripCampaignIn, DripStepIn
-
-    campaign = DripCampaignIn(
-        key="trial_connect",
-        name="x",
-        trigger_event="trial_started",
-        steps=[DripStepIn(step_order=0, text_body="hi", condition="not_connected")],
+    c = DripCampaignIn(
+        key="trial_connect", name="x", trigger_event="trial_started",
+        nodes=[{"key": "m1", "type": "message", "condition": "not_connected"}],
+        edges=[{"from": "m1", "to": "end"}],
     )
-    assert campaign.steps[0].condition == "not_connected"
-
-
-async def test_list_drip_campaigns_maps_out():
-    svc = _svc()
-    campaign = SimpleNamespace(
-        id=uuid4(),
-        key="k",
-        name="n",
-        trigger_event="purchase",
-        is_active=True,
-        steps=[],
-    )
-    svc.drip.list_campaigns = AsyncMock(return_value=[campaign])
-
-    out = await svc.list_drip_campaigns()
-
-    assert len(out.items) == 1
-    assert out.items[0].key == "k"
-
-
-async def test_drip_stats_aggregates_by_status():
-    svc = _svc()
-    cid = uuid4()
-    svc.drip.status_counts = AsyncMock(
-        return_value=[(cid, "active", 3), (cid, "completed", 2), (cid, "stopped", 1)]
-    )
-
-    out = await svc.drip_stats()
-
-    assert len(out.items) == 1
-    item = out.items[0]
-    assert item.campaign_id == cid
-    assert item.active == 3
-    assert item.completed == 2
-    assert item.stopped == 1
-    assert item.enrolled == 6
+    assert c.nodes[0].key == "m1"
+    assert c.edges[0].from_node == "m1" and c.edges[0].to_node == "end"
 
 
 def test_render_drip_text_substitutes_vars():
@@ -214,16 +193,19 @@ def test_render_drip_text_substitutes_vars():
 
 
 def test_build_outbound_button_action_vs_url():
-    action_btn = SupportService._build_outbound_button(
-        {"text": "Продлить", "action": "renew", "style": "success"}
-    )
-    assert action_btn.action == "renew"
-    assert action_btn.url == ""
-    assert action_btn.style == "success"
-
-    url_btn = SupportService._build_outbound_button({"text": "Сайт", "url": "https://x.com"})
-    assert url_btn.url == "https://x.com"
-    assert url_btn.action is None
-
+    a = SupportService._build_outbound_button({"text": "Продлить", "action": "renew", "style": "success"})
+    assert a.action == "renew" and a.url == "" and a.style == "success"
+    u = SupportService._build_outbound_button({"text": "Сайт", "url": "https://x.com"})
+    assert u.url == "https://x.com" and u.action is None
     assert SupportService._build_outbound_button({"text": "X", "action": "bogus"}) is None
-    assert SupportService._build_outbound_button({"action": "renew"}) is None
+
+
+async def test_drip_stats_aggregates_by_status():
+    svc = _svc()
+    cid = uuid4()
+    svc.drip.status_counts = AsyncMock(
+        return_value=[(cid, "active", 3), (cid, "completed", 2), (cid, "stopped", 1)]
+    )
+    out = await svc.drip_stats()
+    assert len(out.items) == 1
+    assert out.items[0].active == 3 and out.items[0].enrolled == 6

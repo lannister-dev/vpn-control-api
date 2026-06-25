@@ -56,7 +56,7 @@ function ButtonsEditor({ buttons, onChange }) {
   );
 }
 
-export function DripInspector({ node, chainStats, onPatch, onClose, onDelete }) {
+export function DripInspector({ node, chainStats, onPatch, onClose, onDelete, onAddBranch }) {
   if (!node) {
     return (
       <aside className="di">
@@ -163,6 +163,16 @@ export function DripInspector({ node, chainStats, onPatch, onClose, onDelete }) 
               <div className="di-sec-h"><Icon name="link" size={13} /> Inline-кнопки</div>
               <ButtonsEditor buttons={node.buttons || []} onChange={(b) => onPatch({ buttons: b })} />
             </div>
+
+            {onAddBranch && (
+              <div className="di-sec">
+                <div className="di-sec-h"><Icon name="git-branch" size={13} /> Ветвление</div>
+                <button className="btn btn-sm" style={{ alignSelf: "flex-start" }} onClick={() => onAddBranch(node.id)}>
+                  <Icon name="git-branch" size={13} /> Добавить развилку после
+                </button>
+                <div className="di-hint">Создаёт условие с двумя ветками («да» / «нет») и шагом в каждой.</div>
+              </div>
+            )}
           </>
         )}
 

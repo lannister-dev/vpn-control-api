@@ -9,6 +9,7 @@ import { DripInspector } from "../components/drip/DripInspector.jsx";
 import "../components/drip/drip.css";
 import {
   TRIGGERS, graphFromApi, graphToPayload, mockChain, emptyMessage, layoutLinear,
+  autoLayout, nextNodeId, LANE, NODE_W,
 } from "../components/drip/dripModel.js";
 
 /* ════════════════════════════════════════════════════════════
@@ -73,11 +74,35 @@ export function DripPage() {
     setGraph((g) => ({ ...g, nodes, edges }));
     setSelected(`m${insertAt + 1}`);
   };
+  const insertBranchAfter = (nodeKey) => {
+    setGraph((g) => {
+      const nodes = g.nodes.map((n) => ({ ...n }));
+      const edges = g.edges.map((e) => ({ ...e }));
+      const outIdx = edges.findIndex((e) => e.from === nodeKey && !e.branch);
+      const oldTarget = outIdx >= 0 ? edges[outIdx].to : null;
+      if (outIdx >= 0) edges.splice(outIdx, 1);
+      const cId = nextNodeId(nodes, "c");
+      const aId = nextNodeId(nodes, "m");
+      const bId = nextNodeId([...nodes, { id: aId }], "m");
+      nodes.push({ id: cId, type: "condition", cx: LANE.C, top: 0, w: NODE_W, h: 88, check: "connected", yes: "Да", no: "Нет" });
+      nodes.push({ ...emptyMessage(aId), id: aId });
+      nodes.push({ ...emptyMessage(bId), id: bId });
+      edges.push({ from: nodeKey, to: cId });
+      edges.push({ from: cId, to: aId, branch: "yes", delayOf: aId });
+      edges.push({ from: cId, to: bId, branch: "no", delayOf: bId });
+      if (oldTarget) {
+        edges.push({ from: aId, to: oldTarget });
+        edges.push({ from: bId, to: oldTarget });
+      }
+      setSelected(cId);
+      return { ...g, nodes: autoLayout(nodes, edges), edges };
+    });
+  };
 
   const save = async () => {
-    const payload = graphToPayload(graph.meta, graph.nodes);
+    const payload = graphToPayload(graph.meta, graph.nodes, graph.edges);
     if (!payload.key || !payload.name) { setErr("Заполни ключ и название"); return; }
-    if (!payload.steps.length) { setErr("Добавь хотя бы один шаг"); return; }
+    if (!payload.nodes.length) { setErr("Добавь хотя бы один шаг"); return; }
     setBusy(true); setErr("");
     try {
       if (graph.meta.id) await api.put(`/support/drip/campaigns/${graph.meta.id}`, payload);
@@ -130,6 +155,7 @@ export function DripPage() {
             onPatch={patchNode}
             onClose={() => setSelected(null)}
             onDelete={deleteNode}
+            onAddBranch={insertBranchAfter}
           />
         </div>
       </div>

@@ -628,7 +628,7 @@ class DripRepository(BaseRepository[UserCampaignState]):
                 DripCampaign.is_active.is_(True),
                 DripCampaign.trigger_event == trigger_event,
             )
-            .options(selectinload(DripCampaign.steps))
+            .options(selectinload(DripCampaign.nodes), selectinload(DripCampaign.edges))
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().unique().all())
@@ -641,7 +641,13 @@ class DripRepository(BaseRepository[UserCampaignState]):
         return await self.session.scalar(stmt)
 
     async def enroll(
-        self, *, user_id: UUID, campaign_id: UUID, entered_at: datetime, next_send_at: datetime
+        self,
+        *,
+        user_id: UUID,
+        campaign_id: UUID,
+        entered_at: datetime,
+        next_send_at: datetime,
+        current_node_key: str,
     ) -> bool:
         if await self.get_state(user_id, campaign_id) is not None:
             return False
@@ -649,7 +655,7 @@ class DripRepository(BaseRepository[UserCampaignState]):
             UserCampaignState(
                 user_id=user_id,
                 campaign_id=campaign_id,
-                current_step=0,
+                current_node_key=current_node_key,
                 status=DripStatus.ACTIVE,
                 entered_at=entered_at,
                 next_send_at=next_send_at,
@@ -672,18 +678,18 @@ class DripRepository(BaseRepository[UserCampaignState]):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_campaign_with_steps(self, campaign_id: UUID) -> DripCampaign | None:
+    async def get_campaign_with_graph(self, campaign_id: UUID) -> DripCampaign | None:
         stmt = (
             select(DripCampaign)
             .where(DripCampaign.id == campaign_id)
-            .options(selectinload(DripCampaign.steps))
+            .options(selectinload(DripCampaign.nodes), selectinload(DripCampaign.edges))
         )
         return await self.session.scalar(stmt)
 
     async def list_campaigns(self) -> list[DripCampaign]:
         stmt = (
             select(DripCampaign)
-            .options(selectinload(DripCampaign.steps))
+            .options(selectinload(DripCampaign.nodes), selectinload(DripCampaign.edges))
             .order_by(DripCampaign.created_at.desc())
         )
         result = await self.session.execute(stmt)
