@@ -1,5 +1,5 @@
 // Drip / Цепочки — branching graph canvas.
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { Icon } from "../Icon.jsx";
 import { TRIGGERS, CONDITIONS, fmtDelay, stripTags } from "./dripModel.js";
@@ -10,11 +10,16 @@ function messageNumbers(nodes) {
   return map;
 }
 
-export function DripNode({ node, selected, num, showCounts = true, onSelect }) {
+export function DripNode({ node, selected, num, showCounts = true, onSelect, onBeginDrag, movedRef }) {
   const common = {
     "data-selected": selected ? "true" : "false",
-    style: { left: node.cx - node.w / 2, top: node.top, width: node.w, height: node.h },
-    onClick: (e) => { e.stopPropagation(); onSelect(node.id); },
+    style: { left: node.cx - node.w / 2, top: node.top, width: node.w, height: node.h, cursor: onBeginDrag ? "grab" : "pointer" },
+    onMouseDown: (e) => { if (onBeginDrag && e.button === 0) onBeginDrag(node, e); },
+    onClick: (e) => {
+      e.stopPropagation();
+      if (movedRef && movedRef.current) { movedRef.current = false; return; }
+      onSelect(node.id);
+    },
   };
 
   if (node.type === "trigger") {
@@ -83,8 +88,32 @@ export function DripNode({ node, selected, num, showCounts = true, onSelect }) {
   );
 }
 
-export function DripGraph({ nodes, edges, selected, onSelect, onInsert, edgeStyle = "curved", showCounts = true }) {
+export function DripGraph({ nodes, edges, selected, onSelect, onInsert, onMoveNode, edgeStyle = "curved", showCounts = true }) {
   const [zoom, setZoom] = useState(1);
+  const movedRef = useRef(false);
+  const dragRef = useRef(null);
+
+  const beginDrag = onMoveNode ? (node, e) => {
+    e.stopPropagation();
+    dragRef.current = { id: node.id, x: e.clientX, y: e.clientY, cx: node.cx, top: node.top };
+    movedRef.current = false;
+    const onMove = (ev) => {
+      const d = dragRef.current;
+      if (!d) return;
+      const dx = (ev.clientX - d.x) / zoom;
+      const dy = (ev.clientY - d.y) / zoom;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) movedRef.current = true;
+      onMoveNode(d.id, Math.round(d.cx + dx), Math.max(0, Math.round(d.top + dy)));
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      dragRef.current = null;
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  } : undefined;
+
   const nums = messageNumbers(nodes);
   const byId = {};
   nodes.forEach((n) => (byId[n.id] = n));
@@ -122,7 +151,7 @@ export function DripGraph({ nodes, edges, selected, onSelect, onInsert, edgeStyl
   });
 
   return (
-    <div className="dg-canvas" onClick={() => onSelect(null)}>
+    <div className="dg-canvas" onClick={() => { if (movedRef.current) { movedRef.current = false; return; } onSelect(null); }}>
       <div className="dg-world" style={{ width: WORLD_W, height: WORLD_H, transform: `scale(${zoom})` }}>
         <svg className="dg-edges" width={WORLD_W} height={WORLD_H}>
           {built.map((e, i) => (
@@ -161,7 +190,8 @@ export function DripGraph({ nodes, edges, selected, onSelect, onInsert, edgeStyl
         })}
 
         {nodes.map((n) => (
-          <DripNode key={n.id} node={n} num={nums[n.id]} selected={selected === n.id} showCounts={showCounts} onSelect={onSelect} />
+          <DripNode key={n.id} node={n} num={nums[n.id]} selected={selected === n.id} showCounts={showCounts}
+            onSelect={onSelect} onBeginDrag={beginDrag} movedRef={movedRef} />
         ))}
       </div>
 

@@ -56,6 +56,7 @@ export function DripPage() {
   const selectedNode = graph?.nodes.find((n) => n.id === selected) || null;
   const patchMeta = (p) => setGraph((g) => ({ ...g, meta: { ...g.meta, ...p } }));
   const patchNode = (p) => setGraph((g) => ({ ...g, nodes: g.nodes.map((n) => (n.id === selected ? { ...n, ...p } : n)) }));
+  const moveNode = (id, cx, top) => setGraph((g) => ({ ...g, nodes: g.nodes.map((n) => (n.id === id ? { ...n, cx, top } : n)) }));
   const deleteNode = (id) => {
     setGraph((g) => {
       const nodes = g.nodes.filter((n) => n.id !== id);
@@ -157,6 +158,7 @@ export function DripPage() {
             selected={selected}
             onSelect={setSelected}
             onInsert={insertStep}
+            onMoveNode={moveNode}
             edgeStyle={edgeStyle}
             showCounts={showCounts}
           />
