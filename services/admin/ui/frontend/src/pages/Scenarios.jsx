@@ -40,6 +40,12 @@ export function ScenariosPage() {
     setErr("");
   };
   const openDemo = () => { const g = mockChain(); setGraph(g); setSelected("m3"); setErr(""); };
+  const toggleActive = async (c) => {
+    try {
+      await api.patch(`/scenarios/campaigns/${c.id}`, { is_active: !c.is_active });
+      q.refetch(); statsQ.refetch();
+    } catch { /* ignore */ }
+  };
 
   const selectedNode = graph?.nodes.find((n) => n.id === selected) || null;
   const patchMeta = (p) => setGraph((g) => ({ ...g, meta: { ...g.meta, ...p } }));
@@ -196,7 +202,14 @@ export function ScenariosPage() {
         <div className="card">
           <table className="tbl">
             <thead>
-              <tr><th>Название</th><th>Триггер</th><th>Шагов</th><th>В работе</th><th>Завершено</th><th>Статус</th></tr>
+              <tr>
+                <th>Название</th><th>Триггер</th>
+                <th className="tbl-num">Шагов</th>
+                <th className="tbl-num">В работе</th>
+                <th className="tbl-num">Завершено</th>
+                <th>Статус</th>
+                <th style={{ textAlign: "right" }}>Действия</th>
+              </tr>
             </thead>
             <tbody>
               {campaigns.map((c) => {
@@ -205,10 +218,14 @@ export function ScenariosPage() {
                   <tr key={c.id} style={{ cursor: "pointer" }} onClick={() => openCampaign(c)}>
                     <td style={{ fontWeight: 500 }}>{c.name}<div className="mono muted" style={{ fontSize: 11 }}>{c.key}</div></td>
                     <td>{TRIGGERS[c.trigger_event]?.label || c.trigger_event || "—"}</td>
-                    <td className="tbl-num">{(c.steps || []).length}</td>
+                    <td className="tbl-num">{(c.nodes || []).filter((n) => n.type === "message").length}</td>
                     <td className="tbl-num">{st.active || 0}</td>
                     <td className="tbl-num">{st.completed || 0}</td>
                     <td>{c.is_active ? <span className="pill ok">активна</span> : <span className="pill muted">выкл</span>}</td>
+                    <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                      <button className="btn btn-ghost btn-icon btn-xs" title="Редактировать" onClick={(e) => { e.stopPropagation(); openCampaign(c); }}><Icon name="edit" size={13} /></button>
+                      <button className="btn btn-ghost btn-icon btn-xs" title={c.is_active ? "Выключить" : "Включить"} style={{ color: c.is_active ? "var(--ok)" : "var(--text-muted)" }} onClick={(e) => { e.stopPropagation(); toggleActive(c); }}><Icon name="power" size={13} /></button>
+                    </td>
                   </tr>
                 );
               })}

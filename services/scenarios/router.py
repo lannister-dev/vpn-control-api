@@ -15,6 +15,7 @@ from services.scenarios.schemas import (
     ScenarioCampaignIn,
     ScenarioCampaignListOut,
     ScenarioCampaignOut,
+    ScenarioCampaignPatch,
     ScenarioStatsOut,
 )
 from services.scenarios.service import ScenarioService, get_scenario_service
@@ -69,6 +70,18 @@ async def create_campaign(
     service: ScenarioService = Depends(get_scenario_service),
 ):
     return await service.create_campaign(payload)
+
+
+@router.patch("/campaigns/{campaign_id}", response_model=ScenarioCampaignOut)
+async def patch_campaign(
+    campaign_id: UUID,
+    payload: ScenarioCampaignPatch,
+    service: ScenarioService = Depends(get_scenario_service),
+):
+    out = await service.set_active(campaign_id, payload.is_active)
+    if out is None:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    return out
 
 
 @router.put("/campaigns/{campaign_id}", response_model=ScenarioCampaignOut)

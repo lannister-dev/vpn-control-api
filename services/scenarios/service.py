@@ -310,6 +310,16 @@ class ScenarioService:
         await self.session.commit()
         return self._campaign_to_out(campaign)
 
+    async def set_active(
+        self, campaign_id: UUID, is_active: bool
+    ) -> ScenarioCampaignOut | None:
+        campaign = await self.scenarios.get_campaign_with_graph(campaign_id)
+        if campaign is None:
+            return None
+        campaign.is_active = is_active
+        await self.session.commit()
+        return self._campaign_to_out(campaign)
+
     async def delete_campaign(self, campaign_id: UUID) -> bool:
         campaign = await self.scenarios.get_campaign_with_graph(campaign_id)
         if campaign is None:
