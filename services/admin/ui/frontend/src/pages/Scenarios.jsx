@@ -204,9 +204,9 @@ export function ScenariosPage() {
             <thead>
               <tr>
                 <th>Название</th><th>Триггер</th>
-                <th className="tbl-num">Шагов</th>
-                <th className="tbl-num">В работе</th>
-                <th className="tbl-num">Завершено</th>
+                <th className="tbl-num" style={{ textAlign: "center" }}>Шагов</th>
+                <th className="tbl-num" style={{ textAlign: "center" }}>В работе</th>
+                <th className="tbl-num" style={{ textAlign: "center" }}>Завершено</th>
                 <th>Статус</th>
                 <th style={{ textAlign: "right" }}>Действия</th>
               </tr>
@@ -218,9 +218,9 @@ export function ScenariosPage() {
                   <tr key={c.id} style={{ cursor: "pointer" }} onClick={() => openCampaign(c)}>
                     <td style={{ fontWeight: 500 }}>{c.name}<div className="mono muted" style={{ fontSize: 11 }}>{c.key}</div></td>
                     <td>{TRIGGERS[c.trigger_event]?.label || c.trigger_event || "—"}</td>
-                    <td className="tbl-num">{(c.nodes || []).filter((n) => n.type === "message").length}</td>
-                    <td className="tbl-num">{st.active || 0}</td>
-                    <td className="tbl-num">{st.completed || 0}</td>
+                    <td className="tbl-num" style={{ textAlign: "center" }}>{(c.nodes || []).filter((n) => n.type === "message").length}</td>
+                    <td className="tbl-num" style={{ textAlign: "center" }}>{st.active || 0}</td>
+                    <td className="tbl-num" style={{ textAlign: "center" }}>{st.completed || 0}</td>
                     <td>{c.is_active ? <span className="pill ok">активна</span> : <span className="pill muted">выкл</span>}</td>
                     <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                       <button className="btn btn-ghost btn-icon btn-xs" title="Редактировать" onClick={(e) => { e.stopPropagation(); openCampaign(c); }}><Icon name="edit" size={13} /></button>
