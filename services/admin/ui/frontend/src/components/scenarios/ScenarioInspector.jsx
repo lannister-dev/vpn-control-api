@@ -1,8 +1,38 @@
+import { useEffect, useState } from "react";
+
 import { api } from "../../api/client.js";
 import { Icon } from "../Icon.jsx";
 import { TextEditor } from "../TextEditor.jsx";
 import { TelegramPreview } from "./TelegramPreview.jsx";
 import { TRIGGERS, CONDITIONS, UNITS, BUTTON_STYLES, BUTTON_ACTIONS, splitDelay } from "./scenarioModel.js";
+
+function NumberField({ value, onCommit, min = 0, width }) {
+  const [raw, setRaw] = useState(String(value));
+  useEffect(() => { setRaw(String(value)); }, [value]);
+  const commit = (s) => {
+    const n = Number(s);
+    const v = s === "" || Number.isNaN(n) ? min : Math.max(min, Math.round(n));
+    setRaw(String(v));
+    onCommit(v);
+  };
+  return (
+    <input
+      className="di-input-sm"
+      type="number"
+      min={min}
+      style={{ width }}
+      value={raw}
+      onChange={(e) => {
+        setRaw(e.target.value);
+        if (e.target.value !== "") {
+          const n = Number(e.target.value);
+          if (!Number.isNaN(n)) onCommit(Math.max(min, Math.round(n)));
+        }
+      }}
+      onBlur={(e) => commit(e.target.value)}
+    />
+  );
+}
 
 async function uploadScenarioMedia(file, onPatch) {
   if (!file) return;
@@ -105,7 +135,7 @@ export function ScenarioInspector({ node, chainStats, onPatch, onClose, onDelete
               <div className="di-row">
                 <div className="di-field">
                   <span className="di-label">Отправить через</span>
-                  <input className="di-input-sm" type="number" min={0} style={{ width: 88 }} value={val} onChange={(e) => setDelay(Number(e.target.value), unit)} />
+                  <NumberField value={val} min={0} width={88} onCommit={(n) => setDelay(n, unit)} />
                 </div>
                 <div className="di-field">
                   <span className="di-label">&nbsp;</span>
@@ -122,14 +152,11 @@ export function ScenarioInspector({ node, chainStats, onPatch, onClose, onDelete
               <div className="di-row">
                 <div className="di-field">
                   <span className="di-label">Сколько раз</span>
-                  <input className="di-input-sm" type="number" min={1} style={{ width: 84 }}
-                    value={node.repeat ?? 1}
-                    onChange={(e) => onPatch({ repeat: Math.max(1, Number(e.target.value) || 1) })} />
+                  <NumberField value={node.repeat ?? 1} min={1} width={84} onCommit={(n) => onPatch({ repeat: n })} />
                 </div>
                 <div className="di-field">
                   <span className="di-label">Каждые</span>
-                  <input className="di-input-sm" type="number" min={1} style={{ width: 70 }}
-                    value={rptVal} onChange={(e) => setRpt(Number(e.target.value), rptUnit)} />
+                  <NumberField value={rptVal} min={1} width={70} onCommit={(n) => setRpt(n, rptUnit)} />
                 </div>
                 <div className="di-field">
                   <span className="di-label">&nbsp;</span>

@@ -81,7 +81,7 @@ export function layoutLinear(messages, triggerEvent) {
     prev = node.id;
     y += h + 64;
   });
-  const end = { id: "end", type: "end", cx: LANE.C, top: y, w: 220, h: 60, conversion: false, label: "Цепочка завершена" };
+  const end = { id: "end", type: "end", cx: LANE.C, top: y, w: 220, h: 72, conversion: false, label: "Цепочка завершена" };
   nodes.push(end);
   edges.push({ from: prev, to: "end" });
   return { nodes, edges };
@@ -119,7 +119,7 @@ export function autoLayout(nodes, edges) {
     const r = row[n.id] != null ? row[n.id] : 0;
     const l = lane[n.id] != null ? lane[n.id] : LANE.C;
     const w = n.type === "trigger" ? 230 : n.type === "end" ? 220 : NODE_W;
-    const h = n.type === "trigger" ? 46 : n.type === "end" ? 60 : n.type === "condition" ? 88 : (n.h || 120);
+    const h = n.type === "trigger" ? 46 : n.type === "end" ? 72 : n.type === "condition" ? 88 : (n.h || 120);
     return { ...n, cx: l, top: 24 + r * ROW, w, h };
   });
 }
@@ -141,7 +141,7 @@ function apiNodeToGraph(n) {
     return { ...base, w: NODE_W, h: 88, check: n.check || "connected", yes: "Да", no: "Нет" };
   }
   if (n.type === "end") {
-    return { ...base, w: 220, h: 60, conversion: !!n.conversion, label: n.label || "Цепочка завершена" };
+    return { ...base, w: 220, h: 72, conversion: !!n.conversion, label: n.label || "Цепочка завершена" };
   }
   return {
     ...base, w: NODE_W, h: 120,
@@ -255,11 +255,11 @@ export function mockChain() {
       buttons: [{ text: "Подключить за 1 клик", action: "connect", style: "success" }, { text: "Написать в поддержку", action: "help", style: "" }],
       media: null, stats: { active: 188 } },
     { id: "c2", type: "condition", cx: LANE.C, top: 712, w: NODE_W, h: 88, check: "purchased", yes: "Да", no: "Нет" },
-    { id: "end1", type: "end", cx: LANE.L, top: 880, w: 220, h: 60, conversion: true, label: "Сконвертился" },
+    { id: "end1", type: "end", cx: LANE.L, top: 880, w: 220, h: 72, conversion: true, label: "Сконвертился" },
     { id: "m4", type: "message", cx: LANE.R, top: 880, w: 252, h: 132, delay_seconds: 86400, condition: "no_active_sub",
       text: "Триал заканчивается ⏳<br>Для тебя скидка <b>30%</b> на первый месяц — только сегодня.",
       buttons: [{ text: "Забрать скидку −30%", action: "renew", style: "danger" }], media: null, stats: { active: 143 } },
-    { id: "end2", type: "end", cx: LANE.R, top: 1052, w: 220, h: 60, conversion: false, label: "Цепочка завершена" },
+    { id: "end2", type: "end", cx: LANE.R, top: 1052, w: 220, h: 72, conversion: false, label: "Цепочка завершена" },
   ];
   const edges = [
     { from: "trig", to: "m1", delayOf: "m1" },

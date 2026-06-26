@@ -181,6 +181,7 @@
 .dn-end.is-conv { border-color: color-mix(in oklch, var(--ok) 45%, var(--border-strong)); background: color-mix(in oklch, var(--ok) 8%, var(--surface)); }
 .dn-end.is-conv .dn-ic { background: color-mix(in oklch, var(--ok) 22%, var(--surface)); color: var(--ok); }
 .dn-end .dn-type { color: var(--text-muted); }
+.dn-end .dn-body { display: flex; align-items: center; padding-bottom: 6px; }
 
 /* Floating canvas toolbar */
 .dg-toolbar {
