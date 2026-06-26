@@ -104,6 +104,10 @@ class ScenarioCampaignIn(BaseModel):
         return v
 
 
+class ScenarioCampaignPatch(BaseModel):
+    is_active: bool
+
+
 class ScenarioCampaignOut(BaseModel):
     id: UUID
     key: str
