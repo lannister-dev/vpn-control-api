@@ -1,8 +1,7 @@
-// Drip / Цепочки — branching graph canvas.
 import { useRef, useState } from "react";
 
 import { Icon } from "../Icon.jsx";
-import { TRIGGERS, CONDITIONS, fmtDelay, stripTags } from "./dripModel.js";
+import { TRIGGERS, CONDITIONS, fmtDelay, stripTags } from "./scenarioModel.js";
 
 function messageNumbers(nodes) {
   const map = {}; let n = 0;
@@ -10,7 +9,7 @@ function messageNumbers(nodes) {
   return map;
 }
 
-export function DripNode({ node, selected, num, showCounts = true, onSelect, onBeginDrag, movedRef }) {
+export function ScenarioNode({ node, selected, num, showCounts = true, onSelect, onBeginDrag, movedRef }) {
   const common = {
     "data-selected": selected ? "true" : "false",
     style: { left: node.cx - node.w / 2, top: node.top, width: node.w, height: node.h, cursor: onBeginDrag ? "grab" : "pointer" },
@@ -79,6 +78,7 @@ export function DripNode({ node, selected, num, showCounts = true, onSelect, onB
       <div className="dn-body"><div className="dn-title">{stripTags(node.text) || "Без текста"}</div></div>
       <div className="dn-foot">
         {node.media && <span className="dn-meta"><Icon name="image" size={12} /> медиа</span>}
+        {node.repeat > 1 && <span className="dn-meta" title="Повторов"><Icon name="refresh" size={11} /> ×{node.repeat}</span>}
         {firstBtn && (
           <span className="dn-btnchip"><Icon name="link" size={11} />{firstBtn.text}{extraBtns > 0 ? ` +${extraBtns}` : ""}</span>
         )}
@@ -89,7 +89,7 @@ export function DripNode({ node, selected, num, showCounts = true, onSelect, onB
   );
 }
 
-export function DripGraph({ nodes, edges, selected, onSelect, onInsert, onMoveNode, edgeStyle = "curved", showCounts = true }) {
+export function ScenarioGraph({ nodes, edges, selected, onSelect, onInsert, onMoveNode, edgeStyle = "curved", showCounts = true }) {
   const [zoom, setZoom] = useState(1);
   const movedRef = useRef(false);
   const dragRef = useRef(null);
@@ -191,7 +191,7 @@ export function DripGraph({ nodes, edges, selected, onSelect, onInsert, onMoveNo
         })}
 
         {nodes.map((n) => (
-          <DripNode key={n.id} node={n} num={nums[n.id]} selected={selected === n.id} showCounts={showCounts}
+          <ScenarioNode key={n.id} node={n} num={nums[n.id]} selected={selected === n.id} showCounts={showCounts}
             onSelect={onSelect} onBeginDrag={beginDrag} movedRef={movedRef} />
         ))}
       </div>

@@ -4,29 +4,17 @@ import { api } from "../api/client.js";
 import { Empty } from "../components/Empty.jsx";
 import { Icon } from "../components/Icon.jsx";
 import { useQuery } from "../hooks/useQuery.js";
-import { DripGraph } from "../components/drip/DripGraph.jsx";
-import { DripInspector } from "../components/drip/DripInspector.jsx";
-import "../components/drip/drip.css";
+import { ScenarioGraph } from "../components/scenarios/ScenarioGraph.jsx";
+import { ScenarioInspector } from "../components/scenarios/ScenarioInspector.jsx";
+import "../components/scenarios/scenario.css";
 import {
   TRIGGERS, graphFromApi, graphToPayload, mockChain, emptyMessage, layoutLinear,
   autoLayout, nextNodeId, LANE, NODE_W,
-} from "../components/drip/dripModel.js";
+} from "../components/scenarios/scenarioModel.js";
 
-/* ════════════════════════════════════════════════════════════
-   Цепочки — drip campaign builder
-   - List view: campaigns table with live stats
-   - Builder view: branching graph (left) + step inspector & live
-     Telegram preview (right). Selecting a node opens its editor.
-
-   Backend today stores LINEAR steps; graphFromApi/graphToPayload bridge
-   that. CONDITION/END nodes + multiple branches are an extension — see
-   drip_module/README.md for the proposed contract. The builder degrades
-   to a linear chain when the campaign has no branch metadata.
-   ════════════════════════════════════════════════════════════ */
-
-export function DripPage() {
-  const q = useQuery(() => api.get("/support/drip/campaigns").catch(() => ({ items: [] })), { interval: 0 });
-  const statsQ = useQuery(() => api.get("/support/drip/stats").catch(() => ({ items: [] })), { interval: 0 });
+export function ScenariosPage() {
+  const q = useQuery(() => api.get("/scenarios/campaigns").catch(() => ({ items: [] })), { interval: 0 });
+  const statsQ = useQuery(() => api.get("/scenarios/stats").catch(() => ({ items: [] })), { interval: 0 });
 
   const [graph, setGraph] = useState(null);   // { meta, nodes, edges } | null
   const [selected, setSelected] = useState(null);
@@ -127,8 +115,8 @@ export function DripPage() {
     if (!payload.nodes.length) { setErr("Добавь хотя бы один шаг"); return; }
     setBusy(true); setErr("");
     try {
-      if (graph.meta.id) await api.put(`/support/drip/campaigns/${graph.meta.id}`, payload);
-      else await api.post("/support/drip/campaigns", payload);
+      if (graph.meta.id) await api.put(`/scenarios/campaigns/${graph.meta.id}`, payload);
+      else await api.post("/scenarios/campaigns", payload);
       setGraph(null); q.refetch(); statsQ.refetch();
     } catch (e) { setErr(e.message || "Ошибка сохранения"); }
     finally { setBusy(false); }
@@ -162,7 +150,7 @@ export function DripPage() {
         {err && <div className="card card-bad" style={{ margin: "10px 16px 0" }}>{err}</div>}
 
         <div className="db-body">
-          <DripGraph
+          <ScenarioGraph
             nodes={graph.nodes}
             edges={graph.edges}
             selected={selected}
@@ -172,7 +160,7 @@ export function DripPage() {
             edgeStyle={edgeStyle}
             showCounts={showCounts}
           />
-          <DripInspector
+          <ScenarioInspector
             node={selectedNode}
             chainStats={m.stats}
             onPatch={patchNode}

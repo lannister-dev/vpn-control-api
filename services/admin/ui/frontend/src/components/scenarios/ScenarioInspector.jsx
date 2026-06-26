@@ -1,17 +1,15 @@
-// Drip / Цепочки — step inspector (right pane). Edits the selected node and
-// shows a live Telegram preview for message nodes. Uses the repo's TextEditor.
 import { api } from "../../api/client.js";
 import { Icon } from "../Icon.jsx";
 import { TextEditor } from "../TextEditor.jsx";
 import { TelegramPreview } from "./TelegramPreview.jsx";
-import { TRIGGERS, CONDITIONS, UNITS, BUTTON_STYLES, BUTTON_ACTIONS, splitDelay } from "./dripModel.js";
+import { TRIGGERS, CONDITIONS, UNITS, BUTTON_STYLES, BUTTON_ACTIONS, splitDelay } from "./scenarioModel.js";
 
-async function uploadDripMedia(file, onPatch) {
+async function uploadScenarioMedia(file, onPatch) {
   if (!file) return;
   const fd = new FormData();
   fd.append("file", file);
   try {
-    const r = await api.raw("/support/drip/upload", { method: "POST", headers: {}, body: fd });
+    const r = await api.raw("/scenarios/upload", { method: "POST", headers: {}, body: fd });
     onPatch({ media: { kind: r.media_kind, url: r.media_url, name: file.name, size: "" } });
   } catch {
     /* ignore — upload failed */
@@ -56,7 +54,7 @@ function ButtonsEditor({ buttons, onChange }) {
   );
 }
 
-export function DripInspector({ node, chainStats, onPatch, onClose, onDelete, onAddBranch }) {
+export function ScenarioInspector({ node, chainStats, onPatch, onClose, onDelete, onAddBranch }) {
   if (!node) {
     return (
       <aside className="di">
@@ -70,6 +68,8 @@ export function DripInspector({ node, chainStats, onPatch, onClose, onDelete, on
 
   const [val, unit] = splitDelay(node.delay_seconds);
   const setDelay = (v, u) => onPatch({ delay_seconds: Math.max(0, Math.round((v ?? val) * (u ?? unit))) });
+  const [rptVal, rptUnit] = splitDelay(node.repeatInterval || node.delay_seconds || 86400);
+  const setRpt = (v, u) => onPatch({ repeatInterval: Math.max(0, Math.round((v ?? rptVal) * (u ?? rptUnit))) });
 
   const TYPE_META = {
     trigger:   { ic: "zap", tone: "var(--accent)", title: "Триггер", sub: "Точка входа в цепочку" },
@@ -118,6 +118,34 @@ export function DripInspector({ node, chainStats, onPatch, onClose, onDelete, on
             </div>
 
             <div className="di-sec">
+              <div className="di-sec-h"><Icon name="refresh" size={13} /> Повторы (напоминания)</div>
+              <div className="di-row">
+                <div className="di-field">
+                  <span className="di-label">Сколько раз</span>
+                  <input className="di-input-sm" type="number" min={1} style={{ width: 84 }}
+                    value={node.repeat ?? 1}
+                    onChange={(e) => onPatch({ repeat: Math.max(1, Number(e.target.value) || 1) })} />
+                </div>
+                <div className="di-field">
+                  <span className="di-label">Каждые</span>
+                  <input className="di-input-sm" type="number" min={1} style={{ width: 70 }}
+                    value={rptVal} onChange={(e) => setRpt(Number(e.target.value), rptUnit)} />
+                </div>
+                <div className="di-field">
+                  <span className="di-label">&nbsp;</span>
+                  <select className="di-select-sm" style={{ width: 100 }} value={rptUnit} onChange={(e) => setRpt(rptVal, Number(e.target.value))}>
+                    {UNITS.map((u) => <option key={u.v} value={u.v}>{u.long}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="di-hint">
+                {(node.repeat ?? 1) > 1
+                  ? "Напоминание прекратится само, как только «условие отправки» выше перестанет выполняться (юзер сделал действие)."
+                  : "1 = один раз. Поставь больше, чтобы напоминать, пока держится «условие отправки» выше."}
+              </div>
+            </div>
+
+            <div className="di-sec">
               <div className="di-sec-h"><Icon name="git-branch" size={13} /> Условие отправки</div>
               <select className="di-select-sm" value={node.condition} onChange={(e) => onPatch({ condition: e.target.value })}>
                 {Object.entries(CONDITIONS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -153,7 +181,7 @@ export function DripInspector({ node, chainStats, onPatch, onClose, onDelete, on
                     type="file"
                     accept="image/*,video/*"
                     style={{ display: "none" }}
-                    onChange={(e) => uploadDripMedia(e.target.files?.[0], onPatch)}
+                    onChange={(e) => uploadScenarioMedia(e.target.files?.[0], onPatch)}
                   />
                 </label>
               )}

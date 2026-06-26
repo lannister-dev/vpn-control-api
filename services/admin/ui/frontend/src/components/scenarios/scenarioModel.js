@@ -1,12 +1,3 @@
-// Drip / Цепочки — client model: constants, geometry, graph builders.
-// Pure JS, no React. Consumed by DripGraph / DripInspector / Drip page.
-//
-// The CURRENT backend (/support/drip/campaigns) stores a LINEAR list of steps
-// (step_order, delay_seconds, condition, text_body, inline_buttons, media).
-// `graphFromApi` lays those out as a linear graph; `graphToPayload` writes them
-// back. The builder UI additionally renders CONDITION / END nodes and multiple
-// branches — that branching model is a backend extension, see README.md.
-
 export const TRIGGERS = {
   trial_started:        { label: "Активировал триал", icon: "zap" },
   purchase:             { label: "Оплатил", icon: "credit-card" },
@@ -63,13 +54,14 @@ export function splitDelay(sec) {
 }
 
 // ── Lane geometry (graph-space px). Node anchors are computed from cx/top/w/h,
-// so keep rendered card sizes == these values (see drip.css min-heights). ──
+// so keep rendered card sizes == these values (see scenario.css min-heights). ──
 export const LANE = { C: 320, L: 178, R: 462 };
 export const NODE_W = 258;
 
 export function emptyMessage(id) {
   return { id, type: "message", cx: LANE.C, top: 0, w: NODE_W, h: 112,
-    delay_seconds: 3600, condition: "always", text: "", buttons: [], media: null, stats: { active: 0 } };
+    delay_seconds: 3600, condition: "always", repeat: 1, repeatInterval: 0,
+    text: "", buttons: [], media: null, stats: { active: 0 } };
 }
 
 // ── Linear layout: trigger → messages → end, centre lane ──
@@ -155,6 +147,8 @@ function apiNodeToGraph(n) {
     ...base, w: NODE_W, h: 120,
     delay_seconds: n.delay_seconds || 0,
     condition: n.condition || "always",
+    repeat: n.repeat_count || 1,
+    repeatInterval: n.repeat_interval_sec || 0,
     text: n.text_body || "",
     media: n.media_url ? { kind: n.media_kind || "image", url: n.media_url, name: "media", size: "" } : null,
     buttons: (n.inline_buttons || []).map((b) => ({ text: b.text || "", url: b.url || "", style: b.style || "", action: b.action || "" })),
@@ -220,6 +214,8 @@ export function graphToPayload(meta, nodes, edges) {
       ...base,
       delay_seconds: Math.max(0, Math.round(n.delay_seconds || 0)),
       condition: n.condition || "always",
+      repeat_count: Math.max(1, Math.round(n.repeat || 1)),
+      repeat_interval_sec: Math.max(0, Math.round(n.repeatInterval || 0)),
       text_body: n.text || null,
       inline_buttons: (n.buttons || [])
         .filter((b) => (b.text || "").trim() && (b.action || (b.url || "").trim()))

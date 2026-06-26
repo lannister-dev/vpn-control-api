@@ -4,21 +4,17 @@ from uuid import UUID
 
 from sqlalchemy import and_, desc, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from services.billing.models import PaymentOrder
 from services.plans.models import Plan
-from services.support.constants import DripStatus
 from services.support.models import (
     Broadcast,
     BroadcastLog,
-    DripCampaign,
     RecurringBroadcastSchedule,
     SupportAttachment,
     SupportMessage,
     SupportTemplate,
     SupportTicket,
-    UserCampaignState,
 )
 from services.support.schemas import (
     BroadcastAudience,
@@ -615,123 +611,3 @@ class BroadcastLogRepository(BaseRepository[BroadcastLog]):
             select(func.count(func.distinct(PromoActivation.user_id))).where(*conds)
         )
         return int(res.scalar() or 0)
-
-
-class DripRepository(BaseRepository[UserCampaignState]):
-    def __init__(self, session: AsyncSession):
-        super().__init__(UserCampaignState, session)
-
-    async def active_campaigns_by_trigger(self, trigger_event: str) -> list[DripCampaign]:
-        stmt = (
-            select(DripCampaign)
-            .where(
-                DripCampaign.is_active.is_(True),
-                DripCampaign.trigger_event == trigger_event,
-            )
-            .options(selectinload(DripCampaign.nodes), selectinload(DripCampaign.edges))
-        )
-        result = await self.session.execute(stmt)
-        return list(result.scalars().unique().all())
-
-    async def get_state(self, user_id: UUID, campaign_id: UUID) -> UserCampaignState | None:
-        stmt = select(UserCampaignState).where(
-            UserCampaignState.user_id == user_id,
-            UserCampaignState.campaign_id == campaign_id,
-        )
-        return await self.session.scalar(stmt)
-
-    async def enroll(
-        self,
-        *,
-        user_id: UUID,
-        campaign_id: UUID,
-        entered_at: datetime,
-        next_send_at: datetime,
-        current_node_key: str,
-    ) -> bool:
-        if await self.get_state(user_id, campaign_id) is not None:
-            return False
-        self.session.add(
-            UserCampaignState(
-                user_id=user_id,
-                campaign_id=campaign_id,
-                current_node_key=current_node_key,
-                status=DripStatus.ACTIVE,
-                entered_at=entered_at,
-                next_send_at=next_send_at,
-            )
-        )
-        await self.session.flush()
-        return True
-
-    async def list_due(self, *, now: datetime, limit: int) -> list[UserCampaignState]:
-        stmt = (
-            select(UserCampaignState)
-            .where(
-                UserCampaignState.status == DripStatus.ACTIVE,
-                UserCampaignState.next_send_at.isnot(None),
-                UserCampaignState.next_send_at <= now,
-            )
-            .order_by(UserCampaignState.next_send_at.asc())
-            .limit(limit)
-        )
-        result = await self.session.execute(stmt)
-        return list(result.scalars().all())
-
-    async def get_campaign_with_graph(self, campaign_id: UUID) -> DripCampaign | None:
-        stmt = (
-            select(DripCampaign)
-            .where(DripCampaign.id == campaign_id)
-            .options(selectinload(DripCampaign.nodes), selectinload(DripCampaign.edges))
-        )
-        return await self.session.scalar(stmt)
-
-    async def list_campaigns(self) -> list[DripCampaign]:
-        stmt = (
-            select(DripCampaign)
-            .options(selectinload(DripCampaign.nodes), selectinload(DripCampaign.edges))
-            .order_by(DripCampaign.created_at.desc())
-        )
-        result = await self.session.execute(stmt)
-        return list(result.scalars().unique().all())
-
-    async def status_counts(self) -> list[tuple[UUID, str, int]]:
-        stmt = select(
-            UserCampaignState.campaign_id,
-            UserCampaignState.status,
-            func.count(),
-        ).group_by(UserCampaignState.campaign_id, UserCampaignState.status)
-        rows = await self.session.execute(stmt)
-        return [(cid, status, int(n)) for cid, status, n in rows.all()]
-
-    async def has_connected(self, user_id: UUID) -> bool:
-        stmt = (
-            select(Subscription.id)
-            .where(
-                Subscription.user_id == user_id,
-                Subscription.first_connected_at.isnot(None),
-            )
-            .limit(1)
-        )
-        return await self.session.scalar(stmt) is not None
-
-    async def has_paid(self, user_id: UUID) -> bool:
-        stmt = (
-            select(Subscription.id)
-            .join(Plan, Subscription.plan_id == Plan.id)
-            .where(Subscription.user_id == user_id, Plan.price_rub > 0)
-            .limit(1)
-        )
-        return await self.session.scalar(stmt) is not None
-
-    async def has_active_subscription(self, user_id: UUID, *, now: datetime) -> bool:
-        stmt = (
-            select(Subscription.id)
-            .where(
-                Subscription.user_id == user_id,
-                Subscription.expires_at.is_not(None),
-                Subscription.expires_at >= now,
-            )
-            .limit(1)
-        )
-        return await self.session.scalar(stmt) is not None
