@@ -1,3 +1,5 @@
+import { htmlForTelegram } from "../TextEditor.jsx";
+
 export const TRIGGERS = {
   trial_started:        { label: "Активировал триал", icon: "zap" },
   purchase:             { label: "Оплатил", icon: "credit-card" },
@@ -149,7 +151,7 @@ function apiNodeToGraph(n) {
     condition: n.condition || "always",
     repeat: n.repeat_count || 1,
     repeatInterval: n.repeat_interval_sec || 0,
-    text: n.text_body || "",
+    text: (n.text_body || "").replace(/\n/g, "<br>"),
     media: n.media_url ? { kind: n.media_kind || "image", url: n.media_url, name: "media", size: "" } : null,
     buttons: (n.inline_buttons || []).map((b) => ({ text: b.text || "", url: b.url || "", style: b.style || "", action: b.action || "" })),
     stats: { active: 0 },
@@ -216,7 +218,7 @@ export function graphToPayload(meta, nodes, edges) {
       condition: n.condition || "always",
       repeat_count: Math.max(1, Math.round(n.repeat || 1)),
       repeat_interval_sec: Math.max(0, Math.round(n.repeatInterval || 0)),
-      text_body: n.text || null,
+      text_body: htmlForTelegram(n.text) || null,
       inline_buttons: (n.buttons || [])
         .filter((b) => (b.text || "").trim() && (b.action || (b.url || "").trim()))
         .map((b) => ({ text: b.text.trim(), url: b.action ? "" : (b.url || "").trim(), style: b.style || null, action: b.action || null })),
