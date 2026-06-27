@@ -5,7 +5,7 @@ SCENARIO_DUE_BATCH_SIZE = 200
 SCENARIO_ENROLLMENT_DURABLE = "vpn-control-api-scenario-enrollment"
 
 SCENARIO_BUTTON_STYLES = ("primary", "success", "danger")
-SCENARIO_BUTTON_ACTIONS = ("renew", "plans", "connect", "help")
+SCENARIO_BUTTON_ACTIONS = ("renew", "plans", "trial", "connect", "help")
 
 SCENARIO_TRIGGERS = (
     "trial_started",

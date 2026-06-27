@@ -31,13 +31,14 @@ export const BUTTON_STYLES = {
 
 export const BUTTON_ACTIONS = {
   "":      "Свой URL",
+  trial:   "Подключить бесплатно",
   renew:   "Продлить",
   connect: "Подключение",
   plans:   "Тарифы",
   help:    "Помощь",
 };
 
-export const ACTION_ICON = { renew: "refresh", connect: "wifi", plans: "package", help: "help-circle", "": "link" };
+export const ACTION_ICON = { trial: "zap", renew: "refresh", connect: "wifi", plans: "package", help: "help-circle", "": "link" };
 
 export function stripTags(s) { return (s || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(); }
 
