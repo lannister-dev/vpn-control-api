@@ -137,7 +137,7 @@ export function nextNodeId(nodes, prefix) {
 }
 
 // ── Backend campaign (graph: nodes + edges) → editor graph ──
-function apiNodeToGraph(n) {
+function apiNodeToGraph(n, nodeActive = {}) {
   const base = { id: n.key, type: n.type, cx: n.pos_cx || LANE.C, top: n.pos_top || 0 };
   if (n.type === "condition") {
     return { ...base, w: NODE_W, h: 88, check: n.check || "connected", yes: "Да", no: "Нет" };
@@ -154,7 +154,7 @@ function apiNodeToGraph(n) {
     text: (n.text_body || "").replace(/\n/g, "<br>"),
     media: n.media_url ? { kind: n.media_kind || "image", url: n.media_url, name: "media", size: "" } : null,
     buttons: (n.inline_buttons || []).map((b) => ({ text: b.text || "", url: b.url || "", style: b.style || "", action: b.action || "" })),
-    stats: { active: 0 },
+    stats: { active: nodeActive[n.key] || 0 },
   };
 }
 
@@ -166,6 +166,7 @@ export function graphFromApi(c) {
     trigger_event: c.trigger_event || "trial_started",
     is_active: !!c.is_active, stats: c.stats || { active: 0, completed: 0 },
   };
+  const nodeActive = (c.stats && c.stats.node_active) || {};
   if (!apiNodes.length) {
     const { nodes, edges } = layoutLinear([emptyMessage("m1")], meta.trigger_event);
     return { meta, nodes, edges };
@@ -178,14 +179,14 @@ export function graphFromApi(c) {
     const messages = apiNodes
       .filter((n) => n.type === "message")
       .map((n) => {
-        const g = apiNodeToGraph(n);
+        const g = apiNodeToGraph(n, nodeActive);
         return { delay_seconds: g.delay_seconds, condition: g.condition, text: g.text, media: g.media, buttons: g.buttons, stats: g.stats };
       });
     const { nodes, edges } = layoutLinear(messages.length ? messages : [emptyMessage("m1")], meta.trigger_event);
     return { meta, nodes, edges };
   }
 
-  const nodes = apiNodes.map(apiNodeToGraph);
+  const nodes = apiNodes.map((n) => apiNodeToGraph(n, nodeActive));
   const keyType = {};
   apiNodes.forEach((n) => { keyType[n.key] = n.type; });
   const edges = apiEdges.map((e) => ({

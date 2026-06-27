@@ -130,6 +130,7 @@ class ScenarioCampaignStat(BaseModel):
     completed: int = 0
     abandoned: int = 0
     stopped: int = 0
+    node_active: dict[str, int] = Field(default_factory=dict)
 
 
 class ScenarioStatsOut(BaseModel):

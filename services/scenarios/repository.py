@@ -108,6 +108,22 @@ class ScenarioRepository(BaseRepository[ScenarioState]):
         rows = await self.session.execute(stmt)
         return [(cid, status, int(n)) for cid, status, n in rows.all()]
 
+    async def active_node_counts(self) -> list[tuple[UUID, str, int]]:
+        stmt = (
+            select(
+                ScenarioState.campaign_id,
+                ScenarioState.current_node_key,
+                func.count(),
+            )
+            .where(
+                ScenarioState.status == ScenarioStatus.ACTIVE,
+                ScenarioState.current_node_key.isnot(None),
+            )
+            .group_by(ScenarioState.campaign_id, ScenarioState.current_node_key)
+        )
+        rows = await self.session.execute(stmt)
+        return [(cid, key, int(n)) for cid, key, n in rows.all()]
+
     async def has_connected(self, user_id: UUID) -> bool:
         stmt = (
             select(Subscription.id)
