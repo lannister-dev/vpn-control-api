@@ -49,7 +49,11 @@ export function ScenariosPage() {
 
   const selectedNode = graph?.nodes.find((n) => n.id === selected) || null;
   const patchMeta = (p) => setGraph((g) => ({ ...g, meta: { ...g.meta, ...p } }));
-  const patchNode = (p) => setGraph((g) => ({ ...g, nodes: g.nodes.map((n) => (n.id === selected ? { ...n, ...p } : n)) }));
+  const patchNode = (p) => setGraph((g) => {
+    const sel = g.nodes.find((n) => n.id === selected);
+    const meta = sel?.type === "trigger" && "trigger_event" in p ? { ...g.meta, trigger_event: p.trigger_event } : g.meta;
+    return { ...g, meta, nodes: g.nodes.map((n) => (n.id === selected ? { ...n, ...p } : n)) };
+  });
   const moveNode = (id, cx, top) => setGraph((g) => ({ ...g, nodes: g.nodes.map((n) => (n.id === id ? { ...n, cx, top } : n)) }));
   const deleteNode = (id) => {
     setGraph((g) => {
