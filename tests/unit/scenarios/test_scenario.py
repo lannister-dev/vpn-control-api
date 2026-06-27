@@ -235,6 +235,12 @@ def test_render_text_substitutes_vars():
     assert "{referral}" not in out
 
 
+def test_render_text_name_falls_back_to_telegram_id():
+    user = SimpleNamespace(username=None, telegram_id=420200363)
+    out = ScenarioService._render_text("Привет, {name}!", user)
+    assert out == "Привет, 420200363!"
+
+
 def test_build_outbound_button_action_vs_url():
     a = ScenarioService._build_outbound_button({"text": "Продлить", "action": "renew", "style": "success"})
     assert a.action == "renew" and a.url == "" and a.style == "success"

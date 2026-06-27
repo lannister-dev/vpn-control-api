@@ -357,7 +357,8 @@ class ScenarioService:
             return text
         out = text
         if "{name}" in out:
-            out = out.replace("{name}", getattr(user, "username", None) or "друг")
+            fallback = str(getattr(user, "telegram_id", "") or "")
+            out = out.replace("{name}", getattr(user, "username", None) or fallback)
         if "{referral}" in out:
             bot_username = (get_settings().referral.bot_username or "").strip()
             code = getattr(user, "referral_code", None)
