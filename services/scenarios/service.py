@@ -234,8 +234,16 @@ class ScenarioService:
             )
             if status in bucket:
                 bucket[status] += count
+        node_agg: dict[UUID, dict[str, int]] = {}
+        for campaign_id, node_key, count in await self.scenarios.active_node_counts():
+            node_agg.setdefault(campaign_id, {})[node_key] = count
         items = [
-            ScenarioCampaignStat(campaign_id=campaign_id, enrolled=sum(bucket.values()), **bucket)
+            ScenarioCampaignStat(
+                campaign_id=campaign_id,
+                enrolled=sum(bucket.values()),
+                node_active=node_agg.get(campaign_id, {}),
+                **bucket,
+            )
             for campaign_id, bucket in agg.items()
         ]
         return ScenarioStatsOut(items=items)
