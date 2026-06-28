@@ -402,6 +402,11 @@ class ScenarioService:
         style = b.get("style")
         style = style if style in SCENARIO_BUTTON_STYLES else None
         action = b.get("action")
+        if action == "promo":
+            code = (b.get("value") or "").strip()
+            if not code:
+                return None
+            return SupportOutboundInlineButton(text=text, action="promo", value=code, style=style)
         if action in SCENARIO_BUTTON_ACTIONS:
             return SupportOutboundInlineButton(text=text, action=action, style=style)
         url = (b.get("url") or "").strip()

@@ -49,7 +49,7 @@ async function uploadScenarioMedia(file, onPatch) {
 function ButtonsEditor({ buttons, onChange }) {
   const upd = (i, p) => onChange(buttons.map((b, x) => (x === i ? { ...b, ...p } : b)));
   const del = (i) => onChange(buttons.filter((_, x) => x !== i));
-  const add = () => onChange([...buttons, { text: "", action: "", url: "", style: "" }]);
+  const add = () => onChange([...buttons, { text: "", action: "", url: "", style: "", value: "" }]);
   return (
     <div className="di-btn-list">
       {buttons.map((b, i) => (
@@ -75,6 +75,12 @@ function ButtonsEditor({ buttons, onChange }) {
             <div className="di-field span2">
               <span className="di-mini-label">URL</span>
               <input className="di-input-sm mono" value={b.url || ""} placeholder="https://t.me/…" onChange={(e) => upd(i, { url: e.target.value })} />
+            </div>
+          )}
+          {b.action === "promo" && (
+            <div className="di-field span2">
+              <span className="di-mini-label">Промокод</span>
+              <input className="di-input-sm mono" value={b.value || ""} placeholder="SALE30" onChange={(e) => upd(i, { value: e.target.value })} />
             </div>
           )}
         </div>

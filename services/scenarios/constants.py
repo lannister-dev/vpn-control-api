@@ -6,7 +6,7 @@ SCENARIO_ENROLLMENT_DURABLE = "vpn-control-api-scenario-enrollment"
 SCENARIO_ENROLL_RETRY_DELAY_SEC = 3
 
 SCENARIO_BUTTON_STYLES = ("primary", "success", "danger")
-SCENARIO_BUTTON_ACTIONS = ("renew", "plans", "trial", "connect", "help")
+SCENARIO_BUTTON_ACTIONS = ("renew", "plans", "trial", "connect", "help", "promo")
 
 SCENARIO_TRIGGERS = (
     "trial_started",

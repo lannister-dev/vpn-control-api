@@ -276,3 +276,13 @@ async def test_enroll_returns_zero_when_no_campaigns():
     svc.users.get_by_telegram_id = AsyncMock(return_value=None)
     assert await svc.enroll_for_event(event_kind="user_registered", telegram_id=42) == 0
     svc.users.get_by_telegram_id.assert_not_awaited()
+
+
+def test_build_outbound_button_promo_carries_code():
+    btn = ScenarioService._build_outbound_button({"text": "Скидка", "action": "promo", "value": "SALE30"})
+    assert btn is not None
+    assert btn.action == "promo" and btn.value == "SALE30"
+
+
+def test_build_outbound_button_promo_without_code_is_dropped():
+    assert ScenarioService._build_outbound_button({"text": "Скидка", "action": "promo", "value": ""}) is None
