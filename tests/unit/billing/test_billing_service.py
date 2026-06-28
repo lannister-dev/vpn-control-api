@@ -162,6 +162,29 @@ class TestCreateOrder:
         assert result.id == order.id
         service.order_repo.create.assert_awaited_once()
 
+    async def test_create_order_renewal_beyond_grace_rejected(self, service):
+        user = _make_user()
+        plan = _make_plan()
+        service.user_repo.get_by_id.return_value = user
+        service.plan_repo.get_by_id.return_value = plan
+        sub = SimpleNamespace(
+            id=uuid4(),
+            user_id=user.id,
+            plan_id=plan.id,
+            expires_at=datetime.now(timezone.utc) - timedelta(days=30),
+        )
+        service.sub_repo.get_by_id = AsyncMock(return_value=sub)
+        with pytest.raises(PlanNotPurchasable):
+            await service.create_order(
+                OrderCreateIn(
+                    user_id=user.id,
+                    plan_id=plan.id,
+                    provider=PaymentProviderEnum.CRYPTO,
+                    subscription_id=sub.id,
+                    order_type=OrderTypeEnum.SUBSCRIPTION_RENEWAL,
+                )
+            )
+
     async def test_create_order_user_not_found(self, service):
         service.user_repo.get_by_id.return_value = None
         with pytest.raises(OrderNotFound):

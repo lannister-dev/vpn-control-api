@@ -109,6 +109,7 @@ class SubscriptionsConfig:
     response_cache_ttl_sec: int = 15
     response_max_payload_bytes: int = 32768
     public_base_url: str = ""
+    reactivation_grace_days: int = 14
     happ_profile_title: str = "VPN"
     happ_profile_update_interval_hours: int = 1
     happ_support_url: str = ""
@@ -468,6 +469,7 @@ def get_settings() -> Settings:
         response_cache_ttl_sec=env.int("SUBSCRIPTIONS_RESPONSE_CACHE_TTL_SEC", default=15),
         response_max_payload_bytes=env.int("SUBSCRIPTIONS_RESPONSE_MAX_PAYLOAD_BYTES", default=32768),
         public_base_url=env.str("SUBSCRIPTIONS_PUBLIC_BASE_URL", default=""),
+        reactivation_grace_days=env.int("SUBSCRIPTIONS_REACTIVATION_GRACE_DAYS", default=14),
         happ_profile_title=env.str("SUBSCRIPTIONS_HAPP_PROFILE_TITLE", default="VPN"),
         happ_profile_update_interval_hours=env.int("SUBSCRIPTIONS_HAPP_PROFILE_UPDATE_INTERVAL_HOURS", default=1),
         happ_support_url=env.str("SUBSCRIPTIONS_HAPP_SUPPORT_URL", default=""),
