@@ -15,6 +15,7 @@ import {
 export function ScenariosPage() {
   const q = useQuery(() => api.get("/scenarios/campaigns").catch(() => ({ items: [] })), { interval: 0 });
   const statsQ = useQuery(() => api.get("/scenarios/stats").catch(() => ({ items: [] })), { interval: 0 });
+  const promoQ = useQuery(() => api.get("/promo").catch(() => ({ items: [] })), { interval: 0 });
 
   const [graph, setGraph] = useState(null);   // { meta, nodes, edges } | null
   const [selected, setSelected] = useState(null);
@@ -26,6 +27,15 @@ export function ScenariosPage() {
   const campaigns = q.data?.items || [];
   const statsById = {};
   (statsQ.data?.items || []).forEach((s) => { statsById[s.campaign_id] = s; });
+
+  const promoCodes = (promoQ.data?.items || []).filter((p) => {
+    if (!p.is_active) return false;
+    const now = Date.now();
+    if (p.starts_at && new Date(p.starts_at).getTime() > now) return false;
+    if (p.expires_at && new Date(p.expires_at).getTime() <= now) return false;
+    if (p.max_activations != null && (p.activation_count || 0) >= p.max_activations) return false;
+    return true;
+  }).map((p) => p.code);
 
   const openCampaign = (c) => {
     const g = graphFromApi({ ...c, stats: statsById[c.id] });
@@ -49,7 +59,11 @@ export function ScenariosPage() {
 
   const selectedNode = graph?.nodes.find((n) => n.id === selected) || null;
   const patchMeta = (p) => setGraph((g) => ({ ...g, meta: { ...g.meta, ...p } }));
-  const patchNode = (p) => setGraph((g) => ({ ...g, nodes: g.nodes.map((n) => (n.id === selected ? { ...n, ...p } : n)) }));
+  const patchNode = (p) => setGraph((g) => {
+    const sel = g.nodes.find((n) => n.id === selected);
+    const meta = sel?.type === "trigger" && "trigger_event" in p ? { ...g.meta, trigger_event: p.trigger_event } : g.meta;
+    return { ...g, meta, nodes: g.nodes.map((n) => (n.id === selected ? { ...n, ...p } : n)) };
+  });
   const moveNode = (id, cx, top) => setGraph((g) => ({ ...g, nodes: g.nodes.map((n) => (n.id === id ? { ...n, cx, top } : n)) }));
   const deleteNode = (id) => {
     setGraph((g) => {
@@ -169,6 +183,7 @@ export function ScenariosPage() {
           <ScenarioInspector
             node={selectedNode}
             chainStats={m.stats}
+            promoCodes={promoCodes}
             onPatch={patchNode}
             onClose={() => setSelected(null)}
             onDelete={deleteNode}

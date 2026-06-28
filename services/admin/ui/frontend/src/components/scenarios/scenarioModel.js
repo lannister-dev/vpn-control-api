@@ -31,13 +31,15 @@ export const BUTTON_STYLES = {
 
 export const BUTTON_ACTIONS = {
   "":      "Свой URL",
+  trial:   "Подключить бесплатно",
   renew:   "Продлить",
   connect: "Подключение",
   plans:   "Тарифы",
   help:    "Помощь",
+  promo:   "Промокод",
 };
 
-export const ACTION_ICON = { renew: "refresh", connect: "wifi", plans: "package", help: "help-circle", "": "link" };
+export const ACTION_ICON = { trial: "zap", renew: "refresh", connect: "wifi", plans: "package", help: "help-circle", promo: "tag", "": "link" };
 
 export function stripTags(s) { return (s || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(); }
 
@@ -153,7 +155,7 @@ function apiNodeToGraph(n, nodeActive = {}) {
     repeatInterval: n.repeat_interval_sec || 0,
     text: (n.text_body || "").replace(/\n/g, "<br>"),
     media: n.media_url ? { kind: n.media_kind || "image", url: n.media_url, name: "media", size: "" } : null,
-    buttons: (n.inline_buttons || []).map((b) => ({ text: b.text || "", url: b.url || "", style: b.style || "", action: b.action || "" })),
+    buttons: (n.inline_buttons || []).map((b) => ({ text: b.text || "", url: b.url || "", style: b.style || "", action: b.action || "", value: b.value || "" })),
     stats: { active: nodeActive[n.key] || 0 },
   };
 }
@@ -222,7 +224,7 @@ export function graphToPayload(meta, nodes, edges) {
       text_body: htmlForTelegram(n.text) || null,
       inline_buttons: (n.buttons || [])
         .filter((b) => (b.text || "").trim() && (b.action || (b.url || "").trim()))
-        .map((b) => ({ text: b.text.trim(), url: b.action ? "" : (b.url || "").trim(), style: b.style || null, action: b.action || null })),
+        .map((b) => ({ text: b.text.trim(), url: b.action ? "" : (b.url || "").trim(), style: b.style || null, action: b.action || null, value: b.action === "promo" ? (b.value || "").trim() : null })),
       media_kind: n.media ? n.media.kind : null,
       media_url: n.media ? n.media.url || null : null,
     };

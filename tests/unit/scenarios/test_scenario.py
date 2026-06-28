@@ -5,8 +5,10 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
+import pytest
+
 from services.scenarios.constants import ScenarioStatus
-from services.scenarios.service import ScenarioService
+from services.scenarios.service import ScenarioService, ScenarioUserNotReady
 
 
 def _svc() -> ScenarioService:
@@ -235,6 +237,12 @@ def test_render_text_substitutes_vars():
     assert "{referral}" not in out
 
 
+def test_render_text_name_falls_back_to_telegram_id():
+    user = SimpleNamespace(username=None, telegram_id=420200363)
+    out = ScenarioService._render_text("Привет, {name}!", user)
+    assert out == "Привет, 420200363!"
+
+
 def test_build_outbound_button_action_vs_url():
     a = ScenarioService._build_outbound_button({"text": "Продлить", "action": "renew", "style": "success"})
     assert a.action == "renew" and a.url == "" and a.style == "success"
@@ -252,3 +260,29 @@ async def test_stats_aggregates_by_status():
     out = await svc.stats()
     assert len(out.items) == 1
     assert out.items[0].active == 3 and out.items[0].enrolled == 6
+
+
+async def test_enroll_raises_user_not_ready_when_user_missing_but_campaign_active():
+    svc = _svc()
+    svc.scenarios.active_campaigns_by_trigger = AsyncMock(return_value=[object()])
+    svc.users.get_by_telegram_id = AsyncMock(return_value=None)
+    with pytest.raises(ScenarioUserNotReady):
+        await svc.enroll_for_event(event_kind="user_registered", telegram_id=42)
+
+
+async def test_enroll_returns_zero_when_no_campaigns():
+    svc = _svc()
+    svc.scenarios.active_campaigns_by_trigger = AsyncMock(return_value=[])
+    svc.users.get_by_telegram_id = AsyncMock(return_value=None)
+    assert await svc.enroll_for_event(event_kind="user_registered", telegram_id=42) == 0
+    svc.users.get_by_telegram_id.assert_not_awaited()
+
+
+def test_build_outbound_button_promo_carries_code():
+    btn = ScenarioService._build_outbound_button({"text": "Скидка", "action": "promo", "value": "SALE30"})
+    assert btn is not None
+    assert btn.action == "promo" and btn.value == "SALE30"
+
+
+def test_build_outbound_button_promo_without_code_is_dropped():
+    assert ScenarioService._build_outbound_button({"text": "Скидка", "action": "promo", "value": ""}) is None

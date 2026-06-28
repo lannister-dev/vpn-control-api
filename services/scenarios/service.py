@@ -43,6 +43,11 @@ from shared.utils.logger import StructuredLogger
 logger_scenario = StructuredLogger(logging.getLogger("scenario-service"))
 
 
+class ScenarioUserNotReady(Exception):
+    """Trigger event matched active campaigns but the user row isn't visible yet
+    (publish happened before the creating transaction committed). Signals a retry."""
+
+
 class ScenarioService:
     def __init__(
         self,
@@ -85,7 +90,7 @@ class ScenarioService:
             return 0
         user = await self.users.get_by_telegram_id(telegram_id)
         if user is None:
-            return 0
+            raise ScenarioUserNotReady(telegram_id)
         now = datetime.now(timezone.utc)
         enrolled = 0
         for campaign in campaigns:
@@ -357,7 +362,8 @@ class ScenarioService:
             return text
         out = text
         if "{name}" in out:
-            out = out.replace("{name}", getattr(user, "username", None) or "друг")
+            fallback = str(getattr(user, "telegram_id", "") or "")
+            out = out.replace("{name}", getattr(user, "username", None) or fallback)
         if "{referral}" in out:
             bot_username = (get_settings().referral.bot_username or "").strip()
             code = getattr(user, "referral_code", None)
@@ -396,6 +402,11 @@ class ScenarioService:
         style = b.get("style")
         style = style if style in SCENARIO_BUTTON_STYLES else None
         action = b.get("action")
+        if action == "promo":
+            code = (b.get("value") or "").strip()
+            if not code:
+                return None
+            return SupportOutboundInlineButton(text=text, action="promo", value=code, style=style)
         if action in SCENARIO_BUTTON_ACTIONS:
             return SupportOutboundInlineButton(text=text, action=action, style=style)
         url = (b.get("url") or "").strip()

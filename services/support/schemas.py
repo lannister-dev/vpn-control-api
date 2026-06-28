@@ -418,6 +418,7 @@ class SupportOutboundInlineButton(BaseModel):
     url: str = ""
     style: str | None = None
     action: str | None = None
+    value: str | None = None
 
 
 class SupportOutboundPayload(BaseModel):
