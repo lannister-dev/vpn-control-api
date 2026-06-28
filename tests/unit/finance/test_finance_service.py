@@ -184,6 +184,11 @@ class TestIncome:
         assert out.uncaptured_pct == 10.0
         assert out.transactions[0].user == "@user"
         assert out.transactions[0].is_top_up is False
+        service.order_repo.recent_revenue_orders.assert_awaited_once_with(
+            date_from=datetime(2026, 5, 11, tzinfo=timezone.utc),
+            date_to=datetime(2026, 6, 10, tzinfo=timezone.utc),
+            limit=50,
+        )
 
 
 class TestMetrics:

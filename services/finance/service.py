@@ -265,7 +265,9 @@ class FinanceService:
         )
         uncaptured = (gw_unknown / gw_gross * 100) if gw_gross else 0.0
 
-        rows = await self.order_repo.recent_revenue_orders(limit=txn_limit)
+        rows = await self.order_repo.recent_revenue_orders(
+            date_from=date_from, date_to=date_to, limit=txn_limit
+        )
         txns = [
             IncomeTxnOut(
                 id=order.id,
