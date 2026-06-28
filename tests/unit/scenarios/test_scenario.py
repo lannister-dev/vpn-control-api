@@ -5,8 +5,10 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
+import pytest
+
 from services.scenarios.constants import ScenarioStatus
-from services.scenarios.service import ScenarioService
+from services.scenarios.service import ScenarioService, ScenarioUserNotReady
 
 
 def _svc() -> ScenarioService:
@@ -258,3 +260,19 @@ async def test_stats_aggregates_by_status():
     out = await svc.stats()
     assert len(out.items) == 1
     assert out.items[0].active == 3 and out.items[0].enrolled == 6
+
+
+async def test_enroll_raises_user_not_ready_when_user_missing_but_campaign_active():
+    svc = _svc()
+    svc.scenarios.active_campaigns_by_trigger = AsyncMock(return_value=[object()])
+    svc.users.get_by_telegram_id = AsyncMock(return_value=None)
+    with pytest.raises(ScenarioUserNotReady):
+        await svc.enroll_for_event(event_kind="user_registered", telegram_id=42)
+
+
+async def test_enroll_returns_zero_when_no_campaigns():
+    svc = _svc()
+    svc.scenarios.active_campaigns_by_trigger = AsyncMock(return_value=[])
+    svc.users.get_by_telegram_id = AsyncMock(return_value=None)
+    assert await svc.enroll_for_event(event_kind="user_registered", telegram_id=42) == 0
+    svc.users.get_by_telegram_id.assert_not_awaited()

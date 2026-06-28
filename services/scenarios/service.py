@@ -43,6 +43,11 @@ from shared.utils.logger import StructuredLogger
 logger_scenario = StructuredLogger(logging.getLogger("scenario-service"))
 
 
+class ScenarioUserNotReady(Exception):
+    """Trigger event matched active campaigns but the user row isn't visible yet
+    (publish happened before the creating transaction committed). Signals a retry."""
+
+
 class ScenarioService:
     def __init__(
         self,
@@ -85,7 +90,7 @@ class ScenarioService:
             return 0
         user = await self.users.get_by_telegram_id(telegram_id)
         if user is None:
-            return 0
+            raise ScenarioUserNotReady(telegram_id)
         now = datetime.now(timezone.utc)
         enrolled = 0
         for campaign in campaigns:

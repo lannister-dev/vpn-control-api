@@ -7,9 +7,13 @@ from pydantic import ValidationError
 
 from services.config import NatsConfig
 from services.notifications.constants import NOTIFICATIONS_MAX_MSGS_PER_SUBJECT
-from services.scenarios.constants import SCENARIO_ENROLLMENT_DURABLE, SCENARIO_TRIGGERS
+from services.scenarios.constants import (
+    SCENARIO_ENROLL_RETRY_DELAY_SEC,
+    SCENARIO_ENROLLMENT_DURABLE,
+    SCENARIO_TRIGGERS,
+)
 from services.scenarios.schemas import ScenarioTriggerEvent
-from services.scenarios.service import ScenarioService
+from services.scenarios.service import ScenarioService, ScenarioUserNotReady
 from shared.database.session import AsyncDatabase
 from shared.nats.client import NatsClient
 from shared.utils.logger import StructuredLogger
@@ -70,17 +74,23 @@ class ScenarioEnrollmentConsumer:
                 enrolled = await svc.enroll_for_event(
                     event_kind=event.kind, telegram_id=event.telegram_id
                 )
-                if enrolled:
-                    await session.commit()
-                    logger.info(
-                        "scenario_enrolled",
-                        kind=event.kind,
-                        telegram_id=event.telegram_id,
-                        campaigns=enrolled,
-                    )
+            except ScenarioUserNotReady:
+                await session.rollback()
+                await msg.nak(delay=SCENARIO_ENROLL_RETRY_DELAY_SEC)
+                return
             except Exception:
                 logger.exception("scenario_enroll_failed", kind=event.kind)
                 await session.rollback()
+                await msg.ack()
+                return
+            if enrolled:
+                await session.commit()
+                logger.info(
+                    "scenario_enrolled",
+                    kind=event.kind,
+                    telegram_id=event.telegram_id,
+                    campaigns=enrolled,
+                )
         await msg.ack()
 
     @staticmethod
