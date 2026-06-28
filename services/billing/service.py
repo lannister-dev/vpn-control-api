@@ -184,11 +184,6 @@ class BillingService:
                 or renewal_subscription.plan_id != data.plan_id
             ):
                 raise PlanNotPurchasable("Renewal target is not available")
-            exp = renewal_subscription.expires_at
-            now = datetime.now(timezone.utc)
-            grace_days = get_settings().subscriptions.reactivation_grace_days
-            if exp is not None and exp <= now and (now - exp).days > grace_days:
-                raise PlanNotPurchasable("Renewal window has passed")
 
         if not plan.is_active and renewal_subscription is None:
             raise PlanNotPurchasable("Plan is not available")

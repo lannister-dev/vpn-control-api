@@ -783,22 +783,11 @@ class BotApiService:
 
         can_renew = bool(plan is not None and getattr(plan, "price_rub", 0) > 0)
 
-        status = self._classify_subscription(subscription)
-        now = datetime.now(timezone.utc)
-        grace_days = self.settings.subscriptions.reactivation_grace_days
-        can_reactivate = bool(
-            can_renew
-            and status in (BotDashboardState.EXPIRED, BotDashboardState.INACTIVE)
-            and subscription.expires_at is not None
-            and subscription.expires_at <= now
-            and (now - subscription.expires_at).days <= grace_days
-        )
-
         return BotSubscriptionSummaryOut(
             id=subscription.id,
             plan_id=subscription.plan_id,
             plan_name=(plan.name if plan is not None else subscription.plan_name),
-            status=status,
+            status=self._classify_subscription(subscription),
             is_active=subscription.is_active,
             expires_at=subscription.expires_at,
             preferred_region=subscription.preferred_region,
@@ -811,7 +800,6 @@ class BotApiService:
             device_price_rub=device_price_rub,
             device_price_stars=device_price_stars,
             can_renew=can_renew,
-            can_reactivate=can_reactivate,
             auto_renew=getattr(subscription, "auto_renew", False),
             used_traffic_bytes=subscription.used_traffic_bytes,
             lifetime_used_traffic_bytes=subscription.lifetime_used_traffic_bytes,
