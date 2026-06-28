@@ -431,7 +431,7 @@ class SubscriptionRepository(BaseRepository[Subscription]):
 
     async def traffic_check_by_telegram_ids(
         self, telegram_ids: list[int],
-    ) -> list[tuple[int, UUID | None, int, int, int]]:
+    ) -> list[tuple[int, UUID | None, datetime | None, int, int, int]]:
         """Core single-shot batch fetch for bot traffic-warning scheduler.
 
         Returns (telegram_id, subscription_id, traffic_limit_bytes,
@@ -446,12 +446,13 @@ class SubscriptionRepository(BaseRepository[Subscription]):
             SELECT
                 u.telegram_id,
                 s.id                                          AS subscription_id,
+                s.expires_at                                  AS expires_at,
                 COALESCE(p.traffic_limit_bytes, 0)            AS lim,
                 COALESCE(s.used_traffic_bytes, 0)             AS used,
                 COALESCE(s.traffic_warning_threshold_pct, 0)  AS warned
             FROM "user" u
             LEFT JOIN LATERAL (
-                SELECT id, plan_id, used_traffic_bytes, traffic_warning_threshold_pct
+                SELECT id, plan_id, used_traffic_bytes, traffic_warning_threshold_pct, expires_at
                 FROM subscription
                 WHERE user_id = u.id AND expires_at IS NOT NULL
                 ORDER BY expires_at DESC
@@ -463,7 +464,7 @@ class SubscriptionRepository(BaseRepository[Subscription]):
         )
         result = await self.session.execute(stmt, {"tids": telegram_ids})
         return [
-            (int(r.telegram_id), r.subscription_id, int(r.lim), int(r.used), int(r.warned))
+            (int(r.telegram_id), r.subscription_id, r.expires_at, int(r.lim), int(r.used), int(r.warned))
             for r in result
         ]
 
