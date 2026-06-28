@@ -46,7 +46,7 @@ async function uploadScenarioMedia(file, onPatch) {
   }
 }
 
-function ButtonsEditor({ buttons, onChange }) {
+function ButtonsEditor({ buttons, promoCodes, onChange }) {
   const upd = (i, p) => onChange(buttons.map((b, x) => (x === i ? { ...b, ...p } : b)));
   const del = (i) => onChange(buttons.filter((_, x) => x !== i));
   const add = () => onChange([...buttons, { text: "", action: "", url: "", style: "", value: "" }]);
@@ -80,7 +80,11 @@ function ButtonsEditor({ buttons, onChange }) {
           {b.action === "promo" && (
             <div className="di-field span2">
               <span className="di-mini-label">Промокод</span>
-              <input className="di-input-sm mono" value={b.value || ""} placeholder="SALE30" onChange={(e) => upd(i, { value: e.target.value })} />
+              <select className="di-select-sm mono" value={b.value || ""} onChange={(e) => upd(i, { value: e.target.value })}>
+                <option value="">— выберите код —</option>
+                {b.value && !(promoCodes || []).includes(b.value) && <option value={b.value}>{b.value} (неактивен)</option>}
+                {(promoCodes || []).map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
             </div>
           )}
         </div>
@@ -90,7 +94,7 @@ function ButtonsEditor({ buttons, onChange }) {
   );
 }
 
-export function ScenarioInspector({ node, chainStats, onPatch, onClose, onDelete, onAddBranch }) {
+export function ScenarioInspector({ node, chainStats, promoCodes, onPatch, onClose, onDelete, onAddBranch }) {
   if (!node) {
     return (
       <aside className="di">
@@ -222,7 +226,7 @@ export function ScenarioInspector({ node, chainStats, onPatch, onClose, onDelete
 
             <div className="di-sec">
               <div className="di-sec-h"><Icon name="link" size={13} /> Inline-кнопки</div>
-              <ButtonsEditor buttons={node.buttons || []} onChange={(b) => onPatch({ buttons: b })} />
+              <ButtonsEditor buttons={node.buttons || []} promoCodes={promoCodes} onChange={(b) => onPatch({ buttons: b })} />
             </div>
 
             {onAddBranch && (
