@@ -1,4 +1,5 @@
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 from uuid import UUID
@@ -362,8 +363,13 @@ class ScenarioService:
             return text
         out = text
         if "{name}" in out:
-            fallback = str(getattr(user, "telegram_id", "") or "")
-            out = out.replace("{name}", getattr(user, "username", None) or fallback)
+            username = (getattr(user, "username", None) or "").strip()
+            if username:
+                out = out.replace("{name}", username)
+            else:
+                out = re.sub(
+                    r"[ \t]*,[ \t]*\{name\}|\{name\}[ \t]*,[ \t]*|[ \t]*\{name\}", "", out
+                )
         if "{referral}" in out:
             bot_username = (get_settings().referral.bot_username or "").strip()
             code = getattr(user, "referral_code", None)
