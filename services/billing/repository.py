@@ -215,14 +215,23 @@ class OrderRepository(BaseRepository[PaymentOrder]):
         return int((await self.session.execute(stmt)).scalar() or 0)
 
     async def recent_revenue_orders(
-        self, *, limit: int = 50
+        self,
+        *,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+        limit: int = 50,
     ) -> list[tuple[PaymentOrder, str | None, int | None]]:
-        rows = await self.session.execute(
+        stmt = (
             select(PaymentOrder, User.username, User.telegram_id)
             .join(User, User.id == PaymentOrder.user_id)
             .where(PaymentOrder.status.in_(REVENUE_ORDER_STATUSES))
-            .order_by(PaymentOrder.paid_at.desc().nullslast())
-            .limit(limit)
+        )
+        if date_from is not None:
+            stmt = stmt.where(PaymentOrder.paid_at >= date_from)
+        if date_to is not None:
+            stmt = stmt.where(PaymentOrder.paid_at < date_to)
+        rows = await self.session.execute(
+            stmt.order_by(PaymentOrder.paid_at.desc().nullslast()).limit(limit)
         )
         return [(r[0], r[1], r[2]) for r in rows.all()]
 

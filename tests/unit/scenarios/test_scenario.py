@@ -237,10 +237,11 @@ def test_render_text_substitutes_vars():
     assert "{referral}" not in out
 
 
-def test_render_text_name_falls_back_to_telegram_id():
+def test_render_text_name_dropped_when_no_username():
     user = SimpleNamespace(username=None, telegram_id=420200363)
-    out = ScenarioService._render_text("Привет, {name}!", user)
-    assert out == "Привет, 420200363!"
+    assert ScenarioService._render_text("Привет, {name}!", user) == "Привет!"
+    assert ScenarioService._render_text("{name}, смотри", user) == "смотри"
+    assert ScenarioService._render_text("Эй {name}!", user) == "Эй!"
 
 
 def test_build_outbound_button_action_vs_url():
