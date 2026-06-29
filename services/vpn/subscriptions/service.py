@@ -2108,6 +2108,41 @@ class SubscriptionService:
                 now=now,
             )
 
+        # Revoked device reconnecting: re-activate it (un-revoke keys, re-provision
+        # placements) instead of trying to create a duplicate, which would hit the
+        # (subscription_id, hwid_hash) unique constraint and fail.
+        revoked = await self.device_repository.get_by_sub_and_hwid_hash(
+            subscription_id=subscription.id,
+            hwid_hash=hwid_hash,
+        )
+        if revoked is not None and not revoked.is_active:
+            limit = await self._effective_device_limit(subscription)
+            current = await self.device_repository.count_active_for_subscription(subscription.id)
+            if current >= limit:
+                raise SubscriptionDeviceLimitReached()
+            await self.device_repository.update_by_id(
+                revoked.id,
+                SubscriptionDeviceInternalUpdate(
+                    is_active=True,
+                    last_seen_at=now,
+                ).model_dump(exclude_none=True),
+            )
+            bundle = await self._load_device_bundle(revoked)
+            for resolved_key in bundle.keys:
+                key = resolved_key.key
+                if key.is_revoked:
+                    key.is_revoked = False
+                await self._set_placement_desired_state(
+                    key_id=key.id,
+                    desired_state=PlacementDesiredState.active,
+                    reason="device_refetch_restore",
+                )
+            return await self._ensure_device_key_bundle(
+                subscription=subscription,
+                device=revoked,
+                now=now,
+            )
+
         plan = subscription.plan if hasattr(subscription, 'plan') else None
         if plan is None and subscription.plan_id:
             from services.plans.repository import PlanRepository

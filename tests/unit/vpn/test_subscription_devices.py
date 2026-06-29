@@ -249,3 +249,70 @@ async def test_restore_device_limit_reached(async_session, redis_client):
     with pytest.raises(SubscriptionDeviceLimitReached):
         await svc.restore_device(sub.id, dev.id)
     svc.device_repository.update_by_id.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_fetch_reactivates_revoked_device(async_session, redis_client):
+    sub = _subscription()
+    sub.expires_at = datetime.now(timezone.utc)
+    sub.token_hash = "t" * 64
+
+    revoked_dev = _device(sub.id)
+    revoked_dev.is_active = False
+
+    key = MagicMock()
+    key.id = uuid4()
+    key.is_revoked = True
+    resolved = MagicMock()
+    resolved.key = key
+    bundle = MagicMock()
+    bundle.keys = [resolved]
+
+    svc = SubscriptionService(async_session, redis_client)
+    svc.device_repository = AsyncMock()
+    svc.device_repository.get_active_by_sub_and_hwid_hash = AsyncMock(return_value=None)
+    svc.device_repository.get_by_sub_and_hwid_hash = AsyncMock(return_value=revoked_dev)
+    svc.device_repository.count_active_for_subscription = AsyncMock(return_value=0)
+    svc._lock_subscription_for_device_allocation = AsyncMock()
+    svc._effective_device_limit = AsyncMock(return_value=5)
+    svc._load_device_bundle = AsyncMock(return_value=bundle)
+    svc._set_placement_desired_state = AsyncMock()
+    svc._ensure_device_key_bundle = AsyncMock(return_value="BUNDLE")
+
+    out = await svc._resolve_device_bundle_for_request(
+        subscription=sub,
+        hwid="hwid-1",
+        user_agent="happ/1.0",
+        now=datetime.now(timezone.utc),
+    )
+
+    assert out == "BUNDLE"
+    svc.device_repository.update_by_id.assert_awaited_once()
+    assert key.is_revoked is False
+    svc._set_placement_desired_state.assert_awaited_once()
+    svc._ensure_device_key_bundle.assert_awaited_once()
+    svc.device_repository.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_fetch_revoked_device_respects_device_limit(async_session, redis_client):
+    sub = _subscription()
+    sub.expires_at = datetime.now(timezone.utc)
+    revoked_dev = _device(sub.id)
+    revoked_dev.is_active = False
+
+    svc = SubscriptionService(async_session, redis_client)
+    svc.device_repository = AsyncMock()
+    svc.device_repository.get_active_by_sub_and_hwid_hash = AsyncMock(return_value=None)
+    svc.device_repository.get_by_sub_and_hwid_hash = AsyncMock(return_value=revoked_dev)
+    svc.device_repository.count_active_for_subscription = AsyncMock(return_value=5)
+    svc._lock_subscription_for_device_allocation = AsyncMock()
+    svc._effective_device_limit = AsyncMock(return_value=5)
+
+    with pytest.raises(SubscriptionDeviceLimitReached):
+        await svc._resolve_device_bundle_for_request(
+            subscription=sub,
+            hwid="hwid-1",
+            user_agent="happ/1.0",
+            now=datetime.now(timezone.utc),
+        )

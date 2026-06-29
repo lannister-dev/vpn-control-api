@@ -580,6 +580,20 @@ class SubscriptionDeviceRepository(BaseRepository[SubscriptionDevice]):
         )
         return res.scalar_one_or_none()
 
+    async def get_by_sub_and_hwid_hash(
+            self,
+            *,
+            subscription_id: UUID,
+            hwid_hash: str,
+    ) -> SubscriptionDevice | None:
+        res = await self.session.execute(
+            select(self.model).where(
+                self.model.subscription_id == subscription_id,
+                self.model.hwid_hash == hwid_hash,
+            )
+        )
+        return res.scalar_one_or_none()
+
     async def count_active_for_subscription(self, subscription_id: UUID) -> int:
         res = await self.session.execute(
             select(func.count())
