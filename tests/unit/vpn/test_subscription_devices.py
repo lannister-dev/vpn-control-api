@@ -316,3 +316,35 @@ async def test_fetch_revoked_device_respects_device_limit(async_session, redis_c
             user_agent="happ/1.0",
             now=datetime.now(timezone.utc),
         )
+
+
+@pytest.mark.asyncio
+async def test_restore_device_ensures_backend_placements(async_session, redis_client):
+    sub = _limited_subscription(max_devices=5)
+    dev = _device(sub.id)
+    dev.is_active = False
+    key = MagicMock()
+    key.id = uuid4()
+    key.transport = "reality"
+    key.is_revoked = True
+
+    svc = SubscriptionService(async_session, redis_client)
+    svc.subscription_repository = AsyncMock()
+    svc.device_repository = AsyncMock()
+    svc.device_key_repository = AsyncMock()
+    svc.vpn_key_repository = AsyncMock()
+    svc.device_repository.count_active_for_subscription = AsyncMock(return_value=1)
+    svc.device_key_repository.list_by_device_ids = AsyncMock(return_value=[
+        _device_key_binding(dev.id, key.id, "reality", is_primary=True),
+    ])
+    svc.subscription_repository.get_by_id.return_value = sub
+    svc.device_repository.get_by_id_for_subscription.return_value = dev
+    svc.vpn_key_repository.list_by_ids = AsyncMock(return_value=[key])
+    svc._ensure_backend_placements_for_key = AsyncMock(return_value=(uuid4(), MagicMock(), set()))
+    svc._invalidate_payload_cache_by_token_hash = AsyncMock()
+
+    changed = await svc.restore_device(sub.id, dev.id)
+
+    assert changed is True
+    assert key.is_revoked is False
+    svc._ensure_backend_placements_for_key.assert_awaited_once()

@@ -725,16 +725,28 @@ class SubscriptionService:
 
         changed = False
         bundle = await self._load_device_bundle(device)
+        max_routes = max(1, min(10, int(self.settings.subscriptions.smart_route_max_count)))
         for resolved_key in bundle.keys:
             key = resolved_key.key
             if key.is_revoked:
                 key.is_revoked = False
                 changed = True
-            await self._set_placement_desired_state(
-                key_id=key.id,
-                desired_state=PlacementDesiredState.active,
-                reason="subscription_device_restore",
-            )
+            # Guarantee the key lands on a healthy backend (create/re-activate
+            # placements + enqueue to node agent), not just flip existing rows that
+            # may point at a node that's gone — otherwise access never returns.
+            try:
+                await self._ensure_backend_placements_for_key(
+                    key_id=key.id,
+                    preferred_region=subscription.preferred_region,
+                    desired_replicas=max_routes,
+                    key_transport=getattr(resolved_key, "transport", None),
+                )
+            except SubscriptionBuild:
+                await self._set_placement_desired_state(
+                    key_id=key.id,
+                    desired_state=PlacementDesiredState.active,
+                    reason="subscription_device_restore",
+                )
         await self._invalidate_payload_cache_by_token_hash(subscription.token_hash)
         return changed
 
