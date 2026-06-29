@@ -111,13 +111,17 @@ class SubscriptionExpirationReconciler(Reconciler):
     async def _emit_expired_events(self, session, expired) -> None:
         if self._notifications is None:
             return
-        paid = [
-            s for s in expired
-            if getattr(getattr(s, "plan", None), "price_rub", 0) and s.plan.price_rub > 0
-        ]
-        if not paid:
+        paid: list = []
+        trial: list = []
+        for s in expired:
+            plan = getattr(s, "plan", None)
+            if plan is None:
+                continue
+            (paid if plan.price_rub > 0 else trial).append(s)
+        relevant = paid + trial
+        if not relevant:
             return
-        users = await UserRepository(session).list_by_ids([s.user_id for s in paid])
+        users = await UserRepository(session).list_by_ids([s.user_id for s in relevant])
         by_id = {u.id: u for u in users}
         for s in paid:
             user = by_id.get(s.user_id)
@@ -131,3 +135,15 @@ class SubscriptionExpirationReconciler(Reconciler):
                 )
             except Exception:
                 logger.exception("subscription_expired_publish_failed", subscription_id=str(s.id))
+        for s in trial:
+            user = by_id.get(s.user_id)
+            if user is None or not user.telegram_id:
+                continue
+            try:
+                await self._notifications.publish_trial_expired(
+                    telegram_id=int(user.telegram_id),
+                    username=getattr(user, "username", None),
+                    plan_name=getattr(s.plan, "name", None),
+                )
+            except Exception:
+                logger.exception("trial_expired_publish_failed", subscription_id=str(s.id))

@@ -5,6 +5,7 @@ export const TRIGGERS = {
   purchase:             { label: "Оплатил", icon: "credit-card" },
   user_registered:      { label: "Зарегистрировался", icon: "user-plus" },
   subscription_expired: { label: "Подписка истекла", icon: "clock" },
+  trial_expired:        { label: "Триал закончился", icon: "clock" },
 };
 
 export const CONDITIONS = {

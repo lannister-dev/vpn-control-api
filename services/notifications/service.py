@@ -30,6 +30,7 @@ from services.notifications.schemas import (
     RouteRecoveredEvent,
     SubscriptionExpiredEvent,
     SupportMessageEvent,
+    TrialExpiredEvent,
     TrialStartedEvent,
     UserRegisteredEvent,
 )
@@ -268,6 +269,21 @@ class NotificationService:
         plan_name: str | None,
     ) -> None:
         await self.publish(SubscriptionExpiredEvent(
+            event_id=_new_id(),
+            emitted_at=_now(),
+            telegram_id=telegram_id,
+            username=username,
+            plan_name=plan_name,
+        ))
+
+    async def publish_trial_expired(
+        self,
+        *,
+        telegram_id: int,
+        username: str | None,
+        plan_name: str | None,
+    ) -> None:
+        await self.publish(TrialExpiredEvent(
             event_id=_new_id(),
             emitted_at=_now(),
             telegram_id=telegram_id,

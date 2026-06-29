@@ -97,6 +97,13 @@ class SubscriptionExpiredEvent(_Base):
     plan_name: str | None = None
 
 
+class TrialExpiredEvent(_Base):
+    kind: Literal["trial_expired"] = "trial_expired"
+    telegram_id: int
+    username: str | None = None
+    plan_name: str | None = None
+
+
 class BalanceTopupEvent(_Base):
     kind: Literal["balance_topup"] = "balance_topup"
     telegram_id: int
