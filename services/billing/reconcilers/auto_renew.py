@@ -22,6 +22,7 @@ logger = StructuredLogger(logging.getLogger("auto-renew-reconciler"))
 
 AUTO_RENEW_WINDOW_SEC = 24 * 3600
 AUTO_RENEW_INTERVAL_SEC = 300
+AUTO_RENEW_RETRY_GRACE_SEC = 3 * 24 * 3600
 
 
 class AutoRenewReconciler(Reconciler):
@@ -32,11 +33,13 @@ class AutoRenewReconciler(Reconciler):
         *,
         interval_sec: int = AUTO_RENEW_INTERVAL_SEC,
         window_sec: int = AUTO_RENEW_WINDOW_SEC,
+        retry_grace_sec: int = AUTO_RENEW_RETRY_GRACE_SEC,
         batch_size: int = 200,
         tick_lock: RedisTickLock | None = None,
     ):
         super().__init__(interval_sec=max(60, int(interval_sec)), tick_lock=tick_lock)
         self._window_sec = int(window_sec)
+        self._retry_grace_sec = int(retry_grace_sec)
         self._batch_size = max(1, int(batch_size))
         self._session_maker = AsyncDatabase.get_session_maker()
 
@@ -44,8 +47,9 @@ class AutoRenewReconciler(Reconciler):
         async with self._session_maker() as session:
             now = datetime.now(timezone.utc)
             window_end = now + timedelta(seconds=self._window_sec)
+            retry_floor = now - timedelta(seconds=self._retry_grace_sec)
             due = await SubscriptionRepository(session).list_due_auto_renew(
-                now=now, window_end=window_end, limit=self._batch_size
+                now=now, window_end=window_end, retry_floor=retry_floor, limit=self._batch_size
             )
         if not due:
             return 0

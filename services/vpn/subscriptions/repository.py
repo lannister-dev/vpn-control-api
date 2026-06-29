@@ -505,17 +505,34 @@ class SubscriptionRepository(BaseRepository[Subscription]):
         return list(result.scalars().all())
 
     async def list_due_auto_renew(
-        self, *, now: datetime, window_end: datetime, limit: int = 200
+        self,
+        *,
+        now: datetime,
+        window_end: datetime,
+        retry_floor: datetime | None = None,
+        limit: int = 200,
     ) -> list[Subscription]:
+        upcoming = and_(
+            self.model.is_active.is_(True),
+            self.model.expires_at > now,
+            self.model.expires_at <= window_end,
+        )
+        if retry_floor is not None:
+            # Recently expired with auto-renew on: retry the charge (e.g. after a
+            # balance top-up that arrived just after expiry).
+            due_window = or_(
+                upcoming,
+                and_(self.model.expires_at <= now, self.model.expires_at > retry_floor),
+            )
+        else:
+            due_window = upcoming
         stmt = (
             select(self.model)
             .join(Plan, self.model.plan_id == Plan.id)
             .where(
-                self.model.is_active.is_(True),
                 self.model.auto_renew.is_(True),
                 self.model.expires_at.isnot(None),
-                self.model.expires_at > now,
-                self.model.expires_at <= window_end,
+                due_window,
                 Plan.price_rub > 0,
             )
             .order_by(self.model.expires_at.asc())

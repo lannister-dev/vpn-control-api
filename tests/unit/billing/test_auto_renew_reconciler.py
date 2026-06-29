@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 from services.billing.exceptions import InsufficientBalance
@@ -51,3 +51,22 @@ async def test_renew_skips_on_insufficient_balance_error():
     billing = _billing(Decimal("500"), raises=InsufficientBalance())
     ok = await rec._renew_one(billing, _sub())
     assert ok is False
+
+
+async def test_tick_queries_with_retry_floor():
+    rec = _rec()
+    fake_session = AsyncMock()
+    fake_session.__aenter__.return_value = fake_session
+    fake_session.__aexit__.return_value = False
+    rec._session_maker = MagicMock(return_value=fake_session)
+
+    with patch(
+        "services.billing.reconcilers.auto_renew.SubscriptionRepository"
+    ) as SubRepoCls:
+        sub_repo = SubRepoCls.return_value
+        sub_repo.list_due_auto_renew = AsyncMock(return_value=[])
+        await rec.tick()
+
+    kwargs = sub_repo.list_due_auto_renew.await_args.kwargs
+    assert kwargs["retry_floor"] is not None
+    assert kwargs["retry_floor"] < kwargs["now"] < kwargs["window_end"]
