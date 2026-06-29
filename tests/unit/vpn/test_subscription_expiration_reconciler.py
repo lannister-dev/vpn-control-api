@@ -152,3 +152,28 @@ async def test_execute_tick_subs_without_keys_still_deactivates(cfg):
     transport.enqueue_for_placement_ids.assert_not_awaited()
     sub_repo.bulk_deactivate.assert_awaited_once()
     fake_session.commit.assert_awaited_once()
+
+
+async def test_emit_splits_paid_subscription_and_trial(cfg):
+    from unittest.mock import patch as _patch
+    notifications = AsyncMock()
+    rec = SubscriptionExpirationReconciler(
+        settings=cfg, tick_lock=MagicMock(hold=MagicMock()), notifications=notifications
+    )
+    paid = SimpleNamespace(id=uuid4(), user_id=uuid4(),
+                           plan=SimpleNamespace(price_rub=199, name="Базовый"))
+    trial = SimpleNamespace(id=uuid4(), user_id=uuid4(),
+                            plan=SimpleNamespace(price_rub=0, name="Пробный"))
+    paid_user = SimpleNamespace(id=paid.user_id, telegram_id=111, username="a")
+    trial_user = SimpleNamespace(id=trial.user_id, telegram_id=222, username="b")
+
+    with _patch(
+        "services.vpn.subscriptions.reconcilers.expiration.UserRepository"
+    ) as URepoCls:
+        URepoCls.return_value.list_by_ids = AsyncMock(return_value=[paid_user, trial_user])
+        await rec._emit_expired_events(MagicMock(), [paid, trial])
+
+    notifications.publish_subscription_expired.assert_awaited_once()
+    assert notifications.publish_subscription_expired.await_args.kwargs["telegram_id"] == 111
+    notifications.publish_trial_expired.assert_awaited_once()
+    assert notifications.publish_trial_expired.await_args.kwargs["telegram_id"] == 222

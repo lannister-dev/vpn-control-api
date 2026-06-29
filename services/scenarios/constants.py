@@ -13,6 +13,7 @@ SCENARIO_TRIGGERS = (
     "purchase",
     "user_registered",
     "subscription_expired",
+    "trial_expired",
 )
 class ScenarioCondition(str, Enum):
     ALWAYS = "always"
