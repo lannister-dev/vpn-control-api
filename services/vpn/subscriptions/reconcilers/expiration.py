@@ -12,7 +12,10 @@ from services.placements.transport import NodeAgentPlacementTransport
 from services.users.repository import UserRepository
 from services.vpn.keys.repository import VpnKeyRepository
 from services.vpn.subscriptions.cache import SubscriptionCacheInvalidator
-from services.vpn.subscriptions.repository import SubscriptionRepository
+from services.vpn.subscriptions.repository import (
+    SubscriptionDeviceRepository,
+    SubscriptionRepository,
+)
 from shared.database.session import AsyncDatabase
 from shared.monitoring.metrics import (
     EXPIRED_SUBSCRIPTIONS_TOTAL,
@@ -82,6 +85,7 @@ class SubscriptionExpirationReconciler(Reconciler):
                     await transport.enqueue_for_placement_ids(affected_placement_ids)
 
             await sub_repo.bulk_deactivate(sub_ids)
+            await SubscriptionDeviceRepository(session).bulk_deactivate_by_subscription_ids(sub_ids)
 
             cache_invalidator = SubscriptionCacheInvalidator(session, redis_client)
             await cache_invalidator.invalidate_by_subscription_ids(sub_ids)

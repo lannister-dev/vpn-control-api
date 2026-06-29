@@ -582,6 +582,17 @@ class SubscriptionDeviceRepository(BaseRepository[SubscriptionDevice]):
     def __init__(self, session: AsyncSession):
         super().__init__(SubscriptionDevice, session)
 
+    async def bulk_deactivate_by_subscription_ids(self, subscription_ids: list[UUID]) -> int:
+        if not subscription_ids:
+            return 0
+        res = await self.session.execute(
+            update(self.model)
+            .where(self.model.subscription_id.in_(subscription_ids))
+            .where(self.model.is_active.is_(True))
+            .values(is_active=False)
+        )
+        return res.rowcount or 0
+
     async def get_active_by_sub_and_hwid_hash(
             self,
             *,
