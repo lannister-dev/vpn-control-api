@@ -12,6 +12,7 @@ from services.notifications.schemas import (
     RouteRecoveredEvent,
     SubscriptionExpiredEvent,
     SupportMessageEvent,
+    TrialExpiredEvent,
     TrialStartedEvent,
     UserRegisteredEvent,
 )
@@ -66,6 +67,10 @@ EXPECTED_CONTRACT: dict[str, tuple[type, frozenset[str]]] = {
         "telegram_id", "username", "amount_rub", "provider", "balance_after_rub",
     })),
     "subscription_expired": (SubscriptionExpiredEvent, frozenset({
+        "schema_version", "event_id", "emitted_at", "kind",
+        "telegram_id", "username", "plan_name",
+    })),
+    "trial_expired": (TrialExpiredEvent, frozenset({
         "schema_version", "event_id", "emitted_at", "kind",
         "telegram_id", "username", "plan_name",
     })),
