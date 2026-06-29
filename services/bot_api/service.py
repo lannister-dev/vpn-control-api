@@ -613,11 +613,12 @@ class BotApiService:
             tid: BotSubscriptionTrafficItem(
                 telegram_id=tid,
                 subscription_id=sub_id,
+                expires_at=expires_at,
                 traffic_limit_bytes=lim,
                 used_traffic_bytes=used,
                 traffic_warning_threshold_pct=warned,
             )
-            for (tid, sub_id, lim, used, warned) in rows
+            for (tid, sub_id, expires_at, lim, used, warned) in rows
         }
         items = [
             by_tid.get(tid, BotSubscriptionTrafficItem(telegram_id=tid))

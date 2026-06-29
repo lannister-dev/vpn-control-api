@@ -247,6 +247,7 @@ class BotSubscriptionTrafficIn(BaseModel):
 class BotSubscriptionTrafficItem(BaseModel):
     telegram_id: int
     subscription_id: UUID | None = None
+    expires_at: datetime | None = None
     traffic_limit_bytes: int = 0
     used_traffic_bytes: int = 0
     traffic_warning_threshold_pct: int = 0

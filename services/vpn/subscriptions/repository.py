@@ -431,7 +431,7 @@ class SubscriptionRepository(BaseRepository[Subscription]):
 
     async def traffic_check_by_telegram_ids(
         self, telegram_ids: list[int],
-    ) -> list[tuple[int, UUID | None, int, int, int]]:
+    ) -> list[tuple[int, UUID | None, datetime | None, int, int, int]]:
         """Core single-shot batch fetch for bot traffic-warning scheduler.
 
         Returns (telegram_id, subscription_id, traffic_limit_bytes,
@@ -446,12 +446,13 @@ class SubscriptionRepository(BaseRepository[Subscription]):
             SELECT
                 u.telegram_id,
                 s.id                                          AS subscription_id,
+                s.expires_at                                  AS expires_at,
                 COALESCE(p.traffic_limit_bytes, 0)            AS lim,
                 COALESCE(s.used_traffic_bytes, 0)             AS used,
                 COALESCE(s.traffic_warning_threshold_pct, 0)  AS warned
             FROM "user" u
             LEFT JOIN LATERAL (
-                SELECT id, plan_id, used_traffic_bytes, traffic_warning_threshold_pct
+                SELECT id, plan_id, used_traffic_bytes, traffic_warning_threshold_pct, expires_at
                 FROM subscription
                 WHERE user_id = u.id AND expires_at IS NOT NULL
                 ORDER BY expires_at DESC
@@ -463,7 +464,7 @@ class SubscriptionRepository(BaseRepository[Subscription]):
         )
         result = await self.session.execute(stmt, {"tids": telegram_ids})
         return [
-            (int(r.telegram_id), r.subscription_id, int(r.lim), int(r.used), int(r.warned))
+            (int(r.telegram_id), r.subscription_id, r.expires_at, int(r.lim), int(r.used), int(r.warned))
             for r in result
         ]
 
@@ -504,17 +505,34 @@ class SubscriptionRepository(BaseRepository[Subscription]):
         return list(result.scalars().all())
 
     async def list_due_auto_renew(
-        self, *, now: datetime, window_end: datetime, limit: int = 200
+        self,
+        *,
+        now: datetime,
+        window_end: datetime,
+        retry_floor: datetime | None = None,
+        limit: int = 200,
     ) -> list[Subscription]:
+        upcoming = and_(
+            self.model.is_active.is_(True),
+            self.model.expires_at > now,
+            self.model.expires_at <= window_end,
+        )
+        if retry_floor is not None:
+            # Recently expired with auto-renew on: retry the charge (e.g. after a
+            # balance top-up that arrived just after expiry).
+            due_window = or_(
+                upcoming,
+                and_(self.model.expires_at <= now, self.model.expires_at > retry_floor),
+            )
+        else:
+            due_window = upcoming
         stmt = (
             select(self.model)
             .join(Plan, self.model.plan_id == Plan.id)
             .where(
-                self.model.is_active.is_(True),
                 self.model.auto_renew.is_(True),
                 self.model.expires_at.isnot(None),
-                self.model.expires_at > now,
-                self.model.expires_at <= window_end,
+                due_window,
                 Plan.price_rub > 0,
             )
             .order_by(self.model.expires_at.asc())
@@ -564,6 +582,17 @@ class SubscriptionDeviceRepository(BaseRepository[SubscriptionDevice]):
     def __init__(self, session: AsyncSession):
         super().__init__(SubscriptionDevice, session)
 
+    async def bulk_deactivate_by_subscription_ids(self, subscription_ids: list[UUID]) -> int:
+        if not subscription_ids:
+            return 0
+        res = await self.session.execute(
+            update(self.model)
+            .where(self.model.subscription_id.in_(subscription_ids))
+            .where(self.model.is_active.is_(True))
+            .values(is_active=False)
+        )
+        return res.rowcount or 0
+
     async def get_active_by_sub_and_hwid_hash(
             self,
             *,
@@ -575,6 +604,20 @@ class SubscriptionDeviceRepository(BaseRepository[SubscriptionDevice]):
                 self.model.subscription_id == subscription_id,
                 self.model.hwid_hash == hwid_hash,
                 self.model.is_active.is_(True),
+            )
+        )
+        return res.scalar_one_or_none()
+
+    async def get_by_sub_and_hwid_hash(
+            self,
+            *,
+            subscription_id: UUID,
+            hwid_hash: str,
+    ) -> SubscriptionDevice | None:
+        res = await self.session.execute(
+            select(self.model).where(
+                self.model.subscription_id == subscription_id,
+                self.model.hwid_hash == hwid_hash,
             )
         )
         return res.scalar_one_or_none()

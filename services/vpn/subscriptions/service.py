@@ -577,6 +577,7 @@ class SubscriptionService:
         )
         key_by_id = await self._load_vpn_keys_by_ids(key_ids)
         restored = 0
+        max_routes = max(1, min(10, int(self.settings.subscriptions.smart_route_max_count)))
         for key_id in key_ids:
             key = key_by_id.get(key_id)
             if not key:
@@ -591,11 +592,22 @@ class SubscriptionService:
             ):
                 key.valid_until = subscription.expires_at
 
-            await self._set_placement_desired_state(
-                key_id=key_id,
-                desired_state=PlacementDesiredState.active,
-                reason="subscription_activate",
-            )
+            # Guarantee the key lands on a healthy backend (create/re-activate
+            # placements + enqueue), not just flip existing rows that may point at
+            # a node that's gone — otherwise paid/renewed access never returns.
+            try:
+                await self._ensure_backend_placements_for_key(
+                    key_id=key_id,
+                    preferred_region=subscription.preferred_region,
+                    desired_replicas=max_routes,
+                    key_transport=getattr(key, "transport", None),
+                )
+            except SubscriptionBuild:
+                await self._set_placement_desired_state(
+                    key_id=key_id,
+                    desired_state=PlacementDesiredState.active,
+                    reason="subscription_activate",
+                )
         return restored
 
     async def list_devices(
@@ -725,16 +737,28 @@ class SubscriptionService:
 
         changed = False
         bundle = await self._load_device_bundle(device)
+        max_routes = max(1, min(10, int(self.settings.subscriptions.smart_route_max_count)))
         for resolved_key in bundle.keys:
             key = resolved_key.key
             if key.is_revoked:
                 key.is_revoked = False
                 changed = True
-            await self._set_placement_desired_state(
-                key_id=key.id,
-                desired_state=PlacementDesiredState.active,
-                reason="subscription_device_restore",
-            )
+            # Guarantee the key lands on a healthy backend (create/re-activate
+            # placements + enqueue to node agent), not just flip existing rows that
+            # may point at a node that's gone — otherwise access never returns.
+            try:
+                await self._ensure_backend_placements_for_key(
+                    key_id=key.id,
+                    preferred_region=subscription.preferred_region,
+                    desired_replicas=max_routes,
+                    key_transport=getattr(resolved_key, "transport", None),
+                )
+            except SubscriptionBuild:
+                await self._set_placement_desired_state(
+                    key_id=key.id,
+                    desired_state=PlacementDesiredState.active,
+                    reason="subscription_device_restore",
+                )
         await self._invalidate_payload_cache_by_token_hash(subscription.token_hash)
         return changed
 
@@ -2105,6 +2129,41 @@ class SubscriptionService:
             return await self._ensure_device_key_bundle(
                 subscription=subscription,
                 device=device,
+                now=now,
+            )
+
+        # Revoked device reconnecting: re-activate it (un-revoke keys, re-provision
+        # placements) instead of trying to create a duplicate, which would hit the
+        # (subscription_id, hwid_hash) unique constraint and fail.
+        revoked = await self.device_repository.get_by_sub_and_hwid_hash(
+            subscription_id=subscription.id,
+            hwid_hash=hwid_hash,
+        )
+        if revoked is not None and not revoked.is_active:
+            limit = await self._effective_device_limit(subscription)
+            current = await self.device_repository.count_active_for_subscription(subscription.id)
+            if current >= limit:
+                raise SubscriptionDeviceLimitReached()
+            await self.device_repository.update_by_id(
+                revoked.id,
+                SubscriptionDeviceInternalUpdate(
+                    is_active=True,
+                    last_seen_at=now,
+                ).model_dump(exclude_none=True),
+            )
+            bundle = await self._load_device_bundle(revoked)
+            for resolved_key in bundle.keys:
+                key = resolved_key.key
+                if key.is_revoked:
+                    key.is_revoked = False
+                await self._set_placement_desired_state(
+                    key_id=key.id,
+                    desired_state=PlacementDesiredState.active,
+                    reason="device_refetch_restore",
+                )
+            return await self._ensure_device_key_bundle(
+                subscription=subscription,
+                device=revoked,
                 now=now,
             )
 

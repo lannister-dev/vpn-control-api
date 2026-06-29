@@ -78,10 +78,15 @@ async def test_execute_tick_full_path_revokes_keys_and_deactivates(cfg):
         "services.vpn.subscriptions.reconcilers.expiration.UserPlacementRepository"
     ) as PlcRepoCls, patch(
         "services.vpn.subscriptions.reconcilers.expiration.NodeAgentPlacementTransport"
-    ) as TransportCls:
+    ) as TransportCls, patch(
+        "services.vpn.subscriptions.reconcilers.expiration.SubscriptionDeviceRepository"
+    ) as DevRepoCls:
         sub_repo = SubRepoCls.return_value
         sub_repo.list_expired_active = AsyncMock(return_value=[sub1, sub2])
         sub_repo.bulk_deactivate = AsyncMock(return_value=2)
+
+        dev_repo = DevRepoCls.return_value
+        dev_repo.bulk_deactivate_by_subscription_ids = AsyncMock(return_value=2)
 
         key_repo = KeyRepoCls.return_value
         key_repo.bulk_revoke_by_subscription_ids = AsyncMock(return_value=key_ids)
@@ -100,6 +105,7 @@ async def test_execute_tick_full_path_revokes_keys_and_deactivates(cfg):
         placements_affected=2,
     )
     sub_repo.bulk_deactivate.assert_awaited_once_with([sub1.id, sub2.id])
+    dev_repo.bulk_deactivate_by_subscription_ids.assert_awaited_once_with([sub1.id, sub2.id])
     transport.enqueue_for_placement_ids.assert_awaited_once_with(placement_ids)
     fake_session.commit.assert_awaited_once()
 
