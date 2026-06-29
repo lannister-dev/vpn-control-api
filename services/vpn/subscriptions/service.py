@@ -577,6 +577,7 @@ class SubscriptionService:
         )
         key_by_id = await self._load_vpn_keys_by_ids(key_ids)
         restored = 0
+        max_routes = max(1, min(10, int(self.settings.subscriptions.smart_route_max_count)))
         for key_id in key_ids:
             key = key_by_id.get(key_id)
             if not key:
@@ -591,11 +592,22 @@ class SubscriptionService:
             ):
                 key.valid_until = subscription.expires_at
 
-            await self._set_placement_desired_state(
-                key_id=key_id,
-                desired_state=PlacementDesiredState.active,
-                reason="subscription_activate",
-            )
+            # Guarantee the key lands on a healthy backend (create/re-activate
+            # placements + enqueue), not just flip existing rows that may point at
+            # a node that's gone — otherwise paid/renewed access never returns.
+            try:
+                await self._ensure_backend_placements_for_key(
+                    key_id=key_id,
+                    preferred_region=subscription.preferred_region,
+                    desired_replicas=max_routes,
+                    key_transport=getattr(key, "transport", None),
+                )
+            except SubscriptionBuild:
+                await self._set_placement_desired_state(
+                    key_id=key_id,
+                    desired_state=PlacementDesiredState.active,
+                    reason="subscription_activate",
+                )
         return restored
 
     async def list_devices(

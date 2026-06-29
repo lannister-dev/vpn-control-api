@@ -90,3 +90,34 @@ async def test_activate_restores_keys_and_placements(async_session, redis_client
     assert device_key.valid_until == sub.expires_at
     assert svc.placement_repository.set_desired_state_for_key.await_count == 1
     assert svc.node_agent_transport.enqueue_for_key_state.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_activate_ensures_backend_placements(async_session, redis_client):
+    device_key_id = uuid4()
+    sub = _subscription()
+
+    svc = SubscriptionService(async_session, redis_client)
+    svc.subscription_repository = AsyncMock()
+    svc.device_repository = AsyncMock()
+    svc.vpn_key_repository = AsyncMock()
+    svc.placement_repository = AsyncMock()
+    svc.node_agent_transport = AsyncMock()
+    svc._ensure_backend_placements_for_key = AsyncMock(return_value=(uuid4(), MagicMock(), set()))
+    svc._invalidate_payload_cache_by_token_hash = AsyncMock()
+
+    svc.subscription_repository.get_by_id.return_value = sub
+    svc.device_repository.list_key_ids_for_subscription.return_value = [device_key_id]
+
+    device_key = MagicMock()
+    device_key.id = device_key_id
+    device_key.is_revoked = True
+    device_key.valid_until = None
+    svc.vpn_key_repository.list_by_ids = AsyncMock(return_value=[device_key])
+
+    restored = await svc.activate(sub.id)
+
+    assert restored == 1
+    assert device_key.is_revoked is False
+    svc._ensure_backend_placements_for_key.assert_awaited_once()
+    svc.placement_repository.set_desired_state_for_key.assert_not_awaited()
