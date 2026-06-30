@@ -159,6 +159,7 @@ export function NodesPage({ onOpenNode, initialAction, onActionConsumed }) {
               <th style={{ textAlign: "right" }}>Capacity</th>
               <th style={{ textAlign: "right" }}>Маршруты</th>
               <th>Heartbeat</th>
+              <th>WG-меш</th>
               <th style={{ width: 120 }}>Трафик 24h</th>
               <th></th>
             </tr>
@@ -204,6 +205,22 @@ export function NodesPage({ onOpenNode, initialAction, onActionConsumed }) {
                   <td className="tbl-num">{n.capacity ?? <span className="muted">—</span>}</td>
                   <td className="tbl-num">{n.placements_backend ?? 0}</td>
                   <td className="mono" style={{ color: hbBad ? "var(--bad)" : "var(--text-secondary)" }}>{hb}</td>
+                  <td>
+                    {n.mesh_peers_total != null ? (
+                      <div>
+                        <span className={`pill ${n.mesh_healthy ? "ok" : "warn"}`}>
+                          {n.mesh_peers_up}/{n.mesh_peers_total}
+                        </span>
+                        {n.mesh_oldest_handshake_age_s != null && (
+                          <div className="mono muted" style={{ fontSize: 11, marginTop: 2 }}>
+                            {n.mesh_oldest_handshake_age_s}s
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="muted">—</span>
+                    )}
+                  </td>
                   <td><Spark data={spark(seed, 20, 50, 30)} color="var(--accent)" w={90} h={22} /></td>
                   <td className="row-actions">
                     <RowMenu node={n} onRefresh={refetch} />

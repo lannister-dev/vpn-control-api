@@ -68,6 +68,7 @@ class AdminStatusService:
             upstream_node_id = upstream_raw if upstream_raw is not None else None
 
             drain_reason, drained_at = self._extract_drain_meta(agent_state)
+            mesh = self._extract_mesh(agent_state)
 
             nodes.append(
                 AdminNodeStatusOut(
@@ -93,6 +94,10 @@ class AdminStatusService:
                     cpu_pct=self._extract_stat(agent_state, "cpu_pct"),
                     mem_pct=self._extract_stat(agent_state, "mem_pct"),
                     bandwidth_pct=self._extract_stat(agent_state, "bandwidth_pct"),
+                    mesh_peers_total=mesh.get("peers_total") if mesh else None,
+                    mesh_peers_up=mesh.get("peers_healthy") if mesh else None,
+                    mesh_oldest_handshake_age_s=mesh.get("oldest_handshake_age_sec") if mesh else None,
+                    mesh_healthy=mesh.get("healthy") if mesh else None,
                 )
             )
 
@@ -218,6 +223,25 @@ class AdminStatusService:
             return None
         raw = stats.get(key)
         return float(raw) if isinstance(raw, (int, float)) else None
+
+    @staticmethod
+    def _extract_mesh(agent_state) -> dict | None:
+        if agent_state is None:
+            return None
+        details = getattr(agent_state, "details", None)
+        if not isinstance(details, dict):
+            return None
+        mesh = details.get("mesh")
+        if not isinstance(mesh, dict):
+            return None
+        total = mesh.get("peers_total")
+        healthy = mesh.get("peers_healthy")
+        return {
+            "peers_total": total,
+            "peers_healthy": healthy,
+            "oldest_handshake_age_sec": mesh.get("oldest_handshake_age_sec"),
+            "healthy": bool(isinstance(total, int) and total > 0 and healthy == total),
+        }
 
     @staticmethod
     def _extract_drain_meta(agent_state) -> tuple[str | None, datetime | None]:

@@ -14,4 +14,5 @@ class AlertSource:
     NATS = "nats"
     SCHEDULER = "scheduler"
     SECURITY = "security"
+    MESH = "mesh"
     GENERIC = "generic"

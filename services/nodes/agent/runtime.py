@@ -43,6 +43,7 @@ from services.nodes.models import VpnNode
 from services.nodes.repository import VpnNodeRepository
 from services.nodes.schemas import (
     HeartbeatDetails,
+    HeartbeatMesh,
     HeartbeatPool,
     HeartbeatRuntime,
     HeartbeatStats,
@@ -787,6 +788,10 @@ class NodeAgentRuntime:
                 HeartbeatUpstream(**event.upstream.model_dump())
                 if event.upstream is not None else None
             )
+            mesh_details = (
+                HeartbeatMesh(**event.mesh.model_dump())
+                if event.mesh is not None else None
+            )
             await service.handle_heartbeat(
                 node=node,
                 payload=NodeHeartbeatIn(
@@ -804,6 +809,7 @@ class NodeAgentRuntime:
                         ),
                         pool=pool_details,
                         upstream=upstream_details,
+                        mesh=mesh_details,
                     ),
                 ),
             )

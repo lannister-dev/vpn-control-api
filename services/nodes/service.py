@@ -7,7 +7,7 @@ from uuid import UUID
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.alerts.constants import AlertSource
+from services.alerts.constants import DEDUP_WINDOW_SEC, AlertSource
 from services.alerts.repository import AlertEventRepository
 from services.alerts.schemas import AlertLevel
 from services.config import get_settings
@@ -226,6 +226,7 @@ class VpnNodeService:
             stats=payload.details.stats,
             pool=payload.details.pool,
             upstream=payload.details.upstream,
+            mesh=payload.details.mesh,
         )
         heartbeat_meta = self._next_heartbeat_meta(
             base_details=existing_details,
@@ -330,6 +331,7 @@ class VpnNodeService:
             details=details_data,
         )
         await self.node_agent_state_repository.upsert(state.model_dump(exclude_none=True))
+        await self._emit_mesh_alert(node=node, mesh=payload.details.mesh, now=now)
 
     async def handle_sync_report(
             self,
@@ -446,6 +448,39 @@ class VpnNodeService:
             )
         except Exception:
             logger_node.exception("emit_node_down_alert_failed", node_id=str(node.id))
+
+    async def _emit_mesh_alert(self, *, node: VpnNode, mesh, now: datetime) -> None:
+        if mesh is None or mesh.peers_total == 0:
+            return
+        repo = AlertEventRepository(self.vpn_node_repository.session)
+        dedup_key = f"mesh-degraded:{node.id}"
+        try:
+            if mesh.peers_healthy >= mesh.peers_total:
+                await repo.resolve_active(source=AlertSource.MESH, dedup_key=dedup_key)
+                return
+            existing = await repo.find_active_by_dedup(
+                source=AlertSource.MESH,
+                dedup_key=dedup_key,
+                within_seconds=DEDUP_WINDOW_SEC,
+            )
+            if existing is not None:
+                await repo.bump_existing(existing, telegram_sent=False)
+                return
+            down = mesh.peers_total - mesh.peers_healthy
+            await repo.insert(
+                level=AlertLevel.warning.value,
+                source=AlertSource.MESH,
+                title="WG-меш деградировал",
+                body=(
+                    f"{node.name} ({node.region}): {down}/{mesh.peers_total} "
+                    f"пиров без хендшейка (старейший {mesh.oldest_handshake_age_sec}с)"
+                ),
+                dedup_key=dedup_key,
+                entity_id=str(node.id),
+                telegram_sent=False,
+            )
+        except Exception:
+            logger_node.exception("emit_mesh_alert_failed", node_id=str(node.id))
 
     async def _effective_heartbeat_health(self, payload: NodeHeartbeatIn) -> bool:
         if not bool(payload.is_healthy and payload.details.runtime.ready):

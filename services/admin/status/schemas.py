@@ -27,6 +27,10 @@ class AdminNodeStatusOut(BaseModel):
     cpu_pct: float | None = None
     mem_pct: float | None = None
     bandwidth_pct: float | None = None
+    mesh_peers_total: int | None = None
+    mesh_peers_up: int | None = None
+    mesh_oldest_handshake_age_s: int | None = None
+    mesh_healthy: bool | None = None
 
 
 class AdminStatusTotalsOut(BaseModel):
