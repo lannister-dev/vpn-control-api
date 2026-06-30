@@ -15,6 +15,7 @@ const SOURCE_LABEL = {
   nats: "NATS",
   scheduler: "расписание",
   security: "безопасность",
+  mesh: "WG-меш",
   generic: "система",
 };
 

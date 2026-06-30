@@ -226,6 +226,7 @@ class VpnNodeService:
             stats=payload.details.stats,
             pool=payload.details.pool,
             upstream=payload.details.upstream,
+            mesh=payload.details.mesh,
         )
         heartbeat_meta = self._next_heartbeat_meta(
             base_details=existing_details,

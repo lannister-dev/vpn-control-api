@@ -128,6 +128,21 @@ class HeartbeatUpstreamHealth(BaseModel):
     last_applied_at: datetime | None = None
 
 
+class HeartbeatMeshPeer(BaseModel):
+    public_key: str
+    handshake_age_sec: int = Field(ge=0, default=0)
+    handshake_ok: bool = False
+    rx_bytes: int = Field(default=0)
+    tx_bytes: int = Field(default=0)
+
+
+class HeartbeatMeshHealth(BaseModel):
+    peers_total: int = Field(ge=0, default=0)
+    peers_healthy: int = Field(ge=0, default=0)
+    oldest_handshake_age_sec: int = Field(ge=0, default=0)
+    peers: list[HeartbeatMeshPeer] = Field(default_factory=list)
+
+
 class HeartbeatEvent(BaseModel):
     schema_version: int = Field(default=1, ge=1)
     event_id: str
@@ -145,6 +160,7 @@ class HeartbeatEvent(BaseModel):
     bandwidth_pct: float | None = Field(default=None, ge=0, le=100)
     pool: HeartbeatPoolHealth | None = None
     upstream: HeartbeatUpstreamHealth | None = None
+    mesh: HeartbeatMeshHealth | None = None
 
 
 class SyncReportEvent(BaseModel):

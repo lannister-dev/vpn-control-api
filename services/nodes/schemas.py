@@ -115,11 +115,27 @@ class HeartbeatUpstream(BaseModel):
     last_applied_at: datetime | None = None
 
 
+class HeartbeatMeshPeer(BaseModel):
+    public_key: str
+    handshake_age_sec: int = Field(ge=0, default=0)
+    handshake_ok: bool = False
+    rx_bytes: int = Field(default=0)
+    tx_bytes: int = Field(default=0)
+
+
+class HeartbeatMesh(BaseModel):
+    peers_total: int = Field(ge=0, default=0)
+    peers_healthy: int = Field(ge=0, default=0)
+    oldest_handshake_age_sec: int = Field(ge=0, default=0)
+    peers: list[HeartbeatMeshPeer] = Field(default_factory=list)
+
+
 class HeartbeatDetails(BaseModel):
     runtime: HeartbeatRuntime
     stats: HeartbeatStats
     pool: HeartbeatPool | None = None
     upstream: HeartbeatUpstream | None = None
+    mesh: HeartbeatMesh | None = None
 
 
 class NodeSyncDetails(BaseModel):
@@ -136,6 +152,7 @@ class NodeAgentDetails(BaseModel):
     sync: NodeSyncDetails | None = None
     pool: HeartbeatPool | None = None
     upstream: HeartbeatUpstream | None = None
+    mesh: HeartbeatMesh | None = None
 
     model_config = ConfigDict(extra="allow")
 

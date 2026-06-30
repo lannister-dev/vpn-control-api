@@ -270,6 +270,15 @@ function NodeOverview({ node, routesCount, transportData, liveConnections, onSsh
         </dd>
         <dt>Capacity</dt><dd className="mono">{node.capacity ?? <span className="muted">—</span>}</dd>
         <dt>Heartbeat</dt><dd className="mono">{relTime(node.last_seen_at)} назад</dd>
+        {node.mesh_peers_total != null && (
+          <>
+            <dt>WG-меш</dt>
+            <dd className="mono" style={{ color: node.mesh_healthy ? "var(--ok)" : "var(--warn)" }}>
+              {node.mesh_peers_up}/{node.mesh_peers_total} пиров
+              {node.mesh_oldest_handshake_age_s != null ? ` · хендшейк ${node.mesh_oldest_handshake_age_s}s назад` : ""}
+            </dd>
+          </>
+        )}
         <dt>Маршрутов</dt><dd className="mono">{routesCount}</dd>
         {(node.upstream_name || node.upstream_node_id) && (
           <>
