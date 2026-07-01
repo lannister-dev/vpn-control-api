@@ -1111,14 +1111,14 @@ class BillingService:
     def _proration_value(cls, old_plan, old_period_months: int, expires_at, now) -> Decimal:
         if not expires_at or expires_at <= now:
             return Decimal("0")
-        remaining_days = (expires_at - now).days
+        remaining_days = Decimal((expires_at - now).total_seconds()) / Decimal(86400)
         if remaining_days <= 0:
             return Decimal("0")
         total_days = PERIOD_DAYS.get(old_period_months, PERIOD_DAYS[1])
         old_price = cls._resolve_period_price(old_plan, old_period_months)
         if not old_price or old_price <= 0:
             return Decimal("0")
-        value = old_price * Decimal(remaining_days) / Decimal(total_days)
+        value = old_price * remaining_days / Decimal(total_days)
         return value.quantize(Decimal("0.01"))
 
     async def _switch_proration(self, *, user_id: UUID, new_plan_id: UUID, order_type: str) -> Decimal:

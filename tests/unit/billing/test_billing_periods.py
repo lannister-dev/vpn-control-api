@@ -62,6 +62,14 @@ class TestProration:
         value = BillingService._proration_value(plan, 1, now + timedelta(days=15), now)
         assert value == Decimal("150.00")
 
+    def test_partial_day_counts(self):
+        now = datetime.now(timezone.utc)
+        plan = _plan(price_rub="199", periods=[_period(1, "199")])
+        value = BillingService._proration_value(
+            plan, 1, now + timedelta(days=29, hours=23, minutes=45), now
+        )
+        assert Decimal("198") < value < Decimal("199")
+
     def test_year_remaining(self):
         now = datetime.now(timezone.utc)
         plan = _plan(periods=[_period(1, "300"), _period(12, "3000")])
