@@ -8,15 +8,16 @@ from services.alerts.constants import AlertSource
 from services.alerts.schemas import AlertLevel
 from services.alerts.service import AlertService
 from services.config import get_settings
+from services.nodes.constants import (
+    NATS_HEALTH_MEM_WARN_BYTES,
+    NATS_HEALTH_SLOW_CONSUMERS_WARN,
+)
 from shared.database.session import AsyncDatabase
 from shared.reconciler.base import Reconciler
 from shared.redis.lock import RedisTickLock
 from shared.utils.logger import StructuredLogger
 
 logger = StructuredLogger(logging.getLogger("nats-health-reconciler"))
-
-MEM_WARN_BYTES = 700 * 1024 * 1024
-SLOW_CONSUMERS_WARN = 50
 
 
 class NatsHealthReconciler(Reconciler):
@@ -60,19 +61,19 @@ class NatsHealthReconciler(Reconciler):
             alerts += 1
         self._prev_uptime_sec = uptime
 
-        if mem >= MEM_WARN_BYTES:
+        if mem >= NATS_HEALTH_MEM_WARN_BYTES:
             await self._alert(
                 AlertLevel.warning, "NATS: высокая память",
-                f"mem={mem // 1048576}MB (порог {MEM_WARN_BYTES // 1048576}MB) — риск OOM", "nats-mem",
+                f"mem={mem // 1048576}MB (порог {NATS_HEALTH_MEM_WARN_BYTES // 1048576}MB) — риск OOM", "nats-mem",
             )
             alerts += 1
         else:
             await self._resolve("nats-mem")
 
-        if slow >= SLOW_CONSUMERS_WARN:
+        if slow >= NATS_HEALTH_SLOW_CONSUMERS_WARN:
             await self._alert(
                 AlertLevel.warning, "NATS: slow consumers",
-                f"slow_consumers={slow} (порог {SLOW_CONSUMERS_WARN})", "nats-slow",
+                f"slow_consumers={slow} (порог {NATS_HEALTH_SLOW_CONSUMERS_WARN})", "nats-slow",
             )
             alerts += 1
         else:
