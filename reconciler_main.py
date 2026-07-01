@@ -29,6 +29,7 @@ from services.nodes.agent.models import (  # noqa: F401
 from services.nodes.agent.runtime import NodeAgentRuntime
 from services.nodes.models import NodeAgentIdentity, NodeAgentState, VpnNode  # noqa: F401
 from services.nodes.reconcilers.nats_consumer_cleanup import NatsConsumerCleanupReconciler
+from services.nodes.reconcilers.nats_health import NatsHealthReconciler
 from services.nodes.reconcilers.placement import NodePlacementReconciler
 from services.nodes.reconcilers.snapshot_freshness import NodeSnapshotFreshnessReconciler
 from services.nodes.reconcilers.upstream_failover import UpstreamFailoverReconciler
@@ -128,6 +129,7 @@ def _build_reconcilers(notifications: NotificationService, nats_client: NatsClie
         UpstreamFailoverReconciler(snapshot_trigger=snapshot_trigger),
         NodeSnapshotFreshnessReconciler(snapshot_trigger=snapshot_trigger),
         NatsConsumerCleanupReconciler(nats_client=nats_client),
+        NatsHealthReconciler(),
         EntryRoutingPublisher(),
         WgMeshPeerPublisher(),
         NotificationsDigestReconciler(notifications=notifications),
