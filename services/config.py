@@ -49,6 +49,7 @@ class NatsConfig:
     js_consumer_prefix: str = "vpn-control-api"
     js_ack_wait_s: float = 30.0
     js_max_deliver: int = 30
+    monitoring_url: str = ""
     js_fetch_timeout_s: float = 1.0
     js_outbox_batch_size: int = 200
     js_outbox_poll_interval_s: float = 1.0
@@ -399,6 +400,7 @@ def get_settings() -> Settings:
     nats = NatsConfig(
         enabled=env.bool("NATS_ENABLED", default=False),
         server=env.str("NATS_SERVER", default="nats://localhost:4222"),
+        monitoring_url=env.str("NATS_MONITORING_URL", default=""),
         name=env.str("NATS_NAME", default="vpn-control-api"),
         users_traffic_subject=env.str("NATS_USERS_TRAFFIC_SUBJECT", default="users.traffic"),
         users_traffic_queue=env.str("NATS_USERS_TRAFFIC_QUEUE", default="vpn-control-api-users-traffic"),

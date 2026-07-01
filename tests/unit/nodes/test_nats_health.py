@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from services.nodes.reconcilers.nats_health import NatsHealthReconciler, _parse_uptime
@@ -16,6 +17,14 @@ def _rec():
     return r
 
 
+@contextmanager
+def _settings(monitoring_url="http://nats-headless:8222"):
+    s = MagicMock()
+    s.nats.monitoring_url = monitoring_url
+    with patch("services.nodes.reconcilers.nats_health.get_settings", return_value=s):
+        yield
+
+
 def _varz(mem_mb=90, uptime_sec=9000, slow=0):
     resp = MagicMock()
     resp.json.return_value = {"mem": mem_mb * 1048576, "uptime_sec": uptime_sec, "slow_consumers": slow}
@@ -27,9 +36,34 @@ def test_parse_uptime():
     assert _parse_uptime("1d1h") == 86400 + 3600
 
 
+async def test_disabled_when_no_monitoring_url():
+    rec = _rec()
+    with _settings(monitoring_url=""), patch("httpx.AsyncClient") as Cli, patch(
+        "services.nodes.reconcilers.nats_health.AlertService"
+    ) as AS:
+        Cli.return_value.__aenter__.return_value.get = AsyncMock(return_value=_varz())
+        AS.return_value.record = AsyncMock()
+        n = await rec.tick()
+    assert n == 0
+    Cli.assert_not_called()
+    AS.return_value.record.assert_not_awaited()
+
+
+async def test_varz_unreachable_no_alert():
+    rec = _rec()
+    with _settings(), patch("httpx.AsyncClient") as Cli, patch(
+        "services.nodes.reconcilers.nats_health.AlertService"
+    ) as AS:
+        Cli.return_value.__aenter__.return_value.get = AsyncMock(side_effect=OSError("refused"))
+        AS.return_value.record = AsyncMock()
+        n = await rec.tick()
+    assert n == 0
+    AS.return_value.record.assert_not_awaited()
+
+
 async def test_healthy_no_alert():
     rec = _rec()
-    with patch("httpx.AsyncClient") as Cli, patch(
+    with _settings(), patch("httpx.AsyncClient") as Cli, patch(
         "services.nodes.reconcilers.nats_health.AlertService"
     ) as AS:
         Cli.return_value.__aenter__.return_value.get = AsyncMock(return_value=_varz())
@@ -43,7 +77,7 @@ async def test_healthy_no_alert():
 async def test_restart_detected():
     rec = _rec()
     rec._prev_uptime_sec = 10000  # previous uptime higher
-    with patch("httpx.AsyncClient") as Cli, patch(
+    with _settings(), patch("httpx.AsyncClient") as Cli, patch(
         "services.nodes.reconcilers.nats_health.AlertService"
     ) as AS:
         Cli.return_value.__aenter__.return_value.get = AsyncMock(return_value=_varz(uptime_sec=30))
@@ -57,7 +91,7 @@ async def test_restart_detected():
 
 async def test_high_memory_alert():
     rec = _rec()
-    with patch("httpx.AsyncClient") as Cli, patch(
+    with _settings(), patch("httpx.AsyncClient") as Cli, patch(
         "services.nodes.reconcilers.nats_health.AlertService"
     ) as AS:
         Cli.return_value.__aenter__.return_value.get = AsyncMock(return_value=_varz(mem_mb=800))

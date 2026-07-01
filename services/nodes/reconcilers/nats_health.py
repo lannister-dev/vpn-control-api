@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from urllib.parse import urlparse
 
 import httpx
 
@@ -18,7 +17,6 @@ logger = StructuredLogger(logging.getLogger("nats-health-reconciler"))
 
 MEM_WARN_BYTES = 700 * 1024 * 1024
 SLOW_CONSUMERS_WARN = 50
-MONITORING_PORT = 8222
 
 
 class NatsHealthReconciler(Reconciler):
@@ -34,22 +32,20 @@ class NatsHealthReconciler(Reconciler):
         self._session_maker = AsyncDatabase.get_session_maker()
         self._prev_uptime_sec: float | None = None
 
-    def _varz_url(self) -> str:
-        parsed = urlparse(get_settings().nats.server)
-        host = parsed.hostname or "nats"
-        return f"http://{host}:{MONITORING_PORT}/varz"
+    async def is_enabled(self) -> bool:
+        return bool(get_settings().nats.monitoring_url)
 
     async def tick(self) -> int:
+        url = get_settings().nats.monitoring_url
+        if not url:
+            return 0
         try:
             async with httpx.AsyncClient(timeout=8) as client:
-                resp = await client.get(self._varz_url())
+                resp = await client.get(url.rstrip("/") + "/varz")
                 varz = resp.json()
         except Exception as exc:
-            await self._alert(
-                AlertLevel.critical, "NATS недоступен",
-                f"Monitoring endpoint не отвечает: {exc}", "nats-down",
-            )
-            return 1
+            logger.warning("nats_varz_unreachable", url=url, error=str(exc))
+            return 0
 
         mem = int(varz.get("mem", 0))
         uptime = float(varz.get("uptime_sec", 0)) or _parse_uptime(varz.get("uptime", ""))
