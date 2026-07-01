@@ -262,12 +262,14 @@ async def get_media(file_id: str):
         bot_token=settings.support.bot_token,
         file_id=file_id,
         timeout_sec=settings.support.media_proxy_timeout_sec,
+        proxy=settings.support.media_proxy_url,
     )
     return StreamingResponse(
         stream_file(
             bot_token=settings.support.bot_token,
             file_path=file_path,
             timeout_sec=settings.support.media_proxy_timeout_sec,
+            proxy=settings.support.media_proxy_url,
         ),
         media_type=mime or "application/octet-stream",
         headers={

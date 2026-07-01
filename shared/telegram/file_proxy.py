@@ -46,7 +46,9 @@ def _mime_by_path(file_path: str) -> str | None:
     return _MIME_BY_EXT.get(ext)
 
 
-async def resolve_file_path(*, bot_token: str, file_id: str, timeout_sec: float) -> tuple[str, str | None]:
+async def resolve_file_path(
+    *, bot_token: str, file_id: str, timeout_sec: float, proxy: str | None = None
+) -> tuple[str, str | None]:
     """Call Telegram getFile, return (file_path, mime_type_guess).
 
     Raises HTTPException on failure.
@@ -54,7 +56,7 @@ async def resolve_file_path(*, bot_token: str, file_id: str, timeout_sec: float)
     if not bot_token:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Support bot token not configured")
     url = f"{_TELEGRAM_API}/bot{bot_token}/getFile"
-    async with httpx.AsyncClient(timeout=timeout_sec) as client:
+    async with httpx.AsyncClient(timeout=timeout_sec, proxy=proxy or None) as client:
         try:
             resp = await client.get(url, params={"file_id": file_id})
         except httpx.HTTPError as exc:
@@ -75,10 +77,10 @@ def stream_url(*, bot_token: str, file_path: str) -> str:
     return f"{_TELEGRAM_API}/file/bot{bot_token}/{file_path}"
 
 
-async def stream_file(*, bot_token: str, file_path: str, timeout_sec: float):
+async def stream_file(*, bot_token: str, file_path: str, timeout_sec: float, proxy: str | None = None):
     """Yield bytes chunks from Telegram CDN. Caller wraps into StreamingResponse."""
     url = stream_url(bot_token=bot_token, file_path=file_path)
-    async with httpx.AsyncClient(timeout=timeout_sec) as client, client.stream("GET", url) as resp:
+    async with httpx.AsyncClient(timeout=timeout_sec, proxy=proxy or None) as client, client.stream("GET", url) as resp:
         if resp.status_code != 200:
             raise HTTPException(status_code=resp.status_code, detail="Telegram file fetch failed")
         async for chunk in resp.aiter_bytes(chunk_size=64 * 1024):
