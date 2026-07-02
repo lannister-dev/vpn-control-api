@@ -520,6 +520,8 @@ class SupportService:
         if not ticket.first_user_msg_at:
             ticket.first_user_msg_at = now
         ticket.last_activity_at = now
+        if ticket.status == TicketStatus.WAITING_USER.value:
+            ticket.status = TicketStatus.IN_PROGRESS.value
 
         msg = await self.messages.create(
             SupportMessageCreate(

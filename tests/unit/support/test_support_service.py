@@ -406,3 +406,39 @@ def test_strip_html_text_normalizes():
     a = f('<tg-emoji emoji-id="1">🌍</tg-emoji> Факт\r\nстрока')
     b = f('🌍 Факт\nстрока')
     assert a == b == "🌍 Факт строка"
+
+
+@pytest.mark.asyncio
+async def test_ingest_user_message_resets_waiting_user_to_in_progress():
+    from services.support.service import SupportService
+
+    svc = SupportService.__new__(SupportService)
+    t = _ticket(
+        status=TicketStatus.WAITING_USER.value,
+        first_user_msg_at=datetime.now(timezone.utc),
+        subject="x",
+    )
+    svc.session = SimpleNamespace(commit=_async_return(None))
+    svc.tickets = SimpleNamespace(find_open_by_user=_async_return(t))
+    svc.messages = SimpleNamespace(create=_async_return(SimpleNamespace(id=uuid4(), ticket_id=t.id)))
+    svc.attachments = SimpleNamespace(create=_async_return(None))
+
+    ticket, _msg, is_new = await svc.ingest_user_message(user_id=t.user_id, text="my answer")
+
+    assert is_new is False
+    assert ticket.status == TicketStatus.IN_PROGRESS.value
+
+
+@pytest.mark.asyncio
+async def test_ingest_user_message_keeps_new_status():
+    from services.support.service import SupportService
+
+    svc = SupportService.__new__(SupportService)
+    t = _ticket(status=TicketStatus.NEW.value, first_user_msg_at=datetime.now(timezone.utc), subject="x")
+    svc.session = SimpleNamespace(commit=_async_return(None))
+    svc.tickets = SimpleNamespace(find_open_by_user=_async_return(t))
+    svc.messages = SimpleNamespace(create=_async_return(SimpleNamespace(id=uuid4(), ticket_id=t.id)))
+    svc.attachments = SimpleNamespace(create=_async_return(None))
+
+    ticket, _msg, _is_new = await svc.ingest_user_message(user_id=t.user_id, text="more")
+    assert ticket.status == TicketStatus.NEW.value
