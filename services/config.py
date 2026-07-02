@@ -49,6 +49,7 @@ class NatsConfig:
     js_consumer_prefix: str = "vpn-control-api"
     js_ack_wait_s: float = 30.0
     js_max_deliver: int = 30
+    monitoring_url: str = ""
     js_fetch_timeout_s: float = 1.0
     js_outbox_batch_size: int = 200
     js_outbox_poll_interval_s: float = 1.0
@@ -224,6 +225,7 @@ class BotNotificationsConfig:
 class SupportConfig:
     bot_token: str = ""
     media_proxy_timeout_sec: int = 10
+    media_proxy_url: str = ""
 
 
 @dataclass
@@ -398,6 +400,7 @@ def get_settings() -> Settings:
     nats = NatsConfig(
         enabled=env.bool("NATS_ENABLED", default=False),
         server=env.str("NATS_SERVER", default="nats://localhost:4222"),
+        monitoring_url=env.str("NATS_MONITORING_URL", default=""),
         name=env.str("NATS_NAME", default="vpn-control-api"),
         users_traffic_subject=env.str("NATS_USERS_TRAFFIC_SUBJECT", default="users.traffic"),
         users_traffic_queue=env.str("NATS_USERS_TRAFFIC_QUEUE", default="vpn-control-api-users-traffic"),
@@ -512,6 +515,10 @@ def get_settings() -> Settings:
     support = SupportConfig(
         bot_token=env.str("SUPPORT_BOT_TOKEN", default=""),
         media_proxy_timeout_sec=env.int("SUPPORT_MEDIA_PROXY_TIMEOUT_SEC", default=10),
+        media_proxy_url=env.str(
+            "SUPPORT_MEDIA_PROXY_URL",
+            default=env.str("ADMIN_TELEGRAM_OIDC_PROXY", default=""),
+        ),
     )
 
     probe = ProbeConfig(

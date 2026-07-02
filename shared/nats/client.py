@@ -223,6 +223,20 @@ class NatsClient:
             info.config.duplicate_window = duplicate_window
         return await self.jetstream().update_stream(config=info.config)
 
+    async def list_consumer_names(self, stream: str) -> list[str]:
+        js = self.jetstream()
+        try:
+            infos = await js.consumers_info(stream)
+        except Exception:
+            return []
+        return [c.name for c in infos]
+
+    async def delete_consumer(self, stream: str, name: str) -> bool:
+        try:
+            return await self.jetstream().delete_consumer(stream, name)
+        except Exception:
+            return False
+
     async def ensure_kv_bucket(
         self,
         *,

@@ -11,6 +11,7 @@ from sqlalchemy import select, text
 from services.config import NatsConfig
 from services.entry.models import EntryBackendAssignment
 from services.nodes.agent.constants import (
+    CONSUMER_RESUBSCRIBE_AFTER_EMPTY_FETCHES,
     NODE_AGENT_RUNTIME_LEADER_LOCK_KEY,
     NODE_AGENT_RUNTIME_LEADER_POLL_INTERVAL_S,
     NODE_AGENT_SNAPSHOT_CHUNK_SIZE,
@@ -485,13 +486,17 @@ class NodeAgentRuntime:
         batch_handler=None,
         concurrency: int = 10,
     ) -> None:
-        subscription = await self._nats.pull_subscribe(
-            subject=subject,
-            durable=durable,
-            ack_wait_s=self._config.js_ack_wait_s,
-            max_deliver=self._config.js_max_deliver,
-        )
+        async def _subscribe():
+            return await self._nats.pull_subscribe(
+                subject=subject,
+                durable=durable,
+                ack_wait_s=self._config.js_ack_wait_s,
+                max_deliver=self._config.js_max_deliver,
+            )
+
+        subscription = await _subscribe()
         sem = asyncio.Semaphore(concurrency)
+        empty_fetches = 0
 
         while self._running:
             try:
@@ -504,14 +509,40 @@ class NodeAgentRuntime:
                 raise
             except Exception as exc:
                 if "timeout" in str(exc).lower():
+                    empty_fetches += 1
+                    if empty_fetches >= CONSUMER_RESUBSCRIBE_AFTER_EMPTY_FETCHES:
+                        logger_transport.warning(
+                            "node_agent_consumer_resubscribe_stale",
+                            subject=subject,
+                            durable=durable,
+                        )
+                        try:
+                            subscription = await _subscribe()
+                        except Exception:
+                            logger_transport.exception(
+                                "node_agent_consumer_resubscribe_failed",
+                                subject=subject,
+                                durable=durable,
+                            )
+                        empty_fetches = 0
                     continue
                 logger_transport.exception(
                     "node_agent_consumer_fetch_failed",
                     subject=subject,
                     durable=durable,
                 )
+                try:
+                    subscription = await _subscribe()
+                except Exception:
+                    logger_transport.exception(
+                        "node_agent_consumer_resubscribe_failed",
+                        subject=subject,
+                        durable=durable,
+                    )
                 await asyncio.sleep(1.0)
                 continue
+
+            empty_fetches = 0
 
             if batch_handler:
                 try:

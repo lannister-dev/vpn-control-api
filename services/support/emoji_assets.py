@@ -59,11 +59,13 @@ class TelegramMediaResolver:
         timeout = float(self._support.media_proxy_timeout_sec)
         try:
             file_path, mime = await resolve_file_path(
-                bot_token=self._support.bot_token, file_id=tg_file_id, timeout_sec=timeout
+                bot_token=self._support.bot_token, file_id=tg_file_id, timeout_sec=timeout,
+                proxy=self._support.media_proxy_url,
             )
             chunks: list[bytes] = []
             async for chunk in stream_file(
-                bot_token=self._support.bot_token, file_path=file_path, timeout_sec=timeout
+                bot_token=self._support.bot_token, file_path=file_path, timeout_sec=timeout,
+                proxy=self._support.media_proxy_url,
             ):
                 chunks.append(chunk)
             data = b"".join(chunks)
@@ -132,11 +134,13 @@ class CustomEmojiResolver:
     ) -> str | None:
         timeout = float(self._support.media_proxy_timeout_sec)
         file_path, mime = await resolve_file_path(
-            bot_token=self._support.bot_token, file_id=file_id, timeout_sec=timeout
+            bot_token=self._support.bot_token, file_id=file_id, timeout_sec=timeout,
+            proxy=self._support.media_proxy_url,
         )
         chunks: list[bytes] = []
         async for chunk in stream_file(
-            bot_token=self._support.bot_token, file_path=file_path, timeout_sec=timeout
+            bot_token=self._support.bot_token, file_path=file_path, timeout_sec=timeout,
+            proxy=self._support.media_proxy_url,
         ):
             chunks.append(chunk)
         data = b"".join(chunks)
