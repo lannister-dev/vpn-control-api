@@ -111,7 +111,8 @@ class SupportTicketRepository(BaseRepository[SupportTicket]):
         ).where(
             SupportTicket.first_reply_at.is_not(None),
             SupportTicket.first_user_msg_at.is_not(None),
-            SupportTicket.first_reply_at >= datetime.now(timezone.utc) - timedelta(days=1),
+            SupportTicket.first_reply_at >= SupportTicket.first_user_msg_at,
+            SupportTicket.first_user_msg_at >= datetime.now(timezone.utc) - timedelta(days=1),
         )
         avg_minutes = (await self.session.execute(reply_q)).scalar_one_or_none()
         avg_minutes_int = int(avg_minutes) if avg_minutes is not None else None
