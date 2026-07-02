@@ -10,26 +10,15 @@ replicaCount: 2
 
 envSecret: control-api-prod-env
 
-# api.telegram.org resolves to an RKN-blocked IP from RU nodes; a different
-# Telegram DC IP is reachable directly, so pin the hostname to it (SNI/cert
-# stay api.telegram.org, valid). Removes the need for an egress proxy.
 telegramHostAliases:
   - ip: 149.154.167.220
     hostnames:
       - api.telegram.org
       - oauth.telegram.org
 
-# Secrets (reality keys, backend uuid/pubkey) live in Vault (control-plane/prod/env),
-# delivered via envSecret — NOT here. Values that match config.py defaults are omitted.
-# Only prod-specific non-secret flags/ports remain.
 env:
   NATS_NODES_TRAFFIC_SUBJECT: prod.nodes.traffic
   NATS_NODES_TRAFFIC_QUEUE: nodes-traffic-prod
-  ENTRY_ROUTING_ENABLED: "true"
-  ENTRY_ROUTING_LISTEN_PORT: "443"
-  ENTRY_ROUTING_BACKEND_USE_WG: "true"
-  ENTRY_ROUTING_PER_USER_OUTBOUND_UUID: "true"
-  WG_MESH_ENABLED: "true"
   WG_MESH_LISTEN_PORT: "4500"
 
 nodeSelector:

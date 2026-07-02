@@ -610,7 +610,7 @@ def get_settings() -> Settings:
     )
 
     entry_routing = EntryRoutingConfig(
-        enabled=env.bool("ENTRY_ROUTING_ENABLED", default=False),
+        enabled=env.bool("ENTRY_ROUTING_ENABLED", default=True),
         publisher_tick_sec=max(5, env.int("ENTRY_ROUTING_PUBLISHER_TICK_SEC", default=30)),
         backend_rebalance_enabled=env.bool("ENTRY_ROUTING_BACKEND_REBALANCE_ENABLED", default=False),
         backend_rebalance_tick_sec=max(60, env.int("ENTRY_ROUTING_BACKEND_REBALANCE_TICK_SEC", default=300)),
@@ -619,7 +619,7 @@ def get_settings() -> Settings:
         backend_rebalance_min_bytes_per_sec=env.int("ENTRY_ROUTING_BACKEND_REBALANCE_MIN_BYTES_PER_SEC", default=524288),
         backend_rebalance_cooldown_sec=env.int("ENTRY_ROUTING_BACKEND_REBALANCE_COOLDOWN_SEC", default=1800),
         backend_rebalance_batch_size=max(1, env.int("ENTRY_ROUTING_BACKEND_REBALANCE_BATCH_SIZE", default=1)),
-        listen_port=env.int("ENTRY_ROUTING_LISTEN_PORT", default=8443),
+        listen_port=env.int("ENTRY_ROUTING_LISTEN_PORT", default=443),
         reality_private_key=env.str("ENTRY_ROUTING_REALITY_PRIVATE_KEY", default=""),
         reality_short_id=env.str("ENTRY_ROUTING_REALITY_SHORT_ID", default=""),
         reality_server_name=env.str("ENTRY_ROUTING_REALITY_SERVER_NAME", default="www.cloudflare.com"),
@@ -630,9 +630,9 @@ def get_settings() -> Settings:
         backend_reality_fingerprint=env.str("ENTRY_ROUTING_BACKEND_REALITY_FINGERPRINT", default="chrome"),
         backend_port=env.int("ENTRY_ROUTING_BACKEND_PORT", default=443),
         backend_flow=env.str("ENTRY_ROUTING_BACKEND_FLOW", default="xtls-rprx-vision"),
-        backend_use_wg=env.bool("ENTRY_ROUTING_BACKEND_USE_WG", default=False),
+        backend_use_wg=env.bool("ENTRY_ROUTING_BACKEND_USE_WG", default=True),
         backend_wg_port=env.int("ENTRY_ROUTING_BACKEND_WG_PORT", default=10100),
-        per_user_outbound_uuid=env.bool("ENTRY_ROUTING_PER_USER_OUTBOUND_UUID", default=False),
+        per_user_outbound_uuid=env.bool("ENTRY_ROUTING_PER_USER_OUTBOUND_UUID", default=True),
     )
 
     subscriptions_expiration = SubscriptionsExpirationConfig(
@@ -642,7 +642,7 @@ def get_settings() -> Settings:
     )
 
     wg_mesh = WgMeshConfig(
-        enabled=env.bool("WG_MESH_ENABLED", default=False),
+        enabled=env.bool("WG_MESH_ENABLED", default=True),
         mesh_cidr=env.str("WG_MESH_CIDR", default="10.10.0.0/24"),
         listen_port=env.int("WG_MESH_LISTEN_PORT", default=51820),
     )
