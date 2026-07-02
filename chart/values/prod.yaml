@@ -17,6 +17,7 @@ telegramHostAliases:
   - ip: 149.154.167.220
     hostnames:
       - api.telegram.org
+      - oauth.telegram.org
 
 env:
   NATS_NODES_TRAFFIC_SUBJECT: prod.nodes.traffic
