@@ -211,3 +211,44 @@ async def test_runtime_activates_after_leader_lock(monkeypatch):
     await runtime._run_leader_loop()
 
     runtime._activate_runtime.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_consumer_resubscribes_on_fetch_error(monkeypatch):
+    monkeypatch.setattr(asyncio, "sleep", AsyncMock())
+    runtime = _runtime()
+    runtime._running = True
+    runtime._nats.pull_subscribe = AsyncMock(return_value=MagicMock())
+    calls = {"n": 0}
+
+    async def _fetch(*a, **k):
+        calls["n"] += 1
+        if calls["n"] >= 3:
+            runtime._running = False
+        raise RuntimeError("nats: connection closed")
+
+    runtime._nats.fetch_messages = AsyncMock(side_effect=_fetch)
+    await runtime._run_consumer_loop(subject="s", durable="d", handler=AsyncMock())
+    # initial subscribe + a resubscribe on each non-timeout error
+    assert runtime._nats.pull_subscribe.await_count >= 2
+
+
+@pytest.mark.asyncio
+async def test_consumer_resubscribes_when_stale(monkeypatch):
+    from services.nodes.agent.constants import CONSUMER_RESUBSCRIBE_AFTER_EMPTY_FETCHES
+
+    runtime = _runtime()
+    runtime._running = True
+    runtime._nats.pull_subscribe = AsyncMock(return_value=MagicMock())
+    calls = {"n": 0}
+
+    async def _fetch(*a, **k):
+        calls["n"] += 1
+        if calls["n"] > CONSUMER_RESUBSCRIBE_AFTER_EMPTY_FETCHES:
+            runtime._running = False
+        raise TimeoutError("fetch timeout")
+
+    runtime._nats.fetch_messages = AsyncMock(side_effect=_fetch)
+    await runtime._run_consumer_loop(subject="s", durable="d", handler=AsyncMock())
+    # initial + one resubscribe after N empty timeouts
+    assert runtime._nats.pull_subscribe.await_count >= 2
