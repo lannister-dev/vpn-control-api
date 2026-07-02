@@ -71,6 +71,9 @@ reconciler:
 
 admin:
   enabled: true
+  nodeSelector:
+    kind: prod
+    media-egress: allowed
   ingress:
     enabled: true
     className: traefik
