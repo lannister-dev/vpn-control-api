@@ -10,6 +10,14 @@ replicaCount: 2
 
 envSecret: control-api-prod-env
 
+# api.telegram.org resolves to an RKN-blocked IP from RU nodes; a different
+# Telegram DC IP is reachable directly, so pin the hostname to it (SNI/cert
+# stay api.telegram.org, valid). Removes the need for an egress proxy.
+telegramHostAliases:
+  - ip: 149.154.167.220
+    hostnames:
+      - api.telegram.org
+
 env:
   NATS_NODES_TRAFFIC_SUBJECT: prod.nodes.traffic
   NATS_NODES_TRAFFIC_QUEUE: nodes-traffic-prod
@@ -71,9 +79,6 @@ reconciler:
 
 admin:
   enabled: true
-  nodeSelector:
-    kind: prod
-    media-egress: allowed
   ingress:
     enabled: true
     className: traefik

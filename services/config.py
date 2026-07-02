@@ -515,10 +515,7 @@ def get_settings() -> Settings:
     support = SupportConfig(
         bot_token=env.str("SUPPORT_BOT_TOKEN", default=""),
         media_proxy_timeout_sec=env.int("SUPPORT_MEDIA_PROXY_TIMEOUT_SEC", default=10),
-        media_proxy_url=env.str(
-            "SUPPORT_MEDIA_PROXY_URL",
-            default=env.str("ADMIN_TELEGRAM_OIDC_PROXY", default=""),
-        ),
+        media_proxy_url=env.str("SUPPORT_MEDIA_PROXY_URL", default=""),
     )
 
     probe = ProbeConfig(
